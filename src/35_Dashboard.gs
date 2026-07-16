@@ -1,15 +1,17 @@
 /** Materializa fuentes pequenas y sin filtros de chart para Looker Studio. */
 function rebuildDashboardDatasets_(ss, catalog, ratings, execution) {
-  const scorecards = buildScorecardDataset_(ratings, catalog, execution);
+  const activeKeys = (catalog || []).reduce(function (out, app) { out[app.appKey] = true; return out; }, {});
+  const activeRatings = (ratings || []).filter(function (item) { return Boolean(activeKeys[item.appKey]); });
+  const scorecards = buildScorecardDataset_(activeRatings, catalog, execution);
   const scorecardSheet = ss.getSheetByName(MARKETS_CONFIG.sheets.scorecards);
   replaceSheetData_(scorecardSheet, scorecards.headers, scorecards.rows);
   scorecardSheet.getRange('A:A').setNumberFormat('yyyy-mm-dd');
 
-  const competitionRows = buildCompetitionRows_(ratings, catalog, execution);
+  const competitionRows = buildCompetitionRows_(activeRatings, catalog, execution);
   const competitionSheet = ss.getSheetByName(MARKETS_CONFIG.sheets.competition);
   replaceSheetData_(competitionSheet, MARKETS_CONFIG.headers.competition, competitionRows);
 
-  const trendRows = buildMonthlyTrendRows_(ratings, catalog);
+  const trendRows = buildMonthlyTrendRows_(activeRatings, catalog);
   const trendSheet = ss.getSheetByName(MARKETS_CONFIG.sheets.trends);
   replaceSheetData_(trendSheet, MARKETS_CONFIG.headers.trends, trendRows);
 
@@ -158,7 +160,8 @@ function buildCompetitionRows_(ratings, catalog, execution) {
         item.delta30d === null ? '' : item.delta30d, item.isLatest, item.ingestedAt || '',
         Boolean(date === referenceKey && statusByApp[item.appKey] === 'OK'),
         date === referenceKey ? (statusByApp[item.appKey] || 'NOT_FETCHED') : 'HISTORICAL',
-        date === referenceKey && execution ? execution.runId : ''];
+        date === referenceKey && execution ? execution.runId : '',
+        app.commercialEligible, app.commercialEvidenceUrl || '', app.storeEvidenceUrl || '', app.verifiedAt || ''];
     });
 }
 

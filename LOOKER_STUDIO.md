@@ -25,8 +25,7 @@ Use `*_IS_FRESH_THIS_RUN` y `*_FETCH_STATUS` como controles de calidad visibles 
 Es la fuente recomendada para los paneles de ranking del PDF. Ya contiene el join con catalogo y expone `MARKET_SEGMENT`, `DASHBOARD_SECTION`, `PRODUCT_SCOPE`, `DISPLAY_ORDER` y `COMPETITOR_SET_VERSION`.
 
 - Bancos: `DASHBOARD_SECTION = COUNTRY_BANKS`.
-- Fintechs: `DASHBOARD_SECTION = COUNTRY_FINTECHS`.
-- Colombia neobancos: `DASHBOARD_SECTION = COUNTRY_NEOBANKS`.
+- Competidores digitales commercial: `DASHBOARD_SECTION = COUNTRY_COMMERCIAL_DIGITAL` y `PRODUCT_SCOPE = COMMERCIAL`.
 - Muestre `RANKING` solo junto con `RANKING_IS_COMPLETE = TRUE`; el Apps Script ya deja el campo vacio si falta una app.
 - Formatee `RANKING_COVERAGE` como porcentaje y use `FETCH_STATUS` para explicar ausencias.
 
@@ -77,19 +76,6 @@ Los tres primeros bloques deben construirse preferentemente con `DASHBOARD_KPIS`
 
 Use `RECORD_KEY` como identificador, no como dimension visible. Evite sumar `RATING`; use promedio, maximo o el valor de la fecha filtrada.
 
-## Fuente `REVIEWS`
-
-Conecte `REVIEWS` como segunda fuente:
-
-- `REVIEW_DATE`: fecha y hora.
-- `STAR_RATING`: numero entero/decimal entre 1 y 5.
-- `APP_VERSION`: texto.
-- `REVIEW_TEXT`, `TITLE`: texto.
-- `TOPICS`: dimension preparada para una futura clasificacion; el historico migrado queda vacio.
-- `REVIEW_KEY`: identificador deduplicado.
-
-Permite reproducir evolucion por estrellas, tabla de reseñas, distribucion por version y analisis de texto. `REVIEWS` contiene datos personales publicos (nombre de usuario y texto); aplique los controles de acceso y retencion corporativos correspondientes.
-
 ## Controles recomendados
 
 - Periodo de fechas.
@@ -97,10 +83,12 @@ Permite reproducir evolucion por estrellas, tabla de reseñas, distribucion por 
 - Plataforma.
 - App / competidor.
 - `IS_BBVA`.
-- Rating por estrellas.
-- Version de app.
 
-Mantenga cada pagina conectada a una sola tabla cuando sea posible. Para cruzar rating y reseñas, agregue cada fuente por mes/plataforma/pais antes de combinar; no una las tablas a nivel de fila porque sus granularidades son distintas.
+Mantenga cada pagina conectada a una sola tabla cuando sea posible.
+
+## Comentarios fuera de alcance
+
+No conecte ni reconstruya `REVIEWS`: no existe una fuente comun que permita obtener de forma contractual comentarios de BBVA y competidores con geografia comparable en Android, iOS y Huawei. El modelo publica ratings agregados de tienda, no comentarios ni ubicacion del usuario.
 
 ## Fuente `FETCH_LOG`
 

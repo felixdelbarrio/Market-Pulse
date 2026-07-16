@@ -4,16 +4,15 @@ Proyecto unico para monitorizar ratings publicos de Google Play, Apple App Store
 
 ## Resultado
 
-El libro maestro contiene diez pestañas operativas:
+El libro maestro contiene nueve pestañas operativas:
 
 - `CONTROL`: parametros operativos y contrato de version.
 - `APP_CATALOG`: catalogo normalizado de plataforma, pais, app e identificadores de tienda.
 - `RATINGS`: fuente principal de Looker Studio, una fila por fecha/plataforma/pais/app.
 - `DASHBOARD_KPIS`: fuente wide precalculada, una fila por fecha y campos directos por pais/plataforma para scorecards sin filtros de chart.
-- `DASHBOARD_COMPETITION`: fuente combinada para bancos, fintechs y neobancos, con cobertura de ranking explicita.
+- `DASHBOARD_COMPETITION`: fuente combinada para bancos y competidores digitales commercial verificados.
 - `DASHBOARD_TRENDS`: agregacion mensual compacta para las pantallas de evolucion.
 - `FETCH_LOG`: resultado por app de cada RUN (`OK`, `NO_RATING` o `ERROR`), con HTTP, detalle y frescura.
-- `REVIEWS`: historico unificado de reseñas de Android e iOS; Huawei queda preparado para una futura ingesta.
 - `ALERT_LOG`: alertas historicas y nuevas alertas deduplicadas.
 - `RUN_LOG`: trazabilidad de migraciones y ejecuciones.
 
@@ -21,7 +20,7 @@ Las antiguas pestañas por pais, `ALL`, `MONTHLY_ALL`, `Resumen` y `ALL_BANCO_*`
 
 ## Puesta en marcha
 
-1. En el Google Sheet `1IkJgvM2imxm3r1x092q5dqpThrlnDoZ-5QvH8n2h2oQ`, use **Archivo > Importar > Subir > Reemplazar hoja de calculo** con `outputs/019f6ac2/MARKETS_RATINGS_MASTER.xlsx`.
+1. Mantenga el Google Sheet maestro `1IkJgvM2imxm3r1x092q5dqpThrlnDoZ-5QvH8n2h2oQ` y haga una copia de seguridad. No lo sustituya por el Excel compacto de referencia, que no duplica `RATINGS`.
 2. Abra **Extensiones > Apps Script** en ese mismo Sheet.
 3. Copie los archivos de `src/` o desplieguelos con `clasp`:
 
@@ -32,11 +31,13 @@ Las antiguas pestañas por pais, `ALL`, `MONTHLY_ALL`, `Resumen` y `ALL_BANCO_*`
    ```
 
 4. Ejecute `validateProject()` y revise el objeto devuelto.
-5. Ejecute `runNow()` con `SEND_ALERT_EMAILS = FALSE`. La primera ejecucion migra las cabeceras de forma append-only, completa Venezuela, Italia, Alemania y los segmentos digitales del PDF, y materializa los datasets de dashboard.
+5. Ejecute `runNow()` con `SEND_ALERT_EMAILS = FALSE`. La primera ejecucion migra las cabeceras de forma append-only, elimina Italia/Alemania y competidores retail, completa Venezuela y los segmentos commercial digitales verificados, y materializa los datasets de dashboard.
 6. Compruebe una nueva fila en `RUN_LOG`, una fila por app en `FETCH_LOG`, ratings del dia en `RATINGS` y datos en las tres fuentes `DASHBOARD_*`.
 7. Ejecute `setupProject()` para instalar el trigger diario. Active `SEND_ALERT_EMAILS` solo tras validar destinatarios y umbrales.
 
 El acceso conectado durante esta construccion devolvio `403 PERMISSION_DENIED` para el Sheet destino; por eso la importacion y el despliegue vinculado deben hacerse con una cuenta que tenga permiso de edicion.
+
+`outputs/commercial-strict/Markets_Commercial_WOW.xlsx` es una entrega Looker-ready para validar el contrato y las fuentes materializadas. El RUN real debe ejecutarse sobre el Sheet maestro, que conserva `RATINGS`, logs y alertas.
 
 ## Operacion
 
@@ -48,13 +49,17 @@ El acceso conectado durante esta construccion devolvio `403 PERMISSION_DENIED` p
 
 El monitor usa una clave determinista por fecha y app. Reejecutar el mismo dia actualiza el registro existente y no crea duplicados. Los fallos de una tienda no borran valores anteriores ni escriben ratings vacios. `IS_FRESH_THIS_RUN` y `FETCH_STATUS` impiden confundir un valor retenido con uno refrescado.
 
-El ranking se calcula por plataforma, pais, segmento y fecha. Solo se publica si `RANKING_OBSERVED_APPS = RANKING_EXPECTED_APPS`; en caso contrario queda vacio y se informa `RANKING_COVERAGE`. Bancos, fintechs y neobancos nunca compiten en el mismo ranking.
+El ranking se calcula por plataforma, pais, segmento y fecha. Solo se publica si `RANKING_OBSERVED_APPS = RANKING_EXPECTED_APPS`; en caso contrario queda vacio y se informa `RANKING_COVERAGE`. Bancos y competidores digitales commercial nunca compiten en el mismo ranking.
 
 ## Cobertura geografica del PDF
 
-El contrato cubre `MX`, `PE`, `AR`, `UY`, `ES`, `IT`, `CO`, `VE`, `DE` y `TR`. Cada benchmark bancario contiene BBVA y cuatro competidores por plataforma. Android Mexico excluye `BANBAJIO` para mantener el Top 4 comparable del diseño.
+El contrato cubre exclusivamente las ocho geografias con BBVA Empresas: `MX`, `PE`, `AR`, `UY`, `ES`, `CO`, `VE` y `TR`. Italia y Alemania quedan fuera del catalogo y de los datasets. Cada benchmark bancario contiene BBVA y cuatro competidores por plataforma. Android Mexico excluye `BANBAJIO` para mantener el Top 4 comparable del diseño.
 
-Los paneles digitales incorporan cuatro referencias por Android/iOS para Mexico, Argentina, España, Italia y Alemania, y cuatro neobancos para Colombia. `COMPETITOR_SET_VERSION`, `PRODUCT_SCOPE`, `MARKET_SEGMENT` y `DASHBOARD_SECTION` permiten sustituir o ampliar estos conjuntos sin cambiar el codigo.
+Los paneles digitales solo incorporan productos con oferta oficial para empresas, autonomos o comercios: Mexico, Argentina, España y Colombia. Argentina contiene tres referencias: la ficha de Getnet ya no esta disponible de forma verificable en las tiendas y no se inventa un cuarto competidor. Cada fila digital exige `COMMERCIAL_ELIGIBLE`, URL oficial de producto, URL de tienda y fecha de verificacion.
+
+## Comentarios y reseñas
+
+`REVIEWS` se elimina del contrato y de la migracion activa. El proyecto no hace scraping de comentarios ni asigna una geografia inferida. Las APIs autorizadas de Google Play y App Store Connect solo permiten consultar comentarios de apps propias con credenciales del desarrollador; no resuelven un benchmark completo de competidores Android/iOS/Huawei. Hasta disponer de una fuente contractual y trazable, no se vuelcan comentarios.
 
 ## Venezuela
 

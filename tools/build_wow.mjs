@@ -52,9 +52,20 @@ function readSheet(name) {
 const inputCatalog = readSheet("APP_CATALOG");
 const inputCatalogIndex = headersIndex(inputCatalog.headers);
 const catalogMap = new Map();
+const managedDigitalKeys = new Set(sandbox.MARKETS_CATALOG_SEEDS.filter(row => row[19] !== "BANK").map(row => row[0]));
+const knownRetailKeys = new Set([
+  "ANDROID|MX|NU", "IOS|MX|NU", "ANDROID|MX|KLAR", "IOS|MX|KLAR", "ANDROID|MX|STORI", "IOS|MX|STORI",
+  "ANDROID|AR|UALA", "IOS|AR|UALA", "ANDROID|AR|NARANJA_X", "IOS|AR|NARANJA_X", "ANDROID|AR|BRUBANK", "IOS|AR|BRUBANK",
+  "ANDROID|ES|REVOLUT", "IOS|ES|REVOLUT", "ANDROID|ES|N26", "IOS|ES|N26", "ANDROID|ES|IMAGIN", "IOS|ES|IMAGIN",
+  "ANDROID|ES|OPENBANK", "IOS|ES|OPENBANK", "ANDROID|CO|NEQUI", "IOS|CO|NEQUI", "ANDROID|CO|DAVIPLATA",
+  "IOS|CO|DAVIPLATA", "ANDROID|CO|LULO", "IOS|CO|LULO", "ANDROID|CO|NU", "IOS|CO|NU"
+]);
 for (const row of inputCatalog.rows) {
   const key = String(cell(row, inputCatalogIndex, "app_key") || "").trim();
   if (!key) continue;
+  const country = String(cell(row, inputCatalogIndex, "country_code") || "").trim();
+  const segment = String(cell(row, inputCatalogIndex, "market_segment") || "BANK").trim();
+  if (["IT", "DE"].includes(country) || knownRetailKeys.has(key) || (segment !== "BANK" && !managedDigitalKeys.has(key))) continue;
   const output = config.headers.catalog.map(header => cell(row, inputCatalogIndex, normalizeKey(header)));
   const idx = headersIndex(config.headers.catalog);
   output[idx.market_segment] ||= "BANK";
@@ -64,7 +75,9 @@ for (const row of inputCatalog.rows) {
   if (key === "ANDROID|MX|BANBAJIO") output[idx.enabled] = false;
   catalogMap.set(key, output);
 }
-for (const seed of sandbox.MARKETS_CATALOG_SEEDS) if (!catalogMap.has(seed[0])) catalogMap.set(seed[0], Array.from(seed));
+for (const seed of sandbox.MARKETS_CATALOG_SEEDS) {
+  if (seed[19] !== "BANK" || !catalogMap.has(seed[0])) catalogMap.set(seed[0], Array.from(seed));
+}
 const catalogIndex = headersIndex(config.headers.catalog);
 const catalogRows = [...catalogMap.values()];
 const groupRows = new Map();
@@ -94,7 +107,10 @@ const catalogObjects = catalogRows.map(row => ({
   productScope: String(row[catalogIndex.product_scope]), displayOrder: integerOrNull(row[catalogIndex.display_order]),
   countryPlatformWeight: numberOrNull(row[catalogIndex.country_platform_weight]) || 0,
   groupUserWeight: numberOrNull(row[catalogIndex.group_user_weight]) || 0,
-  weightSource: String(row[catalogIndex.weight_source] || ""), weightEffectiveDate: dateValue(row[catalogIndex.weight_effective_date])
+  weightSource: String(row[catalogIndex.weight_source] || ""), weightEffectiveDate: dateValue(row[catalogIndex.weight_effective_date]),
+  commercialEligible: bool(row[catalogIndex.commercial_eligible]),
+  commercialEvidenceUrl: String(row[catalogIndex.commercial_evidence_url] || ""),
+  storeEvidenceUrl: String(row[catalogIndex.store_evidence_url] || ""), verifiedAt: row[catalogIndex.verified_at]
 }));
 const enabledCatalog = catalogObjects.filter(a => a.enabled);
 const catalogByKey = new Map(enabledCatalog.map(a => [a.appKey, a]));
@@ -126,6 +142,7 @@ for (const row of inputRatings.rows) {
     rankingExpectedApps: null, rankingObservedApps: null, rankingCoverage: null, rankingIsComplete: false
   });
 }
+const activeRatingObjects = ratingObjects.filter(item => catalogByKey.has(item.appKey));
 const snapshots = new Map();
 for (const item of ratingObjects) {
   if (!catalogByKey.has(item.appKey)) continue;
@@ -162,9 +179,9 @@ const staleKeys = new Set(ratingObjects.filter(r => r.observedDate.getTime() ===
 const legacyEnabled = enabledCatalog.filter(a => !["IT", "DE"].includes(a.countryCode) && !(a.marketSegment !== "BANK"));
 const runId = "REFERENCE-WOW-20260716";
 const execution = { runId, referenceDate: latestDate, results: legacyEnabled.map(app => ({ app, ok: freshKeys.has(app.appKey), noRating: !freshKeys.has(app.appKey), status: 0 })) };
-const scorecards = sandbox.buildScorecardDataset_(ratingObjects, enabledCatalog, execution);
-const trends = sandbox.buildMonthlyTrendRows_(ratingObjects, enabledCatalog).map(row => Array.from(row));
-const competition = sandbox.buildCompetitionRows_(ratingObjects, enabledCatalog, execution).map(row => Array.from(row));
+const scorecards = sandbox.buildScorecardDataset_(activeRatingObjects, enabledCatalog, execution);
+const trends = sandbox.buildMonthlyTrendRows_(activeRatingObjects, enabledCatalog).map(row => Array.from(row));
+const competition = sandbox.buildCompetitionRows_(activeRatingObjects, enabledCatalog, execution).map(row => Array.from(row));
 console.log("stage: materialized", scorecards.rows.length, trends.length, competition.length);
 const latestCompetition = competition.filter(row => row[22] === true);
 const fetchRows = legacyEnabled.map(app => [runId, latestDate, new Date(latestIngested || latestDateKey), app.appKey, app.platform,
@@ -197,7 +214,14 @@ const writeTable = (sheet, headers, rows) => {
   sheet.getRangeByIndexes(0, 0, 1, headers.length).format = { fill: "#004481", font: { name: "Arial", size: 9, bold: true, color: "#FFFFFF" }, horizontalAlignment: "center", verticalAlignment: "center", wrapText: true };
   sheet.getRangeByIndexes(0, 0, 1, headers.length).format.rowHeightPx = 34;
   for (let c = 0; c < headers.length; c += 1) {
-    const px = Math.min(190, Math.max(76, String(headers[c]).length * 7 + 20));
+    let maxChars = String(headers[c]).length;
+    for (const row of rows.slice(0, 200)) {
+      const value = row[c];
+      const chars = value instanceof Date ? 19 : String(value ?? "").length;
+      maxChars = Math.max(maxChars, chars);
+    }
+    const cap = String(headers[c]).includes("URL") || ["DETAIL", "SOURCE", "APP_NAME"].includes(String(headers[c])) ? 260 : 210;
+    const px = Math.min(cap, Math.max(82, maxChars * 7 + 20));
     sheet.getRangeByIndexes(0, c, Math.max(1, rows.length + 1), 1).format.columnWidthPx = px;
   }
 };
@@ -216,7 +240,7 @@ summary.showGridLines = false; summary.getRange("A1:H1").merge(); summary.getRan
 summary.getRange("A1:H1").format = { fill: "#004481", font: { name: "Arial", size: 18, bold: true, color: "#FFFFFF" }, verticalAlignment: "center" };
 summary.getRange("A1:H1").format.rowHeightPx = 48;
 summary.getRange("A3:B10").values = [
-  ["Contrato", config.codeVersion], ["Geografias PDF", `${countries.length}/10 · ${countries.join(", ")}`],
+  ["Contrato", config.codeVersion], ["Geografias commercial", `${countries.length}/8 · ${countries.join(", ")}`],
   ["Apps habilitadas", enabledCatalog.length], ["Ratings historicos", ratingObjects.length],
   ["Tendencias mensuales", trends.length], ["Competencia actual", latestCompetition.length],
   ["Apps frescas ultimo RUN", freshKeys.size], ["Rankings suprimidos por cobertura", incomplete]
@@ -229,7 +253,7 @@ summary.getRange("D5:H10").values = [
   ["✓", "DASHBOARD_COMPETITION", "Ranking, segmentos y cobertura", "", ""],
   ["✓", "DASHBOARD_TRENDS", "Mes normalizado desde OBSERVED_DATE", "", ""],
   ["✓", "FETCH_LOG", "Frescura y estado por app/RUN", "", ""],
-  ["✓", "APP_CATALOG", "Italia, Alemania, fintechs y neobancos", "", ""],
+  ["✓", "APP_CATALOG", "Solo competidores commercial contrastados", "", ""],
   ["!", "Pesos consolidados", "En blanco hasta informar fuente y fecha efectiva", "", ""]
 ];
 summary.getRange("D5:D9").format = { fill: "#D8F7F7", font: { bold: true, color: "#00847A" }, horizontalAlignment: "center" };

@@ -36,3 +36,10 @@ Los logs operativos vacios no generaron filas; `RUN_LOG` incluye una ejecucion `
 - `FETCH_LOG`, `RUN_ID`, estado de fetch y frescura del dato.
 - Banbajio desactivado en Android Mexico para mantener BBVA + Top 4.
 - Pesos deliberadamente vacios hasta recibir fuente interna y fecha efectiva.
+
+## Contrato commercial estricto 2026.07.16.4
+
+- Italia y Alemania eliminadas: BBVA Empresas no opera en esas geografias del alcance.
+- Competidores retail-only eliminados y sustituidos por productos con oferta empresarial oficial.
+- Cada competidor digital incorpora evidencia de producto, ficha de tienda y fecha de verificacion.
+- `REVIEWS` eliminado: no se publican comentarios sin API autorizada, competencia comparable y geografia demostrable.

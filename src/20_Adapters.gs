@@ -208,7 +208,7 @@ function huaweiOriginHeaders_() {
 }
 
 function huaweiLocale_(countryCode) {
-  const locales = { ES: 'es_ES', AR: 'es_AR', PE: 'es_PE', CO: 'es_CO', UY: 'es_UY', MX: 'es_MX', VE: 'es_VE', TR: 'tr_TR', IT: 'it_IT', DE: 'de_DE' };
+  const locales = { ES: 'es_ES', AR: 'es_AR', PE: 'es_PE', CO: 'es_CO', UY: 'es_UY', MX: 'es_MX', VE: 'es_VE', TR: 'tr_TR' };
   return locales[countryCode] || 'en';
 }
 

@@ -3,6 +3,7 @@ function openMarketsSpreadsheet_() {
 }
 
 function ensureWorkbookSchema_(ss) {
+  removeUnsupportedReviewSheet_(ss);
   const definitions = [
     [MARKETS_CONFIG.sheets.control, MARKETS_CONFIG.headers.control],
     [MARKETS_CONFIG.sheets.catalog, MARKETS_CONFIG.headers.catalog],
@@ -10,7 +11,6 @@ function ensureWorkbookSchema_(ss) {
     [MARKETS_CONFIG.sheets.competition, MARKETS_CONFIG.headers.competition],
     [MARKETS_CONFIG.sheets.trends, MARKETS_CONFIG.headers.trends],
     [MARKETS_CONFIG.sheets.fetchLog, MARKETS_CONFIG.headers.fetchLog],
-    [MARKETS_CONFIG.sheets.reviews, MARKETS_CONFIG.headers.reviews],
     [MARKETS_CONFIG.sheets.alerts, MARKETS_CONFIG.headers.alerts],
     [MARKETS_CONFIG.sheets.runs, MARKETS_CONFIG.headers.runs]
   ];
@@ -21,8 +21,17 @@ function ensureWorkbookSchema_(ss) {
   });
   getOrCreateSheet_(ss, MARKETS_CONFIG.sheets.scorecards);
   seedControl_(ss.getSheetByName(MARKETS_CONFIG.sheets.control));
-  seedCatalogDefaults_(ss.getSheetByName(MARKETS_CONFIG.sheets.catalog));
-  enrichCatalogDefaults_(ss.getSheetByName(MARKETS_CONFIG.sheets.catalog));
+  const catalogSheet = ss.getSheetByName(MARKETS_CONFIG.sheets.catalog);
+  purgeObsoleteCatalogRows_(catalogSheet);
+  seedCatalogDefaults_(catalogSheet);
+  applyManagedCatalogOverrides_(catalogSheet);
+  enrichCatalogDefaults_(catalogSheet);
+}
+
+/** No se publican comentarios sin API autorizada y geografia demostrable. */
+function removeUnsupportedReviewSheet_(ss) {
+  const sheet = ss.getSheetByName('REVIEWS');
+  if (sheet) ss.deleteSheet(sheet);
 }
 
 function getOrCreateSheet_(ss, name) {
@@ -97,6 +106,57 @@ function seedCatalogDefaults_(sheet) {
   refreshFilter_(sheet, MARKETS_CONFIG.headers.catalog.length);
 }
 
+/** Elimina geografias fuera de alcance y digitales sin evidencia commercial. */
+function purgeObsoleteCatalogRows_(sheet) {
+  if (sheet.getLastRow() <= 1) return;
+  const width = MARKETS_CONFIG.headers.catalog.length;
+  const indexes = indexHeaders_(MARKETS_CONFIG.headers.catalog);
+  const allowedDigital = MARKETS_CATALOG_SEEDS.reduce(function (out, row) {
+    if (row[indexes.market_segment] !== 'BANK') out[row[indexes.app_key]] = true;
+    return out;
+  }, {});
+  const knownRetailKeys = {
+    'ANDROID|MX|NU': true, 'IOS|MX|NU': true, 'ANDROID|MX|KLAR': true, 'IOS|MX|KLAR': true,
+    'ANDROID|MX|STORI': true, 'IOS|MX|STORI': true,
+    'ANDROID|AR|UALA': true, 'IOS|AR|UALA': true, 'ANDROID|AR|NARANJA_X': true,
+    'IOS|AR|NARANJA_X': true, 'ANDROID|AR|BRUBANK': true, 'IOS|AR|BRUBANK': true,
+    'ANDROID|ES|REVOLUT': true, 'IOS|ES|REVOLUT': true, 'ANDROID|ES|N26': true,
+    'IOS|ES|N26': true, 'ANDROID|ES|IMAGIN': true, 'IOS|ES|IMAGIN': true,
+    'ANDROID|ES|OPENBANK': true, 'IOS|ES|OPENBANK': true,
+    'ANDROID|CO|NEQUI': true, 'IOS|CO|NEQUI': true, 'ANDROID|CO|DAVIPLATA': true,
+    'IOS|CO|DAVIPLATA': true, 'ANDROID|CO|LULO': true, 'IOS|CO|LULO': true,
+    'ANDROID|CO|NU': true, 'IOS|CO|NU': true
+  };
+  const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, width).getValues();
+  for (let index = rows.length - 1; index >= 0; index -= 1) {
+    const row = rows[index];
+    const appKey = trimString_(row[indexes.app_key]);
+    const countryCode = trimString_(row[indexes.country_code]);
+    const segment = trimString_(row[indexes.market_segment]);
+    const remove = countryCode === 'IT' || countryCode === 'DE' || knownRetailKeys[appKey] ||
+      ((segment === 'FINTECH' || segment === 'NEOBANK') && !allowedDigital[appKey]);
+    if (remove) sheet.deleteRow(index + 2);
+  }
+}
+
+/** Las filas digitales son gestionadas: producto, IDs y evidencias se sincronizan. */
+function applyManagedCatalogOverrides_(sheet) {
+  if (sheet.getLastRow() <= 1) return;
+  const width = MARKETS_CONFIG.headers.catalog.length;
+  const indexes = indexHeaders_(MARKETS_CONFIG.headers.catalog);
+  const managed = MARKETS_CATALOG_SEEDS.reduce(function (out, row) {
+    if (row[indexes.market_segment] !== 'BANK') out[row[indexes.app_key]] = row;
+    return out;
+  }, {});
+  const range = sheet.getRange(2, 1, sheet.getLastRow() - 1, width);
+  const rows = range.getValues();
+  rows.forEach(function (row, index) {
+    const seed = managed[trimString_(row[indexes.app_key])];
+    if (seed) rows[index] = seed.slice();
+  });
+  range.setValues(rows);
+}
+
 /** Completa el contrato nuevo sin pisar decisiones de negocio ya informadas. */
 function enrichCatalogDefaults_(sheet) {
   if (sheet.getLastRow() <= 1) return;
@@ -116,6 +176,8 @@ function enrichCatalogDefaults_(sheet) {
       (segment === 'NEOBANK' ? 'COUNTRY_NEOBANKS' : segment === 'FINTECH' ? 'COUNTRY_FINTECHS' : 'COUNTRY_BANKS');
     row[indexes.competitor_set_version] = trimString_(row[indexes.competitor_set_version]) || '2026Q3';
     row[indexes.product_scope] = trimString_(row[indexes.product_scope]) || 'BUSINESS';
+    row[indexes.commercial_eligible] = segment === 'BANK'
+      ? true : parseBoolean_(row[indexes.commercial_eligible], false);
     row[indexes.display_order] = order === null ? (counters[groupKey] || 0) : order;
     counters[groupKey] = Math.max(counters[groupKey] || 0, Number(row[indexes.display_order]) + 1);
     if (appKey === 'ANDROID|MX|BANBAJIO') row[indexes.enabled] = false;
@@ -153,9 +215,6 @@ function applyTableStyle_(sheet, width) {
     sheet.getRange('B:B').setNumberFormat('yyyy-mm-dd');
     sheet.getRange('C:C').setNumberFormat('yyyy-mm-dd hh:mm:ss');
     sheet.getRange('J:K').setNumberFormat('0.00');
-  } else if (sheet.getName() === MARKETS_CONFIG.sheets.reviews) {
-    sheet.getRange('C:C').setNumberFormat('yyyy-mm-dd hh:mm:ss');
-    sheet.getRange('R:R').setNumberFormat('yyyy-mm-dd hh:mm:ss');
   } else if (sheet.getName() === MARKETS_CONFIG.sheets.alerts) {
     sheet.getRange('A:A').setNumberFormat('yyyy-mm-dd hh:mm:ss');
     sheet.getRange('C:C').setNumberFormat('yyyy-mm-dd');
@@ -217,7 +276,11 @@ function readAppCatalog_(ss) {
       competitorSetVersion: trimString_(row[indexes.competitor_set_version]),
       productScope: trimString_(row[indexes.product_scope]) || 'BUSINESS',
       weightSource: trimString_(row[indexes.weight_source]),
-      weightEffectiveDate: row[indexes.weight_effective_date]
+      weightEffectiveDate: row[indexes.weight_effective_date],
+      commercialEligible: parseBoolean_(row[indexes.commercial_eligible], false),
+      commercialEvidenceUrl: trimString_(row[indexes.commercial_evidence_url]),
+      storeEvidenceUrl: trimString_(row[indexes.store_evidence_url]),
+      verifiedAt: row[indexes.verified_at]
     };
     if (seen[app.appKey]) throw new Error('APP_KEY duplicada: ' + app.appKey);
     seen[app.appKey] = true;
@@ -245,8 +308,12 @@ function validateCatalogApp_(app) {
   if ((app.platform === 'Android' || app.platform === 'Huawei') && !app.packageName) {
     throw new Error('PACKAGE_NAME vacio en ' + app.appKey);
   }
-  if (['BANK', 'FINTECH', 'NEOBANK'].indexOf(app.marketSegment) < 0) {
+  if (['BANK', 'FINTECH'].indexOf(app.marketSegment) < 0) {
     throw new Error('MARKET_SEGMENT no soportado en ' + app.appKey + ': ' + app.marketSegment);
+  }
+  if (app.marketSegment !== 'BANK' && (!app.commercialEligible || app.productScope !== 'COMMERCIAL' ||
+      !app.commercialEvidenceUrl || !app.storeEvidenceUrl || !app.verifiedAt)) {
+    throw new Error('Competidor digital sin evidencia commercial completa en ' + app.appKey);
   }
 }
 
