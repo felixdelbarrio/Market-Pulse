@@ -1,0 +1,10 @@
+{
+  "name": "bbva-markets-ratings",
+  "private": true,
+  "version": "2026.7.16",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "build:master": "node tools/build_master.mjs"
+  }
+}
+
