@@ -34,6 +34,11 @@ function toNonNegativeInteger_(value) {
   return parsed !== null && parsed >= 0 ? Math.round(parsed) : null;
 }
 
+function nonNegativeNumberOrZero_(value) {
+  const parsed = toFiniteNumber_(value);
+  return parsed !== null && parsed >= 0 ? parsed : 0;
+}
+
 function normalizeRating_(value) {
   const parsed = toFiniteNumber_(value);
   return parsed !== null && parsed >= 1 && parsed <= 5 ? Math.round(parsed * 100) / 100 : null;
@@ -71,6 +76,10 @@ function makeAppKey_(platform, countryCode, appName) {
 
 function makeRatingKey_(date, appKey) {
   return dateKey_(date) + '|' + trimString_(appKey);
+}
+
+function fieldSlug_(value) {
+  return trimString_(value).toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '');
 }
 
 /** Ranking de competicion: 5, 5, 4 produce 1, 1, 3. */
@@ -120,4 +129,3 @@ function uniqueStrings_(values) {
     return true;
   });
 }
-

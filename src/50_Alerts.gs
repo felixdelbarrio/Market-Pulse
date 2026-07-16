@@ -1,5 +1,5 @@
-function buildAndProcessAlerts_(ss, referenceDate, catalog, runId, control) {
-  const ratings = readRatingObjects_(ss);
+function buildAndProcessAlerts_(ss, referenceDate, catalog, runId, control, ratingObjects) {
+  const ratings = ratingObjects || readRatingObjects_(ss);
   const catalogByKey = catalog.reduce(function (out, app) { out[app.appKey] = app; return out; }, {});
   const byApp = {};
   ratings.forEach(function (item) {
@@ -75,4 +75,3 @@ function sendAlertEmails_(events) {
     });
   });
 }
-

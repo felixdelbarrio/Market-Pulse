@@ -27,7 +27,9 @@ function rebuildAllMetrics() {
   const ss = openMarketsSpreadsheet_();
   ensureWorkbookSchema_(ss);
   const control = readControl_(ss);
+  const catalog = readAppCatalog_(ss);
   rebuildRatingMetrics_(ss, toNonNegativeInteger_(control.RATING_LOOKBACK_DAYS) || 30);
+  return rebuildDashboardDatasets_(ss, catalog, readRatingObjects_(ss));
 }
 
 function installDailyTrigger_() {
@@ -56,4 +58,3 @@ function onOpen() {
     .addItem('Instalar trigger diario', 'installDailyTrigger_')
     .addToUi();
 }
-

@@ -75,15 +75,19 @@ function readRatingObjects_(ss) {
     return {
       recordKey: trimString_(row[indexes.record_key]),
       observedDate: row[indexes.observed_date],
+      yearMonth: trimString_(row[indexes.year_month]),
       platform: trimString_(row[indexes.platform]),
       countryCode: trimString_(row[indexes.country_code]),
+      country: trimString_(row[indexes.country]),
       appKey: trimString_(row[indexes.app_key]),
       appName: trimString_(row[indexes.app_name]),
       isBbva: parseBoolean_(row[indexes.is_bbva], false),
       rating: normalizeRating_(row[indexes.rating]),
+      ratingCount: toNonNegativeInteger_(row[indexes.rating_count]),
       ranking: toNonNegativeInteger_(row[indexes.ranking]),
+      previousRating30d: normalizeRating_(row[indexes.previous_rating_30d]),
+      delta30d: toFiniteNumber_(row[indexes.delta_30d]),
       isLatest: parseBoolean_(row[indexes.is_latest], false)
     };
   }).filter(function (item) { return item.recordKey && item.rating !== null; });
 }
-

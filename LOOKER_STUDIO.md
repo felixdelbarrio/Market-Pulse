@@ -1,5 +1,37 @@
 # Modelo para Looker Studio
 
+## Fuente `DASHBOARD_KPIS` para scorecards
+
+Esta es la fuente recomendada para la parte superior de **Competitive Overview**. Tiene una fila por fecha y campos directos como:
+
+- `ANDROID_VE_BBVA_RATING`
+- `IOS_VE_BBVA_DELTA_30D`
+- `HUAWEI_VE_BBVA_RANKING`
+- `BBVA_VE_CONSOLIDATED_RATING`
+- `BBVA_GROUP_RATING`
+
+Configure `OBSERVED_DATE` como dimension de intervalo de fechas y use cada campo directamente como metrica. No añada filtros `PLATFORM`, `COUNTRY_CODE`, `APP_NAME`, `IS_BBVA` ni `IS_LATEST` al scorecard: ya estan resueltos en el nombre del campo. Asi se eliminan los filtros persistentes por chart que originaban los 20 scorecards repetidos. El control de fecha puede seguir gobernando la pagina mediante `OBSERVED_DATE`, tal como admite Looker Studio para fuentes con una dimension de fecha.
+
+Si el requisito visual es que no aparezca ningun icono de cabecera incluso cuando un control de fecha o una interaccion afecte al chart, configure **Style > Chart header > Do not show**. La tabla wide elimina los filtros de negocio del scorecard; ocultar la cabecera controla la presentacion del menu del chart.
+
+Para una pantalla estrictamente diaria, configure el selector con inicio y fin en el mismo dia. Use agregacion `MAX` solo sobre ese unico dia; no use `MAX` sobre varios dias para intentar obtener el ultimo rating, porque una bajada posterior produciria un valor incorrecto.
+
+Los campos `*_WEIGHT_COVERAGE` deben formatearse como porcentaje. Un consolidado vacio con cobertura inferior al 100% significa que faltan pesos configurados o ratings para alguna plataforma, no que el rating sea cero.
+
+## Fuente `DASHBOARD_TRENDS` para evolucion
+
+Use esta tabla para las graficas mensuales del PDF:
+
+| Campo | Uso |
+|---|---|
+| `PERIOD_MONTH` | Dimension temporal |
+| `PLATFORM`, `COUNTRY_CODE`, `APP_NAME`, `DISPLAY_ORDER` | Desgloses, controles y orden de competidores |
+| `RATING_AVG` | Media de observaciones del mes |
+| `RATING_EOM` | Ultima observacion disponible del mes |
+| `RANKING_EOM`, `DELTA_30D_EOM` | Posicion y variacion al cierre mensual |
+
+Esta fuente reduce el volumen para las pantallas de evolucion. Use `RATINGS` cuando necesite granularidad diaria.
+
 ## Fuente `RATINGS`
 
 Conecte directamente la pestaña `RATINGS`, use la fila 1 como cabecera y asigne estos tipos:
@@ -25,6 +57,8 @@ Conecte directamente la pestaña `RATINGS`, use la fila 1 como cabecera y asigne
 - **Ranking detallado por pais**: `IS_LATEST = TRUE`; dimension `APP_NAME`, metricas `RATING` y `RANKING`, filtro por pais.
 - **Evolucion consolidada BBVA**: `IS_BBVA = TRUE`; dimension `YEAR_MONTH`, desglose `COUNTRY` o `PLATFORM`, metrica promedio de `RATING`.
 - **Evolucion de competidores**: dimension `OBSERVED_DATE`, desglose `APP_NAME`, filtro de pais y plataforma.
+
+Los tres primeros bloques deben construirse preferentemente con `DASHBOARD_KPIS`; las equivalencias sobre `RATINGS` se conservan para auditoria y analisis ad hoc.
 
 Use `RECORD_KEY` como identificador, no como dimension visible. Evite sumar `RATING`; use promedio, maximo o el valor de la fecha filtrada.
 
@@ -52,4 +86,3 @@ Permite reproducir evolucion por estrellas, tabla de reseñas, distribucion por 
 - Version de app.
 
 Mantenga cada pagina conectada a una sola tabla cuando sea posible. Para cruzar rating y reseñas, agregue cada fuente por mes/plataforma/pais antes de combinar; no una las tablas a nivel de fila porque sus granularidades son distintas.
-

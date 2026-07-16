@@ -19,19 +19,22 @@ function runDailyRatingMonitor() {
     const upserted = upsertRowsByKey_(ratingSheet, rows, MARKETS_CONFIG.headers.ratings.length);
     const lookback = toNonNegativeInteger_(control.RATING_LOOKBACK_DAYS) || 30;
     rebuildRatingMetrics_(ss, lookback);
-    const alerts = buildAndProcessAlerts_(ss, referenceDate, catalog, runId, control);
+    const ratings = readRatingObjects_(ss);
+    const dashboard = rebuildDashboardDatasets_(ss, catalog, ratings);
+    const alerts = buildAndProcessAlerts_(ss, referenceDate, catalog, runId, control, ratings);
     const stats = summarizeFetchResults_(results);
     const status = stats.error === 0 ? (stats.noRating > 0 ? 'PARTIAL' : 'OK') : (stats.ok > 0 ? 'PARTIAL' : 'ERROR');
     appendRunLog_(ss, [
       startedAt, runId, status, results.length, stats.ok, stats.noRating, stats.error,
-      upserted, alerts.length, new Date().getTime() - startedAt.getTime(), buildRunDetail_(results)
+      upserted, alerts.length, new Date().getTime() - startedAt.getTime(), buildRunDetail_(results),
+      dashboard.scorecardRows, dashboard.trendRows
     ]);
     return { runId: runId, status: status, apps: results.length, rowsUpserted: upserted, alerts: alerts.length };
   } catch (error) {
     if (ss) {
       try {
         appendRunLog_(ss, [startedAt, runId, 'ERROR', 0, 0, 0, 1, 0, 0,
-          new Date().getTime() - startedAt.getTime(), errorToString_(error)]);
+          new Date().getTime() - startedAt.getTime(), errorToString_(error), 0, 0]);
       } catch (ignored) {}
     }
     throw error;
@@ -59,4 +62,3 @@ function buildRunDetail_(results) {
 function runNow() {
   return runDailyRatingMonitor();
 }
-

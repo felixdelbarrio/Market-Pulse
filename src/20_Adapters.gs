@@ -208,7 +208,7 @@ function huaweiOriginHeaders_() {
 }
 
 function huaweiLocale_(countryCode) {
-  const locales = { ES: 'es_ES', AR: 'es_AR', PE: 'es_PE', CO: 'es_CO', UY: 'es_UY', MX: 'es_MX', TR: 'tr_TR' };
+  const locales = { ES: 'es_ES', AR: 'es_AR', PE: 'es_PE', CO: 'es_CO', UY: 'es_UY', MX: 'es_MX', VE: 'es_VE', TR: 'tr_TR' };
   return locales[countryCode] || 'en';
 }
 
@@ -270,4 +270,3 @@ function fetchSuccess_(app, rating, ratingCount, status) {
 function fetchFailure_(app, message, retryable, status, noRating) {
   return { ok: false, noRating: Boolean(noRating), retryable: Boolean(retryable), status: status || 0, app: app, rating: null, ratingCount: null, error: message };
 }
-
