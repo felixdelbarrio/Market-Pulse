@@ -6,8 +6,9 @@ import { FileBlob, SpreadsheetFile, Workbook } from "@oai/artifact-tool";
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
 const inputPath = process.argv[2] || "/Users/u517055/Downloads/Markets Commercial.xlsx";
 const outputDir = process.argv[3] || path.join(root, "outputs", "wow-geography");
+const workDir = path.join(root, ".work", "wow-geography");
 const outputPath = path.join(outputDir, "Markets_Commercial_WOW.xlsx");
-const previewPath = path.join(outputDir, "Markets_Commercial_WOW_preview.png");
+const previewPath = path.join(workDir, "Markets_Commercial_WOW_preview.png");
 
 function normalizeKey(value) { return String(value ?? "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, ""); }
 function headersIndex(headers) { return Object.fromEntries(headers.map((h, i) => [normalizeKey(h), i])); }
@@ -29,12 +30,22 @@ vm.createContext(sandbox);
 vm.runInContext((await Promise.all(sourceFiles.map(f => fs.readFile(path.join(root, f), "utf8")))).join("\n"), sandbox);
 const config = sandbox.MARKETS_CONFIG;
 
-console.log("stage: import", inputPath);
-const imported = await SpreadsheetFile.importXlsx(await FileBlob.load(inputPath));
-console.log("stage: imported");
+const cachePath = path.join(workDir, "source-values.json");
+let sourceSheets;
+try {
+  sourceSheets = JSON.parse(await fs.readFile(cachePath, "utf8"));
+  console.log("stage: cache", cachePath);
+} catch {
+  console.log("stage: import", inputPath);
+  const imported = await SpreadsheetFile.importXlsx(await FileBlob.load(inputPath));
+  console.log("stage: imported");
+  sourceSheets = Object.fromEntries(imported.worksheets.items.map(sheet => [sheet.name, sheet.getUsedRange(true)?.values || []]));
+  await fs.mkdir(workDir, { recursive: true });
+  await fs.writeFile(cachePath, JSON.stringify(sourceSheets));
+  console.log("stage: cached");
+}
 function readSheet(name) {
-  const sheet = imported.worksheets.items.find(s => s.name === name);
-  const values = sheet?.getUsedRange(true)?.values || [];
+  const values = sourceSheets[name] || [];
   return { headers: (values[0] || []).map(v => String(v ?? "").trim()), rows: values.slice(1) };
 }
 
@@ -155,6 +166,7 @@ const scorecards = sandbox.buildScorecardDataset_(ratingObjects, enabledCatalog,
 const trends = sandbox.buildMonthlyTrendRows_(ratingObjects, enabledCatalog).map(row => Array.from(row));
 const competition = sandbox.buildCompetitionRows_(ratingObjects, enabledCatalog, execution).map(row => Array.from(row));
 console.log("stage: materialized", scorecards.rows.length, trends.length, competition.length);
+const latestCompetition = competition.filter(row => row[22] === true);
 const fetchRows = legacyEnabled.map(app => [runId, latestDate, new Date(latestIngested || latestDateKey), app.appKey, app.platform,
   app.countryCode, app.marketSegment, freshKeys.has(app.appKey) ? "OK" : staleKeys.has(app.appKey) ? "NO_RATING_STALE_RETAINED" : "NO_RATING",
   "", freshKeys.has(app.appKey) ? ratingObjects.find(r => r.appKey === app.appKey && r.observedDate.getTime() === latestDateKey)?.rating ?? "" : "",
@@ -165,12 +177,10 @@ const workbook = Workbook.create();
 const summary = workbook.worksheets.add("WOW_README");
 const allData = new Map([
   ["CONTROL", readSheet("CONTROL")], ["APP_CATALOG", { headers: Array.from(config.headers.catalog), rows: catalogRows }],
-  ["RATINGS", { headers: Array.from(config.headers.ratings), rows: ratingRows }],
-  ["DASHBOARD_KPIS", { headers: Array.from(scorecards.headers), rows: scorecards.rows.map(Array.from) }],
-  ["DASHBOARD_COMPETITION", { headers: Array.from(config.headers.competition), rows: competition }],
+  ["DASHBOARD_KPIS", { headers: Array.from(scorecards.headers), rows: scorecards.rows.map(row => Array.from(row)) }],
+  ["DASHBOARD_COMPETITION", { headers: Array.from(config.headers.competition), rows: latestCompetition }],
   ["DASHBOARD_TRENDS", { headers: Array.from(config.headers.trends), rows: trends }],
-  ["FETCH_LOG", { headers: Array.from(config.headers.fetchLog), rows: fetchRows }],
-  ["REVIEWS", readSheet("REVIEWS")], ["ALERT_LOG", readSheet("ALERT_LOG")], ["RUN_LOG", readSheet("RUN_LOG")]
+  ["FETCH_LOG", { headers: Array.from(config.headers.fetchLog), rows: fetchRows }]
 ]);
 const control = allData.get("CONTROL");
 const ci = headersIndex(control.headers);
@@ -208,7 +218,7 @@ summary.getRange("A1:H1").format.rowHeightPx = 48;
 summary.getRange("A3:B10").values = [
   ["Contrato", config.codeVersion], ["Geografias PDF", `${countries.length}/10 · ${countries.join(", ")}`],
   ["Apps habilitadas", enabledCatalog.length], ["Ratings historicos", ratingObjects.length],
-  ["Tendencias mensuales", trends.length], ["Filas competencia", competition.length],
+  ["Tendencias mensuales", trends.length], ["Competencia actual", latestCompetition.length],
   ["Apps frescas ultimo RUN", freshKeys.size], ["Rankings suprimidos por cobertura", incomplete]
 ];
 summary.getRange("A3:A10").format = { fill: "#E9F2FA", font: { bold: true, color: "#004481" } };
@@ -226,19 +236,19 @@ summary.getRange("D5:D9").format = { fill: "#D8F7F7", font: { bold: true, color:
 summary.getRange("D10").format = { fill: "#FFF4CC", font: { bold: true, color: "#B56B00" }, horizontalAlignment: "center" };
 summary.getRange("A12:H12").merge(); summary.getRange("A12").values = [["Nota: FETCH_LOG se reconstruye para el ultimo RUN a partir de INGESTED_AT. Las apps nuevas se activan en el siguiente RUN real del Apps Script."]];
 summary.getRange("A12:H12").format = { fill: "#F4F5F6", font: { italic: true, color: "#4B5563" }, wrapText: true };
-summary.getRange("A:A").format.columnWidthPx = 190; summary.getRange("B:B").format.columnWidthPx = 260;
+summary.getRange("A:A").format.columnWidthPx = 255; summary.getRange("B:B").format.columnWidthPx = 300;
 summary.getRange("C:C").format.columnWidthPx = 24; summary.getRange("D:D").format.columnWidthPx = 42;
 summary.getRange("E:E").format.columnWidthPx = 200; summary.getRange("F:H").format.columnWidthPx = 130;
 summary.freezePanes.freezeRows(1);
 
 await fs.mkdir(outputDir, { recursive: true });
+await fs.mkdir(workDir, { recursive: true });
 console.log("stage: render");
 const preview = await workbook.render({ sheetName: "WOW_README", autoCrop: "all", scale: 1, format: "png" });
 await fs.writeFile(previewPath, new Uint8Array(await preview.arrayBuffer()));
 const file = await SpreadsheetFile.exportXlsx(workbook);
 console.log("stage: export");
 await file.save(outputPath);
-const inspection = await workbook.inspect({ kind: "sheet", include: "id,name", maxChars: 5000 });
 console.log(JSON.stringify({ outputPath, previewPath, countries, enabledApps: enabledCatalog.length, ratings: ratingObjects.length,
-  scorecardRows: scorecards.rows.length, competitionRows: competition.length, trendRows: trends.length,
-  freshApps: freshKeys.size, inspection: inspection.ndjson || inspection }, null, 2));
+  scorecardRows: scorecards.rows.length, competitionRows: latestCompetition.length, trendRows: trends.length,
+  freshApps: freshKeys.size, sheets: workbook.worksheets.items.map(sheet => sheet.name) }, null, 2));

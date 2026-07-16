@@ -4,13 +4,15 @@ Proyecto unico para monitorizar ratings publicos de Google Play, Apple App Store
 
 ## Resultado
 
-El libro maestro contiene ocho pestañas:
+El libro maestro contiene diez pestañas operativas:
 
 - `CONTROL`: parametros operativos y contrato de version.
 - `APP_CATALOG`: catalogo normalizado de plataforma, pais, app e identificadores de tienda.
 - `RATINGS`: fuente principal de Looker Studio, una fila por fecha/plataforma/pais/app.
 - `DASHBOARD_KPIS`: fuente wide precalculada, una fila por fecha y campos directos por pais/plataforma para scorecards sin filtros de chart.
+- `DASHBOARD_COMPETITION`: fuente combinada para bancos, fintechs y neobancos, con cobertura de ranking explicita.
 - `DASHBOARD_TRENDS`: agregacion mensual compacta para las pantallas de evolucion.
+- `FETCH_LOG`: resultado por app de cada RUN (`OK`, `NO_RATING` o `ERROR`), con HTTP, detalle y frescura.
 - `REVIEWS`: historico unificado de reseñas de Android e iOS; Huawei queda preparado para una futura ingesta.
 - `ALERT_LOG`: alertas historicas y nuevas alertas deduplicadas.
 - `RUN_LOG`: trazabilidad de migraciones y ejecuciones.
@@ -30,8 +32,8 @@ Las antiguas pestañas por pais, `ALL`, `MONTHLY_ALL`, `Resumen` y `ALL_BANCO_*`
    ```
 
 4. Ejecute `validateProject()` y revise el objeto devuelto.
-5. Ejecute `runNow()` con `SEND_ALERT_EMAILS = FALSE`. La primera ejecucion migra las cabeceras de forma append-only, incorpora el catalogo inicial de Venezuela y materializa los datasets de dashboard.
-6. Compruebe una nueva fila en `RUN_LOG`, ratings del dia en `RATINGS`, filas en `DASHBOARD_KPIS` y `DASHBOARD_TRENDS`, y ausencia de errores.
+5. Ejecute `runNow()` con `SEND_ALERT_EMAILS = FALSE`. La primera ejecucion migra las cabeceras de forma append-only, completa Venezuela, Italia, Alemania y los segmentos digitales del PDF, y materializa los datasets de dashboard.
+6. Compruebe una nueva fila en `RUN_LOG`, una fila por app en `FETCH_LOG`, ratings del dia en `RATINGS` y datos en las tres fuentes `DASHBOARD_*`.
 7. Ejecute `setupProject()` para instalar el trigger diario. Active `SEND_ALERT_EMAILS` solo tras validar destinatarios y umbrales.
 
 El acceso conectado durante esta construccion devolvio `403 PERMISSION_DENIED` para el Sheet destino; por eso la importacion y el despliegue vinculado deben hacerse con una cuenta que tenga permiso de edicion.
@@ -44,7 +46,15 @@ El acceso conectado durante esta construccion devolvio `403 PERMISSION_DENIED` p
 - Validacion de contrato y catalogo: `validateProject()`.
 - Instalacion idempotente del trigger: `setupProject()`.
 
-El monitor usa una clave determinista por fecha y app. Reejecutar el mismo dia actualiza el registro existente y no crea duplicados. Los fallos de una tienda no borran valores anteriores ni escriben ratings vacios. Los datasets de dashboard se reconstruyen de forma determinista despues de actualizar las metricas.
+El monitor usa una clave determinista por fecha y app. Reejecutar el mismo dia actualiza el registro existente y no crea duplicados. Los fallos de una tienda no borran valores anteriores ni escriben ratings vacios. `IS_FRESH_THIS_RUN` y `FETCH_STATUS` impiden confundir un valor retenido con uno refrescado.
+
+El ranking se calcula por plataforma, pais, segmento y fecha. Solo se publica si `RANKING_OBSERVED_APPS = RANKING_EXPECTED_APPS`; en caso contrario queda vacio y se informa `RANKING_COVERAGE`. Bancos, fintechs y neobancos nunca compiten en el mismo ranking.
+
+## Cobertura geografica del PDF
+
+El contrato cubre `MX`, `PE`, `AR`, `UY`, `ES`, `IT`, `CO`, `VE`, `DE` y `TR`. Cada benchmark bancario contiene BBVA y cuatro competidores por plataforma. Android Mexico excluye `BANBAJIO` para mantener el Top 4 comparable del diseño.
+
+Los paneles digitales incorporan cuatro referencias por Android/iOS para Mexico, Argentina, España, Italia y Alemania, y cuatro neobancos para Colombia. `COMPETITOR_SET_VERSION`, `PRODUCT_SCOPE`, `MARKET_SEGMENT` y `DASHBOARD_SECTION` permiten sustituir o ampliar estos conjuntos sin cambiar el codigo.
 
 ## Venezuela
 
@@ -54,7 +64,7 @@ AppGallery reconoce los paquetes, pero actualmente puede devolver `count = 0`; e
 
 ## Rating consolidado
 
-`APP_CATALOG.COUNTRY_PLATFORM_WEIGHT` representa el reparto Android/iOS/Huawei dentro de un pais. `GROUP_USER_WEIGHT` representa la proporcion de usuarios totales del grupo para esa combinacion pais/plataforma. El consolidado solo se publica cuando todos los pesos positivos configurados tienen rating para la fecha. Si faltan pesos o datos, el valor queda vacio y el campo `*_WEIGHT_COVERAGE` muestra la cobertura. No se usan `RATING_COUNT` ni pesos iguales como sustitutos de usuarios.
+`APP_CATALOG.COUNTRY_PLATFORM_WEIGHT` representa el reparto Android/iOS/Huawei dentro de un pais. `GROUP_USER_WEIGHT` representa la proporcion de usuarios totales del grupo para esa combinacion pais/plataforma. El consolidado solo se publica cuando todos los pesos positivos tienen `WEIGHT_SOURCE`, `WEIGHT_EFFECTIVE_DATE` y rating para la fecha. Si falta cualquiera, el valor queda vacio. No se usan `RATING_COUNT` ni pesos iguales como sustitutos de usuarios.
 
 ## Escalabilidad
 
@@ -66,4 +76,4 @@ Para añadir una app o pais basta con añadir una fila valida en `APP_CATALOG`. 
 npm test
 ```
 
-Las pruebas cubren normalizacion de ratings, ranking con empates, busqueda de la observacion a 30 dias y estabilidad de claves.
+Las pruebas cubren normalizacion, ranking con empates, observacion a 30 dias, estabilidad de claves, contrato geografico, correccion de meses y supresion de rankings incompletos.

@@ -27,3 +27,12 @@ Fecha de construccion: 2026-07-16.
 
 Los logs operativos vacios no generaron filas; `RUN_LOG` incluye una ejecucion `MIGRATED` como punto de control.
 
+## Refactor geografico 2026.07.16.3
+
+- Italia y Alemania en Android, iOS y Huawei.
+- Separacion de `BANK`, `FINTECH` y `NEOBANK` con conjuntos versionados.
+- `YEAR_MONTH` siempre deriva de `OBSERVED_DATE`; la fuente mensual pasa de 1.237 a 1.171 filas validas.
+- Ranking vacio si la cobertura es inferior al 100%.
+- `FETCH_LOG`, `RUN_ID`, estado de fetch y frescura del dato.
+- Banbajio desactivado en Android Mexico para mantener BBVA + Top 4.
+- Pesos deliberadamente vacios hasta recibir fuente interna y fecha efectiva.

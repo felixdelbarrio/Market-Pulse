@@ -18,6 +18,18 @@ Para una pantalla estrictamente diaria, configure el selector con inicio y fin e
 
 Los campos `*_WEIGHT_COVERAGE` deben formatearse como porcentaje. Un consolidado vacio con cobertura inferior al 100% significa que faltan pesos configurados o ratings para alguna plataforma, no que el rating sea cero.
 
+Use `*_IS_FRESH_THIS_RUN` y `*_FETCH_STATUS` como controles de calidad visibles en modo edicion. Un scorecard puede conservar el ultimo valor sin afirmar que fue actualizado en el RUN actual.
+
+## Fuente `DASHBOARD_COMPETITION`
+
+Es la fuente recomendada para los paneles de ranking del PDF. Ya contiene el join con catalogo y expone `MARKET_SEGMENT`, `DASHBOARD_SECTION`, `PRODUCT_SCOPE`, `DISPLAY_ORDER` y `COMPETITOR_SET_VERSION`.
+
+- Bancos: `DASHBOARD_SECTION = COUNTRY_BANKS`.
+- Fintechs: `DASHBOARD_SECTION = COUNTRY_FINTECHS`.
+- Colombia neobancos: `DASHBOARD_SECTION = COUNTRY_NEOBANKS`.
+- Muestre `RANKING` solo junto con `RANKING_IS_COMPLETE = TRUE`; el Apps Script ya deja el campo vacio si falta una app.
+- Formatee `RANKING_COVERAGE` como porcentaje y use `FETCH_STATUS` para explicar ausencias.
+
 ## Fuente `DASHBOARD_TRENDS` para evolucion
 
 Use esta tabla para las graficas mensuales del PDF:
@@ -29,6 +41,8 @@ Use esta tabla para las graficas mensuales del PDF:
 | `RATING_AVG` | Media de observaciones del mes |
 | `RATING_EOM` | Ultima observacion disponible del mes |
 | `RANKING_EOM`, `DELTA_30D_EOM` | Posicion y variacion al cierre mensual |
+| `MARKET_SEGMENT`, `DASHBOARD_SECTION`, `PRODUCT_SCOPE` | Seleccion del panel sin mezclar benchmarks |
+| `RANKING_EXPECTED_APPS`, `RANKING_OBSERVED_APPS`, `RANKING_COVERAGE` | Calidad del ranking mensual |
 
 Esta fuente reduce el volumen para las pantallas de evolucion. Use `RATINGS` cuando necesite granularidad diaria.
 
@@ -46,7 +60,8 @@ Conecte directamente la pestaña `RATINGS`, use la fila 1 como cabecera y asigne
 | `IS_BBVA`, `IS_LATEST` | Booleano | Filtros de scorecards |
 | `RATING` | Numero decimal | Rating publico |
 | `RATING_COUNT` | Numero entero | Volumen de valoraciones cuando la tienda lo publica |
-| `RANKING` | Numero entero | Posicion dentro de plataforma, pais y fecha |
+| `RANKING` | Numero entero | Posicion dentro de plataforma, pais, segmento y fecha; vacia si la cobertura es incompleta |
+| `RANKING_EXPECTED_APPS`, `RANKING_OBSERVED_APPS`, `RANKING_COVERAGE`, `RANKING_IS_COMPLETE` | Calidad | Control explicito del benchmark |
 | `PREVIOUS_RATING_30D`, `DELTA_30D` | Numero decimal | Comparacion con la ultima observacion disponible hasta D-30 |
 
 ### Equivalencia con los paneles adjuntos
@@ -86,3 +101,7 @@ Permite reproducir evolucion por estrellas, tabla de reseñas, distribucion por 
 - Version de app.
 
 Mantenga cada pagina conectada a una sola tabla cuando sea posible. Para cruzar rating y reseñas, agregue cada fuente por mes/plataforma/pais antes de combinar; no una las tablas a nivel de fila porque sus granularidades son distintas.
+
+## Fuente `FETCH_LOG`
+
+Use `RUN_ID` como dimension y contabilice `STATUS` por app. Para un semaforo diario: verde si todos son `OK`; ambar si existe `NO_RATING` y al menos un `OK`; rojo si existe `ERROR` o no hay filas para el RUN esperado. `NO_RATING` no equivale a cero: la tienda no publico una valoracion valida para esa app y geografia.
