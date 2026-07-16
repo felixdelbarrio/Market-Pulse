@@ -14,11 +14,19 @@ function validateProject() {
     out[app.platform] = (out[app.platform] || 0) + 1;
     return out;
   }, {});
+  const geography = catalog.reduce(function (out, app) {
+    out[app.countryCode] = out[app.countryCode] || {};
+    const key = app.platform + '|' + app.marketSegment;
+    out[app.countryCode][key] = (out[app.countryCode][key] || 0) + 1;
+    return out;
+  }, {});
   return {
     spreadsheetId: ss.getId(),
     codeVersion: MARKETS_CONFIG.codeVersion,
     enabledApps: catalog.length,
     platforms: counts,
+    geographies: geography,
+    weightConfiguration: validateWeightConfiguration_(catalog),
     sheets: Object.keys(MARKETS_CONFIG.sheets).map(function (key) { return MARKETS_CONFIG.sheets[key]; })
   };
 }
@@ -28,7 +36,7 @@ function rebuildAllMetrics() {
   ensureWorkbookSchema_(ss);
   const control = readControl_(ss);
   const catalog = readAppCatalog_(ss);
-  rebuildRatingMetrics_(ss, toNonNegativeInteger_(control.RATING_LOOKBACK_DAYS) || 30);
+  rebuildRatingMetrics_(ss, toNonNegativeInteger_(control.RATING_LOOKBACK_DAYS) || 30, catalog);
   return rebuildDashboardDatasets_(ss, catalog, readRatingObjects_(ss));
 }
 

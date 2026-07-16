@@ -7,7 +7,9 @@ function ensureWorkbookSchema_(ss) {
     [MARKETS_CONFIG.sheets.control, MARKETS_CONFIG.headers.control],
     [MARKETS_CONFIG.sheets.catalog, MARKETS_CONFIG.headers.catalog],
     [MARKETS_CONFIG.sheets.ratings, MARKETS_CONFIG.headers.ratings],
+    [MARKETS_CONFIG.sheets.competition, MARKETS_CONFIG.headers.competition],
     [MARKETS_CONFIG.sheets.trends, MARKETS_CONFIG.headers.trends],
+    [MARKETS_CONFIG.sheets.fetchLog, MARKETS_CONFIG.headers.fetchLog],
     [MARKETS_CONFIG.sheets.reviews, MARKETS_CONFIG.headers.reviews],
     [MARKETS_CONFIG.sheets.alerts, MARKETS_CONFIG.headers.alerts],
     [MARKETS_CONFIG.sheets.runs, MARKETS_CONFIG.headers.runs]
@@ -20,6 +22,7 @@ function ensureWorkbookSchema_(ss) {
   getOrCreateSheet_(ss, MARKETS_CONFIG.sheets.scorecards);
   seedControl_(ss.getSheetByName(MARKETS_CONFIG.sheets.control));
   seedCatalogDefaults_(ss.getSheetByName(MARKETS_CONFIG.sheets.catalog));
+  enrichCatalogDefaults_(ss.getSheetByName(MARKETS_CONFIG.sheets.catalog));
 }
 
 function getOrCreateSheet_(ss, name) {
@@ -94,6 +97,32 @@ function seedCatalogDefaults_(sheet) {
   refreshFilter_(sheet, MARKETS_CONFIG.headers.catalog.length);
 }
 
+/** Completa el contrato nuevo sin pisar decisiones de negocio ya informadas. */
+function enrichCatalogDefaults_(sheet) {
+  if (sheet.getLastRow() <= 1) return;
+  const headers = MARKETS_CONFIG.headers.catalog;
+  const indexes = indexHeaders_(headers);
+  const range = sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length);
+  const rows = range.getValues();
+  const counters = {};
+  rows.forEach(function (row) {
+    const appKey = trimString_(row[indexes.app_key]);
+    if (!appKey) return;
+    const segment = trimString_(row[indexes.market_segment]) || 'BANK';
+    const groupKey = [row[indexes.platform], row[indexes.country_code], segment].join('|');
+    const order = toNonNegativeInteger_(row[indexes.display_order]);
+    row[indexes.market_segment] = segment;
+    row[indexes.dashboard_section] = trimString_(row[indexes.dashboard_section]) ||
+      (segment === 'NEOBANK' ? 'COUNTRY_NEOBANKS' : segment === 'FINTECH' ? 'COUNTRY_FINTECHS' : 'COUNTRY_BANKS');
+    row[indexes.competitor_set_version] = trimString_(row[indexes.competitor_set_version]) || '2026Q3';
+    row[indexes.product_scope] = trimString_(row[indexes.product_scope]) || 'BUSINESS';
+    row[indexes.display_order] = order === null ? (counters[groupKey] || 0) : order;
+    counters[groupKey] = Math.max(counters[groupKey] || 0, Number(row[indexes.display_order]) + 1);
+    if (appKey === 'ANDROID|MX|BANBAJIO') row[indexes.enabled] = false;
+  });
+  range.setValues(rows);
+}
+
 function applyTableStyle_(sheet, width) {
   sheet.setFrozenRows(1);
   sheet.getRange(1, 1, 1, width)
@@ -108,12 +137,22 @@ function applyTableStyle_(sheet, width) {
   sheet.getRange(1, 1, rows, width).createFilter();
   if (sheet.getName() === MARKETS_CONFIG.sheets.ratings) {
     sheet.getRange('B:B').setNumberFormat('yyyy-mm-dd');
+    sheet.getRange('D:D').setNumberFormat('yyyy-mm');
     sheet.getRange('M:Q').setNumberFormat('0.00');
     sheet.getRange('T:T').setNumberFormat('yyyy-mm-dd hh:mm:ss');
   } else if (sheet.getName() === MARKETS_CONFIG.sheets.trends) {
     sheet.getRange('A:A').setNumberFormat('yyyy-mm-dd');
     sheet.getRange('J:M').setNumberFormat('0.00');
     sheet.getRange('O:P').setNumberFormat('0.00');
+  } else if (sheet.getName() === MARKETS_CONFIG.sheets.competition) {
+    sheet.getRange('A:A').setNumberFormat('yyyy-mm-dd');
+    sheet.getRange('B:B').setNumberFormat('yyyy-mm');
+    sheet.getRange('N:V').setNumberFormat('0.00');
+    sheet.getRange('X:X').setNumberFormat('yyyy-mm-dd hh:mm:ss');
+  } else if (sheet.getName() === MARKETS_CONFIG.sheets.fetchLog) {
+    sheet.getRange('B:B').setNumberFormat('yyyy-mm-dd');
+    sheet.getRange('C:C').setNumberFormat('yyyy-mm-dd hh:mm:ss');
+    sheet.getRange('J:K').setNumberFormat('0.00');
   } else if (sheet.getName() === MARKETS_CONFIG.sheets.reviews) {
     sheet.getRange('C:C').setNumberFormat('yyyy-mm-dd hh:mm:ss');
     sheet.getRange('R:R').setNumberFormat('yyyy-mm-dd hh:mm:ss');
@@ -172,7 +211,13 @@ function readAppCatalog_(ss) {
       competitorAlerts: parseBoolean_(row[indexes.competitor_alerts], true),
       countryPlatformWeight: nonNegativeNumberOrZero_(row[indexes.country_platform_weight]),
       groupUserWeight: nonNegativeNumberOrZero_(row[indexes.group_user_weight]),
-      displayOrder: toNonNegativeInteger_(row[indexes.display_order])
+      displayOrder: toNonNegativeInteger_(row[indexes.display_order]),
+      marketSegment: trimString_(row[indexes.market_segment]) || 'BANK',
+      dashboardSection: trimString_(row[indexes.dashboard_section]) || 'COUNTRY_BANKS',
+      competitorSetVersion: trimString_(row[indexes.competitor_set_version]),
+      productScope: trimString_(row[indexes.product_scope]) || 'BUSINESS',
+      weightSource: trimString_(row[indexes.weight_source]),
+      weightEffectiveDate: row[indexes.weight_effective_date]
     };
     if (seen[app.appKey]) throw new Error('APP_KEY duplicada: ' + app.appKey);
     seen[app.appKey] = true;
@@ -200,7 +245,9 @@ function validateCatalogApp_(app) {
   if ((app.platform === 'Android' || app.platform === 'Huawei') && !app.packageName) {
     throw new Error('PACKAGE_NAME vacio en ' + app.appKey);
   }
-  if (app.platform === 'Huawei' && !app.appId) throw new Error('APP_ID Huawei verificado vacio en ' + app.appKey);
+  if (['BANK', 'FINTECH', 'NEOBANK'].indexOf(app.marketSegment) < 0) {
+    throw new Error('MARKET_SEGMENT no soportado en ' + app.appKey + ': ' + app.marketSegment);
+  }
 }
 
 function upsertRowsByKey_(sheet, rows, width) {
@@ -257,4 +304,21 @@ function appendRunLog_(ss, row) {
   const sheet = ss.getSheetByName(MARKETS_CONFIG.sheets.runs);
   ensureSheetCapacity_(sheet, sheet.getLastRow() + 1, MARKETS_CONFIG.headers.runs.length);
   sheet.appendRow(row);
+}
+
+function appendFetchLog_(ss, runId, referenceDate, fetchedAt, results) {
+  const sheet = ss.getSheetByName(MARKETS_CONFIG.sheets.fetchLog);
+  const rows = (results || []).map(function (result) {
+    const status = result.ok ? 'OK' : result.noRating ? 'NO_RATING' : 'ERROR';
+    return [runId, referenceDate, fetchedAt, result.app.appKey, result.app.platform,
+      result.app.countryCode, result.app.marketSegment, status, result.status || 0,
+      result.ok ? result.rating : '', result.ok && result.ratingCount !== null ? result.ratingCount : '',
+      Boolean(result.retryable), result.error || '', result.app.store + ' API'];
+  });
+  if (!rows.length) return 0;
+  const start = sheet.getLastRow() + 1;
+  ensureSheetCapacity_(sheet, start + rows.length - 1, MARKETS_CONFIG.headers.fetchLog.length);
+  sheet.getRange(start, 1, rows.length, MARKETS_CONFIG.headers.fetchLog.length).setValues(rows);
+  refreshFilter_(sheet, MARKETS_CONFIG.headers.fetchLog.length);
+  return rows.length;
 }

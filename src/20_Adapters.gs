@@ -168,7 +168,7 @@ function parseHuaweiInfoResponse_(app, response) {
   if (status < 200 || status >= 300) return fetchFailure_(app, 'HTTP ' + status + ' consultando ficha Huawei.', retryableStatus_(status), status);
   const item = safeJsonParse_(response.getContentText());
   if (!item || !trimString_(item.appId)) return fetchFailure_(app, trimString_(item && item.message) || 'Ficha Huawei no disponible.', false, status);
-  if (trimString_(item.appId) !== app.appId) {
+  if (app.appId && trimString_(item.appId) !== app.appId) {
     return fetchFailure_(app, 'APP_ID Huawei inesperado. Esperado ' + app.appId + ', obtenido ' + trimString_(item.appId) + '.', false, status);
   }
   return { ok: true, retryable: false, status: status, app: app, huaweiAppId: trimString_(item.appId), error: '' };
@@ -208,7 +208,7 @@ function huaweiOriginHeaders_() {
 }
 
 function huaweiLocale_(countryCode) {
-  const locales = { ES: 'es_ES', AR: 'es_AR', PE: 'es_PE', CO: 'es_CO', UY: 'es_UY', MX: 'es_MX', VE: 'es_VE', TR: 'tr_TR' };
+  const locales = { ES: 'es_ES', AR: 'es_AR', PE: 'es_PE', CO: 'es_CO', UY: 'es_UY', MX: 'es_MX', VE: 'es_VE', TR: 'tr_TR', IT: 'it_IT', DE: 'de_DE' };
   return locales[countryCode] || 'en';
 }
 

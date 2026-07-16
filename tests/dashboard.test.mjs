@@ -13,7 +13,8 @@ vm.runInContext(sources, context);
 function app(appKey, platform, countryCode, weight, groupWeight = weight) {
   return {
     appKey, platform, countryCode, country: countryCode, isBbva: true,
-    countryPlatformWeight: weight, groupUserWeight: groupWeight
+    countryPlatformWeight: weight, groupUserWeight: groupWeight,
+    marketSegment: "BANK", weightSource: "Internal users 2026Q2", weightEffectiveDate: new Date(2026, 5, 30)
   };
 }
 
@@ -21,7 +22,9 @@ function rating(appKey, platform, countryCode, value, delta, date = new Date(202
   return {
     appKey, platform, countryCode, country: countryCode, appName: "BBVA", isBbva: true,
     observedDate: date, yearMonth: "2026-07", rating: value, ratingCount: 100,
-    ranking: 2, previousRating30d: value - delta, delta30d: delta
+    ranking: 2, previousRating30d: value - delta, delta30d: delta,
+    marketSegment: "BANK", rankingExpectedApps: 5, rankingObservedApps: 5,
+    rankingCoverage: 1, rankingIsComplete: true
   };
 }
 
@@ -69,4 +72,23 @@ test("monthly trend uses average and end-of-month observation", () => {
   assert.equal(row[13], 2);
   assert.equal(row[14], 1);
   assert.equal(row[15], 0.2);
+});
+
+test("monthly trend ignores a malformed YEAR_MONTH cell and derives period from date", () => {
+  const item = rating("ANDROID|VE|BBVA", "Android", "VE", 4.3, 0.1, new Date(2026, 6, 16, 12));
+  item.yearMonth = new Date(2026, 6, 1, 12);
+  const row = Array.from(context.buildMonthlyTrendRows_([item])[0]);
+  assert.equal(row[1], "2026-07");
+  assert.ok(row[0] instanceof Date);
+});
+
+test("incomplete coverage suppresses rank in materialized competition source", () => {
+  const item = rating("ANDROID|VE|BBVA", "Android", "VE", 4.3, 0.1);
+  item.ranking = 1; item.rankingExpectedApps = 5; item.rankingObservedApps = 4;
+  item.rankingCoverage = 0.8; item.rankingIsComplete = false;
+  const catalog = [{ ...app("ANDROID|VE|BBVA", "Android", "VE", 0), dashboardSection: "COUNTRY_BANKS", productScope: "BUSINESS", competitorSetVersion: "2026Q3", displayOrder: 0 }];
+  const row = Array.from(context.buildCompetitionRows_([item], catalog)[0]);
+  assert.equal(row[15], "");
+  assert.equal(row[18], 0.8);
+  assert.equal(row[19], false);
 });
