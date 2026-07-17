@@ -47,6 +47,10 @@ La cache tiene dos niveles: `CacheService` para acceso rapido y `PropertiesServi
 
 Los enlaces de Android, iOS y Huawei se generan como HTTPS web con geografia explicita, se validan contra dominios oficiales y se abren en otra pestaña. Esto se aplica tanto a BBVA como a la competencia.
 
+`Resumen` y `Evolucion` mantienen siempre el foco en BBVA Empresas y su universo bancario comparable. El selector `Benchmark` solo aparece en la vista de rankings, donde permite comparar BBVA con bancos, fintech y neobancos o todo el mercado. Cada fila del ranking es un enlace completo a la ficha web oficial de la app.
+
+El volumen de Google Play se gobierna por `packageName`: si el mismo package esta activo en varios paises, sus valoraciones y su variacion a 30 dias representan una unica ficha compartida. El Web App las contabiliza una sola vez en los KPI y no las atribuye a las tarjetas geograficas. Un package exclusivo de un pais —como el Android de Mexico— conserva alcance de mercado. iOS y Huawei mantienen alcance territorial.
+
 ## Reglas de datos
 
 - Ratings validos: escala publica 1–5; una ausencia nunca se convierte en cero.
@@ -54,6 +58,7 @@ Los enlaces de Android, iOS y Huawei se generan como HTTPS web con geografia exp
 - Reejecucion diaria: actualiza por clave determinista y no duplica observaciones.
 - Fallos de store: conservan el historico y quedan trazados en `FETCH_LOG`.
 - Consolidados: requieren pesos positivos, fuente, fecha efectiva y cobertura completa.
+- Cobertura: compara observaciones publicadas con todas las apps activas esperadas en `APP_CATALOG`.
 - Comentarios y reseñas: fuera de alcance mientras no exista una fuente autorizada y geograficamente comparable.
 
 ## Pruebas

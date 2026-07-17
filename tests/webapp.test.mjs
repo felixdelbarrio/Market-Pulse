@@ -180,9 +180,45 @@ test("catalog builds canonical store links without another spreadsheet read", ()
     { appKey: "ANDROID|MX|BBVA", platform: "Android", countryCode: "MX", packageName: "com.bbva.empresas", locale: "es" },
     { appKey: "IOS|MX|BBVA", platform: "iOS", countryCode: "MX", appId: "925436649", locale: "es" }
   ];
-  const urls = context.buildStoreUrlsByAppKeyForWeb_(apps);
-  assert.equal(urls["ANDROID|MX|BBVA"], "https://play.google.com/store/apps/details?id=com.bbva.empresas&hl=es&gl=MX");
-  assert.equal(urls["IOS|MX|BBVA"], "https://apps.apple.com/mx/app/id925436649");
+  const metadata = context.buildStoreMetadataByAppKeyForWeb_(apps);
+  assert.equal(metadata["ANDROID|MX|BBVA"].storeUrl, "https://play.google.com/store/apps/details?id=com.bbva.empresas&hl=es&gl=MX");
+  assert.equal(metadata["IOS|MX|BBVA"].storeUrl, "https://apps.apple.com/mx/app/id925436649");
+  assert.equal(metadata["ANDROID|MX|BBVA"].volumeScope, "MARKET");
+});
+
+test("Android shared packages are one volume while territorial stores remain independent", () => {
+  const apps = [
+    { appKey: "ANDROID|AR|BBVA", platform: "Android", countryCode: "AR", packageName: "com.bbva.empresas", locale: "es" },
+    { appKey: "ANDROID|CO|BBVA", platform: "Android", countryCode: "CO", packageName: "com.bbva.empresas", locale: "es" },
+    { appKey: "ANDROID|MX|BBVA", platform: "Android", countryCode: "MX", packageName: "com.bbva.netcash", locale: "es" },
+    { appKey: "IOS|AR|BBVA", platform: "iOS", countryCode: "AR", appId: "1590189082", locale: "es" },
+    { appKey: "IOS|CO|BBVA", platform: "iOS", countryCode: "CO", appId: "1590189082", locale: "es" }
+  ];
+  const metadata = JSON.parse(JSON.stringify(context.buildStoreMetadataByAppKeyForWeb_(apps)));
+  assert.equal(metadata["ANDROID|AR|BBVA"].volumeKey, metadata["ANDROID|CO|BBVA"].volumeKey);
+  assert.equal(metadata["ANDROID|AR|BBVA"].volumeScope, "SHARED_LISTING");
+  assert.equal(metadata["ANDROID|AR|BBVA"].volumeMarkets, 2);
+  assert.equal(metadata["ANDROID|MX|BBVA"].volumeScope, "MARKET");
+  assert.notEqual(metadata["IOS|AR|BBVA"].volumeKey, metadata["IOS|CO|BBVA"].volumeKey);
+  assert.equal(metadata["IOS|AR|BBVA"].volumeScope, "MARKET");
+});
+
+test("snapshot includes missing catalog apps so coverage has a real denominator", () => {
+  const catalog = [
+    { appKey: "ANDROID|AR|BBVA", platform: "Android", countryCode: "AR", country: "Argentina", appName: "BBVA", isBbva: true, displayOrder: 0, marketSegment: "BANK" },
+    { appKey: "IOS|AR|BBVA", platform: "iOS", countryCode: "AR", country: "Argentina", appName: "BBVA", isBbva: true, displayOrder: 0, marketSegment: "BANK" }
+  ];
+  const observed = [{ appKey: "ANDROID|AR|BBVA", platform: "Android", countryCode: "AR", rating: 4.5 }];
+  const metadata = {
+    "ANDROID|AR|BBVA": { storeUrl: "https://play.google.com/store/apps/details?id=x", volumeKey: "ANDROID|x", volumeScope: "MARKET", volumeMarkets: 1 },
+    "IOS|AR|BBVA": { storeUrl: "https://apps.apple.com/ar/app/id1", volumeKey: "IOS|AR|1", volumeScope: "MARKET", volumeMarkets: 1 }
+  };
+  const snapshot = JSON.parse(JSON.stringify(context.completeCompetitionSnapshotForWeb_(observed, catalog, metadata)));
+  assert.equal(snapshot.length, 2);
+  assert.equal(snapshot[0].rating, 4.5);
+  assert.equal(snapshot[1].rating, null);
+  assert.equal(snapshot[1].fresh, false);
+  assert.equal(snapshot[1].volumeKey, "IOS|AR|1");
 });
 
 test("web consolidated metrics are computed directly from the snapshot", () => {
@@ -213,6 +249,75 @@ test("Index inline JavaScript compiles", () => {
   assert.match(html, /target="_blank"/);
   assert.match(html, /rel="noopener noreferrer"/);
   assert.match(html, /function renderRankRow/);
+  assert.match(html, /function uniqueStoreRows/);
+  assert.match(html, /item\.volumeScope!=="SHARED_LISTING"/);
+  assert.match(html, /id="benchmark-control" class="control hidden"/);
+  assert.match(html, /segment:"BANK"/);
   assert.match(html, /class="rank-open"/);
   assert.doesNotMatch(html, /(?:market|itms-apps|appmarket):\/\//);
+});
+
+test("client KPIs deduplicate shared Android volumes", () => {
+  const html = fs.readFileSync(new URL("../src/Index.html", import.meta.url), "utf8");
+  const script = html.match(/<script>([\s\S]*?)<\/script>/)[1].replace(
+    /\}\)\(\);\s*$/,
+    "globalThis.__kpiTest={state,trendRequest,snapshotForSelection,uniqueStoreRows,volumeSummary,countBbvaLeaders,renderMarketRow,renderRankRow};})();"
+  );
+  const browser = { document: { addEventListener() {} } };
+  vm.createContext(browser);
+  vm.runInContext(script, browser);
+  const rows = [
+    { appKey: "ANDROID|AR|BBVA", volumeKey: "ANDROID|shared", volumeScope: "SHARED_LISTING", rating: 4.2, ratingCount: 1000, ratingCountDelta30d: 100, fresh: true },
+    { appKey: "ANDROID|CO|BBVA", volumeKey: "ANDROID|shared", volumeScope: "SHARED_LISTING", rating: 4.2, ratingCount: 999, ratingCountDelta30d: 99, fresh: true },
+    { appKey: "ANDROID|MX|BBVA", volumeKey: "ANDROID|mexico", volumeScope: "MARKET", rating: 4.7, ratingCount: 200, ratingCountDelta30d: 20, fresh: true }
+  ];
+  const unique = browser.__kpiTest.uniqueStoreRows(rows);
+  const summary = browser.__kpiTest.volumeSummary(unique);
+  assert.equal(unique.length, 2);
+  assert.equal(summary.accumulated, 1200);
+  assert.equal(summary.period, 120);
+  assert.equal(summary.shared, 1);
+  assert.doesNotMatch(browser.__kpiTest.renderMarketRow("AR", "Android", rows[0]), /valoraciones/);
+  assert.match(browser.__kpiTest.renderMarketRow("MX", "Android", rows[2]), /200 valoraciones/);
+  const incomplete = [
+    { appKey: "BBVA", countryCode: "MX", platform: "Android", appName: "BBVA", isBbva: true, rating: 4.8, rankingComplete: false },
+    { appKey: "PEER", countryCode: "MX", platform: "Android", appName: "Peer", isBbva: false, rating: 4.5, rankingComplete: false }
+  ];
+  assert.deepEqual(JSON.parse(JSON.stringify(browser.__kpiTest.countBbvaLeaders(incomplete))), { value: 0, comparable: 0 });
+  incomplete.forEach(row => { row.rankingComplete = true; });
+  assert.deepEqual(JSON.parse(JSON.stringify(browser.__kpiTest.countBbvaLeaders(incomplete))), { value: 1, comparable: 1 });
+});
+
+test("overview and evolution stay on BBVA banking while benchmark changes scope", () => {
+  const html = fs.readFileSync(new URL("../src/Index.html", import.meta.url), "utf8");
+  const script = html.match(/<script>([\s\S]*?)<\/script>/)[1].replace(
+    /\}\)\(\);\s*$/,
+    "globalThis.__navTest={state,trendRequest,snapshotForSelection,renderRankRow};})();"
+  );
+  const browser = { document: { addEventListener() {} } };
+  vm.createContext(browser);
+  vm.runInContext(script, browser);
+  const { state, trendRequest, snapshotForSelection, renderRankRow } = browser.__navTest;
+  state.meta = { countries: [], logos: {} };
+  state.snapshot = [
+    { appKey: "BBVA", platform: "Android", countryCode: "MX", segment: "BANK", isBbva: true },
+    { appKey: "BANK", platform: "Android", countryCode: "MX", segment: "BANK", isBbva: false },
+    { appKey: "MP", platform: "Android", countryCode: "MX", segment: "FINTECH", isBbva: false }
+  ];
+  state.benchmarkSegment = "FINTECH";
+  assert.equal(trendRequest().segment, "BANK");
+  assert.deepEqual(Array.from(snapshotForSelection("BANK"), row => row.appKey), ["BBVA", "BANK"]);
+  assert.deepEqual(Array.from(snapshotForSelection(state.benchmarkSegment, true), row => row.appKey), ["BBVA", "MP"]);
+  state.benchmarkSegment = "ALL";
+  assert.deepEqual(Array.from(snapshotForSelection(state.benchmarkSegment, true), row => row.appKey), ["BBVA", "BANK", "MP"]);
+
+  const market = renderRankRow({
+    appKey: "MP", appName: "Mercado Pago Negocios", platform: "Android", countryCode: "MX",
+    segment: "FINTECH", isBbva: false, computedRank: 1, rating: 4.8, delta30d: 0.02,
+    storeUrl: "https://play.google.com/store/apps/details?id=com.mercadopago.wallet&hl=es&gl=MX"
+  });
+  assert.match(market, /<a class="rank-row market-link"/);
+  assert.match(market, /href="https:\/\/play\.google\.com\/store\/apps\/details\?id=com\.mercadopago\.wallet/);
+  assert.match(market, /target="_blank"/);
+  assert.match(market, />Market<\/span> ↗/);
 });

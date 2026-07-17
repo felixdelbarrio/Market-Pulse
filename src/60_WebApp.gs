@@ -1,6 +1,6 @@
 /** Web app de lectura para el dashboard de ratings. */
 var MARKETS_WEB = Object.freeze({
-  version: '2026.07.17.7',
+  version: '2026.07.17.9',
   cacheSeconds: 21600,
   maxCacheCharacters: 95000,
   defaultTrendMonths: 18,
@@ -39,7 +39,9 @@ function buildMarketsDashboardBootstrap_(ss, allTrends, catalog) {
   const latestDate = readLatestCompetitionDateForWeb_(ss);
   if (!latestDate) throw new Error('DASHBOARD_COMPETITION no contiene fechas publicables.');
   const apps = catalog || readAppCatalog_(ss);
-  const snapshot = readCompetitionSnapshotForWeb_(ss, latestDate, buildStoreUrlsByAppKeyForWeb_(apps));
+  const storeMetadata = buildStoreMetadataByAppKeyForWeb_(apps);
+  const observed = readCompetitionSnapshotForWeb_(ss, latestDate, storeMetadata);
+  const snapshot = completeCompetitionSnapshotForWeb_(observed, apps, storeMetadata);
   return {
     meta: buildMarketsWebMeta_(ss, snapshot, latestDate),
     snapshot: snapshot,
@@ -90,7 +92,7 @@ function readLatestCompetitionDateForWeb_(ss) {
   return !sheet || sheet.getLastRow() <= 1 ? '' : webDateKey_(sheet.getRange(sheet.getLastRow(), 1).getValue());
 }
 
-function readCompetitionSnapshotForWeb_(ss, dateKey, storeUrlsByAppKey) {
+function readCompetitionSnapshotForWeb_(ss, dateKey, storeMetadataByAppKey) {
   const sheet = ss.getSheetByName(MARKETS_CONFIG.sheets.competition);
   if (!sheet || sheet.getLastRow() <= 1) return [];
   const bounds = findLatestCompetitionBoundsForWeb_(sheet, dateKey);
@@ -103,15 +105,77 @@ function readCompetitionSnapshotForWeb_(ss, dateKey, storeUrlsByAppKey) {
     return trimString_(row[indexes.app_key]) && webDateKey_(row[indexes.observed_date]) === dateKey;
   }).map(function (row) {
     const appKey = trimString_(row[indexes.app_key]);
-    return mapCompetitionRowForWeb_(row, indexes, (storeUrlsByAppKey || {})[appKey]);
+    return mapCompetitionRowForWeb_(row, indexes, (storeMetadataByAppKey || {})[appKey]);
   });
 }
 
-function buildStoreUrlsByAppKeyForWeb_(catalog) {
+/**
+ * Google Play publica el volumen por package, no por el parametro gl. Si un
+ * package Android aparece en varios mercados, todos representan una sola ficha.
+ * iOS y Huawei conservan alcance de mercado porque sus fuentes son territoriales.
+ */
+function buildStoreMetadataByAppKeyForWeb_(catalog) {
+  const androidMarketsByKey = {};
+  (catalog || []).forEach(function (app) {
+    if (app.platform !== 'Android') return;
+    const key = storeVolumeKeyForWeb_(app);
+    const markets = androidMarketsByKey[key] || (androidMarketsByKey[key] = {});
+    markets[app.countryCode] = true;
+  });
   return (catalog || []).reduce(function (out, app) {
-    out[app.appKey] = sanitizeStoreWebUrl_(buildStoreWebUrl_(app), app.platform);
+    const volumeKey = storeVolumeKeyForWeb_(app);
+    const volumeMarkets = app.platform === 'Android'
+      ? Object.keys(androidMarketsByKey[volumeKey] || {}).length : 1;
+    out[app.appKey] = {
+      storeUrl: sanitizeStoreWebUrl_(buildStoreWebUrl_(app), app.platform),
+      volumeKey: volumeKey,
+      volumeScope: app.platform === 'Android' && volumeMarkets > 1 ? 'SHARED_LISTING' : 'MARKET',
+      volumeMarkets: Math.max(1, volumeMarkets)
+    };
     return out;
   }, {});
+}
+
+function storeVolumeKeyForWeb_(app) {
+  const platform = trimString_(app.platform).toUpperCase();
+  const country = trimString_(app.countryCode).toUpperCase();
+  if (platform === 'ANDROID') {
+    return 'ANDROID|' + (trimString_(app.packageName).toLowerCase() || trimString_(app.appKey));
+  }
+  const storeId = trimString_(app.appId || app.packageName || app.appKey);
+  return [platform, country, storeId].join('|');
+}
+
+/** Añade placeholders de catalogo para medir cobertura contra el universo esperado. */
+function completeCompetitionSnapshotForWeb_(snapshot, catalog, storeMetadataByAppKey) {
+  const observedByKey = (snapshot || []).reduce(function (out, item) {
+    out[item.appKey] = item;
+    return out;
+  }, {});
+  return (catalog || []).map(function (app) {
+    if (observedByKey[app.appKey]) return observedByKey[app.appKey];
+    const metadata = (storeMetadataByAppKey || {})[app.appKey] || {};
+    return {
+      platform: app.platform,
+      countryCode: app.countryCode,
+      country: app.country,
+      segment: app.marketSegment || 'BANK',
+      appKey: app.appKey,
+      appName: app.appName,
+      isBbva: Boolean(app.isBbva),
+      displayOrder: app.displayOrder,
+      rating: null,
+      ratingCount: null,
+      rankingComplete: false,
+      delta30d: null,
+      fresh: false,
+      ratingCountDelta30d: null,
+      storeUrl: metadata.storeUrl || '',
+      volumeKey: metadata.volumeKey || app.appKey,
+      volumeScope: metadata.volumeScope || 'MARKET',
+      volumeMarkets: metadata.volumeMarkets || 1
+    };
+  });
 }
 
 /** La fecha mas reciente se resuelve con una sola lectura del final de la tabla. */
@@ -154,15 +218,18 @@ function binarySearchCompetitionDateBoundsForWeb_(sheet, dateKey, lastRow) {
   return { firstRow: firstRow, lastRow: low - 1 };
 }
 
-function mapCompetitionRowForWeb_(row, indexes, catalogStoreUrl) {
+function mapCompetitionRowForWeb_(row, indexes, catalogStoreMetadata) {
+  const metadata = typeof catalogStoreMetadata === 'string'
+    ? { storeUrl: catalogStoreMetadata } : (catalogStoreMetadata || {});
   const materializedStoreUrl = indexes.store_web_url === undefined ? '' : row[indexes.store_web_url];
   const platform = trimString_(row[indexes.platform]);
+  const appKey = trimString_(row[indexes.app_key]);
   return {
     platform: platform,
     countryCode: trimString_(row[indexes.country_code]),
     country: trimString_(row[indexes.country]),
     segment: trimString_(row[indexes.market_segment]) || 'BANK',
-    appKey: trimString_(row[indexes.app_key]),
+    appKey: appKey,
     appName: trimString_(row[indexes.app_name]),
     isBbva: parseBoolean_(row[indexes.is_bbva], false),
     displayOrder: webNumber_(row[indexes.display_order]),
@@ -172,7 +239,10 @@ function mapCompetitionRowForWeb_(row, indexes, catalogStoreUrl) {
     delta30d: webNumber_(row[indexes.delta_30d]),
     fresh: parseBoolean_(row[indexes.is_fresh_this_run], false),
     ratingCountDelta30d: webNumber_(row[indexes.rating_count_delta_30d]),
-    storeUrl: sanitizeStoreWebUrl_(catalogStoreUrl || materializedStoreUrl, platform)
+    storeUrl: sanitizeStoreWebUrl_(metadata.storeUrl || materializedStoreUrl, platform),
+    volumeKey: trimString_(metadata.volumeKey) || appKey,
+    volumeScope: metadata.volumeScope === 'SHARED_LISTING' ? 'SHARED_LISTING' : 'MARKET',
+    volumeMarkets: Math.max(1, toNonNegativeInteger_(metadata.volumeMarkets) || 1)
   };
 }
 
