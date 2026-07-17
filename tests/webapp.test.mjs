@@ -30,6 +30,7 @@ test("web trend request is bounded and normalized", () => {
   assert.equal(request.segment, "BANK");
   assert.equal(request.months, 36);
   assert.equal(request.bbvaOnly, true);
+  assert.equal(context.normalizeDashboardTrendRequest_({ segment: "all" }).segment, "ALL");
 });
 
 test("warm trend cache avoids opening the spreadsheet", () => {
@@ -92,12 +93,7 @@ test("doGet builds an HtmlService response using supported metadata", () => {
   ]);
 });
 
-test("web date request rejects dates without observations", () => {
-  assert.equal(context.normalizeDashboardDateRequest_("", ["2026-07-16", "2026-07-17"]), "2026-07-17");
-  assert.throws(() => context.normalizeDashboardDateRequest_("2026-07-15", ["2026-07-17"]), /No hay observaciones/);
-});
-
-test("snapshot date bounds avoid scanning the full competition column", () => {
+test("latest snapshot bounds avoid scanning the full competition column", () => {
   const dates = ["2026-07-15", "2026-07-15", "2026-07-16", "2026-07-16", "2026-07-16", "2026-07-17", "2026-07-17"];
   const sheet = {
     getLastRow() { return dates.length + 1; },
@@ -109,9 +105,8 @@ test("snapshot date bounds avoid scanning the full competition column", () => {
     }
   };
   const plain = value => JSON.parse(JSON.stringify(value));
-  assert.deepEqual(plain(context.findCompetitionDateBoundsForWeb_(sheet, "2026-07-17", true)), { firstRow: 7, lastRow: 8 });
-  assert.deepEqual(plain(context.findCompetitionDateBoundsForWeb_(sheet, "2026-07-16", false)), { firstRow: 4, lastRow: 6 });
-  assert.equal(context.findCompetitionDateBoundsForWeb_(sheet, "2026-07-14", false), null);
+  assert.deepEqual(plain(context.findLatestCompetitionBoundsForWeb_(sheet, "2026-07-17")), { firstRow: 7, lastRow: 8 });
+  assert.equal(context.findLatestCompetitionBoundsForWeb_(sheet, "2026-07-14"), null);
 });
 
 test("competition rows map to a serializable dashboard contract", () => {
@@ -119,12 +114,13 @@ test("competition rows map to a serializable dashboard contract", () => {
     "OBSERVED_DATE", "PLATFORM", "COUNTRY_CODE", "COUNTRY", "MARKET_SEGMENT", "DASHBOARD_SECTION",
     "PRODUCT_SCOPE", "APP_KEY", "APP_NAME", "IS_BBVA", "DISPLAY_ORDER", "RATING", "RATING_COUNT",
     "RANKING", "RANKING_EXPECTED_APPS", "RANKING_OBSERVED_APPS", "RANKING_COVERAGE",
-    "RANKING_IS_COMPLETE", "PREVIOUS_RATING_30D", "DELTA_30D", "IS_FRESH_THIS_RUN", "FETCH_STATUS", "RUN_ID"
+    "RANKING_IS_COMPLETE", "PREVIOUS_RATING_30D", "DELTA_30D", "IS_FRESH_THIS_RUN", "FETCH_STATUS", "RUN_ID",
+    "PREVIOUS_RATING_COUNT_30D", "RATING_COUNT_DELTA_30D"
   ];
   const indexes = context.indexHeaders_(headers);
   const row = [
     new Date("2026-07-17T12:00:00Z"), "Android", "MX", "Mexico", "BANK", "COUNTRY_BANKS", "BUSINESS",
-    "ANDROID|MX|BBVA", "BBVA", true, 0, 4.21, 1200, 2, 5, 5, 1, true, 4.25, -0.04, true, "OK", "run-1"
+    "ANDROID|MX|BBVA", "BBVA", true, 0, 4.21, 1200, 2, 5, 5, 1, true, 4.25, -0.04, true, "OK", "run-1", 1130, 70
   ];
   const mapped = context.mapCompetitionRowForWeb_(row, indexes);
   assert.equal(mapped.date, "2026-07-17");
@@ -132,6 +128,7 @@ test("competition rows map to a serializable dashboard contract", () => {
   assert.equal(mapped.delta30d, -0.04);
   assert.equal(mapped.rankingComplete, true);
   assert.equal(mapped.fresh, true);
+  assert.equal(mapped.ratingCountDelta30d, 70);
 });
 
 test("Index inline JavaScript compiles", () => {

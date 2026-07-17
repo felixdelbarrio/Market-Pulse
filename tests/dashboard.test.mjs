@@ -23,6 +23,7 @@ function rating(appKey, platform, countryCode, value, delta, date = new Date(202
     appKey, platform, countryCode, country: countryCode, appName: "BBVA", isBbva: true,
     observedDate: date, yearMonth: "2026-07", rating: value, ratingCount: 100,
     ranking: 2, previousRating30d: value - delta, delta30d: delta,
+    previousRatingCount30d: 90, ratingCountDelta30d: 10,
     marketSegment: "BANK", rankingExpectedApps: 5, rankingObservedApps: 5,
     rankingCoverage: 1, rankingIsComplete: true
   };
@@ -72,6 +73,8 @@ test("monthly trend uses average and end-of-month observation", () => {
   assert.equal(row[13], 2);
   assert.equal(row[14], 1);
   assert.equal(row[15], 0.2);
+  assert.equal(row[23], 100);
+  assert.equal(row[24], 10);
 });
 
 test("monthly trend ignores a malformed YEAR_MONTH cell and derives period from date", () => {
@@ -91,4 +94,6 @@ test("incomplete coverage suppresses rank in materialized competition source", (
   assert.equal(row[15], "");
   assert.equal(row[18], 0.8);
   assert.equal(row[19], false);
+  assert.equal(row[31], 90);
+  assert.equal(row[32], 10);
 });

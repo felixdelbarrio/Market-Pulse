@@ -12,7 +12,7 @@ function buildRatingRows_(fetchResults, observedDate, ingestedAt) {
       result.ratingCount === null ? '' : result.ratingCount,
       '', '', '', false, app.store + ' API', ingestedAt,
       app.marketSegment || 'BANK', app.displayOrder === null ? '' : app.displayOrder,
-      '', '', '', false
+      '', '', '', false, '', ''
     ];
   });
 }
@@ -59,11 +59,17 @@ function rebuildRatingMetrics_(ss, lookbackDays, catalog) {
       })).items.push({ rowIndex: rowIndex, rating: rating });
     }
     const dateMillis = date.getTime();
-    (seriesByApp[appKey] || (seriesByApp[appKey] = [])).push({ rowIndex: rowIndex, dateMillis: dateMillis, rating: rating });
+    (seriesByApp[appKey] || (seriesByApp[appKey] = [])).push({
+      rowIndex: rowIndex,
+      dateMillis: dateMillis,
+      rating: rating,
+      ratingCount: toNonNegativeInteger_(row[indexes.rating_count])
+    });
     maxDateByApp[appKey] = Math.max(maxDateByApp[appKey] || 0, dateMillis);
   });
 
   const metrics = values.map(function () { return ['', '', '', false]; });
+  const countMetrics = values.map(function () { return ['', '']; });
   Object.keys(snapshotGroups).forEach(function (key) {
     const group = snapshotGroups[key];
     const observed = group.items.length;
@@ -82,15 +88,21 @@ function rebuildRatingMetrics_(ss, lookbackDays, catalog) {
   Object.keys(seriesByApp).forEach(function (appKey) {
     const series = seriesByApp[appKey].sort(function (a, b) { return a.dateMillis - b.dateMillis; });
     series.forEach(function (item) {
-      const previous = findPreviousRating_(series, item.dateMillis - lookbackDays * 86400000);
+      const target = item.dateMillis - lookbackDays * 86400000;
+      const previous = findPreviousRating_(series, target);
+      const previousCount = findPreviousValue_(series, target, 'ratingCount');
       metrics[item.rowIndex][1] = previous === null ? '' : previous;
       metrics[item.rowIndex][2] = previous === null ? '' : round2_(item.rating - previous);
       metrics[item.rowIndex][3] = item.dateMillis === maxDateByApp[appKey];
+      countMetrics[item.rowIndex][0] = previousCount === null ? '' : previousCount;
+      countMetrics[item.rowIndex][1] = previousCount === null || item.ratingCount === null
+        ? '' : item.ratingCount - previousCount;
     });
   });
   sheet.getRange(2, indexes.year_month + 1, monthValues.length, 1).setValues(monthValues).setNumberFormat('yyyy-mm');
   sheet.getRange(2, indexes.ranking + 1, metrics.length, 4).setValues(metrics);
   sheet.getRange(2, indexes.market_segment + 1, catalogValues.length, 6).setValues(catalogValues);
+  sheet.getRange(2, indexes.previous_rating_count_30d + 1, countMetrics.length, 2).setValues(countMetrics);
 }
 
 function readRatingObjects_(ss) {
@@ -114,7 +126,9 @@ function readRatingObjects_(ss) {
       rankingExpectedApps: toNonNegativeInteger_(row[indexes.ranking_expected_apps]),
       rankingObservedApps: toNonNegativeInteger_(row[indexes.ranking_observed_apps]),
       rankingCoverage: toFiniteNumber_(row[indexes.ranking_coverage]),
-      rankingIsComplete: parseBoolean_(row[indexes.ranking_is_complete], false)
+      rankingIsComplete: parseBoolean_(row[indexes.ranking_is_complete], false),
+      previousRatingCount30d: toNonNegativeInteger_(row[indexes.previous_rating_count_30d]),
+      ratingCountDelta30d: toFiniteNumber_(row[indexes.rating_count_delta_30d])
     };
   }).filter(function (item) { return item.recordKey && item.rating !== null; });
 }

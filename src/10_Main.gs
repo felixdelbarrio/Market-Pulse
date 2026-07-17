@@ -14,6 +14,9 @@ function runDailyRatingMonitor() {
     const referenceKey = Utilities.formatDate(startedAt, trimString_(control.TIME_ZONE) || MARKETS_CONFIG.timeZone, 'yyyy-MM-dd');
     const referenceDate = dateFromKey_(referenceKey);
     const results = fetchCatalogRatings_(catalog);
+    try { updateMarketsLogoCache_(results); } catch (logoError) {
+      console.warn('No se pudieron actualizar los logos: ' + errorToString_(logoError));
+    }
     appendFetchLog_(ss, runId, referenceDate, startedAt, results);
     const rows = buildRatingRows_(results, referenceDate, startedAt);
     const ratingSheet = ss.getSheetByName(MARKETS_CONFIG.sheets.ratings);

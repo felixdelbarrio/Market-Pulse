@@ -28,8 +28,12 @@ function parseAndroidResponse_(app, response) {
   const status = responseCode_(response);
   if (status < 200 || status >= 300) return fetchFailure_(app, 'HTTP ' + status, retryableStatus_(status), status);
   const parsed = parsePlayRatingHtml_(response.getContentText());
-  if (parsed.rating === null) return fetchFailure_(app, 'No se encontro un rating publico valido.', false, status, true);
-  return fetchSuccess_(app, parsed.rating, parsed.ratingCount, status);
+  if (parsed.rating === null) {
+    const failure = fetchFailure_(app, 'No se encontro un rating publico valido.', false, status, true);
+    failure.logoUrl = parsed.logoUrl;
+    return failure;
+  }
+  return fetchSuccess_(app, parsed.rating, parsed.ratingCount, status, parsed.logoUrl);
 }
 
 function parsePlayRatingHtml_(html) {
@@ -43,29 +47,42 @@ function parsePlayRatingHtml_(html) {
   }
   const valueMatch = source.match(/["']ratingValue["']\s*:\s*["']?([0-5](?:[.,]\d+)?)/i);
   const countMatch = source.match(/["'](?:ratingCount|ratingReviewCount|reviewCount)["']\s*:\s*["']?([\d.,\s]+)/i);
+  const imageMatch = source.match(/["']image["']\s*:\s*["'](https:\/\/[^"']+)/i);
   return {
     rating: valueMatch ? normalizeRating_(valueMatch[1]) : null,
-    ratingCount: countMatch ? parseStoreInteger_(countMatch[1]) : null
+    ratingCount: countMatch ? parseStoreInteger_(countMatch[1]) : null,
+    logoUrl: imageMatch ? imageMatch[1].replace(/\\u0026/g, '&') : ''
   };
 }
 
 function findAggregateRating_(node) {
-  if (!node || typeof node !== 'object') return { rating: null, ratingCount: null };
+  if (!node || typeof node !== 'object') return { rating: null, ratingCount: null, logoUrl: '' };
   if (Array.isArray(node)) {
     for (let i = 0; i < node.length; i += 1) {
       const found = findAggregateRating_(node[i]);
       if (found.rating !== null) return found;
     }
-    return { rating: null, ratingCount: null };
+    return { rating: null, ratingCount: null, logoUrl: '' };
   }
   if (node.aggregateRating) {
     const rating = normalizeRating_(node.aggregateRating.ratingValue);
     if (rating !== null) {
-      return { rating: rating, ratingCount: parseStoreInteger_(node.aggregateRating.ratingCount || node.aggregateRating.reviewCount) };
+      return {
+        rating: rating,
+        ratingCount: parseStoreInteger_(node.aggregateRating.ratingCount || node.aggregateRating.reviewCount),
+        logoUrl: storeImageUrl_(node.image || node.logo)
+      };
     }
   }
   if (node['@graph']) return findAggregateRating_(node['@graph']);
-  return { rating: null, ratingCount: null };
+  return { rating: null, ratingCount: null, logoUrl: '' };
+}
+
+function storeImageUrl_(value) {
+  if (Array.isArray(value)) value = value[0];
+  if (value && typeof value === 'object') value = value.url || value.contentUrl;
+  const url = trimString_(value);
+  return /^https:\/\//i.test(url) ? url : '';
 }
 
 function parseStoreInteger_(value) {
@@ -97,10 +114,15 @@ function parseIosResponse_(app, response) {
     return fetchFailure_(app, 'App no disponible en la App Store del pais.', false, status);
   }
   const item = data.results[0];
+  const logoUrl = storeImageUrl_(item.artworkUrl512 || item.artworkUrl100 || item.artworkUrl60);
   const count = toNonNegativeInteger_(item.userRatingCount);
   const rating = count > 0 ? normalizeRating_(item.averageUserRating) : null;
-  if (rating === null) return fetchFailure_(app, 'Sin rating publico.', false, status, true);
-  return fetchSuccess_(app, rating, count, status);
+  if (rating === null) {
+    const failure = fetchFailure_(app, 'Sin rating publico.', false, status, true);
+    failure.logoUrl = logoUrl;
+    return failure;
+  }
+  return fetchSuccess_(app, rating, count, status, logoUrl);
 }
 
 function fetchHuaweiRatings_(apps) {
@@ -171,7 +193,12 @@ function parseHuaweiInfoResponse_(app, response) {
   if (app.appId && trimString_(item.appId) !== app.appId) {
     return fetchFailure_(app, 'APP_ID Huawei inesperado. Esperado ' + app.appId + ', obtenido ' + trimString_(item.appId) + '.', false, status);
   }
-  return { ok: true, retryable: false, status: status, app: app, huaweiAppId: trimString_(item.appId), error: '' };
+  return {
+    ok: true, retryable: false, status: status, app: app,
+    huaweiAppId: trimString_(item.appId),
+    logoUrl: storeImageUrl_(item.icon || item.iconUrl || item.logo),
+    error: ''
+  };
 }
 
 function buildHuaweiRatingRequest_(infoResult) {
@@ -199,8 +226,12 @@ function parseHuaweiRatingResponse_(infoResult, response) {
   }
   const count = toNonNegativeInteger_(summary.count);
   const rating = count > 0 ? normalizeRating_(summary.score) : null;
-  if (rating === null) return fetchFailure_(app, 'Sin rating publico.', false, status, true);
-  return fetchSuccess_(app, rating, count, status);
+  if (rating === null) {
+    const failure = fetchFailure_(app, 'Sin rating publico.', false, status, true);
+    failure.logoUrl = infoResult.logoUrl;
+    return failure;
+  }
+  return fetchSuccess_(app, rating, count, status, infoResult.logoUrl);
 }
 
 function huaweiOriginHeaders_() {
@@ -263,8 +294,9 @@ function responseCode_(response) {
   return response && typeof response.getResponseCode === 'function' ? response.getResponseCode() : 0;
 }
 
-function fetchSuccess_(app, rating, ratingCount, status) {
-  return { ok: true, noRating: false, retryable: false, status: status, app: app, rating: rating, ratingCount: ratingCount, error: '' };
+function fetchSuccess_(app, rating, ratingCount, status, logoUrl) {
+  return { ok: true, noRating: false, retryable: false, status: status, app: app, rating: rating,
+    ratingCount: ratingCount, logoUrl: storeImageUrl_(logoUrl), error: '' };
 }
 
 function fetchFailure_(app, message, retryable, status, noRating) {

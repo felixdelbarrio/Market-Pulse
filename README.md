@@ -36,7 +36,7 @@ Las antiguas pestañas por pais, `ALL`, `MONTHLY_ALL`, `Resumen` y `ALL_BANCO_*`
 
 ## Dashboard web
 
-El repositorio incluye una interfaz HTML responsive y una API de lectura en `src/60_WebApp.gs` y `src/Index.html`. El dashboard consume snapshots diarios y tendencias mensuales sin descargar `RATINGS` completa en el navegador.
+El repositorio incluye una interfaz HTML responsive y una API de lectura en `src/60_WebApp.gs` y `src/Index.html`. El dashboard consume la ultima foto materializada y tendencias mensuales sin descargar `RATINGS` completa en el navegador. Incluye volumen de valoraciones, incidencias de carga, logos obtenidos de las stores, benchmark combinado y exportacion integral a PDF.
 
 Tras ejecutar `clasp push`, cree un despliegue **Aplicacion web** con **Ejecutar como: yo** y limite **Quien tiene acceso** al dominio o grupo corporativo apropiado. No use acceso anonimo si los benchmarks no deben ser publicos. Consulte [WEB_APP.md](WEB_APP.md) para el despliegue y las rutas de validacion.
 
@@ -55,7 +55,7 @@ El acceso conectado durante esta construccion devolvio `403 PERMISSION_DENIED` p
 
 El monitor usa una clave determinista por fecha y app. Reejecutar el mismo dia actualiza el registro existente y no crea duplicados. Los fallos de una tienda no borran valores anteriores ni escriben ratings vacios. `IS_FRESH_THIS_RUN` y `FETCH_STATUS` impiden confundir un valor retenido con uno refrescado.
 
-El ranking se calcula por plataforma, pais, segmento y fecha. Solo se publica si `RANKING_OBSERVED_APPS = RANKING_EXPECTED_APPS`; en caso contrario queda vacio y se informa `RANKING_COVERAGE`. Bancos y competidores digitales commercial nunca compiten en el mismo ranking.
+El ranking materializado se calcula por plataforma, pais, segmento y fecha. Solo se publica si `RANKING_OBSERVED_APPS = RANKING_EXPECTED_APPS`; en caso contrario queda vacio y se informa `RANKING_COVERAGE`. La opcion visual **Todo el mercado** ordena conjuntamente la ultima foto sin alterar esos rankings trazables de origen.
 
 ## Cobertura geografica del PDF
 
@@ -79,7 +79,7 @@ AppGallery reconoce los paquetes, pero actualmente puede devolver `count = 0`; e
 
 ## Escalabilidad
 
-Para añadir una app o pais basta con añadir una fila valida en `APP_CATALOG`. Las columnas de `DASHBOARD_KPIS` se regeneran desde el catalogo; tras añadir un pais hay que refrescar los campos de la fuente en Looker Studio, pero no crear nuevas formulas ni filtros de scorecard. Para añadir otra plataforma se implementa un adaptador en `20_Adapters.gs` que devuelva el mismo contrato `{app, rating, ratingCount}`.
+Para añadir una app o pais basta con añadir una fila valida en `APP_CATALOG`. Las columnas de `DASHBOARD_KPIS` se regeneran desde el catalogo; tras añadir un pais hay que refrescar los campos de la fuente en Looker Studio, pero no crear nuevas formulas ni filtros de scorecard. Para añadir otra plataforma se implementa un adaptador en `20_Adapters.gs` que devuelva el mismo contrato `{app, rating, ratingCount, logoUrl}`.
 
 ## Pruebas
 
@@ -87,4 +87,4 @@ Para añadir una app o pais basta con añadir una fila valida en `APP_CATALOG`. 
 npm test
 ```
 
-Las pruebas cubren normalizacion, ranking con empates, observacion a 30 dias, estabilidad de claves, contrato geografico, correccion de meses y supresion de rankings incompletos.
+Las pruebas cubren normalizacion, ranking con empates, rating y volumen a 30 dias, logos oficiales, estabilidad de claves, cache persistente, contrato geografico, correccion de meses y supresion de rankings incompletos.

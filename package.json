@@ -1,7 +1,7 @@
 {
   "name": "bbva-markets-ratings",
   "private": true,
-  "version": "2026.7.16",
+  "version": "2026.7.17",
   "scripts": {
     "test": "node --test tests/*.test.mjs",
     "build:looker": "node --max-old-space-size=8192 tools/build_wow.mjs"

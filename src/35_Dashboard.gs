@@ -161,7 +161,9 @@ function buildCompetitionRows_(ratings, catalog, execution) {
         Boolean(date === referenceKey && statusByApp[item.appKey] === 'OK'),
         date === referenceKey ? (statusByApp[item.appKey] || 'NOT_FETCHED') : 'HISTORICAL',
         date === referenceKey && execution ? execution.runId : '',
-        app.commercialEligible, app.commercialEvidenceUrl || '', app.storeEvidenceUrl || '', app.verifiedAt || ''];
+        app.commercialEligible, app.commercialEvidenceUrl || '', app.storeEvidenceUrl || '', app.verifiedAt || '',
+        item.previousRatingCount30d == null ? '' : item.previousRatingCount30d,
+        item.ratingCountDelta30d == null ? '' : item.ratingCountDelta30d];
     });
 }
 
@@ -195,6 +197,8 @@ function buildMonthlyTrendRows_(ratings, catalog) {
       group.latest.rankingExpectedApps === null ? '' : group.latest.rankingExpectedApps,
       group.latest.rankingObservedApps === null ? '' : group.latest.rankingObservedApps,
       group.latest.rankingCoverage === null ? '' : group.latest.rankingCoverage,
-      Boolean(group.latest.rankingIsComplete)];
+      Boolean(group.latest.rankingIsComplete),
+      group.latest.ratingCount == null ? '' : group.latest.ratingCount,
+      group.latest.ratingCountDelta30d == null ? '' : group.latest.ratingCountDelta30d];
   });
 }

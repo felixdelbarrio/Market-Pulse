@@ -27,6 +27,8 @@ test("findPreviousRating_ returns the latest point at or before the target", () 
   ];
   assert.equal(context.findPreviousRating_(series, Date.UTC(2026, 0, 20)), 4.2);
   assert.equal(context.findPreviousRating_(series, Date.UTC(2025, 11, 31)), null);
+  series[1].ratingCount = 120;
+  assert.equal(context.findPreviousValue_(series, Date.UTC(2026, 0, 20), "ratingCount"), 120);
 });
 
 test("keys are deterministic across platforms and countries", () => {
@@ -34,4 +36,3 @@ test("keys are deterministic across platforms and countries", () => {
   assert.equal(key, "ANDROID|ES|CAIXABANK_NOW");
   assert.equal(context.makeRatingKey_(new Date(2026, 6, 16, 12), key), "2026-07-16|ANDROID|ES|CAIXABANK_NOW");
 });
-

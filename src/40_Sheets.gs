@@ -200,17 +200,26 @@ function applyTableStyle_(sheet, width) {
   if (sheet.getName() === MARKETS_CONFIG.sheets.ratings) {
     sheet.getRange('B:B').setNumberFormat('yyyy-mm-dd');
     sheet.getRange('D:D').setNumberFormat('yyyy-mm');
-    sheet.getRange('M:Q').setNumberFormat('0.00');
+    sheet.getRange('M:M').setNumberFormat('0.00');
+    sheet.getRange('N:O').setNumberFormat('#,##0');
+    sheet.getRange('P:Q').setNumberFormat('0.00');
+    sheet.getRange('AA:AB').setNumberFormat('#,##0');
     sheet.getRange('T:T').setNumberFormat('yyyy-mm-dd hh:mm:ss');
   } else if (sheet.getName() === MARKETS_CONFIG.sheets.trends) {
     sheet.getRange('A:A').setNumberFormat('yyyy-mm-dd');
     sheet.getRange('J:M').setNumberFormat('0.00');
+    sheet.getRange('N:N').setNumberFormat('#,##0');
     sheet.getRange('O:P').setNumberFormat('0.00');
+    sheet.getRange('X:Y').setNumberFormat('#,##0');
   } else if (sheet.getName() === MARKETS_CONFIG.sheets.competition) {
     sheet.getRange('A:A').setNumberFormat('yyyy-mm-dd');
     sheet.getRange('B:B').setNumberFormat('yyyy-mm');
-    sheet.getRange('N:V').setNumberFormat('0.00');
+    sheet.getRange('N:N').setNumberFormat('0.00');
+    sheet.getRange('O:R').setNumberFormat('#,##0');
+    sheet.getRange('S:S').setNumberFormat('0.00');
+    sheet.getRange('U:V').setNumberFormat('0.00');
     sheet.getRange('X:X').setNumberFormat('yyyy-mm-dd hh:mm:ss');
+    sheet.getRange('AF:AG').setNumberFormat('#,##0');
   } else if (sheet.getName() === MARKETS_CONFIG.sheets.fetchLog) {
     sheet.getRange('B:B').setNumberFormat('yyyy-mm-dd');
     sheet.getRange('C:C').setNumberFormat('yyyy-mm-dd hh:mm:ss');

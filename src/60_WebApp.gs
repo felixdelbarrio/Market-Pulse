@@ -1,11 +1,10 @@
 /** Web app y API de lectura para el dashboard de ratings. */
 var MARKETS_WEB = Object.freeze({
-  version: '2026.07.17.2',
+  version: '2026.07.17.3',
   cacheSeconds: 21600,
   maxCacheCharacters: 95000,
   defaultTrendMonths: 18,
   maxTrendMonths: 36,
-  maxDateOptions: 400,
   latestSnapshotTailRows: 500,
   persistentChunkCharacters: 7500,
   persistentMaxCharacters: 300000,
@@ -18,7 +17,6 @@ var MARKETS_WEB = Object.freeze({
  *
  * Rutas JSON:
  *   ?api=bootstrap
- *   ?api=snapshot&date=2026-07-17
  *   ?api=trends&country=MX&platform=Android&segment=BANK&months=18
  */
 function doGet(event) {
@@ -34,7 +32,6 @@ function serveMarketsApi_(parameters) {
     let data;
     const resource = trimString_(parameters.api).toLowerCase();
     if (resource === 'bootstrap') data = getMarketsDashboardBootstrap();
-    else if (resource === 'snapshot') data = getMarketsDashboardSnapshot(parameters.date);
     else if (resource === 'trends') {
       data = getMarketsDashboardTrends({
         countryCode: parameters.country,
@@ -71,27 +68,14 @@ function getMarketsDashboardBootstrap() {
 
 /** La respuesta inicial excluye tendencias para pintar la pagina cuanto antes. */
 function buildMarketsDashboardBootstrap_(ss) {
-  const dateIndex = readCompetitionDateIndexForWeb_(ss);
-  if (!dateIndex.availableDates.length) throw new Error('DASHBOARD_COMPETITION no contiene fechas publicables.');
-  const latestDate = dateIndex.availableDates[dateIndex.availableDates.length - 1];
-  const snapshot = readCompetitionSnapshotForWeb_(ss, dateIndex, latestDate);
+  const latestDate = readLatestCompetitionDateForWeb_(ss);
+  if (!latestDate) throw new Error('DASHBOARD_COMPETITION no contiene fechas publicables.');
+  const snapshot = readCompetitionSnapshotForWeb_(ss, latestDate);
   return {
-    meta: buildMarketsWebMeta_(ss, dateIndex, snapshot, latestDate),
+    meta: buildMarketsWebMeta_(ss, snapshot, latestDate),
     snapshot: snapshot,
     trends: [],
     consolidated: readConsolidatedSnapshotForWeb_(ss, latestDate)
-  };
-}
-
-/** RPC para navegar a una fecha historica sin descargar las 32k filas. */
-function getMarketsDashboardSnapshot(dateKey) {
-  const ss = openMarketsSpreadsheet_();
-  const dateIndex = readCompetitionDateIndexForWeb_(ss);
-  const requested = normalizeDashboardDateRequest_(dateKey, dateIndex.availableDates);
-  return {
-    date: requested,
-    snapshot: readCompetitionSnapshotForWeb_(ss, dateIndex, requested),
-    consolidated: readConsolidatedSnapshotForWeb_(ss, requested)
   };
 }
 
@@ -111,16 +95,6 @@ function getMarketsDashboardTrends(request) {
   });
 }
 
-function normalizeDashboardDateRequest_(dateKey, availableDates) {
-  const dates = availableDates || [];
-  if (!dates.length) throw new Error('No hay fechas disponibles.');
-  const requested = trimString_(dateKey);
-  if (!requested) return dates[dates.length - 1];
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(requested)) throw new Error('Fecha no valida: ' + requested);
-  if (dates.indexOf(requested) < 0) throw new Error('No hay observaciones para ' + requested + '.');
-  return requested;
-}
-
 function normalizeDashboardTrendRequest_(request) {
   const source = request || {};
   const countryCode = trimString_(source.countryCode).toUpperCase();
@@ -132,7 +106,7 @@ function normalizeDashboardTrendRequest_(request) {
   if (platform && ['Android', 'iOS', 'Huawei'].indexOf(platform) < 0) {
     throw new Error('Plataforma no valida: ' + platform);
   }
-  if (['BANK', 'FINTECH'].indexOf(segment) < 0) throw new Error('Segmento no valido: ' + segment);
+  if (['BANK', 'FINTECH', 'ALL'].indexOf(segment) < 0) throw new Error('Segmento no valido: ' + segment);
   return {
     countryCode: countryCode,
     platform: platform,
@@ -142,58 +116,44 @@ function normalizeDashboardTrendRequest_(request) {
   };
 }
 
-function readCompetitionDateIndexForWeb_(ss) {
+function readLatestCompetitionDateForWeb_(ss) {
   let sheet = ss.getSheetByName(MARKETS_CONFIG.sheets.scorecards);
   if (!sheet || sheet.getLastRow() <= 1) sheet = ss.getSheetByName(MARKETS_CONFIG.sheets.competition);
-  if (!sheet || sheet.getLastRow() <= 1) return { availableDates: [] };
-  const values = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
-  const available = [];
-  const seen = {};
-  values.forEach(function (row) {
-    const key = webDateKey_(row[0]);
-    if (key && !seen[key]) { seen[key] = true; available.push(key); }
-  });
-  available.sort();
-  return { availableDates: available };
+  return !sheet || sheet.getLastRow() <= 1 ? '' : webDateKey_(sheet.getRange(sheet.getLastRow(), 1).getValue());
 }
 
-function readCompetitionSnapshotForWeb_(ss, dateIndex, dateKey) {
-  const cacheKey = 'markets-web:snapshot:' + MARKETS_WEB.version + ':' + dateKey;
-  return readMarketsWebCache_(cacheKey, function () {
-    const sheet = ss.getSheetByName(MARKETS_CONFIG.sheets.competition);
-    if (!sheet || sheet.getLastRow() <= 1) return [];
-    const bounds = findCompetitionDateBoundsForWeb_(sheet, dateKey,
-      dateIndex.availableDates[dateIndex.availableDates.length - 1] === dateKey);
-    if (!bounds) return [];
-    const width = MARKETS_CONFIG.headers.competition.length;
-    const headers = sheet.getRange(1, 1, 1, width).getValues()[0];
-    const indexes = indexHeaders_(headers);
-    const rows = sheet.getRange(bounds.firstRow, 1, bounds.lastRow - bounds.firstRow + 1, width).getValues();
-    return rows.filter(function (row) {
-      return trimString_(row[indexes.app_key]) && webDateKey_(row[indexes.observed_date]) === dateKey;
-    })
-      .map(function (row) { return mapCompetitionRowForWeb_(row, indexes); });
-  });
+function readCompetitionSnapshotForWeb_(ss, dateKey) {
+  const sheet = ss.getSheetByName(MARKETS_CONFIG.sheets.competition);
+  if (!sheet || sheet.getLastRow() <= 1) return [];
+  const bounds = findLatestCompetitionBoundsForWeb_(sheet, dateKey);
+  if (!bounds) return [];
+  const width = MARKETS_CONFIG.headers.competition.length;
+  const headers = sheet.getRange(1, 1, 1, width).getValues()[0];
+  const indexes = indexHeaders_(headers);
+  const rows = sheet.getRange(bounds.firstRow, 1, bounds.lastRow - bounds.firstRow + 1, width).getValues();
+  return rows.filter(function (row) {
+    return trimString_(row[indexes.app_key]) && webDateKey_(row[indexes.observed_date]) === dateKey;
+  }).map(function (row) { return mapCompetitionRowForWeb_(row, indexes); });
 }
 
 /** La fecha mas reciente se resuelve con una sola lectura del final de la tabla. */
-function findCompetitionDateBoundsForWeb_(sheet, dateKey, isLatestDate) {
+function findLatestCompetitionBoundsForWeb_(sheet, dateKey) {
   const lastRow = sheet.getLastRow();
   if (lastRow <= 1) return null;
-  if (isLatestDate) {
-    const count = Math.min(MARKETS_WEB.latestSnapshotTailRows, lastRow - 1);
-    const firstTailRow = lastRow - count + 1;
-    const dates = sheet.getRange(firstTailRow, 1, count, 1).getValues().map(function (row) {
-      return webDateKey_(row[0]);
-    });
-    const first = dates.indexOf(dateKey);
-    const last = dates.lastIndexOf(dateKey);
-    if (first >= 0) return { firstRow: firstTailRow + first, lastRow: firstTailRow + last };
+  const count = Math.min(MARKETS_WEB.latestSnapshotTailRows, lastRow - 1);
+  const firstTailRow = lastRow - count + 1;
+  const dates = sheet.getRange(firstTailRow, 1, count, 1).getValues().map(function (row) {
+    return webDateKey_(row[0]);
+  });
+  const first = dates.indexOf(dateKey);
+  const last = dates.lastIndexOf(dateKey);
+  if (first > 0 || firstTailRow === 2) {
+    return first < 0 ? null : { firstRow: firstTailRow + first, lastRow: firstTailRow + last };
   }
   return binarySearchCompetitionDateBoundsForWeb_(sheet, dateKey, lastRow);
 }
 
-/** Busqueda historica O(log n); evita transferir toda la columna de 32k filas. */
+/** Fallback O(log n) si la ultima foto supera la ventana de lectura rapida. */
 function binarySearchCompetitionDateBoundsForWeb_(sheet, dateKey, lastRow) {
   let low = 2;
   let high = lastRow + 1;
@@ -240,21 +200,10 @@ function mapCompetitionRowForWeb_(row, indexes) {
     delta30d: webNumber_(row[indexes.delta_30d]),
     fresh: parseBoolean_(row[indexes.is_fresh_this_run], false),
     fetchStatus: trimString_(row[indexes.fetch_status]),
-    runId: trimString_(row[indexes.run_id])
+    runId: trimString_(row[indexes.run_id]),
+    previousRatingCount30d: webNumber_(row[indexes.previous_rating_count_30d]),
+    ratingCountDelta30d: webNumber_(row[indexes.rating_count_delta_30d])
   };
-}
-
-function readDashboardTrendsForWeb_(ss, request) {
-  const normalized = normalizeDashboardTrendRequest_(request);
-  const cacheKey = marketsTrendCacheKey_(normalized);
-  return readMarketsWebCache_(cacheKey, function () {
-    return buildDashboardTrendsForWeb_(ss, normalized);
-  });
-}
-
-function buildDashboardTrendsForWeb_(ss, normalized) {
-  return filterDashboardTrendsForWeb_(
-    buildAllDashboardTrendsForWeb_(ss, normalized.months), normalized);
 }
 
 function buildAllDashboardTrendsForWeb_(ss, months) {
@@ -280,9 +229,13 @@ function filterDashboardTrendsForWeb_(allTrends, normalized) {
     return row.month >= cutoff &&
       (!normalized.countryCode || row.countryCode === normalized.countryCode) &&
       (!normalized.platform || row.platform === normalized.platform) &&
-      row.segment === normalized.segment &&
+      matchesMarketsSegment_(row, normalized.segment) &&
       (!normalized.bbvaOnly || row.isBbva);
   });
+}
+
+function matchesMarketsSegment_(row, segment) {
+  return segment === 'ALL' || row.segment === segment || (segment === 'FINTECH' && row.isBbva);
 }
 
 function mapTrendRowForWeb_(row, indexes) {
@@ -303,7 +256,9 @@ function mapTrendRowForWeb_(row, indexes) {
     rankingEom: webNumber_(row[indexes.ranking_eom]),
     delta30dEom: webNumber_(row[indexes.delta_30d_eom]),
     segment: trimString_(row[indexes.market_segment]) || 'BANK',
-    rankingComplete: parseBoolean_(row[indexes.ranking_is_complete_eom], false)
+    rankingComplete: parseBoolean_(row[indexes.ranking_is_complete_eom], false),
+    ratingCount: webNumber_(row[indexes.rating_count_eom]),
+    ratingCountDelta30d: webNumber_(row[indexes.rating_count_delta_30d_eom])
   };
 }
 
@@ -341,7 +296,7 @@ function readConsolidatedSnapshotForWeb_(ss, dateKey) {
   };
 }
 
-function buildMarketsWebMeta_(ss, dateIndex, snapshot, latestDate) {
+function buildMarketsWebMeta_(ss, snapshot, latestDate) {
   const countriesByCode = {};
   (snapshot || []).forEach(function (row) {
     if (row.countryCode) countriesByCode[row.countryCode] = row.country || row.countryCode;
@@ -354,12 +309,29 @@ function buildMarketsWebMeta_(ss, dateIndex, snapshot, latestDate) {
     webVersion: MARKETS_WEB.version,
     generatedAt: Utilities.formatDate(new Date(), MARKETS_CONFIG.timeZone, "yyyy-MM-dd'T'HH:mm:ssXXX"),
     dataDate: latestDate,
-    availableDates: dateIndex.availableDates.slice(-MARKETS_WEB.maxDateOptions),
     countries: countries,
-    platforms: uniqueStrings_((snapshot || []).map(function (row) { return row.platform; })),
+    platforms: ['Android', 'iOS', 'Huawei'].filter(function (platform) {
+      return (snapshot || []).some(function (row) { return row.platform === platform; });
+    }),
     segments: uniqueStrings_((snapshot || []).map(function (row) { return row.segment; })),
+    logos: readMarketsPersistentCache_('logos') || {},
     latestRun: readLatestRunForWeb_(ss)
   };
+}
+
+/** Conserva iconos oficiales obtenidos en las mismas respuestas de las stores. */
+function updateMarketsLogoCache_(results) {
+  const logos = readMarketsPersistentCache_('logos') || {};
+  let changed = false;
+  (results || []).forEach(function (result) {
+    const appKey = trimString_(result && result.app && result.app.appKey);
+    const logoUrl = trimString_(result && result.logoUrl);
+    if (!appKey || !/^https:\/\//i.test(logoUrl) || logos[appKey] === logoUrl) return;
+    logos[appKey] = logoUrl;
+    changed = true;
+  });
+  if (changed) writeMarketsPersistentCache_('logos', logos, new Date().toISOString());
+  return logos;
 }
 
 function readLatestRunForWeb_(ss) {
@@ -369,7 +341,7 @@ function readLatestRunForWeb_(ss) {
   const headers = sheet.getRange(1, 1, 1, width).getValues()[0];
   const indexes = indexHeaders_(headers);
   const row = sheet.getRange(sheet.getLastRow(), 1, 1, width).getValues()[0];
-  return {
+  const latestRun = {
     startedAt: webDateTime_(row[indexes.started_at]),
     runId: trimString_(row[indexes.run_id]),
     status: trimString_(row[indexes.status]),
@@ -380,6 +352,29 @@ function readLatestRunForWeb_(ss) {
     freshApps: webNumber_(row[indexes.fresh_apps]),
     weightStatus: trimString_(row[indexes.weight_config_status])
   };
+  latestRun.incidents = readRunIncidentsForWeb_(ss, latestRun.runId, latestRun.appsTotal);
+  return latestRun;
+}
+
+function readRunIncidentsForWeb_(ss, runId, appsTotal) {
+  const sheet = ss.getSheetByName(MARKETS_CONFIG.sheets.fetchLog);
+  if (!runId || !sheet || sheet.getLastRow() <= 1) return [];
+  const count = Math.min(Math.max(1, appsTotal || 1), sheet.getLastRow() - 1);
+  const headers = MARKETS_CONFIG.headers.fetchLog;
+  const indexes = indexHeaders_(headers);
+  const rows = sheet.getRange(sheet.getLastRow() - count + 1, 1, count, headers.length).getValues();
+  return rows.filter(function (item) {
+    return trimString_(item[indexes.run_id]) === runId && trimString_(item[indexes.status]) !== 'OK';
+  }).map(function (item) {
+    return {
+      appKey: trimString_(item[indexes.app_key]),
+      countryCode: trimString_(item[indexes.country_code]),
+      platform: trimString_(item[indexes.platform]),
+      segment: trimString_(item[indexes.market_segment]),
+      status: trimString_(item[indexes.status]),
+      detail: trimString_(item[indexes.detail])
+    };
+  });
 }
 
 function readMarketsWebCache_(key, builder) {
@@ -460,7 +455,7 @@ function readMarketsPersistentCache_(name) {
   try {
     const properties = PropertiesService.getScriptProperties();
     const meta = safeJsonParse_(properties.getProperty(marketsPersistentMetaKey_(name)));
-    if (!meta || meta.version !== MARKETS_WEB.version || !meta.generation || !meta.parts) return null;
+    if (!meta || (name !== 'logos' && meta.version !== MARKETS_WEB.version) || !meta.generation || !meta.parts) return null;
     let encoded = '';
     for (let index = 0; index < meta.parts; index += 1) {
       const chunk = properties.getProperty(marketsPersistentChunkKey_(name, meta.generation, index));
@@ -499,12 +494,9 @@ function deleteMarketsPersistentCache_(name) {
  * terminar el RUN diario y tambien puede ejecutarse manualmente tras desplegar.
  */
 function refreshMarketsDashboardCache_(ss) {
-  const dateIndex = readCompetitionDateIndexForWeb_(ss);
-  const latestDate = dateIndex.availableDates[dateIndex.availableDates.length - 1] || '';
-  const keys = [marketsBootstrapCacheKey_()];
-  if (latestDate) keys.push('markets-web:snapshot:' + MARKETS_WEB.version + ':' + latestDate);
+  const latestDate = readLatestCompetitionDateForWeb_(ss);
   const cache = CacheService.getScriptCache();
-  try { cache.removeAll(keys); } catch (ignored) {}
+  try { cache.remove(marketsBootstrapCacheKey_()); } catch (ignored) {}
   const bootstrap = buildMarketsDashboardBootstrap_(ss);
   const allTrends = buildAllDashboardTrendsForWeb_(ss, MARKETS_WEB.maxTrendMonths);
   const revision = bootstrap.meta.latestRun && bootstrap.meta.latestRun.runId;
@@ -529,7 +521,7 @@ function marketsInteractiveTrendCacheKeys_(snapshot) {
   const snapshotCountries = uniqueStrings_((snapshot || []).map(function (row) { return row.countryCode; }));
   const countries = [''].concat(snapshotCountries.length ? snapshotCountries : MARKETS_WEB.countryCodes);
   const platforms = ['', 'Android', 'iOS', 'Huawei'];
-  const segments = ['BANK', 'FINTECH'];
+  const segments = ['BANK', 'FINTECH', 'ALL'];
   const keys = [];
   countries.forEach(function (countryCode) {
     platforms.forEach(function (platform) {
@@ -549,10 +541,7 @@ function marketsInteractiveTrendCacheKeys_(snapshot) {
 
 /** Fuerza fallback a Sheets si el RUN no pudo materializar una revision nueva. */
 function invalidateMarketsDashboardCache_() {
-  const persistentBootstrap = readMarketsPersistentCache_('bootstrap');
   const keys = [marketsBootstrapCacheKey_()].concat(marketsInteractiveTrendCacheKeys_([]));
-  const date = persistentBootstrap && persistentBootstrap.meta && persistentBootstrap.meta.dataDate;
-  if (date) keys.push('markets-web:snapshot:' + MARKETS_WEB.version + ':' + date);
   try { CacheService.getScriptCache().removeAll(uniqueStrings_(keys)); } catch (ignored) {}
   deleteMarketsPersistentCache_('bootstrap');
   deleteMarketsPersistentCache_('trends');

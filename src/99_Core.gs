@@ -91,21 +91,25 @@ function rankSnapshot_(items) {
   });
 }
 
-/** Devuelve la ultima observacion con fecha menor o igual que targetMillis. */
-function findPreviousRating_(series, targetMillis) {
+/** Devuelve el valor de la ultima observacion anterior al corte. */
+function findPreviousValue_(series, targetMillis, field) {
   let low = 0;
   let high = (series || []).length - 1;
   let found = null;
   while (low <= high) {
     const middle = Math.floor((low + high) / 2);
     if (series[middle].dateMillis <= targetMillis) {
-      found = series[middle].rating;
+      found = series[middle][field];
       low = middle + 1;
     } else {
       high = middle - 1;
     }
   }
   return found;
+}
+
+function findPreviousRating_(series, targetMillis) {
+  return findPreviousValue_(series, targetMillis, 'rating');
 }
 
 function retryableStatus_(status) {
