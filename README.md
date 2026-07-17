@@ -51,6 +51,7 @@ El acceso conectado durante esta construccion devolvio `403 PERMISSION_DENIED` p
 - Recalculo de ranking, ultimo dato y variacion a 30 dias: `rebuildAllMetrics()`.
 - Validacion de contrato y catalogo: `validateProject()`.
 - Instalacion idempotente del trigger: `setupProject()`.
+- Precalentamiento manual del dashboard tras desplegar: `warmMarketsDashboardCache()`.
 
 El monitor usa una clave determinista por fecha y app. Reejecutar el mismo dia actualiza el registro existente y no crea duplicados. Los fallos de una tienda no borran valores anteriores ni escriben ratings vacios. `IS_FRESH_THIS_RUN` y `FETCH_STATUS` impiden confundir un valor retenido con uno refrescado.
 

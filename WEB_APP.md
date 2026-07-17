@@ -9,7 +9,10 @@ El backend evita enviar las 32k observaciones completas:
 - `getMarketsDashboardBootstrap()` devuelve la ultima foto, metadatos, consolidados y 18 meses de tendencias BBVA.
 - `getMarketsDashboardSnapshot(date)` lee solo el bloque de filas de la fecha pedida.
 - `getMarketsDashboardTrends(filters)` devuelve series mensuales filtradas, con un maximo de 36 meses.
-- `CacheService` conserva respuestas menores de 90 KB durante cinco minutos.
+- `CacheService` actua como nivel rapido L1 durante seis horas y se comparte entre todos los usuarios.
+- `PropertiesService` conserva como nivel L2, sin caducidad, el bootstrap y hasta 36 meses de tendencias, comprimidos y divididos en bloques seguros.
+- La foto ejecutiva se pinta primero y las tendencias se solicitan en segundo plano.
+- El snapshot mas reciente se localiza leyendo solo el final de `DASHBOARD_COMPETITION`, no sus 32k fechas.
 
 ## Despliegue
 
@@ -26,6 +29,7 @@ El backend evita enviar las 32k observaciones completas:
 5. Limite **Quien tiene acceso** al dominio o grupo corporativo que corresponda.
 6. Autorice los scopes y abra la URL `/exec` entregada por Google.
 7. En cambios posteriores, use **Gestionar implementaciones > Editar > Nueva version**. Un `clasp push` no actualiza por si solo una version ya desplegada.
+8. Tras el primer despliegue, ejecute una vez `warmMarketsDashboardCache()` para materializar la revision existente. Desde ese momento, cada RUN diario sustituye automaticamente ambas capas justo despues de actualizar los datasets.
 
 ## Comprobaciones rapidas
 
@@ -48,4 +52,4 @@ Las rutas JSON heredan el mismo control de acceso. Si el despliegue se configura
 
 ## Operacion
 
-El dashboard es de solo lectura. El trigger diario y `runNow()` siguen actualizando los datasets. La cache expira en cinco minutos, por lo que una ejecucion nueva puede tardar ese maximo en verse reflejada si ya habia una respuesta cacheada.
+El dashboard es de solo lectura. El trigger diario y `runNow()` siguen actualizando los datasets. Al terminar, el RUN construye una generacion nueva, cambia el puntero persistente de forma atomica y elimina la anterior. Si L1 caduca, se repone desde L2 sin abrir el spreadsheet. Si la materializacion falla, ambas capas se invalidan para que la siguiente peticion reconstruya desde Google Sheets en lugar de servir una revision antigua.

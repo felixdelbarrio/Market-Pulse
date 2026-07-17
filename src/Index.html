@@ -299,7 +299,7 @@
       const COUNTRY_NAMES = { AR:"Argentina", CO:"Colombia", ES:"España", MX:"México", PE:"Perú", TR:"Turquía", UY:"Uruguay", VE:"Venezuela" };
       const PLATFORM_LABELS = { ALL:"Todas", Android:"Android", iOS:"iOS", Huawei:"Huawei" };
       const COLORS = ["#1464a5","#2dcccd","#7c4dca","#e85d75","#f5a623","#13866f","#4d79ff","#9b6b43","#d43f8d","#657b8d"];
-      const state = { meta:null, snapshot:[], trends:[], consolidated:null, country:"ALL", platform:"ALL", segment:"BANK", date:"", view:"overview", trendToken:0 };
+      const state = { meta:null, snapshot:[], trends:[], trendsLoading:true, consolidated:null, country:"ALL", platform:"ALL", segment:"BANK", date:"", view:"overview", trendToken:0 };
       const $ = id => document.getElementById(id);
       const finite = value => typeof value === "number" && Number.isFinite(value);
       const mean = values => { const clean = values.filter(finite); return clean.length ? clean.reduce((a,b)=>a+b,0)/clean.length : null; };
@@ -337,14 +337,17 @@
       }
 
       async function loadBootstrap() {
+        let ready = false;
         try {
           const data = await callServer("bootstrap");
           state.meta = data.meta; state.snapshot = data.snapshot || []; state.trends = data.trends || [];
           state.consolidated = data.consolidated || null; state.date = data.meta.dataDate;
           buildControls(); renderAll();
           $("footer-version").textContent = `Contrato ${data.meta.codeVersion} · Web ${data.meta.webVersion || "1"}`;
+          ready = true;
         } catch (error) { showError(error); }
         finally { $("loader").classList.add("done"); }
+        if (ready) loadTrends();
       }
 
       function bindNavigation() {
@@ -391,6 +394,8 @@
 
       async function loadTrends() {
         const token = ++state.trendToken;
+        state.trendsLoading = true;
+        renderCharts();
         const request = {
           countryCode: state.country === "ALL" ? "" : state.country,
           platform: state.platform === "ALL" ? "" : state.platform,
@@ -402,8 +407,14 @@
           const trends = await callServer("trends", request);
           if (token !== state.trendToken) return;
           state.trends = trends || [];
-          renderCharts();
-        } catch (error) { showError(error); }
+        } catch (error) {
+          if (token === state.trendToken) showError(error);
+        } finally {
+          if (token === state.trendToken) {
+            state.trendsLoading = false;
+            renderCharts();
+          }
+        }
       }
 
       function visibleSnapshot() {
@@ -513,6 +524,15 @@
       }
 
       function renderCharts() {
+        if (state.trendsLoading) {
+          const loading = `<div class="empty-state"><div><strong>Cargando tendencia…</strong>La vista ejecutiva ya está disponible.</div></div>`;
+          $("overview-chart").innerHTML = loading;
+          $("overview-legend").innerHTML = "";
+          $("evolution-chart").innerHTML = loading;
+          $("evolution-legend").innerHTML = "";
+          setEmpty($("series-summary"), "Cargando series", "Los datos mensuales llegan en segundo plano.");
+          return;
+        }
         const rows = visibleTrends();
         const chart = buildLineChart(rows);
         $("overview-chart").innerHTML = chart.svg;

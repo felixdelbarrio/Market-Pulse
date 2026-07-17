@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
+import { gzipSync, gunzipSync } from "node:zlib";
 
 const sources = ["../src/99_Core.gs", "../src/60_WebApp.gs"]
   .map(file => fs.readFileSync(new URL(file, import.meta.url), "utf8"))
@@ -31,9 +32,86 @@ test("web trend request is bounded and normalized", () => {
   assert.equal(request.bbvaOnly, true);
 });
 
+test("warm trend cache avoids opening the spreadsheet", () => {
+  let spreadsheetOpens = 0;
+  context.openMarketsSpreadsheet_ = () => { spreadsheetOpens += 1; throw new Error("cache miss"); };
+  context.CacheService = {
+    getScriptCache() {
+      return { get() { return "[]"; } };
+    }
+  };
+  assert.deepEqual(Array.from(context.getMarketsDashboardTrends({ segment: "BANK", bbvaOnly: true })), []);
+  assert.equal(spreadsheetOpens, 0);
+});
+
+test("persistent shared cache survives L1 expiry and swaps generations", () => {
+  const values = new Map();
+  const properties = {
+    getProperty(key) { return values.get(key) ?? null; },
+    setProperty(key, value) { values.set(key, String(value)); return this; },
+    setProperties(entries) { Object.entries(entries).forEach(([key, value]) => values.set(key, String(value))); return this; },
+    deleteProperty(key) { values.delete(key); return this; }
+  };
+  const asBlob = buffer => ({
+    getBytes() { return Array.from(buffer); },
+    getDataAsString() { return buffer.toString("utf8"); }
+  });
+  context.PropertiesService = { getScriptProperties() { return properties; } };
+  context.Utilities.newBlob = value => asBlob(Buffer.isBuffer(value) ? value : Buffer.from(value));
+  context.Utilities.gzip = blob => asBlob(gzipSync(Buffer.from(blob.getBytes())));
+  context.Utilities.ungzip = blob => asBlob(gunzipSync(Buffer.from(blob.getBytes())));
+  context.Utilities.base64Encode = bytes => Buffer.from(bytes).toString("base64");
+  context.Utilities.base64Decode = value => Array.from(Buffer.from(value, "base64"));
+  let uuidCounter = 0;
+  context.Utilities.getUuid = () => `${String(++uuidCounter).padStart(8, "0")}-1234-1234-1234-123456789abc`;
+
+  const first = { revision: "run-1", rows: Array.from({ length: 250 }, (_, index) => ({ index, name: `México ${index}` })) };
+  const firstMeta = context.writeMarketsPersistentCache_("bootstrap", first, "run-1");
+  assert.deepEqual(JSON.parse(JSON.stringify(context.readMarketsPersistentCache_("bootstrap"))), first);
+  const second = { revision: "run-2", rows: [{ index: 1, name: "España" }] };
+  const secondMeta = context.writeMarketsPersistentCache_("bootstrap", second, "run-2");
+  assert.deepEqual(JSON.parse(JSON.stringify(context.readMarketsPersistentCache_("bootstrap"))), second);
+  assert.equal(secondMeta.revision, "run-2");
+  assert.equal([...values.keys()].some(key => key.includes(firstMeta.generation)), false);
+});
+
+test("doGet builds an HtmlService response using supported metadata", () => {
+  const calls = [];
+  const output = {
+    setTitle(value) { calls.push(["title", value]); return this; },
+    addMetaTag(name, value) { calls.push(["meta", name, value]); return this; }
+  };
+  context.HtmlService = {
+    createHtmlOutputFromFile(file) { calls.push(["file", file]); return output; }
+  };
+  assert.equal(context.doGet({ parameter: {} }), output);
+  assert.deepEqual(calls, [
+    ["file", "Index"],
+    ["title", "Markets Ratings Intelligence"],
+    ["meta", "viewport", "width=device-width, initial-scale=1, viewport-fit=cover"]
+  ]);
+});
+
 test("web date request rejects dates without observations", () => {
   assert.equal(context.normalizeDashboardDateRequest_("", ["2026-07-16", "2026-07-17"]), "2026-07-17");
   assert.throws(() => context.normalizeDashboardDateRequest_("2026-07-15", ["2026-07-17"]), /No hay observaciones/);
+});
+
+test("snapshot date bounds avoid scanning the full competition column", () => {
+  const dates = ["2026-07-15", "2026-07-15", "2026-07-16", "2026-07-16", "2026-07-16", "2026-07-17", "2026-07-17"];
+  const sheet = {
+    getLastRow() { return dates.length + 1; },
+    getRange(row, _column, rowCount = 1) {
+      return {
+        getValue() { return dates[row - 2]; },
+        getValues() { return dates.slice(row - 2, row - 2 + rowCount).map(value => [value]); }
+      };
+    }
+  };
+  const plain = value => JSON.parse(JSON.stringify(value));
+  assert.deepEqual(plain(context.findCompetitionDateBoundsForWeb_(sheet, "2026-07-17", true)), { firstRow: 7, lastRow: 8 });
+  assert.deepEqual(plain(context.findCompetitionDateBoundsForWeb_(sheet, "2026-07-16", false)), { firstRow: 4, lastRow: 6 });
+  assert.equal(context.findCompetitionDateBoundsForWeb_(sheet, "2026-07-14", false), null);
 });
 
 test("competition rows map to a serializable dashboard contract", () => {

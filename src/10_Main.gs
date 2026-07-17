@@ -33,6 +33,12 @@ function runDailyRatingMonitor() {
       dashboard.scorecardRows, dashboard.trendRows, dashboard.competitionRows,
       stats.ok, validateWeightConfiguration_(catalog)
     ]);
+    try {
+      refreshMarketsDashboardCache_(ss);
+    } catch (cacheError) {
+      try { invalidateMarketsDashboardCache_(); } catch (ignored) {}
+      console.error('No se pudo actualizar la cache del dashboard: ' + errorToString_(cacheError));
+    }
     return { runId: runId, status: status, apps: results.length, rowsUpserted: upserted, alerts: alerts.length };
   } catch (error) {
     if (ss) {
