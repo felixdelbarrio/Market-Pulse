@@ -1,21 +1,16 @@
-/** Materializa fuentes pequenas y sin filtros de chart para Looker Studio. */
+/** Materializa las dos fuentes compactas consumidas por el Web App. */
 function rebuildDashboardDatasets_(ss, catalog, ratings, execution) {
   const activeKeys = (catalog || []).reduce(function (out, app) { out[app.appKey] = true; return out; }, {});
   const activeRatings = (ratings || []).filter(function (item) { return Boolean(activeKeys[item.appKey]); });
-  const scorecards = buildScorecardDataset_(activeRatings, catalog, execution);
-  const scorecardSheet = ss.getSheetByName(MARKETS_CONFIG.sheets.scorecards);
-  replaceSheetData_(scorecardSheet, scorecards.headers, scorecards.rows);
-  scorecardSheet.getRange('A:A').setNumberFormat('yyyy-mm-dd');
-
   const competitionRows = buildCompetitionRows_(activeRatings, catalog, execution);
   const competitionSheet = ss.getSheetByName(MARKETS_CONFIG.sheets.competition);
   replaceSheetData_(competitionSheet, MARKETS_CONFIG.headers.competition, competitionRows);
 
-  const trendRows = buildMonthlyTrendRows_(activeRatings, catalog);
+  const trendRows = buildMonthlyTrendRows_(activeRatings);
   const trendSheet = ss.getSheetByName(MARKETS_CONFIG.sheets.trends);
   replaceSheetData_(trendSheet, MARKETS_CONFIG.headers.trends, trendRows);
 
-  return { scorecardRows: scorecards.rows.length, trendRows: trendRows.length, competitionRows: competitionRows.length };
+  return { trendRows: trendRows.length, competitionRows: competitionRows.length };
 }
 
 function buildExecutionStatus_(execution) {
@@ -24,83 +19,6 @@ function buildExecutionStatus_(execution) {
     out[result.app.appKey] = result.ok ? 'OK' : result.noRating ? 'NO_RATING' : 'ERROR';
   });
   return out;
-}
-
-/** Una fila por fecha; cada scorecard consume un campo directo y no un filtro. */
-function buildScorecardDataset_(ratings, catalog, execution) {
-  const platformOrder = { Android: 0, iOS: 1, Huawei: 2 };
-  const bbvaCatalog = (catalog || []).filter(function (app) { return app.isBbva && (app.marketSegment || 'BANK') === 'BANK'; })
-    .slice().sort(function (a, b) {
-      return (platformOrder[a.platform] - platformOrder[b.platform]) ||
-        a.countryCode.localeCompare(b.countryCode) || a.appKey.localeCompare(b.appKey);
-    });
-  const pairSeen = {};
-  const pairs = bbvaCatalog.filter(function (app) {
-    const key = app.platform + '|' + app.countryCode;
-    if (pairSeen[key]) return false;
-    pairSeen[key] = true;
-    return true;
-  });
-  const countrySeen = {};
-  const countries = bbvaCatalog.filter(function (app) {
-    if (countrySeen[app.countryCode]) return false;
-    countrySeen[app.countryCode] = true;
-    return true;
-  }).map(function (app) { return app.countryCode; }).sort();
-  const byDate = {};
-  (ratings || []).filter(function (item) {
-    return item.isBbva && (item.marketSegment || 'BANK') === 'BANK' && item.observedDate instanceof Date && item.rating !== null;
-  }).forEach(function (item) {
-    const key = dateKey_(item.observedDate);
-    (byDate[key] || (byDate[key] = {}))[item.appKey] = item;
-  });
-  const statusByApp = buildExecutionStatus_(execution);
-  const referenceKey = execution && execution.referenceDate instanceof Date ? dateKey_(execution.referenceDate) : '';
-
-  const headers = ['OBSERVED_DATE', 'YEAR', 'YEAR_MONTH', 'BBVA_GROUP_RATING',
-    'BBVA_GROUP_DELTA_30D', 'BBVA_GROUP_WEIGHT_COVERAGE'];
-  countries.forEach(function (countryCode) {
-    const prefix = 'BBVA_' + fieldSlug_(countryCode);
-    headers.push(prefix + '_CONSOLIDATED_RATING', prefix + '_CONSOLIDATED_DELTA_30D', prefix + '_WEIGHT_COVERAGE');
-  });
-  pairs.forEach(function (app) {
-    const prefix = fieldSlug_(app.platform) + '_' + fieldSlug_(app.countryCode) + '_BBVA';
-    headers.push(prefix + '_RATING', prefix + '_RATING_COUNT', prefix + '_RANKING',
-      prefix + '_PREVIOUS_RATING_30D', prefix + '_DELTA_30D', prefix + '_IS_AVAILABLE',
-      prefix + '_RANKING_EXPECTED_APPS', prefix + '_RANKING_OBSERVED_APPS',
-      prefix + '_RANKING_COVERAGE', prefix + '_RANKING_IS_COMPLETE',
-      prefix + '_IS_FRESH_THIS_RUN', prefix + '_FETCH_STATUS');
-  });
-
-  const rows = Object.keys(byDate).sort().map(function (dateKey) {
-    const date = dateFromKey_(dateKey);
-    const items = byDate[dateKey];
-    const groupRating = weightedMetric_(bbvaCatalog, items, 'rating', 'groupUserWeight');
-    const groupDelta = weightedMetric_(bbvaCatalog, items, 'delta30d', 'groupUserWeight');
-    const row = [date, date.getFullYear(), dateFromKey_(dateKey.slice(0, 7) + '-01'),
-      groupRating.value, groupDelta.value, groupRating.coverage];
-    countries.forEach(function (countryCode) {
-      const configs = bbvaCatalog.filter(function (app) { return app.countryCode === countryCode; });
-      const rating = weightedMetric_(configs, items, 'rating', 'countryPlatformWeight');
-      const delta = weightedMetric_(configs, items, 'delta30d', 'countryPlatformWeight');
-      row.push(rating.value, delta.value, rating.coverage);
-    });
-    pairs.forEach(function (app) {
-      const item = items[app.appKey];
-      const fresh = Boolean(item && dateKey === referenceKey && statusByApp[app.appKey] === 'OK');
-      row.push(item ? item.rating : '', item && item.ratingCount !== null ? item.ratingCount : '',
-        item && item.rankingIsComplete && item.ranking !== null ? item.ranking : '',
-        item && item.previousRating30d !== null ? item.previousRating30d : '',
-        item && item.delta30d !== null ? item.delta30d : '', Boolean(item),
-        item && item.rankingExpectedApps !== null ? item.rankingExpectedApps : '',
-        item && item.rankingObservedApps !== null ? item.rankingObservedApps : '',
-        item && item.rankingCoverage !== null ? item.rankingCoverage : '',
-        Boolean(item && item.rankingIsComplete), fresh,
-        dateKey === referenceKey ? (statusByApp[app.appKey] || 'NOT_FETCHED') : 'HISTORICAL');
-    });
-    return row;
-  });
-  return { headers: headers, rows: rows };
 }
 
 /** Solo publica consolidados con pesos positivos, documentados y completos. */
@@ -147,22 +65,11 @@ function buildCompetitionRows_(ratings, catalog, execution) {
     }).map(function (item) {
       const app = catalogByKey[item.appKey];
       const date = dateKey_(item.observedDate);
-      return [item.observedDate, dateFromKey_(date.slice(0, 7) + '-01'), item.platform,
-        item.countryCode, item.country, app.marketSegment, app.dashboardSection, app.productScope,
-        app.competitorSetVersion, item.appKey, item.appName, item.isBbva,
-        app.displayOrder === null ? '' : app.displayOrder, item.rating,
-        item.ratingCount === null ? '' : item.ratingCount,
-        item.rankingIsComplete && item.ranking !== null ? item.ranking : '',
-        item.rankingExpectedApps === null ? '' : item.rankingExpectedApps,
-        item.rankingObservedApps === null ? '' : item.rankingObservedApps,
-        item.rankingCoverage === null ? '' : item.rankingCoverage, item.rankingIsComplete,
-        item.previousRating30d === null ? '' : item.previousRating30d,
-        item.delta30d === null ? '' : item.delta30d, item.isLatest, item.ingestedAt || '',
+      return [item.observedDate, item.platform, item.countryCode, item.country, app.marketSegment,
+        item.appKey, item.appName, item.isBbva, app.displayOrder === null ? '' : app.displayOrder,
+        item.rating, item.ratingCount === null ? '' : item.ratingCount, item.rankingIsComplete,
+        item.delta30d === null ? '' : item.delta30d,
         Boolean(date === referenceKey && statusByApp[item.appKey] === 'OK'),
-        date === referenceKey ? (statusByApp[item.appKey] || 'NOT_FETCHED') : 'HISTORICAL',
-        date === referenceKey && execution ? execution.runId : '',
-        app.commercialEligible, app.commercialEvidenceUrl || '', app.storeEvidenceUrl || '', app.verifiedAt || '',
-        item.previousRatingCount30d == null ? '' : item.previousRatingCount30d,
         item.ratingCountDelta30d == null ? '' : item.ratingCountDelta30d, buildStoreWebUrl_(app)];
     });
 }
@@ -186,37 +93,19 @@ function buildStoreWebUrl_(app) {
 }
 
 /** Agregacion mensual compacta; el mes siempre deriva de OBSERVED_DATE. */
-function buildMonthlyTrendRows_(ratings, catalog) {
-  const catalogByKey = (catalog || []).reduce(function (out, app) { out[app.appKey] = app; return out; }, {});
+function buildMonthlyTrendRows_(ratings) {
   const groups = {};
   (ratings || []).filter(function (item) { return item.observedDate instanceof Date && item.rating !== null; })
     .forEach(function (item) {
       const yearMonth = dateKey_(item.observedDate).slice(0, 7);
       const key = [yearMonth, item.platform, item.countryCode, item.marketSegment || 'BANK', item.appKey].join('|');
-      const group = groups[key] || (groups[key] = { yearMonth: yearMonth, platform: item.platform,
-        countryCode: item.countryCode, country: item.country, appKey: item.appKey, appName: item.appName,
-        isBbva: item.isBbva, sum: 0, count: 0, min: null, max: null, latest: null });
-      group.sum += item.rating; group.count += 1;
-      group.min = group.min === null ? item.rating : Math.min(group.min, item.rating);
-      group.max = group.max === null ? item.rating : Math.max(group.max, item.rating);
+      const group = groups[key] || (groups[key] = { yearMonth: yearMonth, latest: null });
       if (!group.latest || item.observedDate.getTime() >= group.latest.observedDate.getTime()) group.latest = item;
     });
   return Object.keys(groups).sort().map(function (key) {
     const group = groups[key];
-    const app = catalogByKey[group.appKey] || {};
-    return [dateFromKey_(group.yearMonth + '-01'), group.yearMonth, group.platform, group.countryCode,
-      group.country, group.appKey, group.appName, group.isBbva,
-      app.displayOrder === null || app.displayOrder === undefined ? '' : app.displayOrder,
-      round2_(group.sum / group.count), group.latest.rating, group.min, group.max, group.count,
-      group.latest.rankingIsComplete && group.latest.ranking !== null ? group.latest.ranking : '',
-      group.latest.delta30d === null ? '' : group.latest.delta30d,
-      app.marketSegment || group.latest.marketSegment || 'BANK', app.dashboardSection || 'COUNTRY_BANKS',
-      app.productScope || 'BUSINESS',
-      group.latest.rankingExpectedApps === null ? '' : group.latest.rankingExpectedApps,
-      group.latest.rankingObservedApps === null ? '' : group.latest.rankingObservedApps,
-      group.latest.rankingCoverage === null ? '' : group.latest.rankingCoverage,
-      Boolean(group.latest.rankingIsComplete),
-      group.latest.ratingCount == null ? '' : group.latest.ratingCount,
-      group.latest.ratingCountDelta30d == null ? '' : group.latest.ratingCountDelta30d];
+    const latest = group.latest;
+    return [dateFromKey_(group.yearMonth + '-01'), latest.platform, latest.countryCode, latest.country,
+      latest.appKey, latest.appName, latest.isBbva, latest.rating, latest.marketSegment || 'BANK'];
   });
 }

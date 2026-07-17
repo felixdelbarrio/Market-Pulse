@@ -12,7 +12,7 @@ El backend evita enviar las 32k observaciones completas:
 - `PropertiesService` conserva como nivel L2, sin caducidad, el bootstrap y hasta 36 meses de tendencias, comprimidos y divididos en bloques seguros.
 - La foto ejecutiva se pinta primero y las tendencias se solicitan en segundo plano.
 - El snapshot mas reciente se localiza leyendo solo el final de `DASHBOARD_COMPETITION`, no sus 32k fechas.
-- Las filas Android, iOS y Huawei abren fichas web oficiales con geografia explicita en otra pestaña; nunca usan esquemas de tiendas nativas.
+- Las filas Android, iOS y Huawei, tanto en geografia como en competencia, abren fichas web oficiales con geografia explicita en otra pestaña; los enlaces se resuelven desde `APP_CATALOG` y nunca usan esquemas de tiendas nativas.
 - El selector historico y su API se eliminaron: la aplicacion siempre representa la revision materializada mas reciente.
 
 ## Despliegue
@@ -32,15 +32,9 @@ El backend evita enviar las 32k observaciones completas:
 7. En cambios posteriores, use **Gestionar implementaciones > Editar > Nueva version**. Un `clasp push` no actualiza por si solo una version ya desplegada.
 8. Tras el primer despliegue, ejecute una vez `warmMarketsDashboardCache()` para materializar la revision existente. Desde ese momento, cada RUN diario sustituye automaticamente ambas capas justo despues de actualizar los datasets.
 
-## Comprobaciones rapidas
+## Comprobacion rapida
 
-Sobre la URL `/exec` del despliegue:
-
-- Dashboard: `/exec`
-- Bootstrap JSON: `/exec?api=bootstrap`
-- Tendencias: `/exec?api=trends&country=MX&platform=Android&segment=BANK&months=18`
-
-Las rutas JSON heredan el mismo control de acceso. Si el despliegue se configura como publico, tambien lo seran esas respuestas.
+Abra la URL `/exec` del despliegue y confirme que la cabecera muestra la revision actual, las tarjetas aparecen sin espera adicional y los filtros actualizan las tendencias.
 
 ## Comportamiento esperado
 

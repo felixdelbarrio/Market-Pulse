@@ -1,6 +1,6 @@
-/** Web app y API de lectura para el dashboard de ratings. */
+/** Web app de lectura para el dashboard de ratings. */
 var MARKETS_WEB = Object.freeze({
-  version: '2026.07.17.5',
+  version: '2026.07.17.7',
   cacheSeconds: 21600,
   maxCacheCharacters: 95000,
   defaultTrendMonths: 18,
@@ -11,47 +11,11 @@ var MARKETS_WEB = Object.freeze({
   countryCodes: Object.freeze(['AR', 'CO', 'ES', 'MX', 'PE', 'TR', 'UY', 'VE'])
 });
 
-/**
- * Publica el dashboard HTML o una respuesta JSON bajo el mismo control de acceso
- * del despliegue de Apps Script.
- *
- * Rutas JSON:
- *   ?api=bootstrap
- *   ?api=trends&country=MX&platform=Android&segment=BANK&months=18
- */
-function doGet(event) {
-  const parameters = event && event.parameter || {};
-  if (parameters.api) return serveMarketsApi_(parameters);
+/** Publica el dashboard bajo el control de acceso del despliegue de Apps Script. */
+function doGet() {
   return HtmlService.createHtmlOutputFromFile('Index')
     .setTitle('Markets Ratings Intelligence')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover');
-}
-
-function serveMarketsApi_(parameters) {
-  try {
-    let data;
-    const resource = trimString_(parameters.api).toLowerCase();
-    if (resource === 'bootstrap') data = getMarketsDashboardBootstrap();
-    else if (resource === 'trends') {
-      data = getMarketsDashboardTrends({
-        countryCode: parameters.country,
-        platform: parameters.platform,
-        segment: parameters.segment,
-        months: parameters.months,
-        bbvaOnly: parameters.bbvaOnly
-      });
-    } else {
-      throw new Error('Recurso API no soportado: ' + resource);
-    }
-    return marketsJsonResponse_({ ok: true, data: data });
-  } catch (error) {
-    return marketsJsonResponse_({ ok: false, error: errorToString_(error) });
-  }
-}
-
-function marketsJsonResponse_(payload) {
-  return ContentService.createTextOutput(JSON.stringify(payload))
-    .setMimeType(ContentService.MimeType.JSON);
 }
 
 /** RPC inicial consumido por Index.html. */
@@ -64,23 +28,24 @@ function getMarketsDashboardBootstrap() {
     let allTrends = readMarketsPersistentCache_('trends');
     if (!allTrends) allTrends = buildAllDashboardTrendsForWeb_(ss, MARKETS_WEB.maxTrendMonths);
     const bootstrap = buildMarketsDashboardBootstrap_(ss, allTrends);
-    writeMarketsPersistentCache_('bootstrap', bootstrap, bootstrap.meta.latestRun && bootstrap.meta.latestRun.runId);
-    writeMarketsPersistentCache_('trends', allTrends, bootstrap.meta.latestRun && bootstrap.meta.latestRun.runId);
+    writeMarketsPersistentCache_('bootstrap', bootstrap, bootstrap.meta.dataDate);
+    writeMarketsPersistentCache_('trends', allTrends, bootstrap.meta.dataDate);
     return bootstrap;
   });
 }
 
 /** Incluye la tendencia inicial para evitar una segunda RPC durante el arranque. */
-function buildMarketsDashboardBootstrap_(ss, allTrends) {
+function buildMarketsDashboardBootstrap_(ss, allTrends, catalog) {
   const latestDate = readLatestCompetitionDateForWeb_(ss);
   if (!latestDate) throw new Error('DASHBOARD_COMPETITION no contiene fechas publicables.');
-  const snapshot = readCompetitionSnapshotForWeb_(ss, latestDate);
+  const apps = catalog || readAppCatalog_(ss);
+  const snapshot = readCompetitionSnapshotForWeb_(ss, latestDate, buildStoreUrlsByAppKeyForWeb_(apps));
   return {
     meta: buildMarketsWebMeta_(ss, snapshot, latestDate),
     snapshot: snapshot,
     trends: filterDashboardTrendsForWeb_(allTrends || [],
       normalizeDashboardTrendRequest_(defaultMarketsTrendRequest_())),
-    consolidated: readConsolidatedSnapshotForWeb_(ss, latestDate)
+    consolidated: buildConsolidatedSnapshotForWeb_(snapshot, apps)
   };
 }
 
@@ -93,8 +58,7 @@ function getMarketsDashboardTrends(request) {
     if (!allTrends) {
       const ss = openMarketsSpreadsheet_();
       allTrends = buildAllDashboardTrendsForWeb_(ss, MARKETS_WEB.maxTrendMonths);
-      const run = readLatestRunForWeb_(ss);
-      writeMarketsPersistentCache_('trends', allTrends, run && run.runId);
+      writeMarketsPersistentCache_('trends', allTrends, readLatestCompetitionDateForWeb_(ss));
     }
     return filterDashboardTrendsForWeb_(allTrends, normalized);
   });
@@ -122,23 +86,32 @@ function normalizeDashboardTrendRequest_(request) {
 }
 
 function readLatestCompetitionDateForWeb_(ss) {
-  let sheet = ss.getSheetByName(MARKETS_CONFIG.sheets.scorecards);
-  if (!sheet || sheet.getLastRow() <= 1) sheet = ss.getSheetByName(MARKETS_CONFIG.sheets.competition);
+  const sheet = ss.getSheetByName(MARKETS_CONFIG.sheets.competition);
   return !sheet || sheet.getLastRow() <= 1 ? '' : webDateKey_(sheet.getRange(sheet.getLastRow(), 1).getValue());
 }
 
-function readCompetitionSnapshotForWeb_(ss, dateKey) {
+function readCompetitionSnapshotForWeb_(ss, dateKey, storeUrlsByAppKey) {
   const sheet = ss.getSheetByName(MARKETS_CONFIG.sheets.competition);
   if (!sheet || sheet.getLastRow() <= 1) return [];
   const bounds = findLatestCompetitionBoundsForWeb_(sheet, dateKey);
   if (!bounds) return [];
-  const width = MARKETS_CONFIG.headers.competition.length;
+  const width = sheet.getLastColumn();
   const headers = sheet.getRange(1, 1, 1, width).getValues()[0];
   const indexes = indexHeaders_(headers);
   const rows = sheet.getRange(bounds.firstRow, 1, bounds.lastRow - bounds.firstRow + 1, width).getValues();
   return rows.filter(function (row) {
     return trimString_(row[indexes.app_key]) && webDateKey_(row[indexes.observed_date]) === dateKey;
-  }).map(function (row) { return mapCompetitionRowForWeb_(row, indexes); });
+  }).map(function (row) {
+    const appKey = trimString_(row[indexes.app_key]);
+    return mapCompetitionRowForWeb_(row, indexes, (storeUrlsByAppKey || {})[appKey]);
+  });
+}
+
+function buildStoreUrlsByAppKeyForWeb_(catalog) {
+  return (catalog || []).reduce(function (out, app) {
+    out[app.appKey] = sanitizeStoreWebUrl_(buildStoreWebUrl_(app), app.platform);
+    return out;
+  }, {});
 }
 
 /** La fecha mas reciente se resuelve con una sola lectura del final de la tabla. */
@@ -181,34 +154,25 @@ function binarySearchCompetitionDateBoundsForWeb_(sheet, dateKey, lastRow) {
   return { firstRow: firstRow, lastRow: low - 1 };
 }
 
-function mapCompetitionRowForWeb_(row, indexes) {
+function mapCompetitionRowForWeb_(row, indexes, catalogStoreUrl) {
+  const materializedStoreUrl = indexes.store_web_url === undefined ? '' : row[indexes.store_web_url];
+  const platform = trimString_(row[indexes.platform]);
   return {
-    date: webDateKey_(row[indexes.observed_date]),
-    platform: trimString_(row[indexes.platform]),
+    platform: platform,
     countryCode: trimString_(row[indexes.country_code]),
     country: trimString_(row[indexes.country]),
     segment: trimString_(row[indexes.market_segment]) || 'BANK',
-    section: trimString_(row[indexes.dashboard_section]),
-    scope: trimString_(row[indexes.product_scope]),
     appKey: trimString_(row[indexes.app_key]),
     appName: trimString_(row[indexes.app_name]),
     isBbva: parseBoolean_(row[indexes.is_bbva], false),
     displayOrder: webNumber_(row[indexes.display_order]),
     rating: webNumber_(row[indexes.rating]),
     ratingCount: webNumber_(row[indexes.rating_count]),
-    ranking: webNumber_(row[indexes.ranking]),
-    expectedApps: webNumber_(row[indexes.ranking_expected_apps]),
-    observedApps: webNumber_(row[indexes.ranking_observed_apps]),
-    rankingCoverage: webNumber_(row[indexes.ranking_coverage]),
     rankingComplete: parseBoolean_(row[indexes.ranking_is_complete], false),
-    previousRating30d: webNumber_(row[indexes.previous_rating_30d]),
     delta30d: webNumber_(row[indexes.delta_30d]),
     fresh: parseBoolean_(row[indexes.is_fresh_this_run], false),
-    fetchStatus: trimString_(row[indexes.fetch_status]),
-    runId: trimString_(row[indexes.run_id]),
-    previousRatingCount30d: webNumber_(row[indexes.previous_rating_count_30d]),
     ratingCountDelta30d: webNumber_(row[indexes.rating_count_delta_30d]),
-    storeUrl: sanitizeStoreWebUrl_(row[indexes.store_web_url], trimString_(row[indexes.platform]))
+    storeUrl: sanitizeStoreWebUrl_(catalogStoreUrl || materializedStoreUrl, platform)
   };
 }
 
@@ -226,7 +190,7 @@ function sanitizeStoreWebUrl_(value, platform) {
 function buildAllDashboardTrendsForWeb_(ss, months) {
   const sheet = ss.getSheetByName(MARKETS_CONFIG.sheets.trends);
   if (!sheet || sheet.getLastRow() <= 1) return [];
-  const width = MARKETS_CONFIG.headers.trends.length;
+  const width = sheet.getLastColumn();
   const headers = sheet.getRange(1, 1, 1, width).getValues()[0];
   const indexes = indexHeaders_(headers);
   const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, width).getValues();
@@ -264,51 +228,38 @@ function mapTrendRowForWeb_(row, indexes) {
     appKey: trimString_(row[indexes.app_key]),
     appName: trimString_(row[indexes.app_name]),
     isBbva: parseBoolean_(row[indexes.is_bbva], false),
-    displayOrder: webNumber_(row[indexes.display_order]),
-    ratingAverage: webNumber_(row[indexes.rating_avg]),
     ratingEom: webNumber_(row[indexes.rating_eom]),
-    ratingMin: webNumber_(row[indexes.rating_min]),
-    ratingMax: webNumber_(row[indexes.rating_max]),
-    observations: webNumber_(row[indexes.observations]),
-    rankingEom: webNumber_(row[indexes.ranking_eom]),
-    delta30dEom: webNumber_(row[indexes.delta_30d_eom]),
-    segment: trimString_(row[indexes.market_segment]) || 'BANK',
-    rankingComplete: parseBoolean_(row[indexes.ranking_is_complete_eom], false),
-    ratingCount: webNumber_(row[indexes.rating_count_eom]),
-    ratingCountDelta30d: webNumber_(row[indexes.rating_count_delta_30d_eom])
+    segment: trimString_(row[indexes.market_segment]) || 'BANK'
   };
 }
 
-function readConsolidatedSnapshotForWeb_(ss, dateKey) {
-  const sheet = ss.getSheetByName(MARKETS_CONFIG.sheets.scorecards);
-  if (!sheet || sheet.getLastRow() <= 1 || sheet.getLastColumn() < 6) return { group: null, countries: {} };
-  const dates = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues().map(function (row) {
-    return webDateKey_(row[0]);
+function buildConsolidatedSnapshotForWeb_(snapshot, catalog) {
+  const bbva = (catalog || []).filter(function (app) {
+    return app.isBbva && (app.marketSegment || 'BANK') === 'BANK';
   });
-  const rowIndex = dates.indexOf(dateKey);
-  if (rowIndex < 0) return { group: null, countries: {} };
-  const width = sheet.getLastColumn();
-  const headers = sheet.getRange(1, 1, 1, width).getValues()[0];
-  const row = sheet.getRange(rowIndex + 2, 1, 1, width).getValues()[0];
-  const byHeader = headers.reduce(function (out, header, index) { out[trimString_(header)] = row[index]; return out; }, {});
+  const itemsByAppKey = (snapshot || []).reduce(function (out, item) {
+    if (item.isBbva && item.segment === 'BANK') out[item.appKey] = item;
+    return out;
+  }, {});
+  const groupRating = weightedMetric_(bbva, itemsByAppKey, 'rating', 'groupUserWeight');
+  const groupDelta = weightedMetric_(bbva, itemsByAppKey, 'delta30d', 'groupUserWeight');
   const countries = {};
-  Object.keys(byHeader).forEach(function (header) {
-    const match = header.match(/^BBVA_([A-Z]{2})_CONSOLIDATED_RATING$/);
-    if (!match) return;
-    const prefix = 'BBVA_' + match[1];
-    countries[match[1]] = {
-      rating: webNumber_(byHeader[prefix + '_CONSOLIDATED_RATING']),
-      delta30d: webNumber_(byHeader[prefix + '_CONSOLIDATED_DELTA_30D']),
-      coverage: webNumber_(byHeader[prefix + '_WEIGHT_COVERAGE'])
+  uniqueStrings_(bbva.map(function (app) { return app.countryCode; })).forEach(function (countryCode) {
+    const configs = bbva.filter(function (app) { return app.countryCode === countryCode; });
+    const rating = weightedMetric_(configs, itemsByAppKey, 'rating', 'countryPlatformWeight');
+    const delta = weightedMetric_(configs, itemsByAppKey, 'delta30d', 'countryPlatformWeight');
+    countries[countryCode] = {
+      rating: webNumber_(rating.value),
+      delta30d: webNumber_(delta.value),
+      coverage: webNumber_(rating.coverage)
     };
   });
-  const groupRating = webNumber_(byHeader.BBVA_GROUP_RATING);
-  const groupDelta = webNumber_(byHeader.BBVA_GROUP_DELTA_30D);
-  const groupCoverage = webNumber_(byHeader.BBVA_GROUP_WEIGHT_COVERAGE);
+  const rating = webNumber_(groupRating.value);
+  const delta = webNumber_(groupDelta.value);
+  const coverage = webNumber_(groupRating.coverage);
   return {
-    group: groupRating === null && groupDelta === null && groupCoverage === null ? null : {
-      rating: groupRating, delta30d: groupDelta, coverage: groupCoverage
-    },
+    group: rating === null && delta === null && coverage === null ? null :
+      { rating: rating, delta30d: delta, coverage: coverage },
     countries: countries
   };
 }
@@ -324,13 +275,8 @@ function buildMarketsWebMeta_(ss, snapshot, latestDate) {
   return {
     codeVersion: MARKETS_CONFIG.codeVersion,
     webVersion: MARKETS_WEB.version,
-    generatedAt: Utilities.formatDate(new Date(), MARKETS_CONFIG.timeZone, "yyyy-MM-dd'T'HH:mm:ssXXX"),
     dataDate: latestDate,
     countries: countries,
-    platforms: ['Android', 'iOS', 'Huawei'].filter(function (platform) {
-      return (snapshot || []).some(function (row) { return row.platform === platform; });
-    }),
-    segments: uniqueStrings_((snapshot || []).map(function (row) { return row.segment; })),
     logos: readMarketsPersistentCache_('logos') || {},
     latestRun: readLatestRunForWeb_(ss)
   };
@@ -358,19 +304,14 @@ function readLatestRunForWeb_(ss) {
   const headers = sheet.getRange(1, 1, 1, width).getValues()[0];
   const indexes = indexHeaders_(headers);
   const row = sheet.getRange(sheet.getLastRow(), 1, 1, width).getValues()[0];
-  const latestRun = {
+  const runId = trimString_(row[indexes.run_id]);
+  return {
     startedAt: webDateTime_(row[indexes.started_at]),
-    runId: trimString_(row[indexes.run_id]),
     status: trimString_(row[indexes.status]),
     appsTotal: webNumber_(row[indexes.apps_total]),
     appsOk: webNumber_(row[indexes.apps_ok]),
-    appsNoRating: webNumber_(row[indexes.apps_no_rating]),
-    appsError: webNumber_(row[indexes.apps_error]),
-    freshApps: webNumber_(row[indexes.fresh_apps]),
-    weightStatus: trimString_(row[indexes.weight_config_status])
+    incidents: readRunIncidentsForWeb_(ss, runId, webNumber_(row[indexes.apps_total]))
   };
-  latestRun.incidents = readRunIncidentsForWeb_(ss, latestRun.runId, latestRun.appsTotal);
-  return latestRun;
 }
 
 function readRunIncidentsForWeb_(ss, runId, appsTotal) {
@@ -387,7 +328,6 @@ function readRunIncidentsForWeb_(ss, runId, appsTotal) {
       appKey: trimString_(item[indexes.app_key]),
       countryCode: trimString_(item[indexes.country_code]),
       platform: trimString_(item[indexes.platform]),
-      segment: trimString_(item[indexes.market_segment]),
       status: trimString_(item[indexes.status]),
       detail: trimString_(item[indexes.detail])
     };
@@ -510,13 +450,12 @@ function deleteMarketsPersistentCache_(name) {
  * Invalida y precalienta las dos respuestas del primer render. Se invoca al
  * terminar el RUN diario y tambien puede ejecutarse manualmente tras desplegar.
  */
-function refreshMarketsDashboardCache_(ss) {
-  const latestDate = readLatestCompetitionDateForWeb_(ss);
+function refreshMarketsDashboardCache_(ss, catalog) {
   const cache = CacheService.getScriptCache();
   try { cache.remove(marketsBootstrapCacheKey_()); } catch (ignored) {}
   const allTrends = buildAllDashboardTrendsForWeb_(ss, MARKETS_WEB.maxTrendMonths);
-  const bootstrap = buildMarketsDashboardBootstrap_(ss, allTrends);
-  const revision = bootstrap.meta.latestRun && bootstrap.meta.latestRun.runId;
+  const bootstrap = buildMarketsDashboardBootstrap_(ss, allTrends, catalog);
+  const revision = bootstrap.meta.dataDate;
   writeMarketsPersistentCache_('bootstrap', bootstrap, revision);
   writeMarketsPersistentCache_('trends', allTrends, revision);
   try { cache.removeAll(marketsInteractiveTrendCacheKeys_(bootstrap.snapshot)); } catch (ignored) {}
@@ -525,7 +464,7 @@ function refreshMarketsDashboardCache_(ss) {
     normalizeDashboardTrendRequest_(defaultMarketsTrendRequest_()));
   writeMarketsWebCache_(cache, marketsTrendCacheKey_(defaultMarketsTrendRequest_()), trends);
   return {
-    date: latestDate,
+    date: bootstrap.meta.dataDate,
     snapshotRows: bootstrap.snapshot.length,
     trendRows: trends.length,
     persistedTrendRows: allTrends.length,

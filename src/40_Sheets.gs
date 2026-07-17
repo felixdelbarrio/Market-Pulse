@@ -2,9 +2,8 @@ function openMarketsSpreadsheet_() {
   return SpreadsheetApp.openById(MARKETS_CONFIG.spreadsheetId);
 }
 
-function ensureWorkbookSchema_(ss) {
-  removeUnsupportedReviewSheet_(ss);
-  const definitions = [
+function workbookDefinitions_() {
+  return [
     [MARKETS_CONFIG.sheets.control, MARKETS_CONFIG.headers.control],
     [MARKETS_CONFIG.sheets.catalog, MARKETS_CONFIG.headers.catalog],
     [MARKETS_CONFIG.sheets.ratings, MARKETS_CONFIG.headers.ratings],
@@ -14,24 +13,30 @@ function ensureWorkbookSchema_(ss) {
     [MARKETS_CONFIG.sheets.alerts, MARKETS_CONFIG.headers.alerts],
     [MARKETS_CONFIG.sheets.runs, MARKETS_CONFIG.headers.runs]
   ];
-  definitions.forEach(function (definition) {
-    const sheet = getOrCreateSheet_(ss, definition[0]);
-    ensureAppendOnlyHeader_(sheet, definition[1]);
-    applyTableStyle_(sheet, definition[1].length);
-  });
-  getOrCreateSheet_(ss, MARKETS_CONFIG.sheets.scorecards);
-  seedControl_(ss.getSheetByName(MARKETS_CONFIG.sheets.control));
-  const catalogSheet = ss.getSheetByName(MARKETS_CONFIG.sheets.catalog);
-  purgeObsoleteCatalogRows_(catalogSheet);
-  seedCatalogDefaults_(catalogSheet);
-  applyManagedCatalogOverrides_(catalogSheet);
-  enrichCatalogDefaults_(catalogSheet);
 }
 
-/** No se publican comentarios sin API autorizada y geografia demostrable. */
-function removeUnsupportedReviewSheet_(ss) {
-  const sheet = ss.getSheetByName('REVIEWS');
-  if (sheet) ss.deleteSheet(sheet);
+function ensureWorkbookSchema_(ss) {
+  workbookDefinitions_().forEach(function (definition) {
+    const sheet = getOrCreateSheet_(ss, definition[0]);
+    if ([MARKETS_CONFIG.sheets.competition, MARKETS_CONFIG.sheets.trends].indexOf(definition[0]) < 0) {
+      ensureAppendOnlyHeader_(sheet, definition[1]);
+    }
+  });
+}
+
+function initializeWorkbook_(ss) {
+  ensureWorkbookSchema_(ss);
+  ['DASHBOARD_KPIS', 'REVIEWS'].forEach(function (name) {
+    const obsolete = ss.getSheetByName(name);
+    if (obsolete) ss.deleteSheet(obsolete);
+  });
+  seedControl_(ss.getSheetByName(MARKETS_CONFIG.sheets.control));
+  seedCatalogDefaults_(ss.getSheetByName(MARKETS_CONFIG.sheets.catalog));
+  workbookDefinitions_().forEach(function (definition) {
+    if ([MARKETS_CONFIG.sheets.competition, MARKETS_CONFIG.sheets.trends].indexOf(definition[0]) < 0) {
+      applyTableStyle_(ss.getSheetByName(definition[0]), definition[1].length);
+    }
+  });
 }
 
 function getOrCreateSheet_(ss, name) {
@@ -66,7 +71,14 @@ function ensureAppendOnlyHeader_(sheet, expected) {
 }
 
 function seedControl_(sheet) {
-  const existingRows = sheet.getLastRow() > 1
+  let existingRows = sheet.getLastRow() > 1
+    ? sheet.getRange(2, 1, sheet.getLastRow() - 1, 3).getValues() : [];
+  const obsoleteKeys = ['RUN_HOUR', 'RUN_MINUTE', 'TARGET_SPREADSHEET_ID',
+    'REQUIRE_COMPLETE_RANKING', 'REQUIRE_WEIGHT_SOURCE'];
+  for (let index = existingRows.length - 1; index >= 0; index -= 1) {
+    if (obsoleteKeys.indexOf(trimString_(existingRows[index][0])) >= 0) sheet.deleteRow(index + 2);
+  }
+  existingRows = sheet.getLastRow() > 1
     ? sheet.getRange(2, 1, sheet.getLastRow() - 1, 3).getValues() : [];
   const rowByKey = existingRows.reduce(function (out, row, index) {
     const key = trimString_(row[0]);
@@ -106,85 +118,6 @@ function seedCatalogDefaults_(sheet) {
   refreshFilter_(sheet, MARKETS_CONFIG.headers.catalog.length);
 }
 
-/** Elimina geografias fuera de alcance y digitales sin evidencia commercial. */
-function purgeObsoleteCatalogRows_(sheet) {
-  if (sheet.getLastRow() <= 1) return;
-  const width = MARKETS_CONFIG.headers.catalog.length;
-  const indexes = indexHeaders_(MARKETS_CONFIG.headers.catalog);
-  const allowedDigital = MARKETS_CATALOG_SEEDS.reduce(function (out, row) {
-    if (row[indexes.market_segment] !== 'BANK') out[row[indexes.app_key]] = true;
-    return out;
-  }, {});
-  const knownRetailKeys = {
-    'ANDROID|MX|NU': true, 'IOS|MX|NU': true, 'ANDROID|MX|KLAR': true, 'IOS|MX|KLAR': true,
-    'ANDROID|MX|STORI': true, 'IOS|MX|STORI': true,
-    'ANDROID|AR|UALA': true, 'IOS|AR|UALA': true, 'ANDROID|AR|NARANJA_X': true,
-    'IOS|AR|NARANJA_X': true, 'ANDROID|AR|BRUBANK': true, 'IOS|AR|BRUBANK': true,
-    'ANDROID|ES|REVOLUT': true, 'IOS|ES|REVOLUT': true, 'ANDROID|ES|N26': true,
-    'IOS|ES|N26': true, 'ANDROID|ES|IMAGIN': true, 'IOS|ES|IMAGIN': true,
-    'ANDROID|ES|OPENBANK': true, 'IOS|ES|OPENBANK': true,
-    'ANDROID|CO|NEQUI': true, 'IOS|CO|NEQUI': true, 'ANDROID|CO|DAVIPLATA': true,
-    'IOS|CO|DAVIPLATA': true, 'ANDROID|CO|LULO': true, 'IOS|CO|LULO': true,
-    'ANDROID|CO|NU': true, 'IOS|CO|NU': true
-  };
-  const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, width).getValues();
-  for (let index = rows.length - 1; index >= 0; index -= 1) {
-    const row = rows[index];
-    const appKey = trimString_(row[indexes.app_key]);
-    const countryCode = trimString_(row[indexes.country_code]);
-    const segment = trimString_(row[indexes.market_segment]);
-    const remove = countryCode === 'IT' || countryCode === 'DE' || knownRetailKeys[appKey] ||
-      ((segment === 'FINTECH' || segment === 'NEOBANK') && !allowedDigital[appKey]);
-    if (remove) sheet.deleteRow(index + 2);
-  }
-}
-
-/** Las filas digitales son gestionadas: producto, IDs y evidencias se sincronizan. */
-function applyManagedCatalogOverrides_(sheet) {
-  if (sheet.getLastRow() <= 1) return;
-  const width = MARKETS_CONFIG.headers.catalog.length;
-  const indexes = indexHeaders_(MARKETS_CONFIG.headers.catalog);
-  const managed = MARKETS_CATALOG_SEEDS.reduce(function (out, row) {
-    if (row[indexes.market_segment] !== 'BANK') out[row[indexes.app_key]] = row;
-    return out;
-  }, {});
-  const range = sheet.getRange(2, 1, sheet.getLastRow() - 1, width);
-  const rows = range.getValues();
-  rows.forEach(function (row, index) {
-    const seed = managed[trimString_(row[indexes.app_key])];
-    if (seed) rows[index] = seed.slice();
-  });
-  range.setValues(rows);
-}
-
-/** Completa el contrato nuevo sin pisar decisiones de negocio ya informadas. */
-function enrichCatalogDefaults_(sheet) {
-  if (sheet.getLastRow() <= 1) return;
-  const headers = MARKETS_CONFIG.headers.catalog;
-  const indexes = indexHeaders_(headers);
-  const range = sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length);
-  const rows = range.getValues();
-  const counters = {};
-  rows.forEach(function (row) {
-    const appKey = trimString_(row[indexes.app_key]);
-    if (!appKey) return;
-    const segment = trimString_(row[indexes.market_segment]) || 'BANK';
-    const groupKey = [row[indexes.platform], row[indexes.country_code], segment].join('|');
-    const order = toNonNegativeInteger_(row[indexes.display_order]);
-    row[indexes.market_segment] = segment;
-    row[indexes.dashboard_section] = trimString_(row[indexes.dashboard_section]) ||
-      (segment === 'NEOBANK' ? 'COUNTRY_NEOBANKS' : segment === 'FINTECH' ? 'COUNTRY_FINTECHS' : 'COUNTRY_BANKS');
-    row[indexes.competitor_set_version] = trimString_(row[indexes.competitor_set_version]) || '2026Q3';
-    row[indexes.product_scope] = trimString_(row[indexes.product_scope]) || 'BUSINESS';
-    row[indexes.commercial_eligible] = segment === 'BANK'
-      ? true : parseBoolean_(row[indexes.commercial_eligible], false);
-    row[indexes.display_order] = order === null ? (counters[groupKey] || 0) : order;
-    counters[groupKey] = Math.max(counters[groupKey] || 0, Number(row[indexes.display_order]) + 1);
-    if (appKey === 'ANDROID|MX|BANBAJIO') row[indexes.enabled] = false;
-  });
-  range.setValues(rows);
-}
-
 function applyTableStyle_(sheet, width) {
   sheet.setFrozenRows(1);
   sheet.getRange(1, 1, 1, width)
@@ -207,19 +140,13 @@ function applyTableStyle_(sheet, width) {
     sheet.getRange('T:T').setNumberFormat('yyyy-mm-dd hh:mm:ss');
   } else if (sheet.getName() === MARKETS_CONFIG.sheets.trends) {
     sheet.getRange('A:A').setNumberFormat('yyyy-mm-dd');
-    sheet.getRange('J:M').setNumberFormat('0.00');
-    sheet.getRange('N:N').setNumberFormat('#,##0');
-    sheet.getRange('O:P').setNumberFormat('0.00');
-    sheet.getRange('X:Y').setNumberFormat('#,##0');
+    sheet.getRange('H:H').setNumberFormat('0.00');
   } else if (sheet.getName() === MARKETS_CONFIG.sheets.competition) {
     sheet.getRange('A:A').setNumberFormat('yyyy-mm-dd');
-    sheet.getRange('B:B').setNumberFormat('yyyy-mm');
-    sheet.getRange('N:N').setNumberFormat('0.00');
-    sheet.getRange('O:R').setNumberFormat('#,##0');
-    sheet.getRange('S:S').setNumberFormat('0.00');
-    sheet.getRange('U:V').setNumberFormat('0.00');
-    sheet.getRange('X:X').setNumberFormat('yyyy-mm-dd hh:mm:ss');
-    sheet.getRange('AF:AG').setNumberFormat('#,##0');
+    sheet.getRange('J:J').setNumberFormat('0.00');
+    sheet.getRange('K:K').setNumberFormat('#,##0');
+    sheet.getRange('M:M').setNumberFormat('0.00');
+    sheet.getRange('O:O').setNumberFormat('#,##0');
   } else if (sheet.getName() === MARKETS_CONFIG.sheets.fetchLog) {
     sheet.getRange('B:B').setNumberFormat('yyyy-mm-dd');
     sheet.getRange('C:C').setNumberFormat('yyyy-mm-dd hh:mm:ss');
@@ -275,14 +202,10 @@ function readAppCatalog_(ss) {
       recipients: trimString_(row[indexes.alert_recipients]),
       warningDrop: Math.abs(toFiniteNumber_(row[indexes.warning_drop]) || 0.30),
       criticalDrop: Math.abs(toFiniteNumber_(row[indexes.critical_drop]) || 0.50),
-      minObservations7d: toNonNegativeInteger_(row[indexes.min_observations_7d]) || 5,
-      competitorAlerts: parseBoolean_(row[indexes.competitor_alerts], true),
       countryPlatformWeight: nonNegativeNumberOrZero_(row[indexes.country_platform_weight]),
       groupUserWeight: nonNegativeNumberOrZero_(row[indexes.group_user_weight]),
       displayOrder: toNonNegativeInteger_(row[indexes.display_order]),
       marketSegment: trimString_(row[indexes.market_segment]) || 'BANK',
-      dashboardSection: trimString_(row[indexes.dashboard_section]) || 'COUNTRY_BANKS',
-      competitorSetVersion: trimString_(row[indexes.competitor_set_version]),
       productScope: trimString_(row[indexes.product_scope]) || 'BUSINESS',
       weightSource: trimString_(row[indexes.weight_source]),
       weightEffectiveDate: row[indexes.weight_effective_date],

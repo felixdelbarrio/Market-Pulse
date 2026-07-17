@@ -163,9 +163,12 @@
     .platform-head { display:flex; align-items:center; justify-content:space-between; padding:11px 14px; color:var(--navy); background:#f4f7f8; font-size:12px; font-weight:800; }
     .platform-head span { color:var(--muted); font-size:10px; font-weight:600; }
     .rank-list { margin:0; padding:5px 0; list-style:none; }
-    .rank-row { display:grid; grid-template-columns:28px 32px minmax(0,1fr) auto; align-items:center; gap:8px; min-height:42px; padding:5px 12px; border-top:1px solid #edf1f3; }
-    .rank-row:first-child { border-top:0; }
+    .rank-item { border-top:1px solid #edf1f3; }
+    .rank-item:first-child { border-top:0; }
+    .rank-row { display:grid; grid-template-columns:28px 32px minmax(0,1fr) auto 20px; align-items:center; gap:8px; min-height:42px; padding:5px 12px; color:inherit; text-decoration:none; transition:background .18s ease,box-shadow .18s ease; }
     .rank-row.bbva { background:#e6f7f7; }
+    .rank-row.market-link:hover { position:relative; z-index:1; background:#edf7fd; box-shadow:inset 3px 0 var(--aqua); }
+    .rank-row.market-link:focus-visible { position:relative; z-index:1; outline:3px solid rgba(20,100,165,.28); outline-offset:-3px; background:#edf7fd; }
     .rank-number { display:grid; place-items:center; width:25px; height:23px; color:var(--blue); background:var(--sky); font-size:10px; font-weight:800; }
     .app-logo { position:relative; display:grid; place-items:center; width:30px; height:30px; overflow:hidden; border:1px solid #dbe5e9; background:#fff; }
     .app-logo img { width:100%; height:100%; object-fit:cover; }
@@ -178,6 +181,8 @@
     .rank-metric { text-align:right; }
     .rank-metric strong { display:block; color:var(--navy); font-size:12px; }
     .rank-metric span { font-size:10px; }
+    .rank-open { display:grid; place-items:center; width:19px; height:19px; border-radius:50%; color:#fff; background:var(--blue); font-size:10px; transition:transform .18s ease; }
+    .rank-row:hover .rank-open { transform:translate(2px,-2px); }
 
     .evolution-layout { display:grid; grid-template-columns:minmax(0,1fr) 300px; gap:16px; }
     .series-panel { align-self:start; }
@@ -361,20 +366,12 @@
       document.addEventListener("DOMContentLoaded",()=>{bindNavigation();bindFilters();bindInteractions();loadBootstrap();});
 
       function callServer(method,argument){
-        if(window.__MARKETS_PREVIEW_DATA__){
-          if(method==="bootstrap")return Promise.resolve(window.__MARKETS_PREVIEW_DATA__);
-          return Promise.resolve(filterPreviewTrends(window.__MARKETS_PREVIEW_DATA__.trends||[],argument));
-        }
         return new Promise((resolve,reject)=>{
           if(!window.google?.script?.run)return reject(new Error("El dashboard debe abrirse desde el despliegue de Apps Script."));
           const runner=google.script.run.withSuccessHandler(resolve).withFailureHandler(error=>reject(new Error(error?.message||error)));
           if(method==="bootstrap")runner.getMarketsDashboardBootstrap();
           else runner.getMarketsDashboardTrends(argument);
         });
-      }
-
-      function filterPreviewTrends(rows,request){
-        return rows.filter(row=>(!request.countryCode||row.countryCode===request.countryCode)&&(!request.platform||row.platform===request.platform)&&matchesSegment(row,request.segment)&&(!request.bbvaOnly||row.isBbva));
       }
 
       async function loadBootstrap(){
@@ -522,8 +519,14 @@
         const linked=Boolean(item.storeUrl);
         const tag=linked?"a":"div";
         const store=STORE_LABELS[platform]||"market";
-        const attrs=linked?` href="${esc(item.storeUrl)}" target="_blank" rel="noopener noreferrer" title="Abrir ficha web de ${esc(store)} para ${esc(countryLabel(code))} en una pestaña nueva" aria-label="Abrir ${esc(store)} web: ${esc(appName(item))}, ${esc(countryLabel(code))}, rating ${fmt(item.rating,2)}"`:"";
+        const attrs=linked?marketLinkAttributes(item,code):"";
         return`<${tag} class="platform-row${linked?" market-link":""}"${attrs}><span class="platform-name">${esc(platform)}</span><div class="rating-track"><div class="rating-fill" style="width:${item.rating/5*100}%"></div></div><span class="rating-number">${fmt(item.rating,2)}<em class="${item.delta30d>0?"delta-up":item.delta30d<0?"delta-down":""}">${signed(item.delta30d)}</em></span><span class="rating-count">${integer(item.ratingCount)} valoraciones${finite(item.ratingCountDelta30d)?` · ${item.ratingCountDelta30d>=0?"+":""}${integer(item.ratingCountDelta30d)} en 30d`:""}</span>${linked?`<span class="market-action"><span>${esc(store)}</span><b aria-hidden="true">↗</b></span>`:""}</${tag}>`;
+      }
+
+      function marketLinkAttributes(item,code){
+        const store=STORE_LABELS[item.platform]||"market";
+        const country=countryLabel(code||item.countryCode);
+        return` href="${esc(item.storeUrl)}" target="_blank" rel="noopener noreferrer" title="Abrir ficha web de ${esc(store)} para ${esc(country)} en una pestaña nueva" aria-label="Abrir ${esc(store)} web: ${esc(appName(item))}, ${esc(country)}, rating ${fmt(item.rating,2)}"`;
       }
 
       function renderSignals(focus,rows){
@@ -556,7 +559,13 @@
 
       function renderPlatformBoard(platform,rows){
         const ranked=rankRows(rows);
-        return`<section class="platform-board"><header class="platform-head">${platform}<span>${ranked.length} apps</span></header><ol class="rank-list">${ranked.map(row=>`<li class="rank-row ${row.isBbva?"bbva":""}"><span class="rank-number">${row.computedRank}</span>${appLogo(row)}<div class="app-info"><strong>${esc(appName(row))}</strong><span>${row.isBbva?"BBVA Empresas":row.segment==="BANK"?"Banca":"Fintech / Neobanco"}</span></div><div class="rank-metric"><strong>${fmt(row.rating,2)}</strong><span class="${row.delta30d>0?"delta-up":row.delta30d<0?"delta-down":""}">${signed(row.delta30d)}</span></div></li>`).join("")}</ol></section>`;
+        return`<section class="platform-board"><header class="platform-head">${platform}<span>${ranked.length} apps</span></header><ol class="rank-list">${ranked.map(renderRankRow).join("")}</ol></section>`;
+      }
+
+      function renderRankRow(row){
+        const linked=Boolean(row.storeUrl);
+        const tag=linked?"a":"div";
+        return`<li class="rank-item"><${tag} class="rank-row ${row.isBbva?"bbva":""}${linked?" market-link":""}"${linked?marketLinkAttributes(row,row.countryCode):""}><span class="rank-number">${row.computedRank}</span>${appLogo(row)}<div class="app-info"><strong>${esc(appName(row))}</strong><span>${row.isBbva?"BBVA Empresas":row.segment==="BANK"?"Banca":"Fintech / Neobanco"}</span></div><div class="rank-metric"><strong>${fmt(row.rating,2)}</strong><span class="${row.delta30d>0?"delta-up":row.delta30d<0?"delta-down":""}">${signed(row.delta30d)}</span></div>${linked?`<span class="rank-open" aria-hidden="true">↗</span>`:""}</${tag}></li>`;
       }
 
       function rankRows(rows){

@@ -4,7 +4,7 @@ import test from "node:test";
 import vm from "node:vm";
 import { gzipSync, gunzipSync } from "node:zlib";
 
-const sources = ["../src/99_Core.gs", "../src/60_WebApp.gs"]
+const sources = ["../src/99_Core.gs", "../src/35_Dashboard.gs", "../src/60_WebApp.gs"]
   .map(file => fs.readFileSync(new URL(file, import.meta.url), "utf8"))
   .join("\n");
 const Utilities = {
@@ -37,13 +37,12 @@ test("bootstrap carries the initial chart without a second RPC", () => {
   context.readLatestCompetitionDateForWeb_ = () => "2026-07-17";
   context.readCompetitionSnapshotForWeb_ = () => [{ appKey: "ANDROID|ES|BBVA" }];
   context.buildMarketsWebMeta_ = () => ({ dataDate: "2026-07-17" });
-  context.readConsolidatedSnapshotForWeb_ = () => ({ group: null, countries: {} });
   const allTrends = [
     { month: "2026-07", platform: "Android", countryCode: "ES", segment: "BANK", isBbva: true },
     { month: "2026-07", platform: "Android", countryCode: "ES", segment: "BANK", isBbva: false },
     { month: "2026-07", platform: "Android", countryCode: "ES", segment: "FINTECH", isBbva: false }
   ];
-  const bootstrap = context.buildMarketsDashboardBootstrap_({}, allTrends);
+  const bootstrap = context.buildMarketsDashboardBootstrap_({}, allTrends, []);
   assert.equal(bootstrap.trends.length, 1);
   assert.equal(bootstrap.trends[0].isBbva, true);
 });
@@ -143,13 +142,61 @@ test("competition rows map to a serializable dashboard contract", () => {
     "https://play.google.com/store/apps/details?id=com.bbva.empresas&hl=es&gl=MX"
   ];
   const mapped = context.mapCompetitionRowForWeb_(row, indexes);
-  assert.equal(mapped.date, "2026-07-17");
   assert.equal(mapped.rating, 4.21);
   assert.equal(mapped.delta30d, -0.04);
   assert.equal(mapped.rankingComplete, true);
   assert.equal(mapped.fresh, true);
   assert.equal(mapped.ratingCountDelta30d, 70);
   assert.equal(mapped.storeUrl, "https://play.google.com/store/apps/details?id=com.bbva.empresas&hl=es&gl=MX");
+});
+
+test("compact competition and trend rows map to the web contract", () => {
+  const competitionHeaders = ["OBSERVED_DATE", "PLATFORM", "COUNTRY_CODE", "COUNTRY", "MARKET_SEGMENT", "APP_KEY", "APP_NAME", "IS_BBVA", "DISPLAY_ORDER", "RATING", "RATING_COUNT", "RANKING_IS_COMPLETE", "DELTA_30D", "IS_FRESH_THIS_RUN", "RATING_COUNT_DELTA_30D", "STORE_WEB_URL"];
+  const competition = context.mapCompetitionRowForWeb_([
+    new Date("2026-07-17T12:00:00Z"), "iOS", "ES", "España", "BANK", "IOS|ES|BBVA", "BBVA", true, 0, 4.8, 500, true, 0.02, true, 20, "https://apps.apple.com/es/app/id1590189082"
+  ], context.indexHeaders_(competitionHeaders));
+  assert.equal(competition.appKey, "IOS|ES|BBVA");
+  assert.equal(competition.ratingCountDelta30d, 20);
+  assert.equal(competition.storeUrl, "https://apps.apple.com/es/app/id1590189082");
+
+  const trendHeaders = ["PERIOD_MONTH", "PLATFORM", "COUNTRY_CODE", "COUNTRY", "APP_KEY", "APP_NAME", "IS_BBVA", "RATING_EOM", "MARKET_SEGMENT"];
+  const trend = context.mapTrendRowForWeb_([
+    new Date("2026-07-01T12:00:00Z"), "iOS", "ES", "España", "IOS|ES|BBVA", "BBVA", true, 4.8, "BANK"
+  ], context.indexHeaders_(trendHeaders));
+  assert.equal(trend.month, "2026-07");
+  assert.equal(trend.ratingEom, 4.8);
+});
+
+test("catalog URL supplies links when the materialized column is absent", () => {
+  const headers = ["OBSERVED_DATE", "PLATFORM", "APP_KEY"];
+  const indexes = context.indexHeaders_(headers);
+  const row = [new Date("2026-07-17T12:00:00Z"), "iOS", "IOS|MX|BBVA"];
+  const url = "https://apps.apple.com/mx/app/id925436649";
+  assert.equal(context.mapCompetitionRowForWeb_(row, indexes, url).storeUrl, url);
+});
+
+test("catalog builds canonical store links without another spreadsheet read", () => {
+  const apps = [
+    { appKey: "ANDROID|MX|BBVA", platform: "Android", countryCode: "MX", packageName: "com.bbva.empresas", locale: "es" },
+    { appKey: "IOS|MX|BBVA", platform: "iOS", countryCode: "MX", appId: "925436649", locale: "es" }
+  ];
+  const urls = context.buildStoreUrlsByAppKeyForWeb_(apps);
+  assert.equal(urls["ANDROID|MX|BBVA"], "https://play.google.com/store/apps/details?id=com.bbva.empresas&hl=es&gl=MX");
+  assert.equal(urls["IOS|MX|BBVA"], "https://apps.apple.com/mx/app/id925436649");
+});
+
+test("web consolidated metrics are computed directly from the snapshot", () => {
+  const catalog = [
+    { appKey: "ANDROID|VE|BBVA", countryCode: "VE", isBbva: true, marketSegment: "BANK", countryPlatformWeight: 0.6, groupUserWeight: 0.75, weightSource: "users", weightEffectiveDate: new Date() },
+    { appKey: "IOS|VE|BBVA", countryCode: "VE", isBbva: true, marketSegment: "BANK", countryPlatformWeight: 0.4, groupUserWeight: 0.25, weightSource: "users", weightEffectiveDate: new Date() }
+  ];
+  const snapshot = [
+    { appKey: "ANDROID|VE|BBVA", isBbva: true, segment: "BANK", rating: 4, delta30d: 0.2 },
+    { appKey: "IOS|VE|BBVA", isBbva: true, segment: "BANK", rating: 5, delta30d: 0.1 }
+  ];
+  const result = JSON.parse(JSON.stringify(context.buildConsolidatedSnapshotForWeb_(snapshot, catalog)));
+  assert.deepEqual(result.group, { rating: 4.25, delta30d: 0.18, coverage: 1 });
+  assert.deepEqual(result.countries.VE, { rating: 4.4, delta30d: 0.16, coverage: 1 });
 });
 
 test("store URL sanitizer rejects native schemes and foreign domains", () => {
@@ -165,5 +212,7 @@ test("Index inline JavaScript compiles", () => {
   assert.doesNotThrow(() => new Function(match[1]));
   assert.match(html, /target="_blank"/);
   assert.match(html, /rel="noopener noreferrer"/);
+  assert.match(html, /function renderRankRow/);
+  assert.match(html, /class="rank-open"/);
   assert.doesNotMatch(html, /(?:market|itms-apps|appmarket):\/\//);
 });

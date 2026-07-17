@@ -31,23 +31,17 @@ function rating(appKey, platform, countryCode, value, delta, date = new Date(202
   };
 }
 
-test("scorecard dataset exposes direct fields without chart filters", () => {
+test("weighted metrics preserve country and group calculations", () => {
   const catalog = [
     app("ANDROID|VE|BBVA", "Android", "VE", 0.6, 0.75),
     app("IOS|VE|BBVA", "iOS", "VE", 0.4, 0.25)
   ];
-  const ratings = [
-    rating("ANDROID|VE|BBVA", "Android", "VE", 4, 0.2),
-    rating("IOS|VE|BBVA", "iOS", "VE", 5, 0.1)
-  ];
-  const dataset = context.buildScorecardDataset_(ratings, catalog);
-  const headerIndex = Object.fromEntries(Array.from(dataset.headers).map((header, index) => [header, index]));
-  const row = Array.from(dataset.rows[0]);
-  assert.equal(row[headerIndex.ANDROID_VE_BBVA_RATING], 4);
-  assert.equal(row[headerIndex.IOS_VE_BBVA_RATING], 5);
-  assert.equal(row[headerIndex.BBVA_VE_CONSOLIDATED_RATING], 4.4);
-  assert.equal(row[headerIndex.BBVA_GROUP_RATING], 4.25);
-  assert.equal(row[headerIndex.BBVA_GROUP_WEIGHT_COVERAGE], 1);
+  const items = {
+    "ANDROID|VE|BBVA": rating("ANDROID|VE|BBVA", "Android", "VE", 4, 0.2),
+    "IOS|VE|BBVA": rating("IOS|VE|BBVA", "iOS", "VE", 5, 0.1)
+  };
+  assert.deepEqual(JSON.parse(JSON.stringify(context.weightedMetric_(catalog, items, "rating", "countryPlatformWeight"))), { value: 4.4, coverage: 1 });
+  assert.deepEqual(JSON.parse(JSON.stringify(context.weightedMetric_(catalog, items, "rating", "groupUserWeight"))), { value: 4.25, coverage: 1 });
 });
 
 test("weighted score remains blank when a configured platform is missing", () => {
@@ -55,50 +49,42 @@ test("weighted score remains blank when a configured platform is missing", () =>
     app("ANDROID|VE|BBVA", "Android", "VE", 0.6),
     app("IOS|VE|BBVA", "iOS", "VE", 0.4)
   ];
-  const dataset = context.buildScorecardDataset_([
-    rating("ANDROID|VE|BBVA", "Android", "VE", 4, 0.2)
-  ], catalog);
-  const headerIndex = Object.fromEntries(Array.from(dataset.headers).map((header, index) => [header, index]));
-  const row = Array.from(dataset.rows[0]);
-  assert.equal(row[headerIndex.BBVA_VE_CONSOLIDATED_RATING], "");
-  assert.equal(row[headerIndex.BBVA_VE_WEIGHT_COVERAGE], 0.6);
+  const result = context.weightedMetric_(catalog, {
+    "ANDROID|VE|BBVA": rating("ANDROID|VE|BBVA", "Android", "VE", 4, 0.2)
+  }, "rating", "countryPlatformWeight");
+  assert.equal(result.value, "");
+  assert.equal(result.coverage, 0.6);
 });
 
-test("monthly trend uses average and end-of-month observation", () => {
+test("monthly trend keeps only the end-of-month observation required by the web chart", () => {
   const first = rating("ANDROID|VE|BBVA", "Android", "VE", 4, 0.1, new Date(2026, 6, 1, 12));
   const last = rating("ANDROID|VE|BBVA", "Android", "VE", 5, 0.2, new Date(2026, 6, 31, 12));
   last.ranking = 1;
   const rows = context.buildMonthlyTrendRows_([first, last]);
   const row = Array.from(rows[0]);
-  assert.equal(row[9], 4.5);
-  assert.equal(row[10], 5);
-  assert.equal(row[13], 2);
-  assert.equal(row[14], 1);
-  assert.equal(row[15], 0.2);
-  assert.equal(row[23], 100);
-  assert.equal(row[24], 10);
+  assert.equal(row.length, 9);
+  assert.equal(row[7], 5);
+  assert.equal(row[8], "BANK");
 });
 
 test("monthly trend ignores a malformed YEAR_MONTH cell and derives period from date", () => {
   const item = rating("ANDROID|VE|BBVA", "Android", "VE", 4.3, 0.1, new Date(2026, 6, 16, 12));
   item.yearMonth = new Date(2026, 6, 1, 12);
   const row = Array.from(context.buildMonthlyTrendRows_([item])[0]);
-  assert.equal(row[1], "2026-07");
   assert.ok(row[0] instanceof Date);
+  assert.equal(row[0].getMonth(), 6);
 });
 
-test("incomplete coverage suppresses rank in materialized competition source", () => {
+test("compact competition source preserves its quality flag", () => {
   const item = rating("ANDROID|VE|BBVA", "Android", "VE", 4.3, 0.1);
   item.ranking = 1; item.rankingExpectedApps = 5; item.rankingObservedApps = 4;
   item.rankingCoverage = 0.8; item.rankingIsComplete = false;
   const catalog = [{ ...app("ANDROID|VE|BBVA", "Android", "VE", 0), dashboardSection: "COUNTRY_BANKS", productScope: "BUSINESS", competitorSetVersion: "2026Q3", displayOrder: 0 }];
   const row = Array.from(context.buildCompetitionRows_([item], catalog)[0]);
-  assert.equal(row[15], "");
-  assert.equal(row[18], 0.8);
-  assert.equal(row[19], false);
-  assert.equal(row[31], 90);
-  assert.equal(row[32], 10);
-  assert.equal(row[33], "https://play.google.com/store/apps/details?id=com.bbva.empresas&hl=es&gl=VE");
+  assert.equal(row.length, 16);
+  assert.equal(row[11], false);
+  assert.equal(row[14], 10);
+  assert.equal(row[15], "https://play.google.com/store/apps/details?id=com.bbva.empresas&hl=es&gl=VE");
 });
 
 test("store links are canonical HTTPS pages with an explicit geography", () => {

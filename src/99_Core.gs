@@ -58,28 +58,12 @@ function dateFromKey_(key) {
   return new Date(parts[0], parts[1] - 1, parts[2], 12, 0, 0, 0);
 }
 
-function addDays_(value, days) {
-  const date = new Date(value.getTime());
-  date.setDate(date.getDate() + days);
-  return date;
-}
-
 function round2_(value) {
   return Math.round(Number(value) * 100) / 100;
 }
 
-function makeAppKey_(platform, countryCode, appName) {
-  return [platform, countryCode, appName].map(function (value) {
-    return trimString_(value).toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '');
-  }).join('|');
-}
-
 function makeRatingKey_(date, appKey) {
   return dateKey_(date) + '|' + trimString_(appKey);
-}
-
-function fieldSlug_(value) {
-  return trimString_(value).toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '');
 }
 
 /** Ranking de competicion: 5, 5, 4 produce 1, 1, 3. */

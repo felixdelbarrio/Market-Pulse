@@ -24,20 +24,19 @@ function runDailyRatingMonitor() {
     const lookback = toNonNegativeInteger_(control.RATING_LOOKBACK_DAYS) || 30;
     rebuildRatingMetrics_(ss, lookback, catalog);
     const ratings = readRatingObjects_(ss);
-    const dashboard = rebuildDashboardDatasets_(ss, catalog, ratings, {
-      runId: runId, referenceDate: referenceDate, startedAt: startedAt, results: results
-    });
+    const dashboard = rebuildDashboardDatasets_(ss, catalog, ratings,
+      { referenceDate: referenceDate, results: results });
     const alerts = buildAndProcessAlerts_(ss, referenceDate, catalog, runId, control, ratings);
     const stats = summarizeFetchResults_(results);
     const status = stats.error === 0 ? (stats.noRating > 0 ? 'PARTIAL' : 'OK') : (stats.ok > 0 ? 'PARTIAL' : 'ERROR');
     appendRunLog_(ss, [
       startedAt, runId, status, results.length, stats.ok, stats.noRating, stats.error,
       upserted, alerts.length, new Date().getTime() - startedAt.getTime(), buildRunDetail_(results),
-      dashboard.scorecardRows, dashboard.trendRows, dashboard.competitionRows,
+      0, dashboard.trendRows, dashboard.competitionRows,
       stats.ok, validateWeightConfiguration_(catalog)
     ]);
     try {
-      refreshMarketsDashboardCache_(ss);
+      refreshMarketsDashboardCache_(ss, catalog);
     } catch (cacheError) {
       try { invalidateMarketsDashboardCache_(); } catch (ignored) {}
       console.error('No se pudo actualizar la cache del dashboard: ' + errorToString_(cacheError));

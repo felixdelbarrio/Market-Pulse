@@ -1,6 +1,6 @@
 function setupProject() {
   const ss = openMarketsSpreadsheet_();
-  ensureWorkbookSchema_(ss);
+  initializeWorkbook_(ss);
   readAppCatalog_(ss);
   installDailyTrigger_();
   return validateProject();
@@ -37,7 +37,9 @@ function rebuildAllMetrics() {
   const control = readControl_(ss);
   const catalog = readAppCatalog_(ss);
   rebuildRatingMetrics_(ss, toNonNegativeInteger_(control.RATING_LOOKBACK_DAYS) || 30, catalog);
-  return rebuildDashboardDatasets_(ss, catalog, readRatingObjects_(ss));
+  const dashboard = rebuildDashboardDatasets_(ss, catalog, readRatingObjects_(ss));
+  refreshMarketsDashboardCache_(ss, catalog);
+  return dashboard;
 }
 
 function installDailyTrigger_() {
