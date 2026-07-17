@@ -1,0 +1,592 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <style>
+    :root {
+      color-scheme: light;
+      --navy: #061f35;
+      --navy-2: #0b3456;
+      --blue: #1464a5;
+      --blue-bright: #1973b8;
+      --cyan: #2dcccd;
+      --aqua: #5ac4c4;
+      --sky: #d4edfc;
+      --ink: #102a3f;
+      --muted: #64788a;
+      --line: #dce6ec;
+      --surface: #ffffff;
+      --canvas: #f3f7f9;
+      --good: #13866f;
+      --bad: #c73d4d;
+      --warn: #d8891c;
+      --shadow: 0 18px 55px rgba(6, 31, 53, .11);
+      --radius: 22px;
+      font-family: Inter, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    html { min-width: 320px; background: var(--canvas); }
+    body { margin: 0; color: var(--ink); background: var(--canvas); }
+    button, select { font: inherit; }
+    button { color: inherit; }
+    .hidden { display: none !important; }
+
+    .app-shell { min-height: 100vh; }
+    .topbar {
+      position: sticky; top: 0; z-index: 50;
+      display: flex; align-items: center; gap: 28px;
+      min-height: 76px; padding: 0 4vw;
+      color: #fff; background: rgba(6, 31, 53, .96);
+      border-bottom: 1px solid rgba(255,255,255,.1);
+      backdrop-filter: blur(18px);
+    }
+    .brand { display: flex; align-items: center; gap: 18px; min-width: 300px; }
+    .brand-mark { font-size: 26px; font-weight: 800; letter-spacing: 2px; }
+    .brand-divider { width: 1px; height: 28px; background: rgba(255,255,255,.25); }
+    .brand-product { font-size: 15px; font-weight: 650; letter-spacing: .2px; }
+    .brand-product span { display: block; margin-top: 2px; color: #9bc7df; font-size: 11px; font-weight: 500; }
+    .main-nav { display: flex; align-self: stretch; gap: 4px; margin-left: auto; }
+    .nav-button {
+      position: relative; min-width: 126px; padding: 0 18px;
+      border: 0; color: #b9cfdd; background: transparent; cursor: pointer;
+      font-size: 13px; font-weight: 650;
+    }
+    .nav-button:hover, .nav-button.active { color: #fff; }
+    .nav-button.active::after {
+      position: absolute; right: 20px; bottom: 0; left: 20px; height: 4px;
+      content: ""; border-radius: 5px 5px 0 0; background: var(--cyan);
+    }
+
+    .hero {
+      position: relative; overflow: hidden;
+      padding: 54px 4vw 92px;
+      color: #fff; background:
+        radial-gradient(circle at 82% 12%, rgba(45,204,205,.35), transparent 27%),
+        radial-gradient(circle at 62% 110%, rgba(25,115,184,.55), transparent 38%),
+        linear-gradient(125deg, #061f35 0%, #0a3c62 68%, #075a70 100%);
+    }
+    .hero::after {
+      position: absolute; width: 340px; height: 340px; right: -110px; top: -180px;
+      content: ""; border: 1px solid rgba(255,255,255,.16); border-radius: 50%;
+      box-shadow: 0 0 0 42px rgba(255,255,255,.025), 0 0 0 84px rgba(255,255,255,.02);
+    }
+    .hero-inner { position: relative; z-index: 1; display: flex; align-items: flex-end; justify-content: space-between; gap: 32px; max-width: 1500px; margin: auto; }
+    .eyebrow { margin: 0 0 12px; color: #83e4e1; font-size: 12px; font-weight: 750; letter-spacing: 1.8px; text-transform: uppercase; }
+    h1 { max-width: 800px; margin: 0; font-size: clamp(34px, 5vw, 64px); line-height: .98; letter-spacing: -2.4px; }
+    .hero-copy { max-width: 720px; margin: 20px 0 0; color: #c7dce8; font-size: 16px; line-height: 1.55; }
+    .hero-status { display: grid; min-width: 220px; gap: 10px; padding: 18px; border: 1px solid rgba(255,255,255,.16); border-radius: 18px; background: rgba(3,24,40,.34); backdrop-filter: blur(12px); }
+    .status-label { color: #9bc7df; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+    .status-line { display: flex; align-items: center; gap: 9px; font-weight: 700; }
+    .status-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--good); box-shadow: 0 0 0 5px rgba(19,134,111,.17); }
+    .status-dot.warn { background: var(--warn); box-shadow: 0 0 0 5px rgba(216,137,28,.17); }
+    .status-dot.bad { background: var(--bad); box-shadow: 0 0 0 5px rgba(199,61,77,.17); }
+    .status-date { color: #d9e7ee; font-size: 13px; }
+
+    .filter-wrap { position: relative; z-index: 4; max-width: 1500px; margin: -48px auto 0; padding: 0 4vw; }
+    .filter-bar {
+      display: grid; grid-template-columns: minmax(180px, 1fr) minmax(260px, 1.3fr) minmax(180px, .8fr) minmax(180px, .8fr); gap: 14px;
+      padding: 18px; border: 1px solid rgba(10,60,98,.08); border-radius: var(--radius); background: #fff; box-shadow: var(--shadow);
+    }
+    .control { display: grid; gap: 7px; }
+    .control label { color: var(--muted); font-size: 11px; font-weight: 750; letter-spacing: .9px; text-transform: uppercase; }
+    .select-control {
+      width: 100%; height: 44px; padding: 0 38px 0 13px; color: var(--ink); border: 1px solid var(--line); border-radius: 12px;
+      outline: 0; background: #f8fafb; cursor: pointer;
+    }
+    .select-control:focus { border-color: var(--blue-bright); box-shadow: 0 0 0 3px rgba(25,115,184,.12); }
+    .platform-switch { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; padding: 4px; border: 1px solid var(--line); border-radius: 12px; background: #f8fafb; }
+    .platform-button { height: 34px; padding: 0 6px; border: 0; border-radius: 9px; background: transparent; cursor: pointer; color: var(--muted); font-size: 12px; font-weight: 700; }
+    .platform-button.active { color: #fff; background: var(--blue); box-shadow: 0 6px 16px rgba(20,100,165,.24); }
+
+    main { max-width: 1500px; margin: 0 auto; padding: 34px 4vw 68px; }
+    .view { animation: reveal .35s ease both; }
+    @keyframes reveal { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: none; } }
+    .section-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; margin: 12px 0 18px; }
+    .section-head h2 { margin: 0; color: var(--navy); font-size: 26px; letter-spacing: -.7px; }
+    .section-head p { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
+    .section-kicker { color: var(--blue); font-size: 11px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; }
+
+    .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 30px; }
+    .kpi-card { position: relative; overflow: hidden; min-height: 174px; padding: 22px; border: 1px solid rgba(10,60,98,.08); border-radius: 20px; background: #fff; box-shadow: 0 10px 32px rgba(6,31,53,.06); }
+    .kpi-card::after { position: absolute; right: -28px; bottom: -38px; width: 120px; height: 120px; content: ""; border-radius: 50%; background: var(--sky); opacity: .45; }
+    .kpi-card.accent { color: #fff; border: 0; background: linear-gradient(145deg, #0c4773, #1464a5); }
+    .kpi-card.accent::after { background: var(--cyan); opacity: .2; }
+    .kpi-label { position: relative; z-index: 1; color: var(--muted); font-size: 12px; font-weight: 700; }
+    .accent .kpi-label { color: #b8d9e8; }
+    .kpi-value { position: relative; z-index: 1; margin-top: 22px; font-size: 42px; line-height: 1; font-weight: 760; letter-spacing: -1.8px; }
+    .kpi-value small { margin-left: 5px; font-size: 17px; font-weight: 600; letter-spacing: 0; }
+    .kpi-foot { position: relative; z-index: 1; margin-top: 12px; color: var(--muted); font-size: 12px; line-height: 1.35; }
+    .accent .kpi-foot { color: #d7e9f1; }
+    .delta-up { color: var(--good) !important; }
+    .delta-down { color: var(--bad) !important; }
+
+    .content-grid { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(290px, .75fr); gap: 20px; }
+    .panel { overflow: hidden; border: 1px solid rgba(10,60,98,.08); border-radius: var(--radius); background: #fff; box-shadow: 0 12px 35px rgba(6,31,53,.055); }
+    .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 20px 22px; border-bottom: 1px solid var(--line); }
+    .panel-head h3 { margin: 0; font-size: 16px; }
+    .panel-head span { color: var(--muted); font-size: 12px; }
+    .panel-body { padding: 20px 22px; }
+    .country-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px; }
+    .country-card { padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: linear-gradient(145deg,#fff,#f9fbfc); }
+    .country-title { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+    .country-name { display: flex; align-items: center; gap: 9px; font-weight: 760; }
+    .flag { font-size: 24px; filter: saturate(.9); }
+    .country-score { color: var(--blue); font-size: 11px; font-weight: 750; }
+    .platform-row { display: grid; grid-template-columns: 78px 1fr auto; align-items: center; gap: 8px; min-height: 32px; font-size: 12px; }
+    .platform-name { color: var(--muted); }
+    .rating-track { height: 7px; overflow: hidden; border-radius: 9px; background: #e8eff3; }
+    .rating-fill { height: 100%; border-radius: inherit; background: linear-gradient(90deg,var(--blue-bright),var(--cyan)); }
+    .rating-number { min-width: 42px; text-align: right; font-weight: 800; }
+    .rating-number em { display: block; margin-top: 1px; font-size: 9px; font-style: normal; font-weight: 650; }
+
+    .signal-list { display: grid; gap: 10px; }
+    .signal { display: grid; grid-template-columns: 38px 1fr auto; align-items: center; gap: 11px; padding: 12px; border-radius: 14px; background: #f6f9fa; }
+    .signal-icon { display: grid; place-items: center; width: 38px; height: 38px; color: var(--blue); border-radius: 12px; background: var(--sky); font-weight: 800; }
+    .signal strong { display: block; font-size: 12px; }
+    .signal span { color: var(--muted); font-size: 11px; }
+    .signal-value { font-weight: 780; font-size: 13px; }
+
+    .chart-panel { margin-top: 20px; }
+    .chart-wrap { min-height: 360px; padding: 10px 8px 8px; }
+    .chart-wrap svg { display: block; width: 100%; height: auto; min-height: 320px; }
+    .chart-legend { display: flex; flex-wrap: wrap; gap: 10px 18px; padding: 0 22px 20px; }
+    .legend-item { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 11px; }
+    .legend-swatch { width: 16px; height: 4px; border-radius: 4px; }
+
+    .benchmark-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 18px; }
+    .leaderboard-card { overflow: hidden; border: 1px solid var(--line); border-radius: 18px; background: #fff; }
+    .leaderboard-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 18px; color: #fff; background: linear-gradient(110deg,var(--navy-2),var(--blue)); }
+    .leaderboard-head strong { display: flex; align-items: center; gap: 8px; }
+    .leaderboard-head span { font-size: 11px; color: #c9e0ea; }
+    .rank-table { width: 100%; border-collapse: collapse; }
+    .rank-table th { padding: 10px 12px; color: var(--muted); background: #f6f9fa; font-size: 10px; letter-spacing: .5px; text-align: left; text-transform: uppercase; }
+    .rank-table th:not(:nth-child(2)), .rank-table td:not(:nth-child(2)) { text-align: right; }
+    .rank-table td { padding: 10px 12px; border-top: 1px solid #edf2f4; font-size: 12px; }
+    .rank-table tr.bbva { background: #e3f6f6; }
+    .rank-table tr.bbva td:nth-child(2) { font-weight: 800; color: var(--navy); }
+    .rank-pill { display: inline-grid; place-items: center; min-width: 30px; height: 24px; padding: 0 6px; color: var(--blue); border-radius: 9px; background: var(--sky); font-weight: 800; }
+    .app-cell { display: flex; align-items: center; gap: 9px; min-width: 0; }
+    .app-avatar { display: grid; flex: 0 0 auto; place-items: center; width: 28px; height: 28px; color: #fff; border-radius: 9px; background: var(--blue); font-size: 9px; font-weight: 800; }
+    .app-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .empty-state { display: grid; place-items: center; min-height: 260px; padding: 36px; color: var(--muted); text-align: center; }
+    .empty-state strong { display: block; margin-bottom: 6px; color: var(--navy); }
+
+    .evolution-layout { display: grid; grid-template-columns: minmax(0,1fr) 310px; gap: 20px; }
+    .series-summary { display: grid; align-content: start; gap: 10px; }
+    .series-card { display: grid; grid-template-columns: 12px 1fr auto; align-items: center; gap: 10px; padding: 13px; border: 1px solid var(--line); border-radius: 14px; background: #fff; }
+    .series-dot { width: 9px; height: 9px; border-radius: 50%; }
+    .series-card strong { display: block; font-size: 12px; }
+    .series-card span { color: var(--muted); font-size: 10px; }
+    .series-card b { font-size: 14px; }
+
+    .footer { display: flex; justify-content: space-between; gap: 20px; padding: 26px 4vw; color: #9bb0be; background: var(--navy); font-size: 11px; }
+    .footer strong { color: #fff; }
+
+    .loader { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; color: #fff; background: var(--navy); transition: opacity .3s ease; }
+    .loader.done { pointer-events: none; opacity: 0; }
+    .loader-inner { display: grid; justify-items: center; gap: 18px; }
+    .loader-mark { font-size: 30px; font-weight: 800; letter-spacing: 2px; }
+    .loader-bar { width: 180px; height: 4px; overflow: hidden; border-radius: 8px; background: rgba(255,255,255,.15); }
+    .loader-bar::after { display: block; width: 42%; height: 100%; content: ""; border-radius: inherit; background: var(--cyan); animation: loading 1.1s ease-in-out infinite; }
+    @keyframes loading { 0% { transform: translateX(-110%); } 100% { transform: translateX(340%); } }
+    .toast { position: fixed; right: 22px; bottom: 22px; z-index: 80; max-width: 420px; padding: 14px 18px; color: #fff; border-radius: 13px; background: #9b2432; box-shadow: var(--shadow); font-size: 12px; }
+    .busy .filter-bar { opacity: .72; pointer-events: none; }
+
+    @media (max-width: 1080px) {
+      .filter-bar { grid-template-columns: 1fr 1.3fr; }
+      .kpi-grid { grid-template-columns: repeat(2,1fr); }
+      .content-grid, .evolution-layout { grid-template-columns: 1fr; }
+      .series-summary { grid-template-columns: repeat(2,1fr); }
+    }
+    @media (max-width: 760px) {
+      .topbar { min-height: 66px; padding: 0 18px; backdrop-filter: none; }
+      .brand { min-width: 0; }
+      .brand-divider, .brand-product span { display: none; }
+      .brand-product { font-size: 12px; }
+      .main-nav { position: fixed; z-index: 60; right: 0; bottom: 0; left: 0; height: 64px; justify-content: space-around; color: var(--navy); background: #fff; box-shadow: 0 -10px 30px rgba(6,31,53,.1); }
+      .nav-button { min-width: 0; padding: 0 8px; color: var(--muted); font-size: 11px; }
+      .nav-button.active { color: var(--blue); }
+      .nav-button.active::after { right: 8px; bottom: auto; left: 8px; top: 0; }
+      .hero { padding: 40px 20px 82px; }
+      .hero-inner { display: block; }
+      h1 { font-size: 38px; letter-spacing: -1.5px; }
+      .hero-status { margin-top: 26px; }
+      .filter-wrap { padding: 0 14px; }
+      .filter-bar { grid-template-columns: 1fr; }
+      main { padding: 26px 14px 92px; }
+      .kpi-grid, .country-grid, .benchmark-grid, .series-summary { grid-template-columns: 1fr; }
+      .kpi-card { min-height: 150px; }
+      .section-head { align-items: flex-start; flex-direction: column; }
+      .panel-body { padding: 14px; }
+      .rank-table th, .rank-table td { padding: 9px 7px; }
+      .footer { padding-bottom: 88px; flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <div id="loader" class="loader" aria-live="polite">
+    <div class="loader-inner"><div class="loader-mark">BBVA</div><div class="loader-bar"></div><span>Preparando la inteligencia de mercados…</span></div>
+  </div>
+
+  <div id="app" class="app-shell">
+    <header class="topbar">
+      <div class="brand"><div class="brand-mark">BBVA</div><div class="brand-divider"></div><div class="brand-product">Markets Ratings<span>Monitoring &amp; Performance</span></div></div>
+      <nav class="main-nav" aria-label="Secciones del dashboard">
+        <button class="nav-button active" data-view="overview">Overview</button>
+        <button class="nav-button" data-view="benchmark">Benchmark</button>
+        <button class="nav-button" data-view="evolution">Evolución</button>
+      </nav>
+    </header>
+
+    <section class="hero">
+      <div class="hero-inner">
+        <div>
+          <p class="eyebrow">Competitive intelligence · Commercial apps</p>
+          <h1>La señal detrás<br>de cada rating.</h1>
+          <p class="hero-copy">Una lectura ejecutiva y trazable de la percepción pública de BBVA frente al mercado, en Android, iOS y Huawei.</p>
+        </div>
+        <div class="hero-status">
+          <span class="status-label">Última ejecución</span>
+          <div class="status-line"><i id="run-dot" class="status-dot"></i><span id="run-status">Cargando</span></div>
+          <div id="run-date" class="status-date">—</div>
+        </div>
+      </div>
+    </section>
+
+    <div class="filter-wrap">
+      <section class="filter-bar" aria-label="Filtros globales">
+        <div class="control"><label for="country-filter">Mercado</label><select id="country-filter" class="select-control"><option value="ALL">Todos los mercados</option></select></div>
+        <div class="control"><label>Plataforma</label><div id="platform-switch" class="platform-switch" role="group" aria-label="Plataforma"></div></div>
+        <div class="control"><label for="segment-filter">Benchmark</label><select id="segment-filter" class="select-control"><option value="BANK">Banca empresas</option><option value="FINTECH">Digital commercial</option></select></div>
+        <div class="control"><label for="date-filter">Fecha de corte</label><select id="date-filter" class="select-control"></select></div>
+      </section>
+    </div>
+
+    <main>
+      <section id="view-overview" class="view">
+        <div class="section-head"><div><span class="section-kicker">Pulso del mercado</span><h2>Competitive overview</h2><p id="overview-subtitle">La foto más reciente de BBVA frente a su entorno.</p></div></div>
+        <div id="kpi-grid" class="kpi-grid"></div>
+        <div class="content-grid">
+          <section class="panel"><div class="panel-head"><div><h3>Mapa de rendimiento</h3><span>Rating público por mercado y plataforma</span></div><span id="market-count"></span></div><div id="country-grid" class="panel-body country-grid"></div></section>
+          <aside class="panel"><div class="panel-head"><div><h3>Señales que importan</h3><span>Cambios, líderes y calidad</span></div></div><div id="signal-list" class="panel-body signal-list"></div></aside>
+        </div>
+        <section class="panel chart-panel"><div class="panel-head"><div><h3>Trayectoria comparada</h3><span>Media mensual de los ratings observados</span></div><span>Últimos 18 meses</span></div><div id="overview-chart" class="chart-wrap"></div><div id="overview-legend" class="chart-legend"></div></section>
+      </section>
+
+      <section id="view-benchmark" class="view hidden">
+        <div class="section-head"><div><span class="section-kicker">Posición competitiva</span><h2>Benchmark de mercado</h2><p>Rankings comparables; los incompletos se muestran como no disponibles.</p></div></div>
+        <div id="benchmark-grid" class="benchmark-grid"></div>
+      </section>
+
+      <section id="view-evolution" class="view hidden">
+        <div class="section-head"><div><span class="section-kicker">Tendencia</span><h2>Evolución de ratings</h2><p>Seguimiento mensual del cierre de cada app y sus competidores.</p></div></div>
+        <div class="evolution-layout">
+          <section class="panel"><div class="panel-head"><div><h3>Rating al cierre de mes</h3><span id="chart-context">Mercados seleccionados</span></div><span>Escala 1–5</span></div><div id="evolution-chart" class="chart-wrap"></div><div id="evolution-legend" class="chart-legend"></div></section>
+          <aside><div class="panel-head" style="padding:0 0 14px;border:0"><div><h3>Último movimiento</h3><span>Variación del periodo visible</span></div></div><div id="series-summary" class="series-summary"></div></aside>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer"><span><strong>Markets Ratings Intelligence</strong> · Fuente: ratings públicos de las stores</span><span id="footer-version">Contrato de datos</span></footer>
+  </div>
+  <div id="toast" class="toast hidden" role="alert"></div>
+
+  <script>
+    (() => {
+      "use strict";
+      const FLAGS = { AR:"🇦🇷", CO:"🇨🇴", ES:"🇪🇸", MX:"🇲🇽", PE:"🇵🇪", TR:"🇹🇷", UY:"🇺🇾", VE:"🇻🇪" };
+      const COUNTRY_NAMES = { AR:"Argentina", CO:"Colombia", ES:"España", MX:"México", PE:"Perú", TR:"Turquía", UY:"Uruguay", VE:"Venezuela" };
+      const PLATFORM_LABELS = { ALL:"Todas", Android:"Android", iOS:"iOS", Huawei:"Huawei" };
+      const COLORS = ["#1464a5","#2dcccd","#7c4dca","#e85d75","#f5a623","#13866f","#4d79ff","#9b6b43","#d43f8d","#657b8d"];
+      const state = { meta:null, snapshot:[], trends:[], consolidated:null, country:"ALL", platform:"ALL", segment:"BANK", date:"", view:"overview", trendToken:0 };
+      const $ = id => document.getElementById(id);
+      const finite = value => typeof value === "number" && Number.isFinite(value);
+      const mean = values => { const clean = values.filter(finite); return clean.length ? clean.reduce((a,b)=>a+b,0)/clean.length : null; };
+      const fmt = (value, digits=1) => finite(value) ? value.toLocaleString("es-ES", { minimumFractionDigits:digits, maximumFractionDigits:digits }) : "—";
+      const signed = value => {
+        if (!finite(value)) return "—";
+        const normalized = Math.abs(value) < .005 ? 0 : value;
+        return `${normalized > 0 ? "+" : ""}${fmt(normalized,2)}`;
+      };
+      const esc = value => String(value ?? "").replace(/[&<>"']/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[char]));
+      const initials = value => String(value || "?").split(/\s+/).slice(0,2).map(part=>part[0]).join("").toUpperCase();
+      const dateLabel = value => { if (!value) return "—"; return new Intl.DateTimeFormat("es-ES", { day:"2-digit", month:"short", year:"numeric" }).format(new Date(value+"T12:00:00")); };
+      const monthLabel = value => new Intl.DateTimeFormat("es-ES", { month:"short", year:"2-digit" }).format(new Date(value+"-15T12:00:00"));
+      const countryLabel = code => COUNTRY_NAMES[code] || state.meta?.countries.find(item=>item.code===code)?.name || code;
+
+      document.addEventListener("DOMContentLoaded", () => {
+        bindNavigation();
+        bindFilters();
+        loadBootstrap();
+      });
+
+      function callServer(method, argument) {
+        if (window.__MARKETS_PREVIEW_DATA__) {
+          if (method === "bootstrap") return Promise.resolve(window.__MARKETS_PREVIEW_DATA__);
+          if (method === "snapshot") return Promise.resolve({ date:argument, snapshot:window.__MARKETS_PREVIEW_DATA__.snapshot, consolidated:window.__MARKETS_PREVIEW_DATA__.consolidated });
+          if (method === "trends") return Promise.resolve(window.__MARKETS_PREVIEW_DATA__.trends);
+        }
+        return new Promise((resolve, reject) => {
+          if (!window.google?.script?.run) return reject(new Error("El dashboard debe abrirse desde el despliegue de Apps Script."));
+          const runner = google.script.run.withSuccessHandler(resolve).withFailureHandler(error => reject(new Error(error?.message || error)));
+          if (method === "bootstrap") runner.getMarketsDashboardBootstrap();
+          else if (method === "snapshot") runner.getMarketsDashboardSnapshot(argument);
+          else runner.getMarketsDashboardTrends(argument);
+        });
+      }
+
+      async function loadBootstrap() {
+        try {
+          const data = await callServer("bootstrap");
+          state.meta = data.meta; state.snapshot = data.snapshot || []; state.trends = data.trends || [];
+          state.consolidated = data.consolidated || null; state.date = data.meta.dataDate;
+          buildControls(); renderAll();
+          $("footer-version").textContent = `Contrato ${data.meta.codeVersion} · Web ${data.meta.webVersion || "1"}`;
+        } catch (error) { showError(error); }
+        finally { $("loader").classList.add("done"); }
+      }
+
+      function bindNavigation() {
+        document.querySelectorAll(".nav-button").forEach(button => button.addEventListener("click", () => {
+          state.view = button.dataset.view;
+          document.querySelectorAll(".nav-button").forEach(item => item.classList.toggle("active", item === button));
+          document.querySelectorAll(".view").forEach(view => view.classList.toggle("hidden", view.id !== `view-${state.view}`));
+          if (state.view === "evolution") renderEvolution();
+        }));
+      }
+
+      function bindFilters() {
+        $("country-filter").addEventListener("change", event => { state.country = event.target.value; filtersChanged(true); });
+        $("segment-filter").addEventListener("change", event => { state.segment = event.target.value; filtersChanged(true); });
+        $("date-filter").addEventListener("change", event => loadSnapshot(event.target.value));
+      }
+
+      function buildControls() {
+        $("country-filter").innerHTML = `<option value="ALL">Todos los mercados</option>` + state.meta.countries.map(item => `<option value="${esc(item.code)}">${FLAGS[item.code] || "🌐"} ${esc(countryLabel(item.code))}</option>`).join("");
+        const platforms = ["ALL", ...state.meta.platforms];
+        $("platform-switch").innerHTML = platforms.map(platform => `<button class="platform-button ${platform === state.platform ? "active" : ""}" data-platform="${esc(platform)}">${esc(PLATFORM_LABELS[platform] || platform)}</button>`).join("");
+        $("platform-switch").querySelectorAll("button").forEach(button => button.addEventListener("click", () => {
+          state.platform = button.dataset.platform;
+          $("platform-switch").querySelectorAll("button").forEach(item => item.classList.toggle("active", item === button));
+          filtersChanged(true);
+        }));
+        $("date-filter").innerHTML = [...state.meta.availableDates].reverse().map(date => `<option value="${date}" ${date === state.date ? "selected" : ""}>${dateLabel(date)}</option>`).join("");
+      }
+
+      async function loadSnapshot(date) {
+        document.body.classList.add("busy");
+        try {
+          const data = await callServer("snapshot", date);
+          state.date = data.date; state.snapshot = data.snapshot || []; state.consolidated = data.consolidated || null;
+          renderAll();
+        } catch (error) { showError(error); }
+        finally { document.body.classList.remove("busy"); }
+      }
+
+      function filtersChanged(reloadTrends) {
+        renderAll();
+        if (reloadTrends) loadTrends();
+      }
+
+      async function loadTrends() {
+        const token = ++state.trendToken;
+        const request = {
+          countryCode: state.country === "ALL" ? "" : state.country,
+          platform: state.platform === "ALL" ? "" : state.platform,
+          segment: state.segment,
+          months: 18,
+          bbvaOnly: state.country === "ALL" && state.segment === "BANK"
+        };
+        try {
+          const trends = await callServer("trends", request);
+          if (token !== state.trendToken) return;
+          state.trends = trends || [];
+          renderCharts();
+        } catch (error) { showError(error); }
+      }
+
+      function visibleSnapshot() {
+        return state.snapshot.filter(row =>
+          (state.country === "ALL" || row.countryCode === state.country) &&
+          (state.platform === "ALL" || row.platform === state.platform) &&
+          row.segment === state.segment
+        );
+      }
+
+      function visibleTrends() {
+        return state.trends.filter(row =>
+          (state.country === "ALL" || row.countryCode === state.country) &&
+          (state.platform === "ALL" || row.platform === state.platform) &&
+          row.segment === state.segment
+        );
+      }
+
+      function renderAll() {
+        renderHero(); renderOverview(); renderBenchmark(); renderCharts();
+      }
+
+      function renderHero() {
+        const run = state.meta.latestRun;
+        const status = run?.status || "SIN RUN";
+        $("run-status").textContent = status === "OK" ? "Datos actualizados" : status === "PARTIAL" ? "Actualización parcial" : status;
+        $("run-date").textContent = `${dateLabel(state.date)} · ${run?.appsOk ?? 0}/${run?.appsTotal ?? 0} apps con rating`;
+        $("run-dot").className = `status-dot ${status === "OK" ? "" : status === "PARTIAL" ? "warn" : "bad"}`;
+      }
+
+      function renderOverview() {
+        const rows = visibleSnapshot();
+        const focus = state.segment === "BANK" ? rows.filter(row => row.isBbva) : rows;
+        renderKpis(focus, rows);
+        renderCountries(rows);
+        renderSignals(focus, rows);
+        $("overview-subtitle").textContent = `${state.country === "ALL" ? "Todos los mercados" : countryLabel(state.country)} · ${PLATFORM_LABELS[state.platform] || state.platform} · ${dateLabel(state.date)}`;
+      }
+
+      function renderKpis(focus, allRows) {
+        const consolidated = state.country === "ALL" ? state.consolidated?.group : state.consolidated?.countries?.[state.country];
+        const fallbackAverage = mean(focus.map(row=>row.rating));
+        const score = finite(consolidated?.rating) ? consolidated.rating : fallbackAverage;
+        const weighted = finite(consolidated?.rating);
+        const deltas = focus.map(row=>row.delta30d).filter(finite);
+        const averageDelta = mean(deltas);
+        const leaders = focus.filter(row=>row.ranking === 1).length;
+        const comparable = focus.filter(row=>finite(row.ranking)).length;
+        const fresh = focus.filter(row=>row.fresh).length;
+        const available = focus.filter(row=>finite(row.rating)).length;
+        const coverage = allRows.length ? allRows.filter(row=>finite(row.rating)).length / allRows.length : 0;
+        const cards = [
+          { label: weighted ? "Rating consolidado" : "Media observada", value:fmt(score,2), suffix:"/ 5", foot:weighted ? `Cobertura de pesos ${fmt((consolidated.coverage || 0)*100,0)}%` : `${available} observaciones BBVA disponibles`, accent:true },
+          { label:"Liderazgos BBVA", value:String(leaders), suffix:`de ${comparable}`, foot:comparable ? "Posiciones #1 en benchmarks completos" : "Ranking no comparable en la selección" },
+          { label:"Variación 30 días", value:signed(averageDelta), suffix:"pts", foot:`${deltas.length} series con histórico`, delta:Math.abs(averageDelta || 0) < .005 ? 0 : averageDelta },
+          { label:"Cobertura visible", value:fmt(coverage*100,0), suffix:"%", foot:`${fresh} frescas en el último run · ${allRows.length} apps` }
+        ];
+        $("kpi-grid").innerHTML = cards.map(card => `<article class="kpi-card ${card.accent ? "accent" : ""}"><div class="kpi-label">${esc(card.label)}</div><div class="kpi-value ${finite(card.delta) ? card.delta > 0 ? "delta-up" : card.delta < 0 ? "delta-down" : "" : ""}">${esc(card.value)} <small>${esc(card.suffix)}</small></div><div class="kpi-foot">${esc(card.foot)}</div></article>`).join("");
+      }
+
+      function renderCountries(rows) {
+        const groups = groupBy(rows, row=>row.countryCode);
+        const codes = Object.keys(groups).sort();
+        $("market-count").textContent = `${codes.length} mercado${codes.length === 1 ? "" : "s"}`;
+        if (!codes.length) return setEmpty($("country-grid"), "Sin datos para esta selección", "Prueba otra plataforma o benchmark.");
+        $("country-grid").innerHTML = codes.map(code => {
+          const marketRows = groups[code];
+          const platformRows = ["Android","iOS","Huawei"].map(platform => {
+            const candidates = marketRows.filter(row=>row.platform===platform && finite(row.rating));
+            const item = state.segment === "BANK" ? candidates.find(row=>row.isBbva) : [...candidates].sort((a,b)=>b.rating-a.rating)[0];
+            return { platform, item };
+          });
+          const marketAverage = mean(platformRows.map(entry=>entry.item?.rating));
+          return `<article class="country-card"><div class="country-title"><div class="country-name"><span class="flag">${FLAGS[code] || "🌐"}</span>${esc(countryLabel(code))}</div><span class="country-score">${fmt(marketAverage,2)} avg.</span></div>${platformRows.map(({platform,item}) => `<div class="platform-row"><span class="platform-name">${platform}</span><div class="rating-track"><div class="rating-fill" style="width:${finite(item?.rating) ? item.rating/5*100 : 0}%"></div></div><span class="rating-number">${fmt(item?.rating,2)}<em class="${item?.delta30d > 0 ? "delta-up" : item?.delta30d < 0 ? "delta-down" : ""}">${signed(item?.delta30d)}</em></span></div>`).join("")}</article>`;
+        }).join("");
+      }
+
+      function renderSignals(focus, allRows) {
+        const deltas = focus.filter(row=>finite(row.delta30d));
+        const strongest = [...deltas].sort((a,b)=>Math.abs(b.delta30d)-Math.abs(a.delta30d))[0];
+        const best = [...focus].filter(row=>finite(row.rating)).sort((a,b)=>b.rating-a.rating)[0];
+        const topCompetitor = [...allRows].filter(row=>!row.isBbva && finite(row.rating)).sort((a,b)=>b.rating-a.rating)[0];
+        const incomplete = allRows.filter(row=>!row.rankingComplete).length;
+        const signals = [
+          { icon:"↕", title:"Mayor movimiento", text:strongest ? `${countryLabel(strongest.countryCode)} · ${strongest.platform}` : "Sin histórico", value:strongest ? signed(strongest.delta30d) : "—", cls:strongest?.delta30d > 0 ? "delta-up" : "delta-down" },
+          { icon:"★", title:"Mejor rating visible", text:best ? `${best.appName} · ${best.platform}` : "Sin rating", value:fmt(best?.rating,2) },
+          { icon:"◎", title:"Referencia competitiva", text:topCompetitor ? `${topCompetitor.appName} · ${countryLabel(topCompetitor.countryCode)}` : "Sin competidor", value:fmt(topCompetitor?.rating,2) },
+          { icon:"✓", title:"Calidad de ranking", text:`${incomplete} filas sin benchmark completo`, value:`${allRows.length-incomplete}/${allRows.length}` }
+        ];
+        $("signal-list").innerHTML = signals.map(item=>`<div class="signal"><div class="signal-icon">${item.icon}</div><div><strong>${esc(item.title)}</strong><span>${esc(item.text)}</span></div><div class="signal-value ${item.cls || ""}">${esc(item.value)}</div></div>`).join("");
+      }
+
+      function renderBenchmark() {
+        const rows = visibleSnapshot();
+        const groups = groupBy(rows, row => `${row.countryCode}|${row.platform}`);
+        const keys = Object.keys(groups).sort((a,b)=>a.localeCompare(b));
+        if (!keys.length) return setEmpty($("benchmark-grid"), "Benchmark sin datos", "Selecciona otro mercado, plataforma o segmento.");
+        $("benchmark-grid").innerHTML = keys.map(key => {
+          const [code,platform] = key.split("|");
+          const sorted = [...groups[key]].sort((a,b) => {
+            if (finite(a.ranking) && finite(b.ranking)) return a.ranking-b.ranking || b.rating-a.rating;
+            if (finite(a.ranking)) return -1; if (finite(b.ranking)) return 1;
+            return (b.rating || 0)-(a.rating || 0) || (a.displayOrder || 0)-(b.displayOrder || 0);
+          });
+          return `<article class="leaderboard-card"><div class="leaderboard-head"><strong><span class="flag">${FLAGS[code] || "🌐"}</span>${esc(countryLabel(code))}</strong><span>${esc(platform)} · ${esc(state.segment === "BANK" ? "Banca" : "Digital")}</span></div><table class="rank-table"><thead><tr><th>#</th><th>App</th><th>Rating</th><th>Δ30d</th></tr></thead><tbody>${sorted.slice(0,14).map((row,index)=>`<tr class="${row.isBbva ? "bbva" : ""}"><td><span class="rank-pill">${finite(row.ranking) ? row.ranking : index+1}</span></td><td><div class="app-cell"><span class="app-avatar">${esc(initials(row.appName))}</span><span class="app-name">${esc(row.appName)}</span></div></td><td><strong>${fmt(row.rating,2)}</strong></td><td class="${row.delta30d > 0 ? "delta-up" : row.delta30d < 0 ? "delta-down" : ""}">${signed(row.delta30d)}</td></tr>`).join("")}</tbody></table></article>`;
+        }).join("");
+      }
+
+      function renderCharts() {
+        const rows = visibleTrends();
+        const chart = buildLineChart(rows);
+        $("overview-chart").innerHTML = chart.svg;
+        $("overview-legend").innerHTML = chart.legend;
+        $("evolution-chart").innerHTML = chart.svg;
+        $("evolution-legend").innerHTML = chart.legend;
+        renderSeriesSummary(chart.series);
+        $("chart-context").textContent = `${state.country === "ALL" ? "Todos los mercados" : countryLabel(state.country)} · ${PLATFORM_LABELS[state.platform] || state.platform}`;
+      }
+
+      function renderEvolution() { renderCharts(); }
+
+      function buildLineChart(rows) {
+        const series = prepareSeries(rows).slice(0,10);
+        if (!series.length) return { svg:`<div class="empty-state"><div><strong>Sin tendencia disponible</strong>Cambia los filtros para consultar otra serie.</div></div>`, legend:"", series:[] };
+        const months = [...new Set(series.flatMap(item=>item.points.map(point=>point.month)))].sort();
+        const values = series.flatMap(item=>item.points.map(point=>point.value)).filter(finite);
+        let min = Math.max(1, Math.floor((Math.min(...values)-.12)*10)/10);
+        let max = Math.min(5, Math.ceil((Math.max(...values)+.12)*10)/10);
+        if (max-min < .4) { min=Math.max(1,min-.2); max=Math.min(5,max+.2); }
+        const width=1000, height=390, left=62, right=25, top=24, bottom=54;
+        const plotW=width-left-right, plotH=height-top-bottom;
+        const x = month => left + (months.length === 1 ? plotW/2 : months.indexOf(month)/(months.length-1)*plotW);
+        const y = value => top + (max-value)/(max-min)*plotH;
+        const ticks = Array.from({length:5},(_,i)=>min+(max-min)*i/4);
+        const labelStep = Math.max(1,Math.ceil(months.length/8));
+        const grid = ticks.map(value=>`<g><line x1="${left}" y1="${y(value)}" x2="${width-right}" y2="${y(value)}" stroke="#dfe8ed" stroke-width="1"/><text x="${left-12}" y="${y(value)+4}" text-anchor="end" fill="#718493" font-size="11">${fmt(value,1)}</text></g>`).join("");
+        const xLabels = months.map((month,index)=>index%labelStep===0 || index===months.length-1 ? `<text x="${x(month)}" y="${height-18}" text-anchor="middle" fill="#718493" font-size="11">${esc(monthLabel(month))}</text>` : "").join("");
+        const lines = series.map((item,index)=> {
+          const color=COLORS[index%COLORS.length];
+          const ordered=item.points.filter(point=>finite(point.value)).sort((a,b)=>a.month.localeCompare(b.month));
+          const path=ordered.map((point,i)=>`${i?"L":"M"}${x(point.month).toFixed(1)},${y(point.value).toFixed(1)}`).join(" ");
+          const points=ordered.map(point=>`<circle cx="${x(point.month)}" cy="${y(point.value)}" r="3.5" fill="${color}" stroke="#fff" stroke-width="1.5"><title>${esc(item.label)} · ${esc(monthLabel(point.month))}: ${fmt(point.value,2)}</title></circle>`).join("");
+          return `<path d="${path}" fill="none" stroke="${color}" stroke-width="${item.isBbva ? 4 : 2.5}" stroke-linejoin="round" stroke-linecap="round" opacity="${item.isBbva ? 1 : .82}"/>${points}`;
+        }).join("");
+        const svg=`<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Evolución mensual de ratings">${grid}<line x1="${left}" y1="${top}" x2="${left}" y2="${height-bottom}" stroke="#aac0cd"/>${xLabels}${lines}</svg>`;
+        const legend=series.map((item,index)=>`<span class="legend-item"><i class="legend-swatch" style="background:${COLORS[index%COLORS.length]}"></i>${esc(item.label)}</span>`).join("");
+        return { svg, legend, series };
+      }
+
+      function prepareSeries(rows) {
+        const buckets = new Map();
+        rows.forEach(row => {
+          let key, label;
+          if (state.country === "ALL" && state.segment === "BANK") { if (!row.isBbva) return; key=row.countryCode; label=countryLabel(row.countryCode); }
+          else if (state.platform === "ALL") { key=`${row.countryCode}|${row.appName}`; label=row.appName; }
+          else { key=row.appKey; label=row.appName; }
+          const bucketKey=`${key}|${row.month}`;
+          const bucket=buckets.get(bucketKey) || { key,label,month:row.month,values:[],isBbva:row.isBbva };
+          bucket.values.push(row.ratingEom); bucket.isBbva=bucket.isBbva || row.isBbva; buckets.set(bucketKey,bucket);
+        });
+        const grouped = new Map();
+        buckets.forEach(bucket => {
+          const item=grouped.get(bucket.key) || { key:bucket.key,label:bucket.label,isBbva:bucket.isBbva,points:[] };
+          item.points.push({month:bucket.month,value:mean(bucket.values)}); item.isBbva=item.isBbva || bucket.isBbva; grouped.set(bucket.key,item);
+        });
+        return [...grouped.values()].sort((a,b)=>Number(b.isBbva)-Number(a.isBbva) || latestValue(b)-latestValue(a) || a.label.localeCompare(b.label));
+      }
+
+      function latestValue(series) { const points=[...series.points].sort((a,b)=>a.month.localeCompare(b.month)); return points.at(-1)?.value || 0; }
+
+      function renderSeriesSummary(series) {
+        if (!series.length) return setEmpty($("series-summary"), "Sin series", "No hay cambios que resumir.");
+        $("series-summary").innerHTML=series.map((item,index)=> {
+          const points=[...item.points].filter(point=>finite(point.value)).sort((a,b)=>a.month.localeCompare(b.month));
+          const change=points.length>1 ? points.at(-1).value-points[0].value : null;
+          return `<div class="series-card"><i class="series-dot" style="background:${COLORS[index%COLORS.length]}"></i><div><strong>${esc(item.label)}</strong><span>${fmt(points.at(-1)?.value,2)} rating actual</span></div><b class="${change > 0 ? "delta-up" : change < 0 ? "delta-down" : ""}">${signed(change)}</b></div>`;
+        }).join("");
+      }
+
+      function groupBy(rows, selector) { return rows.reduce((out,row)=>{ const key=selector(row); (out[key] ||= []).push(row); return out; },{}); }
+      function setEmpty(element, title, copy) { element.innerHTML=`<div class="empty-state"><div><strong>${esc(title)}</strong>${esc(copy)}</div></div>`; }
+      function showError(error) { const toast=$("toast"); toast.textContent=error?.message || String(error); toast.classList.remove("hidden"); window.setTimeout(()=>toast.classList.add("hidden"),7000); }
+    })();
+  </script>
+</body>
+</html>

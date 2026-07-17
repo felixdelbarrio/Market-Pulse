@@ -1,6 +1,6 @@
 # Markets Ratings
 
-Proyecto unico para monitorizar ratings publicos de Google Play, Apple App Store y Huawei AppGallery en un solo Google Sheet y servirlos a Looker Studio.
+Proyecto unico para monitorizar ratings publicos de Google Play, Apple App Store y Huawei AppGallery en un solo Google Sheet y publicarlos como web app interactiva. Las fuentes materializadas siguen siendo compatibles con Looker Studio para analisis ad hoc.
 
 ## Resultado
 
@@ -26,7 +26,6 @@ Las antiguas pestañas por pais, `ALL`, `MONTHLY_ALL`, `Resumen` y `ALL_BANCO_*`
 
    ```bash
    cp .clasp.json.example .clasp.json
-   # Sustituir REPLACE_WITH_BOUND_APPS_SCRIPT_ID por el ID del proyecto vinculado.
    clasp push
    ```
 
@@ -34,6 +33,12 @@ Las antiguas pestañas por pais, `ALL`, `MONTHLY_ALL`, `Resumen` y `ALL_BANCO_*`
 5. Ejecute `runNow()` con `SEND_ALERT_EMAILS = FALSE`. La primera ejecucion migra las cabeceras de forma append-only, elimina Italia/Alemania y competidores retail, completa Venezuela y los segmentos commercial digitales verificados, y materializa los datasets de dashboard.
 6. Compruebe una nueva fila en `RUN_LOG`, una fila por app en `FETCH_LOG`, ratings del dia en `RATINGS` y datos en las tres fuentes `DASHBOARD_*`.
 7. Ejecute `setupProject()` para instalar el trigger diario. Active `SEND_ALERT_EMAILS` solo tras validar destinatarios y umbrales.
+
+## Dashboard web
+
+El repositorio incluye una interfaz HTML responsive y una API de lectura en `src/60_WebApp.gs` y `src/Index.html`. El dashboard consume snapshots diarios y tendencias mensuales sin descargar `RATINGS` completa en el navegador.
+
+Tras ejecutar `clasp push`, cree un despliegue **Aplicacion web** con **Ejecutar como: yo** y limite **Quien tiene acceso** al dominio o grupo corporativo apropiado. No use acceso anonimo si los benchmarks no deben ser publicos. Consulte [WEB_APP.md](WEB_APP.md) para el despliegue y las rutas de validacion.
 
 El acceso conectado durante esta construccion devolvio `403 PERMISSION_DENIED` para el Sheet destino; por eso la importacion y el despliegue vinculado deben hacerse con una cuenta que tenga permiso de edicion.
 
