@@ -6,7 +6,7 @@ La interfaz se sirve desde el mismo Apps Script que actualiza el Google Sheet. `
 
 El backend evita enviar las 32k observaciones completas:
 
-- `getMarketsDashboardBootstrap()` devuelve la ultima foto, metadatos, consolidados, incidencias y logos disponibles.
+- `getMarketsDashboardBootstrap()` devuelve la ultima foto, metadatos, consolidados, incidencias, logos y la tendencia inicial de 18 meses; el primer grafico no necesita una segunda llamada.
 - `getMarketsDashboardTrends(filters)` devuelve series mensuales filtradas, con un maximo de 36 meses.
 - `CacheService` actua como nivel rapido L1 durante seis horas y se comparte entre todos los usuarios.
 - `PropertiesService` conserva como nivel L2, sin caducidad, el bootstrap y hasta 36 meses de tendencias, comprimidos y divididos en bloques seguros.

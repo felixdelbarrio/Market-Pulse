@@ -1,6 +1,6 @@
 /** Web app y API de lectura para el dashboard de ratings. */
 var MARKETS_WEB = Object.freeze({
-  version: '2026.07.17.3',
+  version: '2026.07.17.4',
   cacheSeconds: 21600,
   maxCacheCharacters: 95000,
   defaultTrendMonths: 18,
@@ -60,21 +60,26 @@ function getMarketsDashboardBootstrap() {
   return readMarketsWebCache_(cacheKey, function () {
     const persistent = readMarketsPersistentCache_('bootstrap');
     if (persistent) return persistent;
-    const bootstrap = buildMarketsDashboardBootstrap_(openMarketsSpreadsheet_());
+    const ss = openMarketsSpreadsheet_();
+    let allTrends = readMarketsPersistentCache_('trends');
+    if (!allTrends) allTrends = buildAllDashboardTrendsForWeb_(ss, MARKETS_WEB.maxTrendMonths);
+    const bootstrap = buildMarketsDashboardBootstrap_(ss, allTrends);
     writeMarketsPersistentCache_('bootstrap', bootstrap, bootstrap.meta.latestRun && bootstrap.meta.latestRun.runId);
+    writeMarketsPersistentCache_('trends', allTrends, bootstrap.meta.latestRun && bootstrap.meta.latestRun.runId);
     return bootstrap;
   });
 }
 
-/** La respuesta inicial excluye tendencias para pintar la pagina cuanto antes. */
-function buildMarketsDashboardBootstrap_(ss) {
+/** Incluye la tendencia inicial para evitar una segunda RPC durante el arranque. */
+function buildMarketsDashboardBootstrap_(ss, allTrends) {
   const latestDate = readLatestCompetitionDateForWeb_(ss);
   if (!latestDate) throw new Error('DASHBOARD_COMPETITION no contiene fechas publicables.');
   const snapshot = readCompetitionSnapshotForWeb_(ss, latestDate);
   return {
     meta: buildMarketsWebMeta_(ss, snapshot, latestDate),
     snapshot: snapshot,
-    trends: [],
+    trends: filterDashboardTrendsForWeb_(allTrends || [],
+      normalizeDashboardTrendRequest_(defaultMarketsTrendRequest_())),
     consolidated: readConsolidatedSnapshotForWeb_(ss, latestDate)
   };
 }
@@ -462,7 +467,7 @@ function readMarketsPersistentCache_(name) {
       if (!chunk) return null;
       encoded += chunk;
     }
-    const blob = Utilities.newBlob(Utilities.base64Decode(encoded));
+    const blob = Utilities.newBlob(Utilities.base64Decode(encoded), 'application/gzip');
     return JSON.parse(Utilities.ungzip(blob).getDataAsString('UTF-8'));
   } catch (error) {
     console.warn('No se pudo leer la cache persistente ' + name + ': ' + errorToString_(error));
@@ -497,8 +502,8 @@ function refreshMarketsDashboardCache_(ss) {
   const latestDate = readLatestCompetitionDateForWeb_(ss);
   const cache = CacheService.getScriptCache();
   try { cache.remove(marketsBootstrapCacheKey_()); } catch (ignored) {}
-  const bootstrap = buildMarketsDashboardBootstrap_(ss);
   const allTrends = buildAllDashboardTrendsForWeb_(ss, MARKETS_WEB.maxTrendMonths);
+  const bootstrap = buildMarketsDashboardBootstrap_(ss, allTrends);
   const revision = bootstrap.meta.latestRun && bootstrap.meta.latestRun.runId;
   writeMarketsPersistentCache_('bootstrap', bootstrap, revision);
   writeMarketsPersistentCache_('trends', allTrends, revision);

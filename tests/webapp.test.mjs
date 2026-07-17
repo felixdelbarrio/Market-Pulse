@@ -33,6 +33,21 @@ test("web trend request is bounded and normalized", () => {
   assert.equal(context.normalizeDashboardTrendRequest_({ segment: "all" }).segment, "ALL");
 });
 
+test("bootstrap carries the initial chart without a second RPC", () => {
+  context.readLatestCompetitionDateForWeb_ = () => "2026-07-17";
+  context.readCompetitionSnapshotForWeb_ = () => [{ appKey: "ANDROID|ES|BBVA" }];
+  context.buildMarketsWebMeta_ = () => ({ dataDate: "2026-07-17" });
+  context.readConsolidatedSnapshotForWeb_ = () => ({ group: null, countries: {} });
+  const allTrends = [
+    { month: "2026-07", platform: "Android", countryCode: "ES", segment: "BANK", isBbva: true },
+    { month: "2026-07", platform: "Android", countryCode: "ES", segment: "BANK", isBbva: false },
+    { month: "2026-07", platform: "Android", countryCode: "ES", segment: "FINTECH", isBbva: false }
+  ];
+  const bootstrap = context.buildMarketsDashboardBootstrap_({}, allTrends);
+  assert.equal(bootstrap.trends.length, 1);
+  assert.equal(bootstrap.trends[0].isBbva, true);
+});
+
 test("warm trend cache avoids opening the spreadsheet", () => {
   let spreadsheetOpens = 0;
   context.openMarketsSpreadsheet_ = () => { spreadsheetOpens += 1; throw new Error("cache miss"); };
@@ -53,14 +68,18 @@ test("persistent shared cache survives L1 expiry and swaps generations", () => {
     setProperties(entries) { Object.entries(entries).forEach(([key, value]) => values.set(key, String(value))); return this; },
     deleteProperty(key) { values.delete(key); return this; }
   };
-  const asBlob = buffer => ({
+  const asBlob = (buffer, contentType = null) => ({
     getBytes() { return Array.from(buffer); },
-    getDataAsString() { return buffer.toString("utf8"); }
+    getDataAsString() { return buffer.toString("utf8"); },
+    getContentType() { return contentType; }
   });
   context.PropertiesService = { getScriptProperties() { return properties; } };
-  context.Utilities.newBlob = value => asBlob(Buffer.isBuffer(value) ? value : Buffer.from(value));
-  context.Utilities.gzip = blob => asBlob(gzipSync(Buffer.from(blob.getBytes())));
-  context.Utilities.ungzip = blob => asBlob(gunzipSync(Buffer.from(blob.getBytes())));
+  context.Utilities.newBlob = (value, contentType) => asBlob(Buffer.isBuffer(value) ? value : Buffer.from(value), contentType);
+  context.Utilities.gzip = blob => asBlob(gzipSync(Buffer.from(blob.getBytes())), "application/gzip");
+  context.Utilities.ungzip = blob => {
+    assert.equal(blob.getContentType(), "application/gzip");
+    return asBlob(gunzipSync(Buffer.from(blob.getBytes())), "application/json");
+  };
   context.Utilities.base64Encode = bytes => Buffer.from(bytes).toString("base64");
   context.Utilities.base64Decode = value => Array.from(Buffer.from(value, "base64"));
   let uuidCounter = 0;
