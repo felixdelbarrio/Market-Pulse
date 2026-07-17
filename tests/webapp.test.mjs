@@ -134,12 +134,13 @@ test("competition rows map to a serializable dashboard contract", () => {
     "PRODUCT_SCOPE", "APP_KEY", "APP_NAME", "IS_BBVA", "DISPLAY_ORDER", "RATING", "RATING_COUNT",
     "RANKING", "RANKING_EXPECTED_APPS", "RANKING_OBSERVED_APPS", "RANKING_COVERAGE",
     "RANKING_IS_COMPLETE", "PREVIOUS_RATING_30D", "DELTA_30D", "IS_FRESH_THIS_RUN", "FETCH_STATUS", "RUN_ID",
-    "PREVIOUS_RATING_COUNT_30D", "RATING_COUNT_DELTA_30D"
+    "PREVIOUS_RATING_COUNT_30D", "RATING_COUNT_DELTA_30D", "STORE_WEB_URL"
   ];
   const indexes = context.indexHeaders_(headers);
   const row = [
     new Date("2026-07-17T12:00:00Z"), "Android", "MX", "Mexico", "BANK", "COUNTRY_BANKS", "BUSINESS",
-    "ANDROID|MX|BBVA", "BBVA", true, 0, 4.21, 1200, 2, 5, 5, 1, true, 4.25, -0.04, true, "OK", "run-1", 1130, 70
+    "ANDROID|MX|BBVA", "BBVA", true, 0, 4.21, 1200, 2, 5, 5, 1, true, 4.25, -0.04, true, "OK", "run-1", 1130, 70,
+    "https://play.google.com/store/apps/details?id=com.bbva.empresas&hl=es&gl=MX"
   ];
   const mapped = context.mapCompetitionRowForWeb_(row, indexes);
   assert.equal(mapped.date, "2026-07-17");
@@ -148,6 +149,13 @@ test("competition rows map to a serializable dashboard contract", () => {
   assert.equal(mapped.rankingComplete, true);
   assert.equal(mapped.fresh, true);
   assert.equal(mapped.ratingCountDelta30d, 70);
+  assert.equal(mapped.storeUrl, "https://play.google.com/store/apps/details?id=com.bbva.empresas&hl=es&gl=MX");
+});
+
+test("store URL sanitizer rejects native schemes and foreign domains", () => {
+  assert.equal(context.sanitizeStoreWebUrl_("itms-apps://itunes.apple.com/app/id1", "iOS"), "");
+  assert.equal(context.sanitizeStoreWebUrl_("https://example.com/store/apps/details?id=x", "Android"), "");
+  assert.equal(context.sanitizeStoreWebUrl_("https://apps.apple.com/mx/app/id925436649", "iOS"), "https://apps.apple.com/mx/app/id925436649");
 });
 
 test("Index inline JavaScript compiles", () => {
@@ -155,4 +163,7 @@ test("Index inline JavaScript compiles", () => {
   const match = html.match(/<script>([\s\S]*?)<\/script>/);
   assert.ok(match, "inline script not found");
   assert.doesNotThrow(() => new Function(match[1]));
+  assert.match(html, /target="_blank"/);
+  assert.match(html, /rel="noopener noreferrer"/);
+  assert.doesNotMatch(html, /(?:market|itms-apps|appmarket):\/\//);
 });

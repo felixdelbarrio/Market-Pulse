@@ -1,6 +1,6 @@
 /** Web app y API de lectura para el dashboard de ratings. */
 var MARKETS_WEB = Object.freeze({
-  version: '2026.07.17.4',
+  version: '2026.07.17.5',
   cacheSeconds: 21600,
   maxCacheCharacters: 95000,
   defaultTrendMonths: 18,
@@ -207,8 +207,20 @@ function mapCompetitionRowForWeb_(row, indexes) {
     fetchStatus: trimString_(row[indexes.fetch_status]),
     runId: trimString_(row[indexes.run_id]),
     previousRatingCount30d: webNumber_(row[indexes.previous_rating_count_30d]),
-    ratingCountDelta30d: webNumber_(row[indexes.rating_count_delta_30d])
+    ratingCountDelta30d: webNumber_(row[indexes.rating_count_delta_30d]),
+    storeUrl: sanitizeStoreWebUrl_(row[indexes.store_web_url], trimString_(row[indexes.platform]))
   };
+}
+
+/** Limita los enlaces publicados a fichas HTTPS de las tres stores soportadas. */
+function sanitizeStoreWebUrl_(value, platform) {
+  const url = trimString_(value);
+  const patterns = {
+    Android: /^https:\/\/play\.google\.com\/store\/apps\/details\?/i,
+    iOS: /^https:\/\/apps\.apple\.com\/[a-z]{2}\/app\/id\d+(?:[/?#]|$)/i,
+    Huawei: /^https:\/\/appgallery\.huawei\.com\/app\/C\d+(?:[/?#]|$)/i
+  };
+  return patterns[platform] && patterns[platform].test(url) ? url : '';
 }
 
 function buildAllDashboardTrendsForWeb_(ss, months) {

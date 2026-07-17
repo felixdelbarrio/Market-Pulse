@@ -163,8 +163,26 @@ function buildCompetitionRows_(ratings, catalog, execution) {
         date === referenceKey && execution ? execution.runId : '',
         app.commercialEligible, app.commercialEvidenceUrl || '', app.storeEvidenceUrl || '', app.verifiedAt || '',
         item.previousRatingCount30d == null ? '' : item.previousRatingCount30d,
-        item.ratingCountDelta30d == null ? '' : item.ratingCountDelta30d];
+        item.ratingCountDelta30d == null ? '' : item.ratingCountDelta30d, buildStoreWebUrl_(app)];
     });
+}
+
+/** URL web oficial con storefront explicito; nunca usa esquemas de aplicaciones nativas. */
+function buildStoreWebUrl_(app) {
+  const country = trimString_(app.countryCode).toUpperCase();
+  const locale = (trimString_(app.locale).split(/[-_]/)[0] || 'es').toLowerCase();
+  if (app.platform === 'Android' && app.packageName) {
+    return 'https://play.google.com/store/apps/details?id=' + encodeURIComponent(app.packageName) +
+      '&hl=' + encodeURIComponent(locale) + '&gl=' + encodeURIComponent(country);
+  }
+  if (app.platform === 'iOS' && app.appId) {
+    return 'https://apps.apple.com/' + country.toLowerCase() + '/app/id' + encodeURIComponent(app.appId);
+  }
+  if (app.platform === 'Huawei' && app.appId) {
+    return 'https://appgallery.huawei.com/app/' + encodeURIComponent(app.appId) +
+      '?locale=' + encodeURIComponent(locale + '_' + country);
+  }
+  return '';
 }
 
 /** Agregacion mensual compacta; el mes siempre deriva de OBSERVED_DATE. */

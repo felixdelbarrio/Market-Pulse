@@ -31,9 +31,9 @@ test("geographic seeds match the catalog contract and have unique keys", () => {
   assert.equal(context.MARKETS_CONFIG.sheets.reviews, undefined);
 });
 
-test("rating-volume fields extend append-only contracts", () => {
+test("dashboard fields extend append-only contracts", () => {
   const headers = context.MARKETS_CONFIG.headers;
   assert.deepEqual(Array.from(headers.ratings).slice(-2), ["PREVIOUS_RATING_COUNT_30D", "RATING_COUNT_DELTA_30D"]);
   assert.deepEqual(Array.from(headers.trends).slice(-2), ["RATING_COUNT_EOM", "RATING_COUNT_DELTA_30D_EOM"]);
-  assert.deepEqual(Array.from(headers.competition).slice(-2), ["PREVIOUS_RATING_COUNT_30D", "RATING_COUNT_DELTA_30D"]);
+  assert.deepEqual(Array.from(headers.competition).slice(-3), ["PREVIOUS_RATING_COUNT_30D", "RATING_COUNT_DELTA_30D", "STORE_WEB_URL"]);
 });

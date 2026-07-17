@@ -13,6 +13,8 @@ vm.runInContext(sources, context);
 function app(appKey, platform, countryCode, weight, groupWeight = weight) {
   return {
     appKey, platform, countryCode, country: countryCode, isBbva: true,
+    appId: platform === "iOS" ? "1590189082" : platform === "Huawei" ? "C1751602113005231488" : "com.bbva.empresas",
+    packageName: platform === "iOS" ? "" : "com.bbva.empresas", locale: "es",
     countryPlatformWeight: weight, groupUserWeight: groupWeight,
     marketSegment: "BANK", weightSource: "Internal users 2026Q2", weightEffectiveDate: new Date(2026, 5, 30)
   };
@@ -96,4 +98,11 @@ test("incomplete coverage suppresses rank in materialized competition source", (
   assert.equal(row[19], false);
   assert.equal(row[31], 90);
   assert.equal(row[32], 10);
+  assert.equal(row[33], "https://play.google.com/store/apps/details?id=com.bbva.empresas&hl=es&gl=VE");
+});
+
+test("store links are canonical HTTPS pages with an explicit geography", () => {
+  assert.equal(context.buildStoreWebUrl_(app("IOS|VE|BBVA", "iOS", "VE", 0)), "https://apps.apple.com/ve/app/id1590189082");
+  assert.equal(context.buildStoreWebUrl_(app("HUAWEI|VE|BBVA", "Huawei", "VE", 0)), "https://appgallery.huawei.com/app/C1751602113005231488?locale=es_VE");
+  assert.ok(!/^(market|itms-apps|appmarket):/.test(context.buildStoreWebUrl_(app("ANDROID|VE|BBVA", "Android", "VE", 0))));
 });

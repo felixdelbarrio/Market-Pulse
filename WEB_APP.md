@@ -12,6 +12,7 @@ El backend evita enviar las 32k observaciones completas:
 - `PropertiesService` conserva como nivel L2, sin caducidad, el bootstrap y hasta 36 meses de tendencias, comprimidos y divididos en bloques seguros.
 - La foto ejecutiva se pinta primero y las tendencias se solicitan en segundo plano.
 - El snapshot mas reciente se localiza leyendo solo el final de `DASHBOARD_COMPETITION`, no sus 32k fechas.
+- Las filas Android, iOS y Huawei abren fichas web oficiales con geografia explicita en otra pestaña; nunca usan esquemas de tiendas nativas.
 - El selector historico y su API se eliminaron: la aplicacion siempre representa la revision materializada mas reciente.
 
 ## Despliegue

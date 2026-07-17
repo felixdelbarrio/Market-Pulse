@@ -112,13 +112,19 @@
     .flag { font-size:21px; }
     .country-score { color:var(--blue); font-size:11px; font-weight:800; }
     .platform-list { display:grid; gap:7px; }
-    .platform-row { display:grid; grid-template-columns:68px minmax(64px,1fr) auto; align-items:center; gap:8px; min-height:32px; font-size:12px; }
+    .platform-row { position:relative; display:grid; grid-template-columns:72px minmax(64px,1fr) auto; align-items:center; gap:7px 9px; min-height:47px; margin:0 -7px; padding:6px 7px; border:1px solid transparent; color:inherit; font-size:13px; text-decoration:none; transition:background .18s ease,border-color .18s ease,box-shadow .18s ease,transform .18s ease; }
+    .platform-row.market-link { cursor:pointer; }
+    .platform-row.market-link:hover { border-color:#b7e6ed; background:linear-gradient(105deg,#edf7fd,#f1fbf9); box-shadow:0 7px 18px rgba(20,100,165,.10); transform:translateY(-1px); }
+    .platform-row.market-link:focus-visible { outline:3px solid rgba(20,100,165,.28); outline-offset:2px; background:#edf7fd; }
     .platform-name { color:var(--muted); font-weight:650; }
     .rating-track { height:6px; overflow:hidden; background:#e5edf1; }
     .rating-fill { height:100%; background:linear-gradient(90deg,var(--blue-2),var(--aqua)); }
     .rating-number { min-width:76px; text-align:right; font-weight:800; }
     .rating-number em { margin-left:5px; font-size:10px; font-style:normal; font-weight:700; }
-    .rating-count { grid-column:2/4; margin-top:-5px; color:#657985; font-size:10px; text-align:right; }
+    .rating-count { grid-column:2; margin-top:-5px; color:#657985; font-size:11px; line-height:1.3; text-align:right; }
+    .market-action { grid-column:3; display:inline-flex; align-items:center; justify-content:flex-end; gap:4px; margin-top:-5px; color:var(--blue); font-size:11px; font-weight:800; white-space:nowrap; }
+    .market-action b { display:grid; place-items:center; width:17px; height:17px; border-radius:50%; color:#fff; background:var(--blue); font-size:10px; transition:transform .18s ease; }
+    .market-link:hover .market-action b { transform:translate(2px,-2px); }
 
     .signals { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin-top:12px; }
     .signal { display:grid; grid-template-columns:32px 1fr auto; align-items:center; gap:9px; padding:12px; background:#f5f8f9; }
@@ -249,6 +255,8 @@
       .kpi-value { grid-row:1/3; grid-column:2; margin:0; font-size:24px; text-align:right; }
       .kpi-foot { margin-top:2px; }
       .platform-button { font-size:10px; }
+      .platform-row { grid-template-columns:64px minmax(58px,1fr) auto; }
+      .market-action span { display:none; }
     }
 
     @media print {
@@ -331,6 +339,7 @@
       const COUNTRIES={AR:"Argentina",CO:"Colombia",ES:"España",MX:"México",PE:"Perú",TR:"Turquía",UY:"Uruguay",VE:"Venezuela"};
       const PLATFORMS=["Android","iOS","Huawei"];
       const PLATFORM_LABELS={ALL:"Todas",Android:"Android",iOS:"iOS",Huawei:"Huawei"};
+      const STORE_LABELS={Android:"Google Play",iOS:"App Store",Huawei:"AppGallery"};
       const SEGMENT_LABELS={BANK:"Banca empresas",FINTECH:"Fintech y Neobancos",ALL:"Todo el mercado"};
       const COLORS=["#1464a5","#2dcccd","#7c4dca","#e85d75","#f5a623","#13866f","#4d79ff","#9b6b43","#d43f8d","#657b8d","#00a5a6","#8e6c00"];
       const state={meta:null,snapshot:[],trends:[],consolidated:null,country:"ALL",platform:"ALL",segment:"BANK",view:"overview",trendsLoading:true,trendToken:0,trendTimer:0,trendCache:new Map(),trendPromise:null};
@@ -505,8 +514,16 @@
           }).filter(entry=>entry.item);
           if(!platformRows.length)return"";
           const average=mean(platformRows.map(entry=>entry.item.rating));
-          return`<article class="country-card"><div class="country-title"><div class="country-name"><span class="flag">${FLAGS[code]||"🌐"}</span>${esc(countryLabel(code))}</div><span class="country-score">${fmt(average,2)} media</span></div><div class="platform-list">${platformRows.map(({platform,item})=>`<div class="platform-row"><span class="platform-name">${platform}</span><div class="rating-track"><div class="rating-fill" style="width:${item.rating/5*100}%"></div></div><span class="rating-number">${fmt(item.rating,2)}<em class="${item.delta30d>0?"delta-up":item.delta30d<0?"delta-down":""}">${signed(item.delta30d)}</em></span><span class="rating-count">${integer(item.ratingCount)} valoraciones${finite(item.ratingCountDelta30d)?` · ${item.ratingCountDelta30d>=0?"+":""}${integer(item.ratingCountDelta30d)} en 30d`:""}</span></div>`).join("")}</div></article>`;
+          return`<article class="country-card"><div class="country-title"><div class="country-name"><span class="flag">${FLAGS[code]||"🌐"}</span>${esc(countryLabel(code))}</div><span class="country-score">${fmt(average,2)} media</span></div><div class="platform-list">${platformRows.map(({platform,item})=>renderMarketRow(code,platform,item)).join("")}</div></article>`;
         }).join("");
+      }
+
+      function renderMarketRow(code,platform,item){
+        const linked=Boolean(item.storeUrl);
+        const tag=linked?"a":"div";
+        const store=STORE_LABELS[platform]||"market";
+        const attrs=linked?` href="${esc(item.storeUrl)}" target="_blank" rel="noopener noreferrer" title="Abrir ficha web de ${esc(store)} para ${esc(countryLabel(code))} en una pestaña nueva" aria-label="Abrir ${esc(store)} web: ${esc(appName(item))}, ${esc(countryLabel(code))}, rating ${fmt(item.rating,2)}"`:"";
+        return`<${tag} class="platform-row${linked?" market-link":""}"${attrs}><span class="platform-name">${esc(platform)}</span><div class="rating-track"><div class="rating-fill" style="width:${item.rating/5*100}%"></div></div><span class="rating-number">${fmt(item.rating,2)}<em class="${item.delta30d>0?"delta-up":item.delta30d<0?"delta-down":""}">${signed(item.delta30d)}</em></span><span class="rating-count">${integer(item.ratingCount)} valoraciones${finite(item.ratingCountDelta30d)?` · ${item.ratingCountDelta30d>=0?"+":""}${integer(item.ratingCountDelta30d)} en 30d`:""}</span>${linked?`<span class="market-action"><span>${esc(store)}</span><b aria-hidden="true">↗</b></span>`:""}</${tag}>`;
       }
 
       function renderSignals(focus,rows){
