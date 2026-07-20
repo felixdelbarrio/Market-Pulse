@@ -314,6 +314,13 @@ test("all-markets evolution is BBVA-only and individual markets inherit benchmar
   assert.deepEqual(Array.from(browser.MarketsDomain.selectionRows(snapshot, { country: "MX", platform: "ALL" }, "FINTECH", true), row => row.appKey), ["BBVA", "MP"]);
 });
 
+test("all-markets benchmark keeps every market on one page", () => {
+  const app = fs.readFileSync(new URL("../src/App.html", import.meta.url), "utf8");
+  assert.match(app, /function renderBenchmark\(\).*D\.selectionRows\(state\.snapshot,selection\(\),state\.benchmarkSegment,true\)/);
+  assert.doesNotMatch(app, /vista agregada está reservada|Selecciona un mercado · BBVA Empresas/);
+  assert.match(app, /segment-filter"\)\.disabled=false/);
+});
+
 test("evolution KPIs use BBVA closes for the selected period", () => {
   const html = fs.readFileSync(new URL("../src/Domain.html", import.meta.url), "utf8");
   const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
