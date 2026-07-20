@@ -1,0 +1,24 @@
+<script>
+  (()=>{
+    "use strict";
+    function lineChart(series,options){
+      const ui=window.MarketsUI,theme=window.MarketsTheme.chart,finite=window.MarketsDomain.finite;
+      const visible=(series||[]).slice(0,12).map(item=>({...item,points:(item.points||[]).filter(point=>!options.period||point.month<=options.period)})).filter(item=>item.points.length);
+      if(!visible.length)return{svg:ui.empty("Sin datos para esta selección","No existen observaciones con los filtros y el periodo elegidos."),legend:"",series:[]};
+      const months=[...new Set(visible.flatMap(item=>item.points.map(point=>point.month)))].sort();
+      const monthIndex=new Map(months.map((month,index)=>[month,index]));
+      const values=visible.flatMap(item=>item.points.map(point=>point.value)).filter(finite);
+      let min=Math.max(1,Math.floor((Math.min(...values)-.12)*10)/10),max=Math.min(5,Math.ceil((Math.max(...values)+.12)*10)/10);if(max-min<.4){min=Math.max(1,min-.2);max=Math.min(5,max+.2)}
+      const width=theme.width,height=theme.height,left=theme.left,right=theme.right,top=theme.top,bottom=theme.bottom,plotW=width-left-right,plotH=height-top-bottom;
+      const x=month=>left+(months.length===1?plotW/2:monthIndex.get(month)/(months.length-1)*plotW);const y=value=>top+(max-value)/(max-min)*plotH;
+      const ticks=Array.from({length:5},(_,index)=>min+(max-min)*index/4);const step=Math.max(1,Math.ceil(months.length/8));
+      const grid=ticks.map(value=>`<g><line x1="${left}" y1="${y(value)}" x2="${width-right}" y2="${y(value)}" stroke="${theme.grid}"/><text x="${left-12}" y="${y(value)+4}" text-anchor="end" fill="${theme.axis}" font-size="${theme.fontSize}">${options.format(value,1)}</text></g>`).join("");
+      const labels=months.map((month,index)=>index%step===0||index===months.length-1?`<text x="${x(month)}" y="${height-16}" text-anchor="middle" fill="${theme.axis}" font-size="${theme.fontSize}">${ui.esc(options.monthLabel(month))}</text>`:"").join("");
+      const lines=visible.map((item,index)=>{const color=theme.palette[index%theme.palette.length];const points=item.points.filter(point=>finite(point.value)).sort((a,b)=>a.month.localeCompare(b.month));const path=points.map((point,position)=>`${position?"L":"M"}${x(point.month).toFixed(1)},${y(point.value).toFixed(1)}`).join(" ");const circles=points.map(point=>`<circle class="chart-point" tabindex="0" cx="${x(point.month)}" cy="${y(point.value)}" r="${theme.pointRadius}" fill="${color}" stroke="${theme.surface}" stroke-width="${theme.pointStroke}" data-label="${ui.esc(item.label)}" data-month="${ui.esc(options.monthLabel(point.month))}" data-value="${options.format(point.value,2)}"></circle>`).join("");return`<path d="${path}" fill="none" stroke="${color}" stroke-width="${item.isBbva?theme.focusLineWidth:theme.lineWidth}" stroke-linejoin="round" stroke-linecap="round" opacity="${item.isBbva?1:.82}"/>${circles}`}).join("");
+      const scope=options.allMarkets?"BBVA Empresas en todos los mercados":options.context,idPrefix=options.idPrefix||"markets";
+      const svg=`<svg viewBox="0 0 ${width} ${height}" role="img" aria-labelledby="${idPrefix}-chart-title ${idPrefix}-chart-desc"><title id="${idPrefix}-chart-title">Evolución mensual de ratings</title><desc id="${idPrefix}-chart-desc">${ui.esc(scope)}. Periodo hasta ${ui.esc(options.monthLabel(months.at(-1)))}</desc>${grid}<line x1="${left}" y1="${top}" x2="${left}" y2="${height-bottom}" stroke="${theme.axis}"/>${labels}${lines}</svg>`;
+      return{svg,legend:ui.legend(visible,theme.palette),series:visible};
+    }
+    window.MarketsCharts=Object.freeze({lineChart});
+  })();
+</script>

@@ -1,6 +1,6 @@
 /** Web app de lectura para el dashboard de ratings. */
 var MARKETS_WEB = Object.freeze({
-  version: '2026.07.17.9',
+  version: '2026.07.20.10',
   cacheSeconds: 21600,
   maxCacheCharacters: 95000,
   defaultTrendMonths: 18,
@@ -13,9 +13,14 @@ var MARKETS_WEB = Object.freeze({
 
 /** Publica el dashboard bajo el control de acceso del despliegue de Apps Script. */
 function doGet() {
-  return HtmlService.createHtmlOutputFromFile('Index')
+  return HtmlService.createTemplateFromFile('Index').evaluate()
     .setTitle('Markets Ratings Intelligence')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover');
+}
+
+/** Compone los modulos de presentacion sin introducir peticiones HTTP adicionales. */
+function includeMarketsWebPartial_(name) {
+  return HtmlService.createHtmlOutputFromFile(name).getContent();
 }
 
 /** RPC inicial consumido por Index.html. */

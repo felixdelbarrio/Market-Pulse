@@ -1,0 +1,15 @@
+<script>
+  (()=>{
+    "use strict";
+    const esc=value=>String(value??"").replace(/[&<>"']/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[char]));
+    const paths=Object.freeze({close:'M13.131 12L21.365 20.234L20.234 21.365L12 13.131L3.76603 21.365L2.63503 20.234L10.869 12L2.63403 3.76603L3.76503 2.63503L11.999 10.869L20.234 2.63403L21.365 3.76503L13.131 11.999V12Z',check:'M9.19994 18.1309L4.03394 12.9659L5.16594 11.8339L9.19994 15.8689L18.8339 6.23389L19.9659 7.36589L9.19994 18.1309Z',right:'M16.0239 12.781C16.5243 12.3807 16.5243 11.6196 16.0239 11.2192L8.6247 5.29987C7.96993 4.77606 7 5.24223 7 6.08073V17.9195C7 18.758 7.96993 19.2242 8.6247 18.7004L16.0239 12.781Z',arrows:'M8.79999 9.13212V16.0001H7.19999V6.13112L4.36599 8.96512L3.23499 7.83412L8.00099 3.06812L12.767 7.83412L11.636 8.96512L8.80199 6.13112V9.13212H8.79999ZM19.634 15.0341L16.8 17.8681V7.99911H15.2V17.8681L12.366 15.0341L11.235 16.1651L16.001 20.9311L20.767 16.1651L19.636 15.0341H19.634Z'});
+    const icon=name=>`<span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="${paths[name]||paths.check}"></path></svg></span>`;
+    const metric=card=>`<article class="metric-card ${card.accent?"accent":""}"><div class="metric-label">${esc(card.label)}</div><div class="metric-value ${esc(card.valueClass||"")}">${esc(card.value)} <small>${esc(card.suffix||"")}</small></div><div class="metric-foot">${esc(card.foot||"")}</div></article>`;
+    const metrics=cards=>(cards||[]).map(metric).join("");
+    const empty=(title,copy)=>`<div class="empty-state"><div><strong>${esc(title)}</strong>${esc(copy)}</div></div>`;
+    const loading=(title="Cargando datos de evolución",copy="La vista ejecutiva ya está disponible.")=>`<div class="loading-state"><div><strong>${esc(title)}</strong><span>${esc(copy)}</span><div class="loading-line"></div></div></div>`;
+    const legend=(items,palette)=>(items||[]).map((item,index)=>`<span class="legend-item"><i class="legend-swatch" style="background:${palette[index%palette.length]}"></i>${esc(item.label)}</span>`).join("");
+    const option=(value,label,selected=false)=>`<option value="${esc(value)}"${selected?' selected':''}>${esc(label)}</option>`;
+    window.MarketsUI=Object.freeze({esc,icon,metric,metrics,empty,loading,legend,option});
+  })();
+</script>

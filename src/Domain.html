@@ -1,0 +1,70 @@
+<script>
+  (()=>{
+    "use strict";
+    const config=Object.freeze({
+      flags:Object.freeze({AR:"🇦🇷",CO:"🇨🇴",ES:"🇪🇸",MX:"🇲🇽",PE:"🇵🇪",TR:"🇹🇷",UY:"🇺🇾",VE:"🇻🇪"}),
+      countries:Object.freeze({AR:"Argentina",CO:"Colombia",ES:"España",MX:"México",PE:"Perú",TR:"Turquía",UY:"Uruguay",VE:"Venezuela"}),
+      platforms:Object.freeze(["Android","iOS","Huawei"]),
+      platformLabels:Object.freeze({ALL:"Todas",Android:"Android",iOS:"iOS",Huawei:"Huawei"}),
+      storeLabels:Object.freeze({Android:"Google Play",iOS:"App Store",Huawei:"AppGallery"}),
+      segmentLabels:Object.freeze({BANK:"Banca empresas",FINTECH:"Fintech y Neobancos",ALL:"Todo el mercado"})
+    });
+    const finite=value=>typeof value==="number"&&Number.isFinite(value);
+    const sum=values=>values.filter(finite).reduce((total,value)=>total+value,0);
+    const sumOrNull=values=>{const clean=values.filter(finite);return clean.length?sum(clean):null};
+    const mean=values=>{const clean=values.filter(finite);return clean.length?sum(clean)/clean.length:null};
+    const groupBy=(rows,selector)=>rows.reduce((out,row)=>{const key=selector(row);(out[key]||(out[key]=[])).push(row);return out},{});
+    const appName=row=>row.isBbva?"BBVA Empresas":row.appName;
+    const selectionRows=(snapshot,selection,segment="BANK",includeBbva=false)=>(snapshot||[]).filter(row=>(selection.country==="ALL"||row.countryCode===selection.country)&&(selection.platform==="ALL"||row.platform===selection.platform)&&(segment==="ALL"||row.segment===segment||(includeBbva&&segment==="FINTECH"&&row.isBbva)));
+    const trendRows=(trends,selection)=>(trends||[]).filter(row=>(selection.country==="ALL"||row.countryCode===selection.country)&&(selection.platform==="ALL"||row.platform===selection.platform)&&row.segment==="BANK"&&(selection.country!=="ALL"||row.isBbva));
+    function uniqueStoreRows(rows){
+      const byKey=new Map();
+      (rows||[]).forEach(row=>{const key=row.volumeKey||row.appKey;const current=byKey.get(key);if(!current||quality(row)>quality(current)||(quality(row)===quality(current)&&finite(row.ratingCount)&&(!finite(current.ratingCount)||row.ratingCount>current.ratingCount)))byKey.set(key,row)});
+      return[...byKey.values()];
+    }
+    const quality=row=>(finite(row.rating)?8:0)+(finite(row.ratingCount)?4:0)+(finite(row.ratingCountDelta30d)?2:0)+(row.fresh?1:0);
+    function volumeSummary(rows){
+      const bbvaOnly=uniqueStoreRows((rows||[]).filter(row=>row.isBbva));
+      const counted=bbvaOnly.filter(row=>finite(row.ratingCount));
+      const comparable=bbvaOnly.filter(row=>finite(row.ratingCountDelta30d));
+      return{accumulated:sumOrNull(counted.map(row=>row.ratingCount)),period:sumOrNull(comparable.map(row=>Math.max(0,row.ratingCountDelta30d))),counted:counted.length,comparable:comparable.length,shared:bbvaOnly.filter(row=>row.volumeScope==="SHARED_LISTING").length};
+    }
+    function rankRows(rows){
+      const sorted=[...(rows||[])].sort((a,b)=>b.rating-a.rating||(a.displayOrder||0)-(b.displayOrder||0)||appName(a).localeCompare(appName(b)));
+      return sorted.map(row=>({...row,computedRank:1+sorted.filter(other=>other.rating>row.rating).length}));
+    }
+    function countBbvaLeaders(rows){
+      const groups=groupBy(rows,row=>`${row.countryCode}|${row.platform}`);let value=0,comparable=0;
+      Object.values(groups).forEach(group=>{const ranked=rankRows(group.filter(row=>finite(row.rating)));if(ranked.length<2||ranked.some(row=>!row.rankingComplete))return;const bbva=ranked.find(row=>row.isBbva);if(!bbva)return;comparable++;if(bbva.computedRank===1)value++});
+      return{value,comparable};
+    }
+    function availablePeriods(rows){return[...new Set((rows||[]).filter(row=>finite(row.ratingEom)).map(row=>row.month))].sort()}
+    function periodModel(rows,preferredYear,preferredMonth){
+      const periods=availablePeriods(rows);const latest=periods.at(-1)||"";
+      const years=[...new Set(periods.map(period=>period.slice(0,4)))].sort().reverse();
+      const year=years.includes(String(preferredYear))?String(preferredYear):(latest.slice(0,4)||"");
+      const months=periods.filter(period=>period.startsWith(`${year}-`)).map(period=>period.slice(5)).sort().reverse();
+      const month=months.includes(String(preferredMonth).padStart(2,"0"))?String(preferredMonth).padStart(2,"0"):(months[0]||"");
+      return{period:year&&month?`${year}-${month}`:"",year,month,years,months,periods};
+    }
+    function ratingAt(rows,period){const values=(rows||[]).filter(row=>row.month===period&&row.isBbva&&finite(row.ratingEom)).map(row=>row.ratingEom);return mean(values)}
+    function previousAvailable(periods,target){return[...(periods||[])].filter(period=>period<target).sort().at(-1)||""}
+    function previousYearClose(periods,period){const priorYear=String(Number(period.slice(0,4))-1);return[...(periods||[])].filter(item=>item<=`${priorYear}-12`).sort().at(-1)||""}
+    function evolutionKpis(rows,snapshot,selection,period){
+      const bbva=(rows||[]).filter(row=>row.isBbva&&row.month<=period);const periods=availablePeriods(bbva);const currentPeriod=periods.includes(period)?period:previousAvailable(periods,`${period}-z`);
+      const monthPeriod=previousAvailable(periods,currentPeriod);const yearPeriod=previousYearClose(periods,currentPeriod);
+      const current=ratingAt(bbva,currentPeriod),monthClose=ratingAt(bbva,monthPeriod),yearClose=ratingAt(bbva,yearPeriod);
+      const expected=new Set(selectionRows(snapshot,selection,"BANK").filter(row=>row.isBbva).map(row=>row.appKey)).size;
+      const observed=new Set(bbva.filter(row=>row.month===currentPeriod&&finite(row.ratingEom)).map(row=>row.appKey)).size;
+      return{currentPeriod,yearPeriod,monthPeriod,current,yearClose,monthClose,annual:finite(current)&&finite(yearClose)?current-yearClose:null,monthly:finite(current)&&finite(monthClose)?current-monthClose:null,coverage:expected?observed/expected:null,observed,expected};
+    }
+    function prepareSeries(rows,selection){
+      const buckets=new Map();
+      (rows||[]).forEach(row=>{let key,label;if(selection.country==="ALL"){key=row.countryCode;label=config.countries[row.countryCode]||row.country||row.countryCode}else if(selection.platform==="ALL"){key=appName(row);label=appName(row)}else{key=row.appKey;label=appName(row)}const bucketKey=`${key}|${row.month}`;const bucket=buckets.get(bucketKey)||{key,label,month:row.month,values:[],isBbva:row.isBbva};bucket.values.push(row.ratingEom);bucket.isBbva=bucket.isBbva||row.isBbva;buckets.set(bucketKey,bucket)});
+      const grouped=new Map();buckets.forEach(bucket=>{const item=grouped.get(bucket.key)||{key:bucket.key,label:bucket.label,isBbva:bucket.isBbva,points:[]};item.points.push({month:bucket.month,value:mean(bucket.values)});item.isBbva=item.isBbva||bucket.isBbva;grouped.set(bucket.key,item)});
+      return[...grouped.values()].sort((a,b)=>Number(b.isBbva)-Number(a.isBbva)||latestValue(b)-latestValue(a)||a.label.localeCompare(b.label));
+    }
+    const latestValue=series=>[...(series.points||[])].sort((a,b)=>a.month.localeCompare(b.month)).at(-1)?.value||0;
+    window.MarketsDomain=Object.freeze({config,finite,sum,sumOrNull,mean,groupBy,appName,selectionRows,trendRows,uniqueStoreRows,volumeSummary,rankRows,countBbvaLeaders,availablePeriods,periodModel,evolutionKpis,prepareSeries,latestValue});
+  })();
+</script>
