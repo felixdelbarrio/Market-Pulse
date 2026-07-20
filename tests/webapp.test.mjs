@@ -268,7 +268,10 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(report, /La voz del mercado/);
   assert.match(report, /Posición competitiva/);
   assert.match(report, /Calidad del dato/);
-  assert.equal((report.match(/return pageShell\(context,/g) || []).length, 8);
+  assert.equal((report.match(/return pageShell\(context,/g) || []).length, 6);
+  assert.match(report, /const totalPages=9/);
+  assert.match(report, /benchmark\.slice\(0,12\)/);
+  assert.match(report, /detail\.slice\(12\)/);
   assert.match(reportStyles, /width:297mm;height:210mm/);
   assert.match(reportStyles, /report-cover/);
   assert.match(reportStyles, /report-benchmark-table/);

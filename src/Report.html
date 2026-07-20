@@ -32,10 +32,11 @@
       const period=D.periodModel(trends,"","").period;
       const evolution=D.evolutionKpis(D.trendRows(trends,selection),snapshot,selection,period);
       const series=D.prepareSeries(D.trendRows(trends,selection),selection);
-      const chart=C.lineChart(series,{period,idPrefix:"report",format:fmt,monthLabel,allMarkets:true,context:"BBVA Empresas en todos los mercados"});
+      const displaySeries=series.map(item=>({...item,label:item.label.replace("BBVA Empresas ","")}));
+      const chart=C.lineChart(displaySeries,{period,idPrefix:"report",format:fmt,monthLabel,allMarkets:true,context:"BBVA Empresas en todos los mercados"});
       const geography=buildGeography(bbva,meta);
       const benchmark=buildBenchmark(competitive,meta);
-      const movements=buildMovements(series);
+      const movements=buildMovements(displaySeries);
       const detail=buildDetail(bbva,benchmark,meta);
       const signals=buildSignals(observed,benchmark,coverage,meta);
       const incidents=meta.latestRun?.incidents||[];

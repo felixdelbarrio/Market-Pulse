@@ -53,6 +53,10 @@ Los enlaces de Android, iOS y Huawei se generan como HTTPS web con geografia exp
 
 `Resumen` y `Evolucion` no muestran el selector `Benchmark`. Para todos los mercados representan las series territoriales de BBVA Empresas; al elegir un mercado muestran todo su mercado. El selector competitivo solo aparece en `Benchmark`, donde permite comparar bancos, fintech y neobancos en una unica pagina. Cada fila del ranking enlaza a la ficha web oficial de la app.
 
+## Informe ejecutivo
+
+**Descargar informe** no imprime las pantallas del dashboard. Genera un entregable BBVA COMMERCIAL de alcance global con nueve paginas A4 horizontales: portada, lectura ejecutiva, panorama geografico, dos paginas de posicion competitiva, evolucion, dos anexos por store y trazabilidad del dato. El renderer espera las fuentes Benton Sans BBVA, reutiliza el logotipo oficial de `BrandAssets`, deduplica listings compartidos y separa las tablas antes de imprimir para que ninguna fila o grafico quede cortado.
+
 ## Alertas privadas
 
 La pestaña `Alertas` obtiene la identidad con `Session.getActiveUser()` y no acepta un email enviado por el navegador. Cada usuario solo lee, guarda, restaura y prueba su propia configuracion. Al entrar por primera vez queda registrado, incluso si mantiene las alertas pausadas.
