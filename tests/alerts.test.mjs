@@ -78,6 +78,55 @@ test("the server derives the account and ignores an email injected by the client
   assert.equal(written.email, "felix.delbarrio@bbva.com");
 });
 
+test("a test email returns traceable acceptance diagnostics and is audited", () => {
+  const original = {
+    currentUser: context.currentMarketsUserEmail_, open: context.openMarketsSpreadsheet_,
+    ensure: context.ensureWorkbookSchema_, readControl: context.readControl_, send: context.sendAlertEmails_,
+    append: context.appendAlertEvents_, touch: context.touchMarketsAlertTimestamp_,
+    MailApp: context.MailApp, Utilities: context.Utilities, Session: context.Session, MARKETS_WEB: context.MARKETS_WEB
+  };
+  let sentEvents = null;
+  let auditedEvents = null;
+  let quotaCall = 0;
+  context.currentMarketsUserEmail_ = () => "felix.delbarrio@bbva.com";
+  context.openMarketsSpreadsheet_ = () => ({ id: "sheet" });
+  context.ensureWorkbookSchema_ = () => {};
+  context.readControl_ = () => ({ SEND_ALERT_EMAILS: true });
+  context.MailApp = { getRemainingDailyQuota: () => [100, 99][quotaCall++] };
+  context.Utilities = {
+    formatDate: () => "20260720-141500",
+    getUuid: () => "abcd1234-0000-0000-0000-000000000000"
+  };
+  context.Session = { getEffectiveUser: () => ({ getEmail: () => "automation.owner@bbva.com" }) };
+  context.MARKETS_WEB = { version: "test-web" };
+  context.sendAlertEmails_ = events => { sentEvents = events; return 1; };
+  context.appendAlertEvents_ = (_ss, events) => { auditedEvents = events; };
+  context.touchMarketsAlertTimestamp_ = () => {};
+
+  const result = context.sendMarketsAlertTestEmail();
+  assert.equal(result.sent, true);
+  assert.equal(result.accepted, true);
+  assert.equal(result.deliveryId, "COM-20260720-141500-ABCD1234");
+  assert.equal(result.effectiveSender, "automation.owner@bbva.com");
+  assert.equal(result.quotaBefore, 100);
+  assert.equal(result.quotaAfter, 99);
+  assert.equal(result.auditLogged, true);
+  assert.equal(sentEvents, auditedEvents);
+  assert.equal(context.marketsAlertEmailSubject_(sentEvents), "[PRUEBA] COMMERCIAL · Canal de alertas · COM-20260720-141500-ABCD1234");
+
+  context.currentMarketsUserEmail_ = original.currentUser;
+  context.openMarketsSpreadsheet_ = original.open;
+  context.ensureWorkbookSchema_ = original.ensure;
+  context.readControl_ = original.readControl;
+  context.sendAlertEmails_ = original.send;
+  context.appendAlertEvents_ = original.append;
+  context.touchMarketsAlertTimestamp_ = original.touch;
+  context.MailApp = original.MailApp;
+  context.Utilities = original.Utilities;
+  context.Session = original.Session;
+  context.MARKETS_WEB = original.MARKETS_WEB;
+});
+
 test("daily, month-to-date and year-to-date drops are independent", () => {
   const rows = [
     rating(2, 4.8, { observedDate: new Date(2026, 0, 2, 12) }),
@@ -129,6 +178,8 @@ test("competitive crossovers distinguish lost and regained positions", () => {
 test("BBVA alert email uses the official image slot, brand system and safe content", () => {
   const events = [{
     severity: "CRITICAL", type: "RATING_DROP_YTD", platform: "iOS", countryCode: "CO",
+    country: "Colombia <script>alert('x')</script>", appName: "BBVA Empresas Colombia", metricValue: 0.7, threshold: 0.5,
+    baselineRating: 4.82, currentRating: 4.12, baselineDate: "2026-01-02", currentDate: "2026-07-20",
     detail: "Caída crítica <script>alert('x')</script>"
   }];
   const html = context.renderMarketsAlertEmail_(events);
@@ -137,9 +188,40 @@ test("BBVA alert email uses the official image slot, brand system and safe conte
   assert.match(html, /background:#072146/);
   assert.match(html, /border-radius:16px/);
   assert.match(html, /border-radius:8px/);
+  assert.match(html, /COMMERCIAL · ALERTAS DE RATINGS/);
+  assert.match(html, /Alerta por cambios en ratings/);
+  assert.match(html, /BBVA Empresas Colombia cae 0,70 puntos/);
+  assert.match(html, /Rating anterior/);
+  assert.match(html, /Rating actual/);
+  assert.match(html, /límite 0,50/);
+  assert.match(html, /Siguiente paso/);
+  assert.doesNotMatch(html, /Markets Data Studio/i);
+  assert.doesNotMatch(html, /Tu pulso de mercado requiere atención/);
   assert.doesNotMatch(html, /<script>/);
-  assert.match(html, /&lt;script&gt;/);
-  assert.equal(context.marketsAlertEmailSubject_(events), "[CRÍTICO] Markets Data Studio - 1 movimiento");
+  assert.match(html, /Colombia &lt;script&gt;/);
+  assert.equal(context.marketsAlertEmailSubject_(events), "[CRÍTICO] COMMERCIAL · 1 cambio en ratings");
+});
+
+test("test email is explicit, useful and previews the detail of a real alert", () => {
+  const events = [{
+    severity: "POSITIVE", type: "TEST", platform: "Todas", countryCode: "GLOBAL",
+    recipients: "felix.delbarrio@bbva.com", ruleId: "COM-20260720-141500-ABCD1234",
+    detail: "Prueba de entrega"
+  }];
+  const html = context.renderMarketsAlertEmail_(events);
+  assert.match(html, /PRUEBA DE CANAL/);
+  assert.match(html, /No se ha detectado ningún cambio real/);
+  assert.match(html, /Canal de alertas verificado/);
+  assert.match(html, /NO ES UNA ALERTA REAL/);
+  assert.match(html, /EJEMPLO DE DETALLE · SIMULADO/);
+  assert.match(html, /BBVA Empresas Colombia/);
+  assert.match(html, /4,82 → 4,42/);
+  assert.match(html, /COM-20260720-141500-ABCD1234/);
+  assert.doesNotMatch(html, /Markets Data Studio/i);
+  const text = context.renderMarketsAlertPlainText_(events);
+  assert.match(text, /BBVA COMMERCIAL/);
+  assert.match(text, /NO ES UNA ALERTA REAL/);
+  assert.match(text, /aplicación, mercado, plataforma, periodo/);
 });
 
 test("the scheduled engine processes every active subscriber without a connected Session", () => {

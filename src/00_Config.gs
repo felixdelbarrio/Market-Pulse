@@ -1,6 +1,6 @@
 /** Configuracion unica del monitor real de ratings Android, iOS y Huawei. */
 var MARKETS_CONFIG = Object.freeze({
-  codeVersion: '2026.07.20.2',
+  codeVersion: '2026.07.20.4',
   spreadsheetId: '1IkJgvM2imxm3r1x092q5dqpThrlnDoZ-5QvH8n2h2oQ',
   timeZone: 'Europe/Madrid', runHour: 7, runMinute: 5, lockTimeoutMs: 30000,
   requestRetries: 2, retryBaseDelayMs: 1200, huaweiBatchSize: 6, huaweiBatchDelayMs: 300,
@@ -62,7 +62,7 @@ var MARKETS_CONFIG = Object.freeze({
     ])
   }),
   controlDefaults: Object.freeze([
-    ['CODE_VERSION', '2026.07.20.2', 'Version del contrato de datos y del Apps Script'],
+    ['CODE_VERSION', '2026.07.20.4', 'Version del contrato de datos y del Apps Script'],
     ['TIME_ZONE', 'Europe/Madrid', 'Zona horaria de ejecucion y fechas'],
     ['SEND_ALERT_EMAILS', false, 'Enviar emails; mantener FALSE durante la validacion inicial'],
     ['RATING_LOOKBACK_DAYS', 30, 'Ventana para DELTA_30D']

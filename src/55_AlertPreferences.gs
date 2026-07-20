@@ -334,16 +334,38 @@ function sendMarketsAlertTestEmail() {
   if (!parseBoolean_(control.SEND_ALERT_EMAILS, false)) {
     throw new Error('El envio global esta desactivado. Activa SEND_ALERT_EMAILS en CONTROL antes de probar.');
   }
+  const quotaBefore = MailApp.getRemainingDailyQuota();
+  if (quotaBefore < 1) {
+    throw new Error('La cuenta ejecutora no tiene cuota de correo disponible hoy. Revisa las cuotas de Apps Script o prueba mañana.');
+  }
+  const sentAt = new Date();
+  const deliveryId = 'COM-' + Utilities.formatDate(sentAt, MARKETS_CONFIG.timeZone, 'yyyyMMdd-HHmmss') + '-' +
+    Utilities.getUuid().slice(0, 8).toUpperCase();
   const events = [{
-    timestamp: new Date(), eventKey: 'TEST|' + new Date().getTime() + '|' + email,
+    timestamp: sentAt, eventKey: 'TEST|' + deliveryId + '|' + email,
     referenceDate: new Date(), platform: 'Todas', countryCode: 'GLOBAL', type: 'TEST',
-    severity: 'POSITIVE', detail: 'Tu canal privado de alertas esta correctamente configurado.',
-    recipients: email, userEmail: email, ruleId: 'TEST', metricValue: 1, threshold: 1,
-    appKey: '', direction: 'TEST', runId: 'SELF_SERVICE_TEST', source: 'SELF_SERVICE_TEST'
+    severity: 'POSITIVE', detail: 'Prueba de entrega ' + deliveryId + '. No es una alerta real: verifica que tu canal privado puede recibir los avisos de COMMERCIAL.',
+    recipients: email, userEmail: email, ruleId: deliveryId, metricValue: 1, threshold: 1,
+    appKey: '', direction: 'TEST', runId: deliveryId, source: 'SELF_SERVICE_TEST'
   }];
   const delivered = sendAlertEmails_(events, ss);
-  touchMarketsAlertTimestamp_(ss, email, 'LAST_TEST_AT', new Date());
-  return { sent: delivered === 1, recipient: email, sentAt: new Date().toISOString() };
+  if (delivered !== 1) throw new Error('Google no ha aceptado la prueba para el destinatario esperado.');
+  let auditLogged = true;
+  try {
+    appendAlertEvents_(ss, events);
+    touchMarketsAlertTimestamp_(ss, email, 'LAST_TEST_AT', sentAt);
+  } catch (auditError) {
+    auditLogged = false;
+    console.error('Correo aceptado, pero no se pudo completar la auditoria ' + deliveryId + ': ' + errorToString_(auditError));
+  }
+  let effectiveSender = '';
+  try { effectiveSender = normalizeEmailForComparison_(Session.getEffectiveUser().getEmail()); } catch (ignored) {}
+  return {
+    sent: true, accepted: true, recipient: email, sentAt: sentAt.toISOString(), deliveryId: deliveryId,
+    effectiveSender: effectiveSender, quotaBefore: quotaBefore,
+    quotaAfter: MailApp.getRemainingDailyQuota(), auditLogged: auditLogged,
+    codeVersion: MARKETS_CONFIG.codeVersion, webVersion: MARKETS_WEB.version
+  };
 }
 
 function alertPreferencesForClient_(preferences) {
