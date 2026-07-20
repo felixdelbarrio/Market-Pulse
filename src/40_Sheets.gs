@@ -11,6 +11,7 @@ function workbookDefinitions_() {
     [MARKETS_CONFIG.sheets.trends, MARKETS_CONFIG.headers.trends],
     [MARKETS_CONFIG.sheets.fetchLog, MARKETS_CONFIG.headers.fetchLog],
     [MARKETS_CONFIG.sheets.alerts, MARKETS_CONFIG.headers.alerts],
+    [MARKETS_CONFIG.sheets.alertPreferences, MARKETS_CONFIG.headers.alertPreferences],
     [MARKETS_CONFIG.sheets.runs, MARKETS_CONFIG.headers.runs]
   ];
 }
@@ -154,6 +155,15 @@ function applyTableStyle_(sheet, width) {
   } else if (sheet.getName() === MARKETS_CONFIG.sheets.alerts) {
     sheet.getRange('A:A').setNumberFormat('yyyy-mm-dd hh:mm:ss');
     sheet.getRange('C:C').setNumberFormat('yyyy-mm-dd');
+    sheet.getRange('N:O').setNumberFormat('0.00');
+  } else if (sheet.getName() === MARKETS_CONFIG.sheets.alertPreferences) {
+    sheet.getRange('F:G').setNumberFormat('0.0');
+    sheet.getRange('I:J').setNumberFormat('0.00');
+    sheet.getRange('N:N').setNumberFormat('yyyy-mm-dd hh:mm:ss');
+    sheet.getRange('S:T').setNumberFormat('0.00');
+    sheet.getRange('V:W').setNumberFormat('0.00');
+    sheet.getRange('Y:Z').setNumberFormat('0.00');
+    sheet.getRange('AB:AE').setNumberFormat('yyyy-mm-dd hh:mm:ss');
   } else if (sheet.getName() === MARKETS_CONFIG.sheets.runs) {
     sheet.getRange('A:A').setNumberFormat('yyyy-mm-dd hh:mm:ss');
   }
@@ -172,11 +182,17 @@ function readControl_(ss) {
   const sheet = ss.getSheetByName(MARKETS_CONFIG.sheets.control);
   const rows = sheet.getLastRow() > 1
     ? sheet.getRange(2, 1, sheet.getLastRow() - 1, 2).getValues() : [];
-  return rows.reduce(function (out, row) {
+  const control = rows.reduce(function (out, row) {
     const key = trimString_(row[0]);
     if (key) out[key] = row[1];
     return out;
   }, {});
+  if (control.SEND_ALERT_MAILS !== undefined) {
+    control.SEND_ALERT_EMAILS = parseBoolean_(control.SEND_ALERT_EMAILS, false) ||
+      parseBoolean_(control.SEND_ALERT_MAILS, false);
+    control.ALERT_CONFIG_WARNING = 'SEND_ALERT_MAILS esta obsoleto; usa SEND_ALERT_EMAILS.';
+  }
+  return control;
 }
 
 function readAppCatalog_(ss) {
@@ -202,6 +218,8 @@ function readAppCatalog_(ss) {
       recipients: trimString_(row[indexes.alert_recipients]),
       warningDrop: Math.abs(toFiniteNumber_(row[indexes.warning_drop]) || 0.30),
       criticalDrop: Math.abs(toFiniteNumber_(row[indexes.critical_drop]) || 0.50),
+      minObservations7d: toNonNegativeInteger_(row[indexes.min_observations_7d]) || 5,
+      competitorAlerts: parseBoolean_(row[indexes.competitor_alerts], true),
       countryPlatformWeight: nonNegativeNumberOrZero_(row[indexes.country_platform_weight]),
       groupUserWeight: nonNegativeNumberOrZero_(row[indexes.group_user_weight]),
       displayOrder: toNonNegativeInteger_(row[indexes.display_order]),

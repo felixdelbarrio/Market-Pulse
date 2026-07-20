@@ -1,13 +1,14 @@
 /** Configuracion unica del monitor real de ratings Android, iOS y Huawei. */
 var MARKETS_CONFIG = Object.freeze({
-  codeVersion: '2026.07.17.3',
+  codeVersion: '2026.07.20.2',
   spreadsheetId: '1IkJgvM2imxm3r1x092q5dqpThrlnDoZ-5QvH8n2h2oQ',
   timeZone: 'Europe/Madrid', runHour: 7, runMinute: 5, lockTimeoutMs: 30000,
   requestRetries: 2, retryBaseDelayMs: 1200, huaweiBatchSize: 6, huaweiBatchDelayMs: 300,
+  countryCodes: Object.freeze(['AR', 'CO', 'ES', 'MX', 'PE', 'TR', 'UY', 'VE']),
   sheets: Object.freeze({
     control: 'CONTROL', catalog: 'APP_CATALOG', ratings: 'RATINGS',
     competition: 'DASHBOARD_COMPETITION', trends: 'DASHBOARD_TRENDS', fetchLog: 'FETCH_LOG',
-    alerts: 'ALERT_LOG', runs: 'RUN_LOG'
+    alerts: 'ALERT_LOG', alertPreferences: 'ALERT_SUBSCRIPTIONS', runs: 'RUN_LOG'
   }),
   headers: Object.freeze({
     control: Object.freeze(['PARAMETER', 'VALUE', 'DESCRIPTION']),
@@ -41,7 +42,18 @@ var MARKETS_CONFIG = Object.freeze({
     ]),
     alerts: Object.freeze([
       'TIMESTAMP', 'EVENT_KEY', 'REFERENCE_DATE', 'PLATFORM', 'COUNTRY_CODE', 'TYPE', 'SEVERITY',
-      'DETAIL', 'RECIPIENTS', 'RUN_ID', 'SOURCE'
+      'DETAIL', 'RECIPIENTS', 'RUN_ID', 'SOURCE', 'USER_EMAIL', 'RULE_ID', 'METRIC_VALUE',
+      'THRESHOLD', 'APP_KEY', 'DIRECTION'
+    ]),
+    alertPreferences: Object.freeze([
+      'USER_EMAIL', 'ACTIVE', 'COUNTRIES', 'PLATFORMS', 'REVIEW_SHARE_ENABLED',
+      'REVIEW_WARNING_PCT', 'REVIEW_CRITICAL_PCT', 'WEEKLY_DROP_ENABLED',
+      'WEEKLY_WARNING_DROP', 'WEEKLY_CRITICAL_DROP', 'CROSSOVER_ENABLED',
+      'CROSSOVER_DIRECTION', 'DELIVERY_MODE', 'UPDATED_AT', 'UPDATED_BY', 'CONFIG_VERSION', 'STATUS',
+      'DAILY_DROP_ENABLED', 'DAILY_WARNING_DROP', 'DAILY_CRITICAL_DROP',
+      'MTD_DROP_ENABLED', 'MTD_WARNING_DROP', 'MTD_CRITICAL_DROP',
+      'YTD_DROP_ENABLED', 'YTD_WARNING_DROP', 'YTD_CRITICAL_DROP', 'REPEAT_WHILE_BREACHED',
+      'REGISTERED_AT', 'LAST_SEEN_AT', 'LAST_TEST_AT', 'LAST_DELIVERY_AT'
     ]),
     runs: Object.freeze([
       'STARTED_AT', 'RUN_ID', 'STATUS', 'APPS_TOTAL', 'APPS_OK', 'APPS_NO_RATING', 'APPS_ERROR',
@@ -50,7 +62,7 @@ var MARKETS_CONFIG = Object.freeze({
     ])
   }),
   controlDefaults: Object.freeze([
-    ['CODE_VERSION', '2026.07.17.3', 'Version del contrato de datos y del Apps Script'],
+    ['CODE_VERSION', '2026.07.20.2', 'Version del contrato de datos y del Apps Script'],
     ['TIME_ZONE', 'Europe/Madrid', 'Zona horaria de ejecucion y fechas'],
     ['SEND_ALERT_EMAILS', false, 'Enviar emails; mantener FALSE durante la validacion inicial'],
     ['RATING_LOOKBACK_DAYS', 30, 'Ventana para DELTA_30D']

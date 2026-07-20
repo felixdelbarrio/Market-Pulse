@@ -41,7 +41,8 @@ function runDailyRatingMonitor() {
       try { invalidateMarketsDashboardCache_(); } catch (ignored) {}
       console.error('No se pudo actualizar la cache del dashboard: ' + errorToString_(cacheError));
     }
-    return { runId: runId, status: status, apps: results.length, rowsUpserted: upserted, alerts: alerts.length };
+    return { runId: runId, status: status, apps: results.length, rowsUpserted: upserted,
+      alerts: alerts.length, alertSubscribers: alerts.subscriberCount || 0, emailsSent: alerts.deliveryCount || 0 };
   } catch (error) {
     if (ss) {
       try {

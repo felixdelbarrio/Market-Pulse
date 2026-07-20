@@ -1,7 +1,7 @@
 function setupProject() {
   const ss = openMarketsSpreadsheet_();
   initializeWorkbook_(ss);
-  readAppCatalog_(ss);
+  migrateLegacyAlertRecipients_(ss, readAppCatalog_(ss));
   installDailyTrigger_();
   return validateProject();
 }
@@ -9,7 +9,10 @@ function setupProject() {
 function validateProject() {
   const ss = openMarketsSpreadsheet_();
   ensureWorkbookSchema_(ss);
+  const control = readControl_(ss);
   const catalog = readAppCatalog_(ss);
+  migrateLegacyAlertRecipients_(ss, catalog);
+  const alertUsers = readAllMarketsAlertPreferences_(ss);
   const counts = catalog.reduce(function (out, app) {
     out[app.platform] = (out[app.platform] || 0) + 1;
     return out;
@@ -27,6 +30,18 @@ function validateProject() {
     platforms: counts,
     geographies: geography,
     weightConfiguration: validateWeightConfiguration_(catalog),
+    alerting: {
+      emailDeliveryEnabled: parseBoolean_(control.SEND_ALERT_EMAILS, false),
+      registeredUsers: alertUsers.length,
+      subscribers: alertUsers.filter(function (item) { return item.active; }).length,
+      pausedUsers: alertUsers.filter(function (item) { return !item.active; }).length,
+      dailyDropSubscribers: alertUsers.filter(function (item) { return item.active && item.dailyDropEnabled; }).length,
+      monthDropSubscribers: alertUsers.filter(function (item) { return item.active && item.mtdDropEnabled; }).length,
+      yearDropSubscribers: alertUsers.filter(function (item) { return item.active && item.ytdDropEnabled; }).length,
+      repeatingSubscribers: alertUsers.filter(function (item) { return item.active && item.repeatWhileBreached; }).length,
+      adminSheet: MARKETS_CONFIG.sheets.alertPreferences,
+      warning: trimString_(control.ALERT_CONFIG_WARNING)
+    },
     sheets: Object.keys(MARKETS_CONFIG.sheets).map(function (key) { return MARKETS_CONFIG.sheets[key]; })
   };
 }

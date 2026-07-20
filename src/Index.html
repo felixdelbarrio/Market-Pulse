@@ -10,7 +10,7 @@
   <div id="app" class="app-shell">
     <header class="topbar">
       <div class="brand"><div class="brand-mark"><span class="bbva-logo" role="img" aria-label="BBVA"></span></div><div class="brand-divider"></div><div class="brand-product">Markets Data Studio<span>Commercial</span></div></div>
-      <nav class="main-nav" aria-label="Secciones"><button class="nav-button active" data-view="overview" type="button">Resumen</button><button class="nav-button" data-view="benchmark" type="button">Benchmark</button><button class="nav-button" data-view="evolution" type="button">Evolución</button></nav>
+      <nav class="main-nav" aria-label="Secciones"><button class="nav-button active" data-view="overview" type="button">Resumen</button><button class="nav-button" data-view="benchmark" type="button">Benchmark</button><button class="nav-button" data-view="evolution" type="button">Evolución</button><button class="nav-button" data-view="alerts" type="button">Alertas</button></nav>
       <button id="report-button" class="button button-secondary" type="button" title="Descargar informe completo" aria-label="Descargar informe completo"><span aria-hidden="true">↓</span><span>Descargar informe</span></button>
     </header>
 
@@ -21,7 +21,7 @@
       </div>
     </section>
 
-    <div class="filter-wrap"><section id="filter-bar" class="filter-bar" aria-label="Filtros globales">
+    <div id="filter-wrap" class="filter-wrap"><section id="filter-bar" class="filter-bar" aria-label="Filtros globales">
       <div class="control"><label for="country-filter">Mercado</label><select id="country-filter" class="select-control"><option value="ALL">Todos los mercados</option></select></div>
       <div class="control"><label>Plataforma</label><div id="platform-switch" class="platform-switch" role="group" aria-label="Plataforma"></div></div>
       <div id="benchmark-control" class="control hidden"><label for="segment-filter">Benchmark</label><select id="segment-filter" class="select-control"><option value="BANK">Solo bancos</option><option value="FINTECH">Fintech y Neobancos</option><option value="ALL">Todo el mercado</option></select></div>
@@ -47,6 +47,66 @@
         <section class="period-toolbar" aria-label="Periodo específico de Evolución"><div class="filter-hierarchy"><strong>Periodo Evolución</strong><span id="filter-hierarchy-copy">Mercado → Plataforma → Periodo</span></div><div class="period-controls"><div class="control"><label for="year-filter">Año</label><select id="year-filter" class="select-control"></select></div><div class="control"><label for="month-filter">Mes</label><select id="month-filter" class="select-control"></select></div></div></section>
         <div id="evolution-kpis" class="section kpi-grid evolution-kpis"></div>
         <div class="section evolution-layout"><section class="panel"><div class="panel-head"><div><h3>Rating al cierre de mes</h3><span id="chart-context">Mercados seleccionados</span></div><span class="panel-meta">Escala 1–5</span></div><div id="evolution-chart" class="chart-wrap"></div><div id="evolution-legend" class="chart-legend"></div></section><aside class="panel series-panel"><div class="panel-head"><div><h3>Último movimiento</h3><span id="movement-period">Variación mensual visible</span></div></div><div id="series-summary" class="series-summary"></div></aside></div>
+      </section>
+
+      <section id="view-alerts" class="view hidden">
+        <div class="section-head alert-title"><div><span class="section-kicker">Centro privado</span><h2>Mis alertas</h2><p>Decide qué movimientos merecen tu atención y recibe un único resumen después de cada actualización.</p></div><span class="privacy-badge">Privado para tu cuenta</span></div>
+        <div id="alerts-loading" class="panel alert-loading">Preparando tu configuración privada…</div>
+        <div id="alerts-content" class="hidden">
+          <section class="alert-profile-card">
+            <div><span class="alert-profile-kicker">Tu canal de señales</span><h3 id="alert-user-email">—</h3><p id="alert-system-copy">Solo tú puedes ver y modificar esta configuración.</p></div>
+            <label class="master-switch"><span><strong>Alertas por email</strong><small id="alert-master-copy">Activa tu resumen personal</small></span><input id="alert-active" type="checkbox"><i aria-hidden="true"></i></label>
+          </section>
+
+          <div class="alert-status-grid">
+            <article class="alert-status-card"><span class="status-orb" id="alert-mail-orb"></span><div><small>Canal de correo</small><strong id="alert-mail-status">Comprobando</strong></div></article>
+            <article class="alert-status-card"><span class="status-orb aqua"></span><div><small>Frecuencia</small><strong id="alert-schedule">Resumen diario</strong></div></article>
+            <article class="alert-status-card"><span class="status-orb scheduled"></span><div><small>Envío programado</small><strong id="alert-delivery-scope">Toda la base activa</strong></div></article>
+            <article class="alert-status-card"><span class="status-orb private"></span><div><small>Privacidad</small><strong>Configuración individual</strong></div></article>
+          </div>
+          <div id="alert-config-warning" class="alert-inline-message warning hidden"></div>
+
+          <form id="alert-form">
+            <section class="alert-config-section">
+              <div class="alert-section-heading"><div><span class="alert-step">01</span><div><h3>Ámbito que quieres vigilar</h3><p>Combina mercados y plataformas. “Todos” mantiene automáticamente las nuevas geografías.</p></div></div></div>
+              <div class="scope-layout"><div><strong class="scope-label">Mercados</strong><div id="alert-country-scope" class="scope-chips"></div></div><div><strong class="scope-label">Plataformas</strong><div id="alert-platform-scope" class="scope-chips"></div></div></div>
+            </section>
+
+            <section class="alert-config-section">
+              <div class="alert-section-heading"><div><span class="alert-step">02</span><div><h3>Señales que quieres recibir</h3><p>Activa solo las reglas que sean útiles para ti y personaliza sus límites.</p></div></div></div>
+              <div class="alert-rule-grid">
+                <article class="alert-rule-card drop-suite">
+                  <header><div class="rule-icon trend">↘</div><div><span class="rule-state live">Disponible · Multiselección</span><h4>Caídas de rating</h4></div></header>
+                  <p>Combina las tres ventanas. Cada una conserva sus propios límites y puede generar una señal independiente.</p>
+                  <div class="drop-period-grid">
+                    <section class="drop-period"><div class="drop-period-head"><div><span>Último movimiento</span><strong>Caída diaria</strong></div><label class="mini-switch" title="Activar caída diaria"><input id="daily-enabled" type="checkbox"><i></i></label></div><p>Último rating frente a la observación anterior.</p><div class="threshold-pair"><label>Amarilla<div><input id="daily-warning" type="number" min="0.01" max="5" step="0.01"><b>pts</b></div></label><label>Roja<div><input id="daily-critical" type="number" min="0.01" max="5" step="0.01"><b>pts</b></div></label></div></section>
+                    <section class="drop-period"><div class="drop-period-head"><div><span>Mes en curso</span><strong>Desde inicio de mes</strong></div><label class="mini-switch" title="Activar caída desde inicio de mes"><input id="mtd-enabled" type="checkbox"><i></i></label></div><p>Último rating frente a la primera observación del mes.</p><div class="threshold-pair"><label>Amarilla<div><input id="mtd-warning" type="number" min="0.01" max="5" step="0.01"><b>pts</b></div></label><label>Roja<div><input id="mtd-critical" type="number" min="0.01" max="5" step="0.01"><b>pts</b></div></label></div></section>
+                    <section class="drop-period recommended"><div class="drop-period-head"><div><span>Recomendada por defecto</span><strong>Desde inicio de año</strong></div><label class="mini-switch" title="Activar caída desde inicio de año"><input id="ytd-enabled" type="checkbox"><i></i></label></div><p>Último rating frente a la primera observación del año.</p><div class="threshold-pair"><label>Amarilla<div><input id="ytd-warning" type="number" min="0.01" max="5" step="0.01"><b>pts</b></div></label><label>Roja<div><input id="ytd-critical" type="number" min="0.01" max="5" step="0.01"><b>pts</b></div></label></div></section>
+                  </div>
+                  <label class="repeat-control"><span><strong>Reavisar mientras continúe la caída</strong><small>Desactivado por defecto: no repite dentro del mismo periodo; una escalada de amarilla a roja sí genera un nuevo aviso.</small></span><input id="repeat-enabled" type="checkbox"><i aria-hidden="true"></i></label>
+                </article>
+
+                <article class="alert-rule-card crossover-card">
+                  <header><div class="rule-icon cross">⇄</div><div><span class="rule-state live">Disponible</span><h4>Cruce competitivo</h4></div><label class="mini-switch" title="Activar cruces competitivos"><input id="crossover-enabled" type="checkbox"><i></i></label></header>
+                  <p>Avisa cuando un competidor supera a BBVA Empresas o cuando BBVA recupera la posición.</p>
+                  <label class="select-field" for="crossover-direction">Movimientos que quieres recibir<select id="crossover-direction" class="select-control"><option value="BOTH">Ambos movimientos</option><option value="LOST">Solo si BBVA pierde posición</option><option value="GAINED">Solo si BBVA recupera posición</option></select></label>
+                  <div class="crossover-preview"><span class="brand-node">BBVA</span><i>⇄</i><span>Competidor</span></div>
+                </article>
+
+                <article class="alert-rule-card unavailable wip-card">
+                  <header><div class="rule-icon review">%</div><div><span class="rule-state pending">WIP · Fuente pendiente</span><h4>Reseñas de 1 y 2 estrellas</h4></div></header>
+                  <p id="review-source-message">Requiere el reparto de estrellas de las últimas 24 horas.</p>
+                  <div class="threshold-pair"><label>Advertencia desde <span class="threshold-tone warning">amarilla</span><div><input id="review-warning" type="number" min="0" max="100" step="1" disabled><b>%</b></div></label><label>Crítica desde <span class="threshold-tone critical">roja</span><div><input id="review-critical" type="number" min="0" max="100" step="1" disabled><b>%</b></div></label></div>
+                  <div class="rule-footnote">WIP visible: los límites están preparados, pero la alerta no se activará hasta conectar una fuente auditable.</div>
+                </article>
+              </div>
+            </section>
+
+            <section class="alert-action-bar"><div><strong id="alert-save-state">Configuración lista para revisar</strong><span>Los cambios se guardan únicamente para tu cuenta.</span></div><div class="alert-actions"><button id="alert-test-button" class="alert-button ghost" type="button">Enviar prueba</button><button id="alert-reset-button" class="alert-button secondary" type="button">Restaurar valores</button><button id="alert-save-button" class="alert-button primary" type="submit">Guardar mis alertas</button></div></section>
+          </form>
+
+          <section class="section panel alert-activity-panel"><div class="panel-head"><div><h3>Actividad reciente</h3><span>Solo eventos dirigidos a tu cuenta</span></div><span class="panel-meta">Últimos 6</span></div><div id="alert-activity" class="alert-activity"></div></section>
+        </div>
       </section>
     </main>
     <footer class="footer"><span><strong>Markets Data Studio</strong> · Ratings y valoraciones públicas de las stores</span><span id="footer-version">Contrato de datos</span></footer>

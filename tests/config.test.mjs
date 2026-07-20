@@ -30,6 +30,8 @@ test("geographic seeds match the catalog contract and have unique keys", () => {
   assert.ok(!digital.some(row => /\|(NU|KLAR|STORI|BRUBANK|NARANJA_X|IMAGIN|OPENBANK|LULO)$/.test(row[0])));
   assert.equal(context.MARKETS_CONFIG.sheets.reviews, undefined);
   assert.equal(context.MARKETS_CONFIG.sheets.scorecards, undefined);
+  assert.equal(context.MARKETS_CONFIG.sheets.alertPreferences, "ALERT_SUBSCRIPTIONS");
+  assert.deepEqual(Array.from(context.MARKETS_CONFIG.countryCodes), ["AR", "CO", "ES", "MX", "PE", "TR", "UY", "VE"]);
 });
 
 test("persistent and compact web contracts expose only required fields", () => {
@@ -37,4 +39,7 @@ test("persistent and compact web contracts expose only required fields", () => {
   assert.deepEqual(Array.from(headers.ratings).slice(-2), ["PREVIOUS_RATING_COUNT_30D", "RATING_COUNT_DELTA_30D"]);
   assert.deepEqual(Array.from(headers.trends), ["PERIOD_MONTH", "PLATFORM", "COUNTRY_CODE", "COUNTRY", "APP_KEY", "APP_NAME", "IS_BBVA", "RATING_EOM", "MARKET_SEGMENT"]);
   assert.deepEqual(Array.from(headers.competition), ["OBSERVED_DATE", "PLATFORM", "COUNTRY_CODE", "COUNTRY", "MARKET_SEGMENT", "APP_KEY", "APP_NAME", "IS_BBVA", "DISPLAY_ORDER", "RATING", "RATING_COUNT", "RANKING_IS_COMPLETE", "DELTA_30D", "IS_FRESH_THIS_RUN", "RATING_COUNT_DELTA_30D", "STORE_WEB_URL"]);
+  assert.deepEqual(Array.from(headers.alerts).slice(-6), ["USER_EMAIL", "RULE_ID", "METRIC_VALUE", "THRESHOLD", "APP_KEY", "DIRECTION"]);
+  assert.equal(headers.alertPreferences.length, 31);
+  assert.deepEqual(Array.from(headers.alertPreferences).slice(-4), ["REGISTERED_AT", "LAST_SEEN_AT", "LAST_TEST_AT", "LAST_DELIVERY_AT"]);
 });
