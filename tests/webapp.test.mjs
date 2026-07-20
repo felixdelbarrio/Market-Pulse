@@ -255,13 +255,25 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   });
   const index = fs.readFileSync(new URL("../src/Index.html", import.meta.url), "utf8");
   const app = fs.readFileSync(new URL("../src/App.html", import.meta.url), "utf8");
+  const assets = fs.readFileSync(new URL("../src/BrandAssets.html", import.meta.url), "utf8");
+  assert.match(index, /includeMarketsWebPartial_\('BrandAssets'\)/);
   names.forEach(name => assert.match(index, new RegExp(`includeMarketsWebPartial_\\('${name}'\\)`)));
   assert.match(app, /target=\"_blank\"/);
   assert.match(app, /rel=\"noopener noreferrer\"/);
   assert.match(app, /function renderRankRow/);
   assert.match(app, /item\.volumeScope!=="SHARED_LISTING"/);
-  assert.match(index, /3 · Benchmark/);
-  assert.match(index, /4 · Periodo Evolución/);
+  assert.match(index, /<label for="country-filter">Mercado<\/label>/);
+  assert.match(index, /<label>Plataforma<\/label>/);
+  assert.match(index, /id="benchmark-control" class="control hidden"/);
+  assert.match(index, /<label for="segment-filter">Benchmark<\/label>/);
+  assert.match(index, /<strong>Periodo Evolución<\/strong>/);
+  assert.doesNotMatch(index, /(?:1|2|3|4) · (?:Mercado|Plataforma|Benchmark|Periodo)/);
+  assert.equal((index.match(/class="bbva-logo"/g) || []).length, 2);
+  assert.doesNotMatch(index, /(?:brand-mark|loader-mark)">BBVA/);
+  assert.equal((assets.match(/@font-face/g) || []).length, 3);
+  assert.match(assets, /font-family:"Benton Sans BBVA"/);
+  assert.match(assets, /data:font\/woff2;base64,/);
+  assert.match(assets, /--asset-bbva-logo:url\("data:image\/png;base64,/);
   assert.doesNotMatch(index + app, /(?:market|itms-apps|appmarket):\/\//);
 });
 
@@ -293,7 +305,7 @@ test("client domain deduplicates shared Android volumes and excludes competitors
   assert.deepEqual(JSON.parse(JSON.stringify(browser.MarketsDomain.countBbvaLeaders(incomplete))), { value: 1, comparable: 1 });
 });
 
-test("all-markets evolution is BBVA-only and individual markets inherit benchmark", () => {
+test("all-markets evolution is BBVA-only and individual markets show the whole market", () => {
   const html = fs.readFileSync(new URL("../src/Domain.html", import.meta.url), "utf8");
   const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
   const browser = {};
@@ -307,11 +319,19 @@ test("all-markets evolution is BBVA-only and individual markets inherit benchmar
   ];
   const trends = [
     { appKey: "BBVA", platform: "Android", countryCode: "MX", segment: "BANK", isBbva: true, month: "2026-07", ratingEom: 4.6 },
-    { appKey: "BANK", platform: "Android", countryCode: "MX", segment: "BANK", isBbva: false, month: "2026-07", ratingEom: 4.5 }
+    { appKey: "BANK", appName: "Banco Uno", platform: "Android", countryCode: "MX", segment: "BANK", isBbva: false, month: "2026-07", ratingEom: 4.5 },
+    { appKey: "MP", appName: "Fintech Uno", platform: "Android", countryCode: "MX", segment: "FINTECH", isBbva: false, month: "2026-07", ratingEom: 4.4 },
+    { appKey: "BBVA-CO", platform: "Android", countryCode: "CO", segment: "BANK", isBbva: true, month: "2026-07", ratingEom: 4.7 }
   ];
-  assert.deepEqual(Array.from(browser.MarketsDomain.trendRows(trends, { country: "ALL", platform: "ALL" }), row => row.appKey), ["BBVA"]);
-  assert.deepEqual(Array.from(browser.MarketsDomain.trendRows(trends, { country: "MX", platform: "ALL" }), row => row.appKey), ["BBVA", "BANK"]);
+  assert.deepEqual(Array.from(browser.MarketsDomain.trendRows(trends, { country: "ALL", platform: "ALL" }), row => row.appKey), ["BBVA", "BBVA-CO"]);
+  assert.deepEqual(Array.from(browser.MarketsDomain.trendRows(trends, { country: "MX", platform: "ALL" }), row => row.appKey), ["BBVA", "BANK", "MP"]);
+  const labels = Array.from(browser.MarketsDomain.prepareSeries(browser.MarketsDomain.trendRows(trends, { country: "ALL", platform: "ALL" }), { country: "ALL", platform: "ALL" }), series => series.label).sort();
+  assert.deepEqual(labels, ["BBVA Empresas Colombia", "BBVA Empresas México"]);
   assert.deepEqual(Array.from(browser.MarketsDomain.selectionRows(snapshot, { country: "MX", platform: "ALL" }, "FINTECH", true), row => row.appKey), ["BBVA", "MP"]);
+  const app = fs.readFileSync(new URL("../src/App.html", import.meta.url), "utf8");
+  assert.match(app, /function trendRequest\(\)\{return\{[^}]*segment:"ALL"/);
+  assert.match(app, /function activeTrendRows\(\)\{return D\.trendRows\(state\.trends,selection\(\)\)\}/);
+  assert.doesNotMatch(app, /activeTrendRows\(\).*benchmarkSegment/);
 });
 
 test("all-markets benchmark keeps every market on one page", () => {
@@ -319,6 +339,8 @@ test("all-markets benchmark keeps every market on one page", () => {
   assert.match(app, /function renderBenchmark\(\).*D\.selectionRows\(state\.snapshot,selection\(\),state\.benchmarkSegment,true\)/);
   assert.doesNotMatch(app, /vista agregada está reservada|Selecciona un mercado · BBVA Empresas/);
   assert.match(app, /segment-filter"\)\.disabled=false/);
+  assert.match(app, /function syncViewControls\(\).*state\.view==="benchmark"/);
+  assert.match(app, /benchmark-control"\)\.classList\.toggle\("hidden",!benchmark\)/);
 });
 
 test("evolution KPIs use BBVA closes for the selected period", () => {

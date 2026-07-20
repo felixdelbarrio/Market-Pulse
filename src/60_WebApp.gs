@@ -1,6 +1,6 @@
 /** Web app de lectura para el dashboard de ratings. */
 var MARKETS_WEB = Object.freeze({
-  version: '2026.07.20.10',
+  version: '2026.07.20.11',
   cacheSeconds: 21600,
   maxCacheCharacters: 95000,
   defaultTrendMonths: 18,
@@ -439,7 +439,7 @@ function marketsTrendCacheKey_(request) {
 }
 
 function defaultMarketsTrendRequest_() {
-  return { segment: 'BANK', bbvaOnly: true, months: MARKETS_WEB.defaultTrendMonths };
+  return { segment: 'ALL', bbvaOnly: true, months: MARKETS_WEB.defaultTrendMonths };
 }
 
 function marketsPersistentMetaKey_(name) {

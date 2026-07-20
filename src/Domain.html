@@ -16,7 +16,7 @@
     const groupBy=(rows,selector)=>rows.reduce((out,row)=>{const key=selector(row);(out[key]||(out[key]=[])).push(row);return out},{});
     const appName=row=>row.isBbva?"BBVA Empresas":row.appName;
     const selectionRows=(snapshot,selection,segment="BANK",includeBbva=false)=>(snapshot||[]).filter(row=>(selection.country==="ALL"||row.countryCode===selection.country)&&(selection.platform==="ALL"||row.platform===selection.platform)&&(segment==="ALL"||row.segment===segment||(includeBbva&&segment==="FINTECH"&&row.isBbva)));
-    const trendRows=(trends,selection)=>(trends||[]).filter(row=>(selection.country==="ALL"||row.countryCode===selection.country)&&(selection.platform==="ALL"||row.platform===selection.platform)&&row.segment==="BANK"&&(selection.country!=="ALL"||row.isBbva));
+    const trendRows=(trends,selection)=>(trends||[]).filter(row=>(selection.country==="ALL"||row.countryCode===selection.country)&&(selection.platform==="ALL"||row.platform===selection.platform)&&(selection.country!=="ALL"||row.isBbva));
     function uniqueStoreRows(rows){
       const byKey=new Map();
       (rows||[]).forEach(row=>{const key=row.volumeKey||row.appKey;const current=byKey.get(key);if(!current||quality(row)>quality(current)||(quality(row)===quality(current)&&finite(row.ratingCount)&&(!finite(current.ratingCount)||row.ratingCount>current.ratingCount)))byKey.set(key,row)});
@@ -60,7 +60,7 @@
     }
     function prepareSeries(rows,selection){
       const buckets=new Map();
-      (rows||[]).forEach(row=>{let key,label;if(selection.country==="ALL"){key=row.countryCode;label=config.countries[row.countryCode]||row.country||row.countryCode}else if(selection.platform==="ALL"){key=appName(row);label=appName(row)}else{key=row.appKey;label=appName(row)}const bucketKey=`${key}|${row.month}`;const bucket=buckets.get(bucketKey)||{key,label,month:row.month,values:[],isBbva:row.isBbva};bucket.values.push(row.ratingEom);bucket.isBbva=bucket.isBbva||row.isBbva;buckets.set(bucketKey,bucket)});
+      (rows||[]).forEach(row=>{let key,label;if(selection.country==="ALL"){key=row.countryCode;label=`BBVA Empresas ${config.countries[row.countryCode]||row.country||row.countryCode}`}else if(selection.platform==="ALL"){key=appName(row);label=appName(row)}else{key=row.appKey;label=appName(row)}const bucketKey=`${key}|${row.month}`;const bucket=buckets.get(bucketKey)||{key,label,month:row.month,values:[],isBbva:row.isBbva};bucket.values.push(row.ratingEom);bucket.isBbva=bucket.isBbva||row.isBbva;buckets.set(bucketKey,bucket)});
       const grouped=new Map();buckets.forEach(bucket=>{const item=grouped.get(bucket.key)||{key:bucket.key,label:bucket.label,isBbva:bucket.isBbva,points:[]};item.points.push({month:bucket.month,value:mean(bucket.values)});item.isBbva=item.isBbva||bucket.isBbva;grouped.set(bucket.key,item)});
       return[...grouped.values()].sort((a,b)=>Number(b.isBbva)-Number(a.isBbva)||latestValue(b)-latestValue(a)||a.label.localeCompare(b.label));
     }
