@@ -44,7 +44,7 @@ El trigger no actua como el usuario que visita la pantalla. `runDailyRatingMonit
 
 ## Comprobacion rapida
 
-Abra la URL `/exec` del despliegue y confirme que el pie muestra `Contrato 2026.07.20.5 · Web 2026.07.20.16`, las tarjetas aparecen sin espera adicional, los filtros actualizan las tendencias y `Alertas` muestra el email conectado. Active temporalmente el canal y pulse **Enviar prueba**; la pantalla devuelve un identificador `COM-*`, destinatario, cuenta ejecutora, cuota, versiones y estado de auditoria. `MailApp` confirma la aceptación de la solicitud, no la entrega final: si el mensaje no aparece, busque el identificador exacto en Recibidos, spam y cuarentena corporativa.
+Abra la URL `/exec` del despliegue y confirme que el pie muestra `Contrato 2026.07.20.6 · Web 2026.07.20.17`, las tarjetas aparecen sin espera adicional, los filtros actualizan las tendencias y `Alertas` muestra el email conectado. Active temporalmente el canal y pulse **Enviar prueba**; la pantalla devuelve un identificador `COM-*`, destinatario, cuenta ejecutora, cuota, versiones y estado de auditoria. `MailApp` confirma la aceptación de la solicitud, no la entrega final: si el mensaje no aparece, busque el identificador exacto en Recibidos, spam y cuarentena corporativa.
 
 ## Comportamiento esperado
 
@@ -53,7 +53,7 @@ Abra la URL `/exec` del despliegue y confirme que el pie muestra `Contrato 2026.
 - El dashboard indica si el ultimo RUN fue `OK`, `PARTIAL` o `ERROR`.
 - Las incidencias muestran pais, plataforma, app, estado y detalle del `FETCH_LOG` del ultimo RUN.
 - Los totales acumulados y del periodo usan `RATING_COUNT` y su variacion real a 30 dias, deduplicados por la identidad territorial o compartida de cada ficha.
-- **Descargar informe** construye un documento editorial independiente del dashboard: portada, lectura ejecutiva, panorama geografico, benchmark paginado, evolucion SVG, anexo por store y calidad del dato. Siempre usa el alcance global de BBVA Empresas, espera a que cargue la tipografia corporativa y pagina en A4 horizontal sin cabeceras del navegador, recortes laterales ni vistas ocultas duplicadas.
+- **Descargar informe** construye un documento editorial independiente del dashboard y conserva la vista, el mercado, la plataforma, el benchmark y el periodo activos. `Resumen`, `Benchmark` y `Evolucion` producen documentos diferentes; `Alertas` no ofrece descarga analitica. No se incluye una seccion de confianza o metodologia. La exportacion espera la tipografia corporativa y pagina en A4 horizontal sin cabeceras del navegador, recortes laterales ni vistas ocultas duplicadas.
 - El rating consolidado solo aparece cuando existen pesos documentados y cobertura suficiente; en su defecto se etiqueta explicitamente una media observada.
 - El layout se adapta a desktop, tablet y movil sin librerias externas.
 

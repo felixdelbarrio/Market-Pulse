@@ -55,7 +55,7 @@ Los enlaces de Android, iOS y Huawei se generan como HTTPS web con geografia exp
 
 ## Informe ejecutivo
 
-**Descargar informe** no imprime las pantallas del dashboard. Genera un entregable BBVA COMMERCIAL de alcance global con nueve paginas A4 horizontales: portada, lectura ejecutiva, panorama geografico, dos paginas de posicion competitiva, evolucion, dos anexos por store y trazabilidad del dato. El renderer espera las fuentes Benton Sans BBVA, reutiliza el logotipo oficial de `BrandAssets`, deduplica listings compartidos y separa las tablas antes de imprimir para que ninguna fila o grafico quede cortado.
+**Descargar informe** no imprime las pantallas del dashboard. Genera un entregable BBVA COMMERCIAL condicionado por la vista y los filtros activos. `Resumen` incluye lectura ejecutiva, panorama geografico, evolucion y detalle; `Benchmark` exporta exclusivamente la comparativa del universo seleccionado; `Evolucion` conserva mercado, plataforma y periodo. En `Alertas` la descarga analitica se oculta para no mezclar datos de mercado con configuracion privada. El informe no incluye una seccion de metodologia. El renderer espera Benton Sans BBVA, reutiliza el logotipo oficial de `BrandAssets` y pagina las tablas antes de imprimir para que ninguna fila o grafico quede cortado.
 
 ## Alertas privadas
 
