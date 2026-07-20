@@ -246,7 +246,7 @@ test("store URL sanitizer rejects native schemes and foreign domains", () => {
 });
 
 test("modular client JavaScript compiles and Index composes every layer", () => {
-  const names = ["DesignSystem", "Domain", "Components", "Charts", "App"];
+  const names = ["DesignSystem", "Domain", "Components", "Charts", "Report", "App"];
   names.forEach(name => {
     const html = fs.readFileSync(new URL(`../src/${name}.html`, import.meta.url), "utf8");
     const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)];
@@ -258,6 +258,21 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   const assets = fs.readFileSync(new URL("../src/BrandAssets.html", import.meta.url), "utf8");
   assert.match(index, /includeMarketsWebPartial_\('BrandAssets'\)/);
   names.forEach(name => assert.match(index, new RegExp(`includeMarketsWebPartial_\\('${name}'\\)`)));
+  assert.match(index, /includeMarketsWebPartial_\('ReportStyles'\)/);
+  assert.match(index, /id="print-report" class="print-report"/);
+  assert.match(app, /MarketsReport\.render/);
+  assert.match(app, /BBVA COMMERCIAL · Informe ejecutivo de ratings/);
+  assert.match(app, /countryCode:"",platform:"",segment:"ALL",months:18,bbvaOnly:true/);
+  const report = fs.readFileSync(new URL("../src/Report.html", import.meta.url), "utf8");
+  const reportStyles = fs.readFileSync(new URL("../src/ReportStyles.html", import.meta.url), "utf8");
+  assert.match(report, /La voz del mercado/);
+  assert.match(report, /Posición competitiva/);
+  assert.match(report, /Calidad del dato/);
+  assert.equal((report.match(/return pageShell\(context,/g) || []).length, 8);
+  assert.match(reportStyles, /width:297mm;height:210mm/);
+  assert.match(reportStyles, /report-cover/);
+  assert.match(reportStyles, /report-benchmark-table/);
+  assert.doesNotMatch(fs.readFileSync(new URL("../src/DesignSystem.html", import.meta.url), "utf8"), /\.view,\.view\.hidden\{display:block!important/);
   assert.match(app, /target=\"_blank\"/);
   assert.match(app, /rel=\"noopener noreferrer\"/);
   assert.match(app, /function renderRankRow/);

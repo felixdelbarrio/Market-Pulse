@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <?!= includeMarketsWebPartial_('BrandAssets'); ?>
   <?!= includeMarketsWebPartial_('DesignSystem'); ?>
+  <?!= includeMarketsWebPartial_('ReportStyles'); ?>
 </head>
 <body>
   <div id="loader" class="loader" aria-live="polite"><div class="loader-inner"><div class="loader-mark"><span class="bbva-logo" role="img" aria-label="BBVA"></span></div><div class="loader-bar"></div><span>Preparando la visión de mercados…</span></div></div>
@@ -113,12 +114,15 @@
     <footer class="footer"><span><strong>Markets Data Studio</strong> · Ratings y valoraciones públicas de las stores</span><span id="footer-version">Contrato de datos</span></footer>
   </div>
 
+  <section id="print-report" class="print-report" aria-hidden="true"></section>
+
   <dialog id="incident-dialog"><div class="dialog-head"><h2>Incidencias de la última carga</h2><button id="dialog-close" class="dialog-close" type="button" aria-label="Cerrar"></button></div><div id="incident-list" class="incident-list"></div></dialog>
   <div id="chart-tooltip" class="chart-tooltip hidden" role="tooltip"></div>
   <div id="toast" class="toast hidden" role="alert"></div>
   <?!= includeMarketsWebPartial_('Domain'); ?>
   <?!= includeMarketsWebPartial_('Components'); ?>
   <?!= includeMarketsWebPartial_('Charts'); ?>
+  <?!= includeMarketsWebPartial_('Report'); ?>
   <?!= includeMarketsWebPartial_('App'); ?>
 </body>
 </html>
