@@ -26,8 +26,11 @@ El backend evita enviar las 32k observaciones completas:
 
    ```bash
    cp .clasp.json.example .clasp.json
+   clasp status
    clasp push
    ```
+
+   `clasp status` debe listar los archivos de `src/`, incluido `src/50_Alerts.gs` y `src/appsscript.json`. Si muestra una lista vacia, no continue con el despliegue porque Apps Script conservara el backend anterior.
 
 2. En Apps Script, abra **Implementar > Nueva implementacion**.
 3. Seleccione **Aplicacion web**.

@@ -24,8 +24,11 @@ El libro maestro contiene nueve pestañas:
 
    ```bash
    cp .clasp.json.example .clasp.json
+   clasp status
    clasp push
    ```
+
+   Antes de publicar, confirme que `clasp status` enumera los archivos de `src/`; una lista vacia significa que no se subira ningun cambio.
 
 2. Ejecute `setupProject()` una vez. Inicializa el contrato, aplica formato, completa las semillas necesarias, retira las hojas obsoletas `DASHBOARD_KPIS` y `REVIEWS` e instala el trigger diario.
 3. Ejecute `validateProject()` y revise el resultado.
