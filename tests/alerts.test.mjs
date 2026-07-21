@@ -176,12 +176,20 @@ test("competitive crossovers distinguish lost and regained positions", () => {
 });
 
 test("BBVA alert email uses the official image slot, brand system and safe content", () => {
-  const events = [{
-    severity: "CRITICAL", type: "RATING_DROP_YTD", platform: "iOS", countryCode: "CO",
-    country: "Colombia <script>alert('x')</script>", appName: "BBVA Empresas Colombia", metricValue: 0.7, threshold: 0.5,
-    baselineRating: 4.82, currentRating: 4.12, baselineDate: "2026-01-02", currentDate: "2026-07-20",
-    detail: "Caída crítica <script>alert('x')</script>"
-  }];
+  const events = [
+    {
+      severity: "WARNING", type: "RATING_DROP_YTD", platform: "iOS", countryCode: "ES",
+      country: "España", appName: "BBVA", metricValue: 0.33, threshold: 0.3,
+      baselineRating: 4.54, currentRating: 4.21, baselineDate: "2026-01-01", currentDate: "2026-07-21",
+      detail: "Caída desde inicio de año"
+    },
+    {
+      severity: "CRITICAL", type: "RATING_DROP_YTD", platform: "Android <script>alert('x')</script>", countryCode: "MX",
+      country: "México", appName: "BBVA", metricValue: 0.66, threshold: 0.5,
+      baselineRating: 3.23, currentRating: 2.57, baselineDate: "2026-01-01", currentDate: "2026-07-21",
+      detail: "Caída crítica <script>alert('x')</script>"
+    }
+  ];
   const html = context.renderMarketsAlertEmail_(events);
   assert.match(html, /cid:bbvaLogo/);
   assert.match(html, /Benton Sans BBVA/);
@@ -190,16 +198,21 @@ test("BBVA alert email uses the official image slot, brand system and safe conte
   assert.match(html, /border-radius:8px/);
   assert.match(html, /COMMERCIAL · ALERTAS DE RATINGS/);
   assert.match(html, /Alerta por cambios en ratings/);
-  assert.match(html, /BBVA Empresas Colombia cae 0,70 puntos/);
+  assert.match(html, /Aquí tienes el contexto completo para que puedas profundizar en la situación/);
+  assert.match(html, /BBVA España cae 0,33 puntos/);
+  assert.match(html, /BBVA México cae 0,66 puntos/);
   assert.match(html, /Rating anterior/);
   assert.match(html, /Rating actual/);
-  assert.match(html, /límite 0,50/);
+  assert.match(html, /el límite que has configurado para el nivel amarillo \(0,30 puntos\)/);
+  assert.match(html, /el límite que has configurado para el nivel rojo \(0,50 puntos\)/);
+  assert.match(html, /Abre la Visión del VoC por geografías/);
+  assert.match(html, />Abrir VoC Commercial</);
   assert.match(html, /Siguiente paso/);
   assert.doesNotMatch(html, /Markets Data Studio/i);
   assert.doesNotMatch(html, /Tu pulso de mercado requiere atención/);
   assert.doesNotMatch(html, /<script>/);
-  assert.match(html, /Colombia &lt;script&gt;/);
-  assert.equal(context.marketsAlertEmailSubject_(events), "[CRÍTICO] COMMERCIAL · 1 cambio en ratings");
+  assert.match(html, /Android &lt;script&gt;/);
+  assert.equal(context.marketsAlertEmailSubject_(events), "[VoC] Comunicación de alertas personalizadas - 2 cambios en ratings");
 });
 
 test("test email is explicit, useful and previews the detail of a real alert", () => {
@@ -214,7 +227,8 @@ test("test email is explicit, useful and previews the detail of a real alert", (
   assert.match(html, /Canal de alertas verificado/);
   assert.match(html, /NO ES UNA ALERTA REAL/);
   assert.match(html, /EJEMPLO DE DETALLE · SIMULADO/);
-  assert.match(html, /BBVA Empresas Colombia/);
+  assert.match(html, /BBVA Colombia cae 0,40 puntos/);
+  assert.match(html, /Mercado y plataforma:<\/strong> Colombia · iOS/);
   assert.match(html, /4,82 → 4,42/);
   assert.match(html, /COM-20260720-141500-ABCD1234/);
   assert.doesNotMatch(html, /Markets Data Studio/i);

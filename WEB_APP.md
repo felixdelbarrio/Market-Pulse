@@ -44,7 +44,7 @@ El trigger no actua como el usuario que visita la pantalla. `runDailyRatingMonit
 
 ## Comprobacion rapida
 
-Abra la URL `/exec` del despliegue y confirme que el pie muestra `Contrato 2026.07.20.6 · Web 2026.07.20.17`, las tarjetas aparecen sin espera adicional, los filtros actualizan las tendencias y `Alertas` muestra el email conectado. Active temporalmente el canal y pulse **Enviar prueba**; la pantalla devuelve un identificador `COM-*`, destinatario, cuenta ejecutora, cuota, versiones y estado de auditoria. `MailApp` confirma la aceptación de la solicitud, no la entrega final: si el mensaje no aparece, busque el identificador exacto en Recibidos, spam y cuarentena corporativa.
+Abra la URL `/exec` del despliegue y confirme que el pie muestra `Contrato 2026.07.21.7 · Web 2026.07.21.18`, las tarjetas aparecen sin espera adicional, los filtros actualizan las tendencias y `Alertas` muestra el email conectado. Active temporalmente el canal y pulse **Enviar prueba**; la pantalla devuelve un identificador `COM-*`, destinatario, cuenta ejecutora, cuota, versiones y estado de auditoria. `MailApp` confirma la aceptación de la solicitud, no la entrega final: si el mensaje no aparece, busque el identificador exacto en Recibidos, spam y cuarentena corporativa.
 
 ## Comportamiento esperado
 

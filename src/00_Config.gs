@@ -1,6 +1,6 @@
 /** Configuracion unica del monitor real de ratings Android, iOS y Huawei. */
 var MARKETS_CONFIG = Object.freeze({
-  codeVersion: '2026.07.20.6',
+  codeVersion: '2026.07.21.7',
   spreadsheetId: '1IkJgvM2imxm3r1x092q5dqpThrlnDoZ-5QvH8n2h2oQ',
   timeZone: 'Europe/Madrid', runHour: 7, runMinute: 5, lockTimeoutMs: 30000,
   requestRetries: 2, retryBaseDelayMs: 1200, huaweiBatchSize: 6, huaweiBatchDelayMs: 300,
