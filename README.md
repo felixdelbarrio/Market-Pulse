@@ -45,7 +45,8 @@ Un `clasp push` no cambia una version ya desplegada. Use **Gestionar implementac
 - `validateProject()`: valida catalogo y contrato.
 - `setupProject()`: inicializacion e instalacion idempotente del trigger.
 - `warmMarketsDashboardCache()`: reconstruccion manual de cache compartida.
-- `sendMarketsAlertTestEmail()`: prueba el canal BBVA para el usuario conectado y devuelve un identificador de entrega, cuenta ejecutora, cuota y versiones. La aceptación de `MailApp` queda auditada como evento `TEST`; la entrega final al buzón depende de Gmail y de la cuarentena corporativa.
+- `validateMarketsAlertSender()`: confirma que `voc-commercial.group@bbva.com` esta autorizado y verificado como identidad **Enviar como** para la cuenta ejecutora.
+- `sendMarketsAlertTestEmail()`: prueba el canal BBVA para el usuario conectado y devuelve identificador de entrega, grupo remitente, cuenta ejecutora, Gmail Message ID y versiones. La aceptación de la API queda auditada como evento `TEST`; la entrega final al buzon depende de Gmail y de la cuarentena corporativa.
 
 La cache tiene dos niveles: `CacheService` para acceso rapido y `PropertiesService` para persistencia compartida comprimida. Cada RUN reemplaza la generacion despues de actualizar los datasets. Si falla, se invalida para que la siguiente peticion reconstruya desde Sheets.
 

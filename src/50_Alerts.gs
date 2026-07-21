@@ -1,4 +1,10 @@
 /** Evalua alertas personalizadas y envia un unico resumen BBVA por usuario. */
+var MARKETS_ALERT_EMAIL = Object.freeze({
+  senderName: 'BBVA VoC Commercial',
+  senderAddress: 'voc-commercial.group@bbva.com',
+  senderMode: 'GROUP_ALIAS'
+});
+
 function buildAndProcessAlerts_(ss, referenceDate, catalog, runId, control, ratingObjects) {
   const ratings = ratingObjects || readRatingObjects_(ss);
   migrateLegacyAlertRecipients_(ss, catalog);
@@ -190,23 +196,153 @@ function sendAlertEmails_(events, ss) {
       (grouped[recipient] || (grouped[recipient] = [])).push(event);
     });
   });
+  const recipients = Object.keys(grouped);
+  if (!recipients.length) return 0;
+  const sender = requireMarketsAlertSender_(ss);
   const inlineImages = buildMarketsAlertInlineImages_();
-  Object.keys(grouped).forEach(function (recipient) {
+  const deliveries = [];
+  recipients.forEach(function (recipient) {
     const recipientEvents = grouped[recipient];
-    MailApp.sendEmail({
-      to: recipient,
-      subject: marketsAlertEmailSubject_(recipientEvents),
-      body: renderMarketsAlertPlainText_(recipientEvents),
-      htmlBody: renderMarketsAlertEmail_(recipientEvents),
-      inlineImages: inlineImages,
-      name: 'BBVA Commercial'
+    const message = marketsAlertEmailMessage_(recipient, recipientEvents, inlineImages, sender);
+    const accepted = Gmail.Users.Messages.send({ raw: message.raw }, 'me');
+    if (!accepted || !trimString_(accepted.id)) {
+      throw new Error('Gmail no ha devuelto un identificador para el correo dirigido a ' + recipient + '.');
+    }
+    deliveries.push({
+      recipient: recipient, messageId: trimString_(accepted.id), threadId: trimString_(accepted.threadId),
+      senderAddress: sender.address, senderName: sender.name,
+      verificationStatus: sender.verificationStatus
     });
     if (ss) {
       try { touchMarketsAlertTimestamp_(ss, recipient, 'LAST_DELIVERY_AT', new Date()); }
       catch (auditError) { console.error('Email aceptado para ' + recipient + ', pero fallo LAST_DELIVERY_AT: ' + errorToString_(auditError)); }
     }
   });
-  return Object.keys(grouped).length;
+  events.deliveryResults = deliveries;
+  return deliveries.length;
+}
+
+function marketsAlertEmailMessage_(recipient, events, inlineImages, sender) {
+  const normalizedRecipient = normalizeMarketsAlertEmail_(recipient);
+  const subject = marketsAlertEmailSubject_(events);
+  const plainText = renderMarketsAlertPlainText_(events);
+  const html = renderMarketsAlertEmail_(events);
+  const image = inlineImages && inlineImages.bbvaLogo;
+  if (!image || typeof image.getBytes !== 'function') {
+    throw new Error('No se ha podido incorporar el logotipo oficial de BBVA al correo.');
+  }
+  const token = Utilities.getUuid().replace(/-/g, '');
+  const relatedBoundary = 'bbva_related_' + token;
+  const alternativeBoundary = 'bbva_alternative_' + token;
+  const crlf = '\r\n';
+  const mime = [
+    'From: ' + marketsAlertEncodedHeader_(sender.name) + ' <' + sender.address + '>',
+    'To: ' + normalizedRecipient,
+    'Subject: ' + marketsAlertEncodedHeader_(subject),
+    'Date: ' + new Date().toUTCString(),
+    'Message-ID: <' + token + '@voc-commercial.bbva.com>',
+    'MIME-Version: 1.0',
+    'Content-Type: multipart/related; boundary="' + relatedBoundary + '"',
+    '',
+    '--' + relatedBoundary,
+    'Content-Type: multipart/alternative; boundary="' + alternativeBoundary + '"',
+    '',
+    '--' + alternativeBoundary,
+    'Content-Type: text/plain; charset="UTF-8"',
+    'Content-Transfer-Encoding: base64',
+    '',
+    marketsAlertMimeText_(plainText),
+    '--' + alternativeBoundary,
+    'Content-Type: text/html; charset="UTF-8"',
+    'Content-Transfer-Encoding: base64',
+    '',
+    marketsAlertMimeText_(html),
+    '--' + alternativeBoundary + '--',
+    '',
+    '--' + relatedBoundary,
+    'Content-Type: image/png; name="bbva.png"',
+    'Content-Transfer-Encoding: base64',
+    'Content-ID: <bbvaLogo>',
+    'Content-Disposition: inline; filename="bbva.png"',
+    '',
+    marketsAlertMimeBytes_(image.getBytes()),
+    '--' + relatedBoundary + '--',
+    ''
+  ].join(crlf);
+  return {
+    raw: Utilities.base64EncodeWebSafe(mime, Utilities.Charset.UTF_8).replace(/=+$/g, ''),
+    recipient: normalizedRecipient,
+    subject: subject
+  };
+}
+
+function marketsAlertEncodedHeader_(value) {
+  return '=?UTF-8?B?' + Utilities.base64Encode(trimString_(value), Utilities.Charset.UTF_8) + '?=';
+}
+
+function marketsAlertMimeText_(value) {
+  return marketsAlertWrapBase64_(Utilities.base64Encode(String(value || ''), Utilities.Charset.UTF_8));
+}
+
+function marketsAlertMimeBytes_(bytes) {
+  return marketsAlertWrapBase64_(Utilities.base64Encode(bytes));
+}
+
+function marketsAlertWrapBase64_(value) {
+  return (String(value || '').match(/.{1,76}/g) || ['']).join('\r\n');
+}
+
+function marketsAlertConfiguredSenderAddress_(ss) {
+  let address = MARKETS_ALERT_EMAIL.senderAddress;
+  if (ss) {
+    const control = readControl_(ss);
+    address = trimString_(control.ALERT_SENDER_ALIAS) || address;
+  }
+  return normalizeMarketsAlertEmail_(address);
+}
+
+function marketsAlertSenderStatus_(ss) {
+  const address = marketsAlertConfiguredSenderAddress_(ss);
+  let response;
+  try {
+    response = Gmail.Users.Settings.SendAs.list('me');
+  } catch (error) {
+    return {
+      address: address, name: MARKETS_ALERT_EMAIL.senderName, mode: MARKETS_ALERT_EMAIL.senderMode,
+      available: false, verificationStatus: 'unavailable', error: errorToString_(error)
+    };
+  }
+  const sendAs = (response && response.sendAs || []).find(function (item) {
+    return normalizeEmailForComparison_(item.sendAsEmail) === normalizeEmailForComparison_(address);
+  });
+  const verificationStatus = trimString_(sendAs && sendAs.verificationStatus).toLowerCase() || 'unknown';
+  return {
+    address: address, name: MARKETS_ALERT_EMAIL.senderName, mode: MARKETS_ALERT_EMAIL.senderMode,
+    available: Boolean(sendAs) && verificationStatus === 'accepted',
+    verificationStatus: verificationStatus, isDefault: Boolean(sendAs && sendAs.isDefault),
+    treatAsAlias: Boolean(sendAs && sendAs.treatAsAlias), error: ''
+  };
+}
+
+function requireMarketsAlertSender_(ss) {
+  const status = marketsAlertSenderStatus_(ss);
+  if (status.available) return status;
+  if (status.verificationStatus === 'pending') {
+    throw new Error('El remitente ' + status.address + ' sigue pendiente de verificacion en Gmail > Enviar como. Confirma el mensaje recibido por el grupo antes de probar.');
+  }
+  if (status.verificationStatus === 'unavailable') {
+    throw new Error('No se ha podido validar el remitente de grupo ' + status.address + ': ' + status.error);
+  }
+  throw new Error('El remitente ' + status.address + ' no esta autorizado en Gmail > Enviar como para la cuenta que ejecuta el trigger. Añadelo, verifica el grupo y vuelve a probar.');
+}
+
+function validateMarketsAlertSender() {
+  const ss = openMarketsSpreadsheet_();
+  ensureWorkbookSchema_(ss);
+  const status = marketsAlertSenderStatus_(ss);
+  let executor = '';
+  try { executor = normalizeEmailForComparison_(Session.getEffectiveUser().getEmail()); } catch (ignored) {}
+  return Object.assign({ executor: executor }, status);
 }
 
 function marketsAlertEmailSubject_(events) {

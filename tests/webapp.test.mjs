@@ -305,7 +305,9 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(app, /draft\[period\+"DropEnabled"\]/);
   assert.match(index, /Enviar prueba/);
   assert.match(index, /id="alert-test-result"/);
-  assert.match(app, /Google ha aceptado la prueba/);
+  assert.match(app, /Gmail ha aceptado la prueba/);
+  assert.match(app, /result\.senderAddress/);
+  assert.match(app, /result\.messageId/);
   assert.match(app, /result\.deliveryId/);
   assert.match(index, /Restaurar valores/);
   assert.match(index, /Guardar mis alertas/);

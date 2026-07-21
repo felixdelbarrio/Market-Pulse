@@ -42,9 +42,13 @@ El autoservicio requiere que el despliegue corporativo exponga el email del usua
 
 El trigger no actua como el usuario que visita la pantalla. `runDailyRatingMonitor()` se ejecuta como propietario del proyecto, lee todas las suscripciones activas y agrupa un correo por destinatario. Por tanto, la aplicacion puede estar cerrada y no necesita una sesion conectada para enviar.
 
+Los avisos se envian individualmente mediante la API de Gmail con **BBVA VoC Commercial `<voc-commercial.group@bbva.com>`** como identidad `From`. El grupo nunca es destinatario ni distribuye alertas. Antes de enviar, el backend comprueba que esa direccion figure en Gmail > **Enviar como** para la cuenta ejecutora y que su estado sea `accepted`; si falta o sigue pendiente, el proceso se detiene sin recurrir a la direccion personal. El manifiesto limita el acceso a `gmail.send` y `gmail.settings.basic`: permite enviar y comprobar las identidades autorizadas, pero no leer el buzon.
+
+Despues de crear el grupo, añadalo en Gmail > Configuracion > Cuentas > Enviar como para la cuenta propietaria del trigger, complete la verificacion recibida por el grupo y ejecute `validateMarketsAlertSender()`. El resultado correcto incluye `available: true`, `verificationStatus: accepted` y `address: voc-commercial.group@bbva.com`. Si cambia el remitente, actualice `ALERT_SENDER_ALIAS` en `CONTROL`.
+
 ## Comprobacion rapida
 
-Abra la URL `/exec` del despliegue y confirme que el pie muestra `Contrato 2026.07.21.7 · Web 2026.07.21.18`, las tarjetas aparecen sin espera adicional, los filtros actualizan las tendencias y `Alertas` muestra el email conectado. Active temporalmente el canal y pulse **Enviar prueba**; la pantalla devuelve un identificador `COM-*`, destinatario, cuenta ejecutora, cuota, versiones y estado de auditoria. `MailApp` confirma la aceptación de la solicitud, no la entrega final: si el mensaje no aparece, busque el identificador exacto en Recibidos, spam y cuarentena corporativa.
+Abra la URL `/exec` del despliegue y confirme que el pie muestra `Contrato 2026.07.21.9 · Web 2026.07.21.20`, las tarjetas aparecen sin espera adicional, los filtros actualizan las tendencias y `Alertas` muestra el email conectado. Active temporalmente el canal y pulse **Enviar prueba**; la pantalla devuelve un identificador `COM-*`, destinatario, grupo remitente, cuenta ejecutora, Gmail Message ID, versiones y estado de auditoria. La API confirma la aceptación de la solicitud, no la entrega final: si el mensaje no aparece, busque el identificador exacto en Recibidos, spam y cuarentena corporativa.
 
 ## Comportamiento esperado
 

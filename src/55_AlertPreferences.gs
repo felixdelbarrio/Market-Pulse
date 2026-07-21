@@ -334,10 +334,6 @@ function sendMarketsAlertTestEmail() {
   if (!parseBoolean_(control.SEND_ALERT_EMAILS, false)) {
     throw new Error('El envio global esta desactivado. Activa SEND_ALERT_EMAILS en CONTROL antes de probar.');
   }
-  const quotaBefore = MailApp.getRemainingDailyQuota();
-  if (quotaBefore < 1) {
-    throw new Error('La cuenta ejecutora no tiene cuota de correo disponible hoy. Revisa las cuotas de Apps Script o prueba mañana.');
-  }
   const sentAt = new Date();
   const deliveryId = 'COM-' + Utilities.formatDate(sentAt, MARKETS_CONFIG.timeZone, 'yyyyMMdd-HHmmss') + '-' +
     Utilities.getUuid().slice(0, 8).toUpperCase();
@@ -360,10 +356,14 @@ function sendMarketsAlertTestEmail() {
   }
   let effectiveSender = '';
   try { effectiveSender = normalizeEmailForComparison_(Session.getEffectiveUser().getEmail()); } catch (ignored) {}
+  const delivery = events.deliveryResults && events.deliveryResults[0] || {};
   return {
     sent: true, accepted: true, recipient: email, sentAt: sentAt.toISOString(), deliveryId: deliveryId,
-    effectiveSender: effectiveSender, quotaBefore: quotaBefore,
-    quotaAfter: MailApp.getRemainingDailyQuota(), auditLogged: auditLogged,
+    effectiveSender: effectiveSender, senderName: delivery.senderName || MARKETS_ALERT_EMAIL.senderName,
+    senderAddress: delivery.senderAddress || MARKETS_ALERT_EMAIL.senderAddress,
+    senderMode: MARKETS_ALERT_EMAIL.senderMode,
+    senderVerificationStatus: delivery.verificationStatus || '',
+    messageId: delivery.messageId || '', threadId: delivery.threadId || '', auditLogged: auditLogged,
     codeVersion: MARKETS_CONFIG.codeVersion, webVersion: MARKETS_WEB.version
   };
 }

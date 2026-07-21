@@ -13,6 +13,7 @@ function validateProject() {
   const catalog = readAppCatalog_(ss);
   migrateLegacyAlertRecipients_(ss, catalog);
   const alertUsers = readAllMarketsAlertPreferences_(ss);
+  const alertSender = marketsAlertSenderStatus_(ss);
   const counts = catalog.reduce(function (out, app) {
     out[app.platform] = (out[app.platform] || 0) + 1;
     return out;
@@ -39,6 +40,9 @@ function validateProject() {
       monthDropSubscribers: alertUsers.filter(function (item) { return item.active && item.mtdDropEnabled; }).length,
       yearDropSubscribers: alertUsers.filter(function (item) { return item.active && item.ytdDropEnabled; }).length,
       repeatingSubscribers: alertUsers.filter(function (item) { return item.active && item.repeatWhileBreached; }).length,
+      senderAddress: alertSender.address,
+      senderAvailable: alertSender.available,
+      senderVerificationStatus: alertSender.verificationStatus,
       adminSheet: MARKETS_CONFIG.sheets.alertPreferences,
       warning: trimString_(control.ALERT_CONFIG_WARNING)
     },

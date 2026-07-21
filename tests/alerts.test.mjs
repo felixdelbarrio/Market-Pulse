@@ -83,23 +83,28 @@ test("a test email returns traceable acceptance diagnostics and is audited", () 
     currentUser: context.currentMarketsUserEmail_, open: context.openMarketsSpreadsheet_,
     ensure: context.ensureWorkbookSchema_, readControl: context.readControl_, send: context.sendAlertEmails_,
     append: context.appendAlertEvents_, touch: context.touchMarketsAlertTimestamp_,
-    MailApp: context.MailApp, Utilities: context.Utilities, Session: context.Session, MARKETS_WEB: context.MARKETS_WEB
+    Utilities: context.Utilities, Session: context.Session, MARKETS_WEB: context.MARKETS_WEB
   };
   let sentEvents = null;
   let auditedEvents = null;
-  let quotaCall = 0;
   context.currentMarketsUserEmail_ = () => "felix.delbarrio@bbva.com";
   context.openMarketsSpreadsheet_ = () => ({ id: "sheet" });
   context.ensureWorkbookSchema_ = () => {};
   context.readControl_ = () => ({ SEND_ALERT_EMAILS: true });
-  context.MailApp = { getRemainingDailyQuota: () => [100, 99][quotaCall++] };
   context.Utilities = {
     formatDate: () => "20260720-141500",
     getUuid: () => "abcd1234-0000-0000-0000-000000000000"
   };
   context.Session = { getEffectiveUser: () => ({ getEmail: () => "automation.owner@bbva.com" }) };
   context.MARKETS_WEB = { version: "test-web" };
-  context.sendAlertEmails_ = events => { sentEvents = events; return 1; };
+  context.sendAlertEmails_ = events => {
+    sentEvents = events;
+    events.deliveryResults = [{
+      senderName: "BBVA VoC Commercial", senderAddress: "voc-commercial.group@bbva.com",
+      verificationStatus: "accepted", messageId: "gmail-message-1", threadId: "gmail-thread-1"
+    }];
+    return 1;
+  };
   context.appendAlertEvents_ = (_ss, events) => { auditedEvents = events; };
   context.touchMarketsAlertTimestamp_ = () => {};
 
@@ -108,8 +113,11 @@ test("a test email returns traceable acceptance diagnostics and is audited", () 
   assert.equal(result.accepted, true);
   assert.equal(result.deliveryId, "COM-20260720-141500-ABCD1234");
   assert.equal(result.effectiveSender, "automation.owner@bbva.com");
-  assert.equal(result.quotaBefore, 100);
-  assert.equal(result.quotaAfter, 99);
+  assert.equal(result.senderName, "BBVA VoC Commercial");
+  assert.equal(result.senderAddress, "voc-commercial.group@bbva.com");
+  assert.equal(result.senderMode, "GROUP_ALIAS");
+  assert.equal(result.senderVerificationStatus, "accepted");
+  assert.equal(result.messageId, "gmail-message-1");
   assert.equal(result.auditLogged, true);
   assert.equal(sentEvents, auditedEvents);
   assert.equal(context.marketsAlertEmailSubject_(sentEvents), "[PRUEBA] COMMERCIAL · Canal de alertas · COM-20260720-141500-ABCD1234");
@@ -121,7 +129,6 @@ test("a test email returns traceable acceptance diagnostics and is audited", () 
   context.sendAlertEmails_ = original.send;
   context.appendAlertEvents_ = original.append;
   context.touchMarketsAlertTimestamp_ = original.touch;
-  context.MailApp = original.MailApp;
   context.Utilities = original.Utilities;
   context.Session = original.Session;
   context.MARKETS_WEB = original.MARKETS_WEB;
@@ -213,6 +220,64 @@ test("BBVA alert email uses the official image slot, brand system and safe conte
   assert.doesNotMatch(html, /<script>/);
   assert.match(html, /Android &lt;script&gt;/);
   assert.equal(context.marketsAlertEmailSubject_(events), "[VoC] Comunicación de alertas personalizadas - 2 cambios en ratings");
+});
+
+test("alert delivery uses the verified Google Group alias and preserves individual recipients", () => {
+  const original = {
+    Gmail: context.Gmail, Utilities: context.Utilities, readControl: context.readControl_,
+    images: context.buildMarketsAlertInlineImages_, touch: context.touchMarketsAlertTimestamp_
+  };
+  const events = [{
+    severity: "POSITIVE", type: "TEST", platform: "Todas", countryCode: "GLOBAL",
+    recipients: "felix.delbarrio@bbva.com", ruleId: "COM-SENDER-CHECK"
+  }];
+  let sentPayload = null;
+  context.Utilities = {
+    Charset: { UTF_8: "UTF-8" },
+    getUuid: () => "12345678-1234-1234-1234-1234567890ab",
+    base64Encode(value) { return Buffer.from(typeof value === "string" ? value : Uint8Array.from(value)).toString("base64"); },
+    base64EncodeWebSafe(value) { return Buffer.from(value).toString("base64url"); }
+  };
+  context.readControl_ = () => ({ ALERT_SENDER_ALIAS: "voc-commercial.group@bbva.com" });
+  context.buildMarketsAlertInlineImages_ = () => ({ bbvaLogo: { getBytes: () => [137, 80, 78, 71] } });
+  context.touchMarketsAlertTimestamp_ = () => {};
+  context.Gmail = { Users: {
+    Settings: { SendAs: { list: () => ({ sendAs: [{
+      sendAsEmail: "voc-commercial.group@bbva.com", verificationStatus: "accepted",
+      isDefault: false, treatAsAlias: false
+    }] }) } },
+    Messages: { send(payload, userId) { sentPayload = { payload, userId }; return { id: "gmail-1", threadId: "thread-1" }; } }
+  } };
+
+  assert.equal(context.sendAlertEmails_(events, {}), 1);
+  assert.equal(sentPayload.userId, "me");
+  assert.equal(events.deliveryResults[0].recipient, "felix.delbarrio@bbva.com");
+  assert.equal(events.deliveryResults[0].senderAddress, "voc-commercial.group@bbva.com");
+  assert.equal(events.deliveryResults[0].messageId, "gmail-1");
+  const mime = Buffer.from(sentPayload.payload.raw, "base64url").toString("utf8");
+  assert.match(mime, /From: =\?UTF-8\?B\?.+\?= <voc-commercial\.group@bbva\.com>/);
+  assert.match(mime, /To: felix\.delbarrio@bbva\.com/);
+  assert.match(mime, /Content-Type: multipart\/related/);
+  assert.match(mime, /Content-ID: <bbvaLogo>/);
+  assert.doesNotMatch(mime, /To: voc-commercial\.group@bbva\.com/);
+
+  Object.assign(context, {
+    Gmail: original.Gmail, Utilities: original.Utilities, readControl_: original.readControl,
+    buildMarketsAlertInlineImages_: original.images, touchMarketsAlertTimestamp_: original.touch
+  });
+});
+
+test("group delivery fails closed when the sender alias is missing or pending", () => {
+  const original = { Gmail: context.Gmail, readControl: context.readControl_ };
+  context.readControl_ = () => ({ ALERT_SENDER_ALIAS: "voc-commercial.group@bbva.com" });
+  context.Gmail = { Users: { Settings: { SendAs: { list: () => ({ sendAs: [] }) } } } };
+  assert.throws(() => context.requireMarketsAlertSender_({}), /no esta autorizado.*Enviar como/i);
+  context.Gmail.Users.Settings.SendAs.list = () => ({ sendAs: [{
+    sendAsEmail: "voc-commercial.group@bbva.com", verificationStatus: "pending"
+  }] });
+  assert.throws(() => context.requireMarketsAlertSender_({}), /pendiente de verificacion/i);
+  context.Gmail = original.Gmail;
+  context.readControl_ = original.readControl;
 });
 
 test("test email is explicit, useful and previews the detail of a real alert", () => {
