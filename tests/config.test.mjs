@@ -32,6 +32,7 @@ test("geographic seeds match the catalog contract and have unique keys", () => {
   assert.equal(context.MARKETS_CONFIG.sheets.reviews, undefined);
   assert.equal(context.MARKETS_CONFIG.sheets.scorecards, undefined);
   assert.equal(context.MARKETS_CONFIG.sheets.alertPreferences, "ALERT_SUBSCRIPTIONS");
+  assert.equal(context.MARKETS_CONFIG.webAppDomain, "bbva.com");
   assert.deepEqual(Array.from(context.MARKETS_CONFIG.countryCodes), ["AR", "CO", "ES", "MX", "PE", "TR", "UY", "VE"]);
 });
 

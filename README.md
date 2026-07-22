@@ -42,7 +42,7 @@ El libro maestro contiene nueve pestañas:
 
 Un `clasp push` no cambia una version ya desplegada. Use **Gestionar implementaciones > Editar > Nueva version**.
 
-Para compartir la aplicacion utilice exclusivamente la URL canónica que devuelve `validateProject().webAppUrl` o que aparece en `Administracion > Salud`. Debe terminar en `/exec`. No comparta enlaces de Drive, del editor, URLs `/dev` ni direcciones construidas manualmente. En iPhone, Chrome debe estar usando el perfil corporativo `@bbva.com`; una cuenta personal no cumple el acceso `DOMAIN` y Google puede mostrar una pagina generica de Drive antes de ejecutar `doGet()`.
+Para compartir la aplicacion utilice exclusivamente la URL canónica completa que devuelve `validateProject().webAppUrl` o que aparece en `Administracion > Salud`. Debe terminar en `/exec` y conservar todos sus segmentos; un despliegue corporativo puede incluir `/a/macros/bbva.com/`. No comparta enlaces de Drive, del editor, URLs `/dev` ni direcciones recortadas o construidas manualmente. En iPhone, Chrome debe estar usando el perfil corporativo `@bbva.com`; una cuenta personal no cumple el acceso `DOMAIN` y Google puede mostrar una pagina generica de Drive antes de ejecutar `doGet()`.
 
 ## Operacion
 

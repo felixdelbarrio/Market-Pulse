@@ -102,10 +102,10 @@ function sendMarketsMonitorHealthEmail_(recipient, health, sentAt) {
   const reason = trimString_(health.reason || 'La ejecucion diaria necesita revision.');
   const detail = trimString_(health.detail);
   const runId = trimString_(health.runId) || 'sin ejecucion';
-  const appUrl = trimString_(ScriptApp.getService().getUrl());
+  const appUrl = marketsWebAppUrl_();
   const plain = 'BBVA COMMERCIAL - MONITOR TECNICO\n\n' + reason + '\n\nFecha esperada: ' +
     health.dateKey + '\nRun: ' + runId + (detail ? '\nDetalle: ' + detail : '') +
-    '\n\nEjecuta runNow() manualmente y revisa RUN_LOG.';
+    '\n\nEjecuta runNow() manualmente y revisa RUN_LOG.' + (appUrl ? '\n' + appUrl : '');
   const html = '<!doctype html><html><body style="margin:0;background:#F4F5F6;font-family:Arial,Helvetica,sans-serif;color:#121212;">' +
     '<div style="max-width:620px;margin:24px auto;background:#FFFFFF;border-radius:12px;overflow:hidden;">' +
     '<div style="padding:22px 26px;background:#072146;color:#FFFFFF;"><div style="color:#5AC4C4;font-size:11px;font-weight:700;letter-spacing:.8px;">COMMERCIAL · MONITOR TECNICO</div><h1 style="margin:8px 0 0;font-size:24px;line-height:30px;">El proceso diario necesita revisión</h1></div>' +

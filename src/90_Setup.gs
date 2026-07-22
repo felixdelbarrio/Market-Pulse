@@ -27,7 +27,7 @@ function validateProject() {
   return {
     spreadsheetId: ss.getId(),
     codeVersion: MARKETS_CONFIG.codeVersion,
-    webAppUrl: trimString_(ScriptApp.getService().getUrl()),
+    webAppUrl: marketsWebAppUrl_(),
     enabledApps: catalog.length,
     platforms: counts,
     geographies: geography,

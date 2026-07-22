@@ -39,5 +39,5 @@ test("admin endpoint always performs server-side authorization", () => {
   const admin = fs.readFileSync(new URL("../src/58_Admin.gs", import.meta.url), "utf8");
   assert.match(admin, /function getMarketsAdminDashboard\(\) \{\s*const access = requireMarketsAdministrator_\(\)/);
   assert.match(admin, /requireCurrentSheetContract_/);
-  assert.match(admin, /webAppUrl:\s*trimString_\(ScriptApp\.getService\(\)\.getUrl\(\)\)/);
+  assert.match(admin, /webAppUrl:\s*marketsWebAppUrl_\(\)/);
 });

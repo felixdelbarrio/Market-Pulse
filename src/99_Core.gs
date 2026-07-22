@@ -2,6 +2,16 @@ function trimString_(value) {
   return value === null || value === undefined ? '' : String(value).trim();
 }
 
+/** URL corporativa unica para web, correos y diagnostico. */
+function marketsWebAppUrl_() {
+  const source = trimString_(ScriptApp.getService().getUrl());
+  const domain = trimString_(MARKETS_CONFIG.webAppDomain).toLowerCase();
+  if (!source || !domain) return '';
+  const match = source.match(/^https:\/\/script\.google\.com\/(?:a\/macros\/[^/]+\/|macros\/)s\/([^/?#]+)\/exec$/i);
+  if (!match) return '';
+  return 'https://script.google.com/a/macros/' + encodeURIComponent(domain) + '/s/' + match[1] + '/exec';
+}
+
 function normalizeHeader_(value) {
   return trimString_(value).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
 }

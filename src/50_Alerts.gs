@@ -408,6 +408,7 @@ function marketsAlertEmailSubject_(events) {
 
 function renderMarketsAlertPlainText_(events) {
   const isTest = marketsAlertIsTest_(events);
+  const appUrl = marketsWebAppUrl_();
   const lines = (events || []).map(function (event) {
     if (event.type === 'TEST') {
       return 'PRUEBA DE ENTREGA — NO ES UNA ALERTA REAL\nIdentificador: ' + trimString_(event.ruleId) +
@@ -424,7 +425,7 @@ function renderMarketsAlertPlainText_(events) {
   return 'BBVA COMMERCIAL\nAlerta por cambios en ratings\n' +
     (isTest ? 'Esta es una prueba; no se ha detectado ningún cambio real.\n\n' : '\n') +
     lines.join('\n\n') + '\n\nDatos obtenidos: ' + marketsAlertDataDateLabel_(events) +
-    '\nGestiona tus alertas desde COMMERCIAL.';
+    '\nGestiona tus alertas desde COMMERCIAL.' + (appUrl ? '\n' + appUrl : '');
 }
 
 function renderMarketsAlertEmail_(events) {
@@ -433,7 +434,7 @@ function renderMarketsAlertEmail_(events) {
   const warning = (events || []).filter(function (event) { return event.severity === 'WARNING'; }).length;
   const positive = (events || []).filter(function (event) { return event.severity === 'POSITIVE'; }).length;
   const cards = (events || []).map(renderMarketsAlertEmailCard_).join('');
-  const appUrl = trimString_(ScriptApp.getService().getUrl());
+  const appUrl = marketsWebAppUrl_();
   const cta = appUrl ? '<a href="' + escapeMarketsAlertHtml_(appUrl) + '" style="display:inline-block;padding:13px 22px;border-radius:8px;background:#1464A5;color:#FFFFFF;text-decoration:none;font-weight:700;">Abrir VoC Commercial</a>' : '';
   const subtitle = isTest ? 'Esta es una prueba de entrega. No se ha detectado ningún cambio real en los ratings.' :
     events.length + ' cambio' + (events.length === 1 ? ' ha' : 's han') + ' superado tus condiciones personalizadas. Aquí tienes el contexto completo para que puedas profundizar en la situación.';
