@@ -316,6 +316,9 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(charts, /class="rating-bar-metric"/);
   assert.match(charts, /<\/span><b aria-label="Rating/);
   assert.match(charts, /function monthlyMatrix/);
+  assert.match(app, /monthlyRatingMatrix\(state\.trends,state\.snapshot,selection\(\),6\)/);
+  assert.match(app, /const compactInteger=/);
+  assert.doesNotMatch(charts, /Cierre mensual|<span>\/ 5<\/span>/);
   const components = fs.readFileSync(new URL("../src/Components.html", import.meta.url), "utf8");
   assert.match(components, /viewBox="0 0 152 89"/);
   assert.match(components, /fill="#34A853"/);
