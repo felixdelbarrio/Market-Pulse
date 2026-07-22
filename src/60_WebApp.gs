@@ -1,6 +1,6 @@
 /** Web app de lectura para el dashboard de ratings. */
 var MARKETS_WEB = Object.freeze({
-  version: '2026.07.22.25',
+  version: '2026.07.22.26',
   cacheSeconds: 21600,
   maxCacheCharacters: 95000,
   defaultTrendMonths: 18,
@@ -267,6 +267,7 @@ function buildAllDashboardTrendsForWeb_(ss, months) {
   if (!sheet || sheet.getLastRow() <= 1) return [];
   const width = sheet.getLastColumn();
   const headers = sheet.getRange(1, 1, 1, width).getValues()[0];
+  assertCurrentSheetContract_(sheet, MARKETS_CONFIG.headers.trends, headers.map(trimString_));
   const indexes = indexHeaders_(headers);
   const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, width).getValues();
   const monthKeys = uniqueStrings_(rows.map(function (row) { return webMonthKey_(row[indexes.period_month]); }))
@@ -304,7 +305,8 @@ function mapTrendRowForWeb_(row, indexes) {
     appName: trimString_(row[indexes.app_name]),
     isBbva: parseBoolean_(row[indexes.is_bbva], false),
     ratingEom: webNumber_(row[indexes.rating_eom]),
-    segment: trimString_(row[indexes.market_segment]) || 'BANK'
+    segment: trimString_(row[indexes.market_segment]) || 'BANK',
+    ratingCountEom: webNumber_(row[indexes.rating_count_eom])
   };
 }
 

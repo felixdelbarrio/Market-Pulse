@@ -24,6 +24,13 @@
       const boards=(groups||[]).map(group=>`<section class="rating-board"><header>${ui.platformBadge(group.platform)}<span>${group.rows.length} ${group.rows.length===1?"referencia":"referencias"}</span></header><ol>${group.rows.map(row=>{const value=finite(row.rating)?row.rating:0;return`<li><span class="rating-bar-label" title="${ui.esc(options.label(row))}">${ui.esc(options.label(row))}</span><span class="rating-bar-metric"><span class="rating-bar-track"><i style="width:${Math.max(0,Math.min(100,value/5*100))}%"></i></span><b aria-label="Rating ${ui.esc(options.format(value,1))} sobre 5">${ui.esc(options.format(value,1))}</b></span></li>`}).join("")}</ol></section>`).join("");
       return boards?`<div class="rating-comparison-grid">${boards}</div>`:ui.empty("Sin ratings comparables","Prueba otro mercado o plataforma.");
     }
-    window.MarketsCharts=Object.freeze({lineChart,ratingBars});
+    function monthlyMatrix(model,options){
+      const ui=window.MarketsUI,finite=window.MarketsDomain.finite;
+      if(!model?.periods?.length||!model?.rows?.length)return ui.empty("Sin cierres mensuales","Aún no hay histórico suficiente para esta selección.");
+      const header=model.periods.map((month,index)=>`<th scope="col" class="${index===model.periods.length-1?"latest":""}"><span>${ui.esc(options.monthLabel(month))}</span><small>${index===model.periods.length-1?"Último cierre":"Cierre mensual"}</small></th>`).join("");
+      const body=model.rows.map(row=>`<tr><th scope="row"><span class="monthly-country-flag">${options.flag(row.countryCode)}</span><strong>${ui.esc(row.country)}</strong><small>BBVA Empresas</small></th>${row.cells.map((cell,index)=>{const tone=cell.delta>0?"delta-up":cell.delta<0?"delta-down":"";const reviews=cell.platforms.map(item=>`<span class="monthly-review${item.unavailable?" unavailable":""}"${item.unavailable?' title="N/D: Google Play publica una ficha compartida y no permite desagregar el volumen por geografía."':""}>${ui.platformBadge(item.platform,false)}<b>${item.unavailable?"N/D":options.integer(item.value)}</b></span>`).join("");return`<td class="${index===row.cells.length-1?"latest":""}"><div class="monthly-rating"><strong>${options.format(cell.rating,2)}</strong><span>/ 5</span>${finite(cell.delta)?`<em class="${tone}">${ui.esc(options.signed(cell.delta))}</em>`:""}</div><div class="monthly-reviews">${reviews}</div></td>`}).join("")}</tr>`).join("");
+      return`<div class="monthly-matrix-scroll"><table class="monthly-matrix"><caption>Evolución mensual del rating y volumen de opiniones de BBVA Empresas</caption><thead><tr><th scope="col"><span>Geografía</span><small>Rating y opiniones</small></th>${header}</tr></thead><tbody>${body}</tbody></table></div>`;
+    }
+    window.MarketsCharts=Object.freeze({lineChart,ratingBars,monthlyMatrix});
   })();
 </script>

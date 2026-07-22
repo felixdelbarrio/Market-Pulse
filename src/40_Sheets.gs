@@ -139,6 +139,7 @@ function applyTableStyle_(sheet, width) {
   } else if (sheet.getName() === MARKETS_CONFIG.sheets.trends) {
     sheet.getRange('A:A').setNumberFormat('yyyy-mm-dd');
     sheet.getRange('H:H').setNumberFormat('0.00');
+    sheet.getRange('J:J').setNumberFormat('#,##0');
   } else if (sheet.getName() === MARKETS_CONFIG.sheets.competition) {
     sheet.getRange('A:A').setNumberFormat('yyyy-mm-dd');
     sheet.getRange('J:J').setNumberFormat('0.00');

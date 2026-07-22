@@ -10,13 +10,13 @@ El libro maestro contiene nueve pestañas:
 - `APP_CATALOG`: apps, geografias, identificadores de tienda, pesos y evidencias.
 - `RATINGS`: historico diario normalizado.
 - `DASHBOARD_COMPETITION`: snapshots de rating, ranking, volumen, frescura y enlaces web de tienda.
-- `DASHBOARD_TRENDS`: series mensuales compactas.
+- `DASHBOARD_TRENDS`: cierres mensuales compactos de rating y volumen acumulado.
 - `FETCH_LOG`: resultado de cada consulta por app.
 - `ALERT_LOG`: alertas deduplicadas.
 - `ALERT_SUBSCRIPTIONS`: configuracion privada, personalizada y auditable de cada usuario.
 - `RUN_LOG`: trazabilidad de ejecuciones.
 
-`DASHBOARD_COMPETITION` alimenta las tarjetas y benchmarks. `DASHBOARD_TRENDS` alimenta las graficas. Los consolidados se calculan durante la construccion de la cache desde el snapshot y los pesos de `APP_CATALOG`; no existe una tabla wide intermedia.
+`DASHBOARD_COMPETITION` alimenta las tarjetas y benchmarks. `DASHBOARD_TRENDS` alimenta las graficas y la matriz mensual de Resumen. Los consolidados se calculan durante la construccion de la cache desde el snapshot y los pesos de `APP_CATALOG`; no existe una tabla wide intermedia.
 
 ## Puesta en marcha
 
@@ -38,7 +38,7 @@ El libro maestro contiene nueve pestañas:
 7. Ejecute `authorizeAndInstallMarketsAutomation()` desde el editor, acepte expresamente `gmail.send`, `gmail.settings.basic` y `userinfo.email`, y compruebe que devuelve `verificationStatus: accepted`. Este paso es obligatorio al incorporar permisos nuevos: un trigger no puede mostrar el dialogo de autorización.
 8. Cambie `SEND_ALERT_EMAILS` a `TRUE`, guarde `CONTROL` y use **Enviar prueba** desde `Alertas` para validar el canal sin depender de que se dispare una regla.
 9. Ejecute `sendMarketsMonitorHealthTestEmail()` y confirme que el aviso tecnico queda registrado en el grupo configurado.
-10. Ejecute `warmMarketsDashboardCache()` después de publicar una nueva version.
+10. Ejecute `rebuildAllMetrics()` después de publicar esta version. La funcion sustituye el contrato materializado de `DASHBOARD_TRENDS`, incorpora `RATING_COUNT_EOM` y precalienta ambas capas de cache; no ejecute solo `warmMarketsDashboardCache()` antes de esta reconstruccion.
 
 Un `clasp push` no cambia una version ya desplegada. Use **Gestionar implementaciones > Editar > Nueva version**.
 
@@ -64,7 +64,7 @@ Los enlaces de Android, iOS y Huawei se generan como HTTPS web con geografia exp
 
 La interfaz reutiliza el robot oficial de Android con la atribucion exigida por Google. iOS y Huawei AppGallery emplean identificadores visuales propios del dashboard: no se incrustan la manzana aislada ni el logotipo corporativo de Huawei sin la autorizacion de marca correspondiente.
 
-`Resumen` y `Evolucion` no muestran el selector `Benchmark`. `Resumen` compara el rating actual por Android, iOS y Huawei: con todos los mercados muestra `BBVA + geografia`; con un mercado muestra BBVA y sus bancos comparables. El historico queda exclusivamente en `Evolucion`. El selector competitivo solo aparece en `Benchmark`, donde permite comparar bancos, fintech y neobancos en una unica pagina. Cada fila del ranking enlaza a la ficha web oficial de la app. Mercado, plataforma, benchmark y periodo se conservan en `localStorage`, aislados por email, para restaurarlos en la siguiente visita.
+`Resumen` y `Evolucion` no muestran el selector `Benchmark`. `Resumen` compara el rating actual por Android, iOS y Huawei: con todos los mercados muestra `BBVA + geografia`; con un mercado muestra BBVA y sus bancos comparables. Entre las señales ejecutivas y el detalle geografico presenta ocho cierres mensuales con rating y volumen por plataforma; los packages Android compartidos muestran `N/D` porque Google Play no permite atribuir ese volumen a un pais. El historico grafico queda exclusivamente en `Evolucion`. El selector competitivo solo aparece en `Benchmark`, donde permite comparar bancos, fintech y neobancos en una unica pagina. Cada fila del ranking enlaza a la ficha web oficial de la app. Mercado, plataforma, benchmark y periodo se conservan en `localStorage`, aislados por email, para restaurarlos en la siguiente visita.
 
 ## Informe ejecutivo
 
@@ -89,7 +89,7 @@ La regla propuesta de porcentaje de reseñas de 1 y 2 estrellas conserva sus val
 
 - Autoservicio: las funciones web usan la sesion corporativa y solo permiten operar sobre la fila propia.
 - Ejecucion programada: `runDailyRatingMonitor()` y `runNow()` se ejecutan como propietario, leen **todas** las filas activas de `ALERT_SUBSCRIPTIONS` y envian aunque ningun usuario tenga la aplicacion abierta.
-- Administrador: solo las cuentas incluidas en `CONTROL.ADMIN_EMAILS` ven la pestaña `Administracion`. Su endpoint vuelve a autorizar en servidor antes de devolver versiones, configuracion operativa, ejecuciones, incidencias, suscripciones y eventos. Ocultar la pestaña no se usa como control de seguridad.
+- Administrador: solo las cuentas incluidas en `CONTROL.ADMIN_EMAILS` ven la pestaña `Administracion`. Su endpoint vuelve a autorizar en servidor antes de devolver versiones, configuracion operativa, ejecuciones, incidencias, suscripciones y eventos. La interfaz agrupa ese unico contrato en las pestañas internas Salud, Ejecuciones, Captura, Suscripciones y Alertas, sin nuevas RPC. Ocultar la pestaña no se usa como control de seguridad.
 - Los usuarios del Web App no reciben acceso directo al Sheet ni pueden consultar la configuracion de otra cuenta.
 
 `SEND_ALERT_EMAILS = TRUE` habilita el canal, pero `runNow()` solo envia si `ALERTS_CREATED > 0`. El resultado manual incluye `alerts`, `alertSubscribers` y `emailsSent`; use **Enviar prueba** para distinguir un problema de entrega de la ausencia legitima de eventos.

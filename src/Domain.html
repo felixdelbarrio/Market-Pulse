@@ -73,12 +73,33 @@
         return{platform,rows:rankRows(rows)};
       }).filter(group=>group.rows.length);
     }
+    function monthlyRatingMatrix(trends,snapshot,selection,limit=8){
+      const rows=(trends||[]).filter(row=>row.isBbva&&finite(row.ratingEom)&&(selection.country==="ALL"||row.countryCode===selection.country)&&(selection.platform==="ALL"||row.platform===selection.platform));
+      const periods=[...new Set(rows.map(row=>row.month))].sort().slice(-Math.max(1,limit));
+      const platforms=selection.platform==="ALL"?config.platforms:[selection.platform];
+      const metadata=new Map((snapshot||[]).filter(row=>row.isBbva).map(row=>[row.appKey,row]));
+      const countryCodes=[...new Set(rows.map(row=>row.countryCode))].sort((a,b)=>(config.countries[a]||a).localeCompare(config.countries[b]||b,"es"));
+      const matrixRows=countryCodes.map(countryCode=>{
+        const cells=periods.map(month=>{
+          const platformVolumes=platforms.map(platform=>{
+            const matches=rows.filter(row=>row.countryCode===countryCode&&row.month===month&&row.platform===platform);
+            const unavailable=platform==="Android"&&matches.some(row=>metadata.get(row.appKey)?.volumeScope==="SHARED_LISTING");
+            return{platform,rating:mean(matches.map(row=>row.ratingEom)),value:unavailable?null:sumOrNull(matches.map(row=>row.ratingCountEom)),unavailable};
+          });
+          return{month,rating:mean(platformVolumes.map(item=>item.rating)),platforms:platformVolumes};
+        });
+        cells.forEach((cell,index)=>{const previous=index?cells[index-1].rating:null;cell.delta=finite(cell.rating)&&finite(previous)?cell.rating-previous:null});
+        const countryRow=rows.find(row=>row.countryCode===countryCode);
+        return{countryCode,country:config.countries[countryCode]||countryRow?.country||countryCode,cells};
+      });
+      return{periods,platforms,rows:matrixRows,hasSharedAndroid:matrixRows.some(row=>row.cells.some(cell=>cell.platforms.some(item=>item.unavailable)))};
+    }
     function exclusiveScopeSelection(values,changedValue,checked){
       const selected=[...new Set((values||[]).filter(Boolean))];
       if(changedValue==="ALL"&&checked)return["ALL"];
       const specific=selected.filter(value=>value!=="ALL");
       return specific.length?specific:["ALL"];
     }
-    window.MarketsDomain=Object.freeze({config,finite,sum,sumOrNull,mean,groupBy,appName,selectionRows,trendRows,uniqueStoreRows,volumeSummary,rankRows,countBbvaLeaders,availablePeriods,periodModel,evolutionKpis,prepareSeries,latestValue,ratingComparison,exclusiveScopeSelection});
+    window.MarketsDomain=Object.freeze({config,finite,sum,sumOrNull,mean,groupBy,appName,selectionRows,trendRows,uniqueStoreRows,volumeSummary,rankRows,countBbvaLeaders,availablePeriods,periodModel,evolutionKpis,prepareSeries,latestValue,ratingComparison,monthlyRatingMatrix,exclusiveScopeSelection});
   })();
 </script>

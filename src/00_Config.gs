@@ -1,6 +1,6 @@
 /** Configuracion unica del monitor real de ratings Android, iOS y Huawei. */
 var MARKETS_CONFIG = Object.freeze({
-  codeVersion: '2026.07.22.14',
+  codeVersion: '2026.07.22.15',
   spreadsheetId: '1IkJgvM2imxm3r1x092q5dqpThrlnDoZ-5QvH8n2h2oQ',
   timeZone: 'Europe/Madrid', runHour: 7, runMinute: 5,
   healthCheckHour: 9, healthCheckMinute: 15, lockTimeoutMs: 30000,
@@ -30,7 +30,7 @@ var MARKETS_CONFIG = Object.freeze({
     ]),
     trends: Object.freeze([
       'PERIOD_MONTH', 'PLATFORM', 'COUNTRY_CODE', 'COUNTRY', 'APP_KEY', 'APP_NAME', 'IS_BBVA',
-      'RATING_EOM', 'MARKET_SEGMENT'
+      'RATING_EOM', 'MARKET_SEGMENT', 'RATING_COUNT_EOM'
     ]),
     competition: Object.freeze([
       'OBSERVED_DATE', 'PLATFORM', 'COUNTRY_CODE', 'COUNTRY', 'MARKET_SEGMENT', 'APP_KEY',
@@ -64,7 +64,7 @@ var MARKETS_CONFIG = Object.freeze({
     ])
   }),
   controlDefaults: Object.freeze([
-    ['CODE_VERSION', '2026.07.22.14', 'Version del contrato de datos y del Apps Script'],
+    ['CODE_VERSION', '2026.07.22.15', 'Version del contrato de datos y del Apps Script'],
     ['TIME_ZONE', 'Europe/Madrid', 'Zona horaria de ejecucion y fechas'],
     ['SEND_ALERT_EMAILS', false, 'Enviar emails; mantener FALSE durante la validacion inicial'],
     ['ALERT_SENDER_ALIAS', 'voc-commercial.group@bbva.com', 'Remitente verificado en Gmail > Enviar como para las alertas VoC'],

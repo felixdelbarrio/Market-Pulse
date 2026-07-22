@@ -163,12 +163,13 @@ test("compact competition and trend rows map to the web contract", () => {
   assert.equal(competition.ratingCountDelta30d, 20);
   assert.equal(competition.storeUrl, "https://apps.apple.com/es/app/id1590189082");
 
-  const trendHeaders = ["PERIOD_MONTH", "PLATFORM", "COUNTRY_CODE", "COUNTRY", "APP_KEY", "APP_NAME", "IS_BBVA", "RATING_EOM", "MARKET_SEGMENT"];
+  const trendHeaders = ["PERIOD_MONTH", "PLATFORM", "COUNTRY_CODE", "COUNTRY", "APP_KEY", "APP_NAME", "IS_BBVA", "RATING_EOM", "MARKET_SEGMENT", "RATING_COUNT_EOM"];
   const trend = context.mapTrendRowForWeb_([
-    new Date("2026-07-01T12:00:00Z"), "iOS", "ES", "España", "IOS|ES|BBVA", "BBVA", true, 4.8, "BANK"
+    new Date("2026-07-01T12:00:00Z"), "iOS", "ES", "España", "IOS|ES|BBVA", "BBVA", true, 4.8, "BANK", 640
   ], context.indexHeaders_(trendHeaders));
   assert.equal(trend.month, "2026-07");
   assert.equal(trend.ratingEom, 4.8);
+  assert.equal(trend.ratingCountEom, 640);
 });
 
 test("catalog URL supplies links when the materialized column is absent", () => {
@@ -295,6 +296,10 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(index, /Privado para tu cuenta/);
   assert.match(index, /id="admin-nav" class="nav-button hidden"/);
   assert.match(index, /id="view-admin"/);
+  assert.match(index, /id="admin-tabs"[^>]*role="tablist"/);
+  assert.equal((index.match(/data-admin-tab=/g) || []).length, 5);
+  assert.match(app, /function activateAdminTab/);
+  assert.match(app, /function handleAdminTabKeydown/);
   assert.match(app, /if\(view==="admin"&&!state\.userContext\?\.isAdmin\)return/);
   assert.match(app, /getMarketsAdminDashboard\(\)/);
   assert.match(app, /localStorage\.setItem\(preferenceKey\(\)/);
@@ -305,10 +310,12 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(app, /U\.platformBadge/);
   assert.ok(index.indexOf('id="kpi-grid"') < index.indexOf('id="overview-comparison"'));
   assert.ok(index.indexOf('id="overview-comparison"') < index.indexOf('id="signal-list"'));
-  assert.ok(index.indexOf('id="signal-list"') < index.indexOf('id="country-grid"'));
+  assert.ok(index.indexOf('id="signal-list"') < index.indexOf('id="monthly-matrix"'));
+  assert.ok(index.indexOf('id="monthly-matrix"') < index.indexOf('id="country-grid"'));
   const charts = fs.readFileSync(new URL("../src/Charts.html", import.meta.url), "utf8");
   assert.match(charts, /class="rating-bar-metric"/);
   assert.match(charts, /<\/span><b aria-label="Rating/);
+  assert.match(charts, /function monthlyMatrix/);
   const components = fs.readFileSync(new URL("../src/Components.html", import.meta.url), "utf8");
   assert.match(components, /viewBox="0 0 152 89"/);
   assert.match(components, /fill="#34A853"/);
@@ -376,6 +383,39 @@ test("client domain deduplicates shared Android volumes and excludes competitors
   assert.deepEqual(JSON.parse(JSON.stringify(browser.MarketsDomain.countBbvaLeaders(incomplete))), { value: 0, comparable: 0 });
   incomplete.forEach(row => { row.rankingComplete = true; });
   assert.deepEqual(JSON.parse(JSON.stringify(browser.MarketsDomain.countBbvaLeaders(incomplete))), { value: 1, comparable: 1 });
+});
+
+test("monthly summary matrix respects filters and marks shared Android volume as unavailable", () => {
+  const html = fs.readFileSync(new URL("../src/Domain.html", import.meta.url), "utf8");
+  const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+  const browser = {};
+  browser.window = browser;
+  vm.createContext(browser);
+  vm.runInContext(script, browser);
+  const snapshot = [
+    { appKey: "ANDROID|CO|BBVA", isBbva: true, volumeScope: "SHARED_LISTING" },
+    { appKey: "IOS|CO|BBVA", isBbva: true, volumeScope: "MARKET" }
+  ];
+  const trends = [
+    { appKey: "ANDROID|CO|BBVA", platform: "Android", countryCode: "CO", country: "Colombia", isBbva: true, month: "2026-06", ratingEom: 4.5, ratingCountEom: 1000 },
+    { appKey: "IOS|CO|BBVA", platform: "iOS", countryCode: "CO", country: "Colombia", isBbva: true, month: "2026-06", ratingEom: 4.7, ratingCountEom: 500 },
+    { appKey: "ANDROID|CO|BBVA", platform: "Android", countryCode: "CO", country: "Colombia", isBbva: true, month: "2026-07", ratingEom: 4.6, ratingCountEom: 1100 },
+    { appKey: "IOS|CO|BBVA", platform: "iOS", countryCode: "CO", country: "Colombia", isBbva: true, month: "2026-07", ratingEom: 4.8, ratingCountEom: 640 },
+    { appKey: "PEER", platform: "iOS", countryCode: "CO", country: "Colombia", isBbva: false, month: "2026-07", ratingEom: 5, ratingCountEom: 99999 }
+  ];
+  const matrix = browser.MarketsDomain.monthlyRatingMatrix(trends, snapshot, { country: "ALL", platform: "ALL" }, 8);
+  assert.deepEqual(Array.from(matrix.periods), ["2026-06", "2026-07"]);
+  assert.equal(matrix.rows.length, 1);
+  assert.ok(Math.abs(matrix.rows[0].cells[1].rating - 4.7) < 1e-10);
+  assert.ok(Math.abs(matrix.rows[0].cells[1].delta - 0.1) < 1e-10);
+  assert.equal(matrix.rows[0].cells[1].platforms[0].unavailable, true);
+  assert.equal(matrix.rows[0].cells[1].platforms[0].value, null);
+  assert.equal(matrix.rows[0].cells[1].platforms[1].value, 640);
+  assert.equal(matrix.hasSharedAndroid, true);
+  const ios = browser.MarketsDomain.monthlyRatingMatrix(trends, snapshot, { country: "CO", platform: "iOS" }, 8);
+  assert.deepEqual(Array.from(ios.platforms), ["iOS"]);
+  assert.equal(ios.rows[0].cells[1].rating, 4.8);
+  assert.equal(ios.rows[0].cells[1].platforms[0].value, 640);
 });
 
 test("all-markets evolution is BBVA-only and individual markets show the whole market", () => {

@@ -13,9 +13,9 @@ El backend evita enviar las 32k observaciones completas:
 - La foto ejecutiva se pinta primero y las tendencias se solicitan en segundo plano.
 - El snapshot mas reciente se localiza leyendo solo el final de `DASHBOARD_COMPETITION`, no sus 32k fechas.
 - Las filas Android, iOS y Huawei, tanto en geografia como en competencia, abren fichas web oficiales con geografia explicita en otra pestaña; los enlaces se resuelven desde `APP_CATALOG` y nunca usan esquemas de tiendas nativas.
-- `Resumen` sustituye la trayectoria duplicada por barras de rating actual en Android, iOS y Huawei: todos los mercados comparan BBVA por geografia y un mercado individual compara BBVA con los bancos del pais. El historico queda en `Evolucion`; el selector de universo solo se muestra en `Benchmark`.
+- `Resumen` sustituye la trayectoria duplicada por barras de rating actual en Android, iOS y Huawei: todos los mercados comparan BBVA por geografia y un mercado individual compara BBVA con los bancos del pais. Añade una matriz de los ocho ultimos cierres con rating y opiniones por plataforma, servida desde la misma tendencia cacheada. El historico grafico queda en `Evolucion`; el selector de universo solo se muestra en `Benchmark`.
 - `Alertas` carga un contrato privado independiente; el servidor deriva la cuenta desde `Session.getActiveUser()` y nunca confia en un email del cliente. Esa identidad protege el autoservicio, no limita el trigger programado.
-- `Administracion` solo se anuncia a cuentas incluidas en `CONTROL.ADMIN_EMAILS`; `getMarketsAdminDashboard()` repite la autorizacion en servidor antes de leer datos privados.
+- `Administracion` solo se anuncia a cuentas incluidas en `CONTROL.ADMIN_EMAILS`; `getMarketsAdminDashboard()` repite la autorizacion en servidor antes de leer datos privados. Salud, Ejecuciones, Captura, Suscripciones y Alertas son pestañas internas accesibles que reutilizan una sola respuesta.
 - Los filtros analiticos se guardan en `localStorage` bajo una clave derivada del email y se validan contra el contrato vigente antes de restaurarse.
 - Los rankings permiten abrir la ficha oficial de cualquier participante —BBVA, banco, fintech o neobanco— haciendo clic en toda la fila.
 - Cada volumen Android se identifica por `packageName`. Si el package aparece en varios paises, el bootstrap lo marca como ficha compartida para contabilizarlo una sola vez en los KPI y no atribuirlo a una tarjeta geografica. Los packages exclusivos de un pais, iOS y Huawei mantienen alcance de mercado.
@@ -40,8 +40,8 @@ El backend evita enviar las 32k observaciones completas:
 5. Limite **Quien tiene acceso** al dominio o grupo corporativo que corresponda.
 6. Autorice los scopes y abra la URL `/exec` entregada por Google.
 7. En cambios posteriores, use **Gestionar implementaciones > Editar > Nueva version**. Un `clasp push` no actualiza por si solo una version ya desplegada.
-8. Tras el primer despliegue, ejecute una vez `warmMarketsDashboardCache()` para materializar la revision existente. Desde ese momento, cada RUN diario sustituye automaticamente ambas capas justo despues de actualizar los datasets.
-9. Ejecute `setupProject()` con esta version para validar el contrato vigente de `ALERT_SUBSCRIPTIONS` y `RUN_LOG`.
+8. Ejecute `setupProject()` con esta version para validar los contratos persistentes vigentes.
+9. Ejecute una vez `rebuildAllMetrics()`: reemplaza `DASHBOARD_TRENDS` con el contrato actual, incluido `RATING_COUNT_EOM`, y precalienta L1/L2. Desde ese momento, cada RUN diario sustituye automaticamente ambas capas justo despues de actualizar los datasets.
 10. Ejecute manualmente `authorizeAndInstallMarketsAutomation()` desde el editor, acepte todos los scopes y confirme que el alias queda `accepted`. Esto reinstala el proceso de las 07:05 y su vigilancia de las 09:15 bajo la misma cuenta autorizada.
 11. Active `SEND_ALERT_EMAILS`, valide el canal con **Enviar prueba** en `Alertas` y ejecute `sendMarketsMonitorHealthTestEmail()`.
 
@@ -57,7 +57,7 @@ Despues de crear el grupo, añadalo en Gmail > Configuracion > Cuentas > Enviar 
 
 ## Comprobacion rapida
 
-Abra la URL `/exec` del despliegue y confirme que el pie muestra `Contrato 2026.07.22.14 · Web 2026.07.22.25`, las tarjetas aparecen sin espera adicional, los filtros actualizan las tendencias y `Alertas` muestra el email conectado. Verifique también que una cuenta administradora ve `Administracion` y una cuenta ordinaria no. Active temporalmente el canal y pulse **Enviar prueba**; la pantalla devuelve un identificador `COM-*`, destinatario, grupo remitente, cuenta ejecutora, Gmail Message ID, versiones y estado de auditoria. La API confirma la aceptación de la solicitud, no la entrega final: si el mensaje no aparece, busque el identificador exacto en Recibidos, spam o cuarentena corporativa. Confirme tambien que el correo incluye, en cuerpo pequeno, la fecha de obtencion de los datos.
+Abra la URL `/exec` del despliegue y confirme que el pie muestra `Contrato 2026.07.22.15 · Web 2026.07.22.26`, la matriz mensual aparece entre las señales y el detalle geografico, los filtros actualizan rating y opiniones, y `Alertas` muestra el email conectado. Verifique también que una cuenta administradora ve `Administracion`, puede alternar sus cinco pestañas internas, y una cuenta ordinaria no la ve. Active temporalmente el canal y pulse **Enviar prueba**; la pantalla devuelve un identificador `COM-*`, destinatario, grupo remitente, cuenta ejecutora, Gmail Message ID, versiones y estado de auditoria. La API confirma la aceptación de la solicitud, no la entrega final: si el mensaje no aparece, busque el identificador exacto en Recibidos, spam o cuarentena corporativa. Confirme tambien que el correo incluye, en cuerpo pequeno, la fecha de obtencion de los datos.
 
 ## Comportamiento esperado
 
@@ -66,6 +66,7 @@ Abra la URL `/exec` del despliegue y confirme que el pie muestra `Contrato 2026.
 - El dashboard indica si el ultimo RUN fue `OK`, `PARTIAL` o `ERROR`.
 - Las incidencias muestran pais, plataforma, app, estado y detalle del `FETCH_LOG` del ultimo RUN.
 - Los totales acumulados y del periodo usan `RATING_COUNT` y su variacion real a 30 dias, deduplicados por la identidad territorial o compartida de cada ficha.
+- La matriz mensual usa `RATING_EOM` y `RATING_COUNT_EOM` de la misma ultima observacion real de cada mes. Un package Android compartido aparece como `N/D`, nunca como una estimacion geografica.
 - **Descargar informe** construye un documento editorial independiente del dashboard y conserva la vista, el mercado, la plataforma, el benchmark y el periodo activos. `Resumen`, `Benchmark` y `Evolucion` producen documentos diferentes; `Alertas` no ofrece descarga analitica. No se incluye una seccion de confianza o metodologia. La exportacion espera la tipografia corporativa y pagina en A4 horizontal sin cabeceras del navegador, recortes laterales ni vistas ocultas duplicadas.
 - El rating consolidado solo aparece cuando existen pesos documentados y cobertura suficiente; en su defecto se etiqueta explicitamente una media observada.
 - El layout se adapta a desktop, tablet y movil sin librerias externas.

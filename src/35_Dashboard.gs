@@ -106,6 +106,7 @@ function buildMonthlyTrendRows_(ratings) {
     const group = groups[key];
     const latest = group.latest;
     return [dateFromKey_(group.yearMonth + '-01'), latest.platform, latest.countryCode, latest.country,
-      latest.appKey, latest.appName, latest.isBbva, latest.rating, latest.marketSegment || 'BANK'];
+      latest.appKey, latest.appName, latest.isBbva, latest.rating, latest.marketSegment || 'BANK',
+      latest.ratingCount == null ? '' : latest.ratingCount];
   });
 }

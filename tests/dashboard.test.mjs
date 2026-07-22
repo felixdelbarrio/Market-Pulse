@@ -59,12 +59,14 @@ test("weighted score remains blank when a configured platform is missing", () =>
 test("monthly trend keeps only the end-of-month observation required by the web chart", () => {
   const first = rating("ANDROID|VE|BBVA", "Android", "VE", 4, 0.1, new Date(2026, 6, 1, 12));
   const last = rating("ANDROID|VE|BBVA", "Android", "VE", 5, 0.2, new Date(2026, 6, 31, 12));
+  last.ratingCount = 160;
   last.ranking = 1;
   const rows = context.buildMonthlyTrendRows_([first, last]);
   const row = Array.from(rows[0]);
-  assert.equal(row.length, 9);
+  assert.equal(row.length, 10);
   assert.equal(row[7], 5);
   assert.equal(row[8], "BANK");
+  assert.equal(row[9], 160);
 });
 
 test("monthly trend ignores a malformed YEAR_MONTH cell and derives period from date", () => {
