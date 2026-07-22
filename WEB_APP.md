@@ -36,8 +36,8 @@ El backend evita enviar las 32k observaciones completas:
 
 2. En Apps Script, abra **Implementar > Nueva implementacion**.
 3. Seleccione **Aplicacion web**.
-4. Configure **Ejecutar como: yo**.
-5. Limite **Quien tiene acceso** al dominio o grupo corporativo que corresponda.
+4. Confirme **Ejecutar como: yo** (`USER_DEPLOYING` en el manifiesto).
+5. Confirme **Quien tiene acceso: dominio BBVA** (`DOMAIN` en el manifiesto).
 6. Autorice los scopes y abra la URL `/exec` entregada por Google.
 7. En cambios posteriores, use **Gestionar implementaciones > Editar > Nueva version**. Un `clasp push` no actualiza por si solo una version ya desplegada.
 8. Ejecute `setupProject()` con esta version para validar los contratos persistentes vigentes.
@@ -46,6 +46,12 @@ El backend evita enviar las 32k observaciones completas:
 11. Active `SEND_ALERT_EMAILS`, valide el canal con **Enviar prueba** en `Alertas` y ejecute `sendMarketsMonitorHealthTestEmail()`.
 
 El autoservicio requiere que el despliegue corporativo exponga el email del usuario a `Session.getActiveUser()`. Abra la URL con una cuenta `@bbva.com` y confirme que la pestaña muestra esa misma cuenta antes de activar la operacion. Mantenga **Ejecutar como: yo** para que los usuarios no necesiten acceso directo al Sheet y restrinja el acceso al dominio o grupo BBVA.
+
+### Acceso desde iPhone o iPad
+
+La URL canónica se obtiene con `validateProject().webAppUrl` y también aparece en `Administracion > Salud`. Debe tener la forma `https://script.google.com/macros/s/.../exec`; no use `/dev`, el enlace del editor, un enlace de Drive ni una URL modificada manualmente. Si iOS muestra **No se puede abrir el archivo** con cabecera de Google Drive, la petición no ha llegado a `doGet()` y no es un fallo responsive.
+
+En Chrome para iOS, seleccione el perfil corporativo `@bbva.com` antes de abrir la URL. Si hay cuentas personales y corporativas simultáneas, abra el enlace desde el perfil de trabajo o pruebe Safari después de iniciar sesión con esa misma cuenta. Tras verificar el acceso, puede añadirse a la pantalla de inicio; la aplicación incluye metadatos móviles, safe areas y un layout específico de tres cierres mensuales en pantallas estrechas.
 
 El trigger no actua como el usuario que visita la pantalla. `runDailyRatingMonitor()` se ejecuta como propietario del proyecto, lee todas las suscripciones activas y agrupa un correo por destinatario. Por tanto, la aplicacion puede estar cerrada y no necesita una sesion conectada para enviar.
 
@@ -57,7 +63,7 @@ Despues de crear el grupo, añadalo en Gmail > Configuracion > Cuentas > Enviar 
 
 ## Comprobacion rapida
 
-Abra la URL `/exec` del despliegue y confirme que el pie muestra `Contrato 2026.07.22.15 · Web 2026.07.22.28`, la matriz mensual aparece entre las señales y el detalle geografico, los filtros actualizan rating y opiniones, y `Alertas` muestra el email conectado. Los simbolos de plataforma deben aparecer unicamente en el selector global; las vistas, alertas, administracion e informe usan texto. Verifique también que una cuenta administradora ve `Administracion`, puede alternar sus cinco pestañas internas, y una cuenta ordinaria no la ve. Active temporalmente el canal y pulse **Enviar prueba**; la pantalla devuelve un identificador `COM-*`, destinatario, grupo remitente, cuenta ejecutora, Gmail Message ID, versiones y estado de auditoria. La API confirma la aceptación de la solicitud, no la entrega final: si el mensaje no aparece, busque el identificador exacto en Recibidos, spam o cuarentena corporativa. Confirme tambien que el correo incluye, en cuerpo pequeno, la fecha de obtencion de los datos.
+Abra la URL `/exec` del despliegue y confirme que el pie muestra `Contrato 2026.07.22.15 · Web 2026.07.22.29`, la matriz mensual aparece entre las señales y el detalle geografico, los filtros actualizan rating y opiniones, y `Alertas` muestra el email conectado. Repita la comprobacion en iPhone con el perfil corporativo: deben mostrarse tres cierres, navegación inferior y safe areas sin desbordamiento. Los simbolos de plataforma deben aparecer unicamente en el selector global; las vistas, alertas, administracion e informe usan texto. Verifique también que una cuenta administradora ve `Administracion`, puede alternar sus cinco pestañas internas, y una cuenta ordinaria no la ve. Active temporalmente el canal y pulse **Enviar prueba**; la pantalla devuelve un identificador `COM-*`, destinatario, grupo remitente, cuenta ejecutora, Gmail Message ID, versiones y estado de auditoria. La API confirma la aceptación de la solicitud, no la entrega final: si el mensaje no aparece, busque el identificador exacto en Recibidos, spam o cuarentena corporativa. Confirme tambien que el correo incluye, en cuerpo pequeno, la fecha de obtencion de los datos.
 
 ## Comportamiento esperado
 

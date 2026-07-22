@@ -258,6 +258,8 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   const app = fs.readFileSync(new URL("../src/App.html", import.meta.url), "utf8");
   const assets = fs.readFileSync(new URL("../src/BrandAssets.html", import.meta.url), "utf8");
   assert.match(index, /includeMarketsWebPartial_\('BrandAssets'\)/);
+  assert.match(index, /name="mobile-web-app-capable" content="yes"/);
+  assert.match(index, /name="apple-mobile-web-app-capable" content="yes"/);
   names.forEach(name => assert.match(index, new RegExp(`includeMarketsWebPartial_\\('${name}'\\)`)));
   assert.match(index, /includeMarketsWebPartial_\('ReportStyles'\)/);
   assert.match(index, /id="print-report" class="print-report"/);
@@ -319,7 +321,8 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(charts, /<\/span><b aria-label="Rating/);
   assert.match(charts, /function monthlyMatrix/);
   assert.doesNotMatch(charts, /platformBadge/);
-  assert.match(app, /monthlyRatingMatrix\(state\.trends,state\.snapshot,selection\(\),6\)/);
+  assert.match(app, /const mobileViewport=window\.matchMedia\("\(max-width:780px\)"\)/);
+  assert.match(app, /monthlyRatingMatrix\(state\.trends,state\.snapshot,selection\(\),mobileViewport\.matches\?3:6\)/);
   assert.match(app, /const compactInteger=/);
   assert.doesNotMatch(charts, /Cierre mensual|<span>\/ 5<\/span>/);
   const components = fs.readFileSync(new URL("../src/Components.html", import.meta.url), "utf8");

@@ -61,4 +61,5 @@ test("the explicit manifest authorizes identity and the narrow Gmail operations"
   assert.equal(scopes.has("https://www.googleapis.com/auth/gmail.send"), true);
   assert.equal(scopes.has("https://www.googleapis.com/auth/gmail.settings.basic"), true);
   assert.equal(scopes.has("https://mail.google.com/"), false);
+  assert.deepEqual(manifest.webapp, { access: "DOMAIN", executeAs: "USER_DEPLOYING" });
 });

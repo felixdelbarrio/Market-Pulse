@@ -63,6 +63,7 @@ function getMarketsAdminDashboard() {
     system: {
       codeVersion: MARKETS_CONFIG.codeVersion,
       webVersion: MARKETS_WEB.version,
+      webAppUrl: trimString_(ScriptApp.getService().getUrl()),
       timeZone: trimString_(access.control.TIME_ZONE) || MARKETS_CONFIG.timeZone,
       dailySchedule: String(MARKETS_CONFIG.runHour).padStart(2, '0') + ':' + String(MARKETS_CONFIG.runMinute).padStart(2, '0'),
       healthSchedule: String(MARKETS_CONFIG.healthCheckHour).padStart(2, '0') + ':' + String(MARKETS_CONFIG.healthCheckMinute).padStart(2, '0'),

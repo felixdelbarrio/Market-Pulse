@@ -33,7 +33,7 @@ El libro maestro contiene nueve pestañas:
 2. Ejecute `setupProject()` una vez. La funcion solicita todos los permisos del manifiesto, valida el contrato vigente, aplica formato, completa las semillas necesarias, registra al ejecutor inicial en `CONTROL.ADMIN_EMAILS` e instala los triggers diario y de vigilancia. Añada despues otros administradores `@bbva.com` separados por coma. Los encabezados existentes deben coincidir exactamente con esta version: no se amplian contratos antiguos de forma automatica.
 3. Ejecute `validateProject()` y revise el resultado.
 4. Ejecute `runNow()` con `SEND_ALERT_EMAILS = FALSE` y compruebe `RUN_LOG` y `FETCH_LOG`.
-5. Cree o actualice el despliegue **Aplicacion web**, con **Ejecutar como: yo** y acceso restringido al dominio o grupo apropiado.
+5. Cree o actualice el despliegue **Aplicacion web**. El manifiesto fija `executeAs: USER_DEPLOYING` y `access: DOMAIN`: confirme en la interfaz **Ejecutar como: yo** y acceso para el dominio BBVA.
 6. Abra la pestaña `Alertas` con una cuenta `@bbva.com` y confirme que aparece su email. Si la identidad queda vacia, revise el acceso corporativo del despliegue antes de habilitar correos.
 7. Ejecute `authorizeAndInstallMarketsAutomation()` desde el editor, acepte expresamente `gmail.send`, `gmail.settings.basic` y `userinfo.email`, y compruebe que devuelve `verificationStatus: accepted`. Este paso es obligatorio al incorporar permisos nuevos: un trigger no puede mostrar el dialogo de autorización.
 8. Cambie `SEND_ALERT_EMAILS` a `TRUE`, guarde `CONTROL` y use **Enviar prueba** desde `Alertas` para validar el canal sin depender de que se dispare una regla.
@@ -41,6 +41,8 @@ El libro maestro contiene nueve pestañas:
 10. Ejecute `rebuildAllMetrics()` después de publicar esta version. La funcion sustituye el contrato materializado de `DASHBOARD_TRENDS`, incorpora `RATING_COUNT_EOM` y precalienta ambas capas de cache; no ejecute solo `warmMarketsDashboardCache()` antes de esta reconstruccion.
 
 Un `clasp push` no cambia una version ya desplegada. Use **Gestionar implementaciones > Editar > Nueva version**.
+
+Para compartir la aplicacion utilice exclusivamente la URL canónica que devuelve `validateProject().webAppUrl` o que aparece en `Administracion > Salud`. Debe terminar en `/exec`. No comparta enlaces de Drive, del editor, URLs `/dev` ni direcciones construidas manualmente. En iPhone, Chrome debe estar usando el perfil corporativo `@bbva.com`; una cuenta personal no cumple el acceso `DOMAIN` y Google puede mostrar una pagina generica de Drive antes de ejecutar `doGet()`.
 
 ## Operacion
 
