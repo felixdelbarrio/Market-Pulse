@@ -29,7 +29,7 @@ El aviso tecnico del watchdog si se dirige a `MONITOR_ADMIN_EMAIL`, cuyo valor r
 
 ## Activacion segura despues del despliegue
 
-1. Publicar los archivos de `src/`, incluido `57_MonitorHealth.gs` y el manifiesto.
+1. Publicar los archivos de `src/`, incluido `57_MonitorHealth.gs` y el manifiesto. En **Implementar > Administrar implementaciones**, editar la implementacion web existente, seleccionar **Nueva version** y guardar; actualizar el codigo no cambia por si solo la version atendida por la URL `/exec`.
 2. Ejecutar `setupProject()` desde el editor de Apps Script.
 3. Ejecutar `authorizeAndInstallMarketsAutomation()` desde el editor y aceptar todos los permisos solicitados, incluidos `userinfo.email`, `gmail.send` y `gmail.settings.basic`. El resultado esperado contiene `verificationStatus: accepted`, proceso `07:05 Europe/Madrid` y vigilancia `09:15 Europe/Madrid`.
 4. Ejecutar `validateMarketsAlertSender()` y comprobar `available: true`.

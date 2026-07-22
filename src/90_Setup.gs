@@ -2,7 +2,6 @@ function setupProject() {
   ScriptApp.requireAllScopes(ScriptApp.AuthMode.FULL);
   const ss = openMarketsSpreadsheet_();
   initializeWorkbook_(ss);
-  migrateLegacyAlertRecipients_(ss, readAppCatalog_(ss));
   installDailyTrigger_();
   return validateProject();
 }
@@ -12,7 +11,6 @@ function validateProject() {
   ensureWorkbookSchema_(ss);
   const control = readControl_(ss);
   const catalog = readAppCatalog_(ss);
-  migrateLegacyAlertRecipients_(ss, catalog);
   const alertUsers = readAllMarketsAlertPreferences_(ss);
   const alertSender = marketsAlertSenderStatus_(ss);
   const counts = catalog.reduce(function (out, app) {

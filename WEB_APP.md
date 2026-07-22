@@ -39,7 +39,7 @@ El backend evita enviar las 32k observaciones completas:
 6. Autorice los scopes y abra la URL `/exec` entregada por Google.
 7. En cambios posteriores, use **Gestionar implementaciones > Editar > Nueva version**. Un `clasp push` no actualiza por si solo una version ya desplegada.
 8. Tras el primer despliegue, ejecute una vez `warmMarketsDashboardCache()` para materializar la revision existente. Desde ese momento, cada RUN diario sustituye automaticamente ambas capas justo despues de actualizar los datasets.
-9. Ejecute `setupProject()` con esta version para crear `ALERT_SUBSCRIPTIONS` y ampliar los contratos de `RUN_LOG`.
+9. Ejecute `setupProject()` con esta version para validar el contrato vigente de `ALERT_SUBSCRIPTIONS` y `RUN_LOG`.
 10. Ejecute manualmente `authorizeAndInstallMarketsAutomation()` desde el editor, acepte todos los scopes y confirme que el alias queda `accepted`. Esto reinstala el proceso de las 07:05 y su vigilancia de las 09:15 bajo la misma cuenta autorizada.
 11. Active `SEND_ALERT_EMAILS`, valide el canal con **Enviar prueba** en `Alertas` y ejecute `sendMarketsMonitorHealthTestEmail()`.
 
@@ -55,7 +55,7 @@ Despues de crear el grupo, añadalo en Gmail > Configuracion > Cuentas > Enviar 
 
 ## Comprobacion rapida
 
-Abra la URL `/exec` del despliegue y confirme que el pie muestra `Contrato 2026.07.22.11 · Web 2026.07.22.22`, las tarjetas aparecen sin espera adicional, los filtros actualizan las tendencias y `Alertas` muestra el email conectado. Active temporalmente el canal y pulse **Enviar prueba**; la pantalla devuelve un identificador `COM-*`, destinatario, grupo remitente, cuenta ejecutora, Gmail Message ID, versiones y estado de auditoria. La API confirma la aceptación de la solicitud, no la entrega final: si el mensaje no aparece, busque el identificador exacto en Recibidos, spam o cuarentena corporativa. Confirme tambien que el correo incluye, en cuerpo pequeno, la fecha de obtencion de los datos.
+Abra la URL `/exec` del despliegue y confirme que el pie muestra `Contrato 2026.07.22.12 · Web 2026.07.22.23`, las tarjetas aparecen sin espera adicional, los filtros actualizan las tendencias y `Alertas` muestra el email conectado. Active temporalmente el canal y pulse **Enviar prueba**; la pantalla devuelve un identificador `COM-*`, destinatario, grupo remitente, cuenta ejecutora, Gmail Message ID, versiones y estado de auditoria. La API confirma la aceptación de la solicitud, no la entrega final: si el mensaje no aparece, busque el identificador exacto en Recibidos, spam o cuarentena corporativa. Confirme tambien que el correo incluye, en cuerpo pequeno, la fecha de obtencion de los datos.
 
 ## Comportamiento esperado
 

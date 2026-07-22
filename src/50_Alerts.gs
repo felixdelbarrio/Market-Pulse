@@ -7,7 +7,6 @@ var MARKETS_ALERT_EMAIL = Object.freeze({
 
 function buildAndProcessAlerts_(ss, referenceDate, catalog, runId, control, ratingObjects) {
   const ratings = ratingObjects || readRatingObjects_(ss);
-  migrateLegacyAlertRecipients_(ss, catalog);
   const subscribers = readAllMarketsAlertPreferences_(ss).filter(function (item) { return item.active; });
   const existing = readExistingAlertKeys_(ss);
   const catalogByKey = (catalog || []).reduce(function (out, app) { out[app.appKey] = app; return out; }, {});

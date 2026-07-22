@@ -218,23 +218,6 @@ function upsertMarketsAlertPreferences_(ss, preferences, updatedBy) {
   return normalized;
 }
 
-function migrateLegacyAlertRecipients_(ss, catalog) {
-  const existing = readAllMarketsAlertPreferences_(ss).reduce(function (out, item) {
-    out[item.email] = true; return out;
-  }, {});
-  const recipients = uniqueStrings_((catalog || []).reduce(function (out, app) {
-    return out.concat(trimString_(app.recipients).split(/[;,]/));
-  }, []).map(normalizeEmailForComparison_)).filter(function (email) { return /@bbva\.com$/.test(email); });
-  recipients.forEach(function (email) {
-    if (existing[email]) return;
-    const preferences = defaultMarketsAlertPreferences_(email);
-    preferences.active = true;
-    preferences.registeredAt = new Date();
-    preferences.updatedBy = 'LEGACY_APP_CATALOG';
-    upsertMarketsAlertPreferences_(ss, preferences, preferences.updatedBy);
-  });
-}
-
 function registerOrTouchMarketsAlertUser_(ss, email) {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(MARKETS_CONFIG.lockTimeoutMs)) {
@@ -274,7 +257,9 @@ function normalizeEmailForComparison_(email) {
 function getMarketsAlertPreferences() {
   const email = currentMarketsUserEmail_();
   const ss = openMarketsSpreadsheet_();
-  ensureWorkbookSchema_(ss);
+  requireCurrentSheetContract_(ss, MARKETS_CONFIG.sheets.control, MARKETS_CONFIG.headers.control);
+  requireCurrentSheetContract_(ss, MARKETS_CONFIG.sheets.alertPreferences, MARKETS_CONFIG.headers.alertPreferences);
+  requireCurrentSheetContract_(ss, MARKETS_CONFIG.sheets.alerts, MARKETS_CONFIG.headers.alerts);
   const control = readControl_(ss);
   const preferences = registerOrTouchMarketsAlertUser_(ss, email);
   return {
@@ -300,7 +285,7 @@ function saveMarketsAlertPreferences(payload) {
   if (!lock.tryLock(MARKETS_CONFIG.lockTimeoutMs)) throw new Error('La configuracion de alertas esta siendo actualizada. Intentalo de nuevo.');
   try {
     const ss = openMarketsSpreadsheet_();
-    ensureWorkbookSchema_(ss);
+    requireCurrentSheetContract_(ss, MARKETS_CONFIG.sheets.alertPreferences, MARKETS_CONFIG.headers.alertPreferences);
     return alertPreferencesForClient_(upsertMarketsAlertPreferences_(ss,
       normalizeMarketsAlertPreferences_(payload, email), email));
   } finally {
@@ -315,7 +300,9 @@ function resetMarketsAlertPreferences() {
 function sendMarketsAlertTestEmail() {
   const email = currentMarketsUserEmail_();
   const ss = openMarketsSpreadsheet_();
-  ensureWorkbookSchema_(ss);
+  requireCurrentSheetContract_(ss, MARKETS_CONFIG.sheets.control, MARKETS_CONFIG.headers.control);
+  requireCurrentSheetContract_(ss, MARKETS_CONFIG.sheets.alertPreferences, MARKETS_CONFIG.headers.alertPreferences);
+  requireCurrentSheetContract_(ss, MARKETS_CONFIG.sheets.alerts, MARKETS_CONFIG.headers.alerts);
   const control = readControl_(ss);
   if (!parseBoolean_(control.SEND_ALERT_EMAILS, false)) {
     throw new Error('El envio global esta desactivado. Activa SEND_ALERT_EMAILS en CONTROL antes de probar.');

@@ -10,7 +10,7 @@ const context = { console, Date, Math, Number, String, Boolean, Array, Object, J
 vm.createContext(context);
 vm.runInContext(sources, context);
 
-test("new ratings match the extended append-only contract", () => {
+test("new ratings match the current exact contract", () => {
   const app = {
     appKey: "ANDROID|ES|BBVA", platform: "Android", store: "Google Play", countryCode: "ES",
     country: "España", appName: "BBVA", packageName: "com.bbva.empresas", appId: "", isBbva: true,

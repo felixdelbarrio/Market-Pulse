@@ -69,7 +69,7 @@ test("the server derives the account and ignores an email injected by the client
   context.currentMarketsUserEmail_ = () => "felix.delbarrio@bbva.com";
   context.LockService = { getScriptLock() { return { tryLock() { return true; }, releaseLock() {} }; } };
   context.openMarketsSpreadsheet_ = () => ({});
-  context.ensureWorkbookSchema_ = () => {};
+  context.requireCurrentSheetContract_ = () => {};
   context.upsertMarketsAlertPreferences_ = (_ss, value) => { written = value; return value; };
   const saved = context.saveMarketsAlertPreferences({
     email: "another.user@bbva.com", active: true,
@@ -87,7 +87,7 @@ test("the server derives the account and ignores an email injected by the client
 test("a test email returns traceable acceptance diagnostics and is audited", () => {
   const original = {
     currentUser: context.currentMarketsUserEmail_, open: context.openMarketsSpreadsheet_,
-    ensure: context.ensureWorkbookSchema_, readControl: context.readControl_, send: context.sendAlertEmails_,
+    requireContract: context.requireCurrentSheetContract_, readControl: context.readControl_, send: context.sendAlertEmails_,
     append: context.appendAlertEvents_, touch: context.touchMarketsAlertTimestamp_,
     Utilities: context.Utilities, Session: context.Session, MARKETS_WEB: context.MARKETS_WEB
   };
@@ -95,7 +95,7 @@ test("a test email returns traceable acceptance diagnostics and is audited", () 
   let auditedEvents = null;
   context.currentMarketsUserEmail_ = () => "felix.delbarrio@bbva.com";
   context.openMarketsSpreadsheet_ = () => ({ id: "sheet" });
-  context.ensureWorkbookSchema_ = () => {};
+  context.requireCurrentSheetContract_ = () => {};
   context.readControl_ = () => ({ SEND_ALERT_EMAILS: true });
   context.Utilities = {
     formatDate: () => "20260720-141500",
@@ -130,7 +130,7 @@ test("a test email returns traceable acceptance diagnostics and is audited", () 
 
   context.currentMarketsUserEmail_ = original.currentUser;
   context.openMarketsSpreadsheet_ = original.open;
-  context.ensureWorkbookSchema_ = original.ensure;
+  context.requireCurrentSheetContract_ = original.requireContract;
   context.readControl_ = original.readControl;
   context.sendAlertEmails_ = original.send;
   context.appendAlertEvents_ = original.append;
@@ -332,14 +332,13 @@ test("test email is explicit, useful and previews the detail of a real alert", (
 
 test("the scheduled engine processes every active subscriber without a connected Session", () => {
   const original = {
-    migrate: context.migrateLegacyAlertRecipients_, readAll: context.readAllMarketsAlertPreferences_,
+    readAll: context.readAllMarketsAlertPreferences_,
     readExisting: context.readExistingAlertKeys_, drops: context.buildRatingDropAlerts_,
     crossovers: context.buildCompetitiveCrossoverAlerts_, append: context.appendAlertEvents_,
     send: context.sendAlertEmails_
   };
   const users = [preferences(), preferences({ email: "ana.ejemplo@bbva.com" })];
   users[1].email = "ana.ejemplo@bbva.com";
-  context.migrateLegacyAlertRecipients_ = () => {};
   context.readAllMarketsAlertPreferences_ = () => users;
   context.readExistingAlertKeys_ = () => ({});
   context.buildRatingDropAlerts_ = (_ratings, referenceDate, pref) => [{
@@ -360,7 +359,7 @@ test("the scheduled engine processes every active subscriber without a connected
   assert.equal(result.deliveryCount, 2);
   assert.equal(result.deliveryStatus, "DELIVERED");
   Object.assign(context, {
-    migrateLegacyAlertRecipients_: original.migrate, readAllMarketsAlertPreferences_: original.readAll,
+    readAllMarketsAlertPreferences_: original.readAll,
     readExistingAlertKeys_: original.readExisting, buildRatingDropAlerts_: original.drops,
     buildCompetitiveCrossoverAlerts_: original.crossovers, appendAlertEvents_: original.append,
     sendAlertEmails_: original.send
@@ -369,13 +368,12 @@ test("the scheduled engine processes every active subscriber without a connected
 
 test("a Gmail authorization failure does not audit undelivered events or abort the data run", () => {
   const original = {
-    migrate: context.migrateLegacyAlertRecipients_, readAll: context.readAllMarketsAlertPreferences_,
+    readAll: context.readAllMarketsAlertPreferences_,
     readExisting: context.readExistingAlertKeys_, drops: context.buildRatingDropAlerts_,
     crossovers: context.buildCompetitiveCrossoverAlerts_, append: context.appendAlertEvents_,
     send: context.sendAlertEmails_
   };
   let appended = null;
-  context.migrateLegacyAlertRecipients_ = () => {};
   context.readAllMarketsAlertPreferences_ = () => [preferences()];
   context.readExistingAlertKeys_ = () => ({});
   context.buildRatingDropAlerts_ = (_ratings, referenceDate, pref) => [{
@@ -396,9 +394,23 @@ test("a Gmail authorization failure does not audit undelivered events or abort t
   assert.equal(appended, null);
 
   Object.assign(context, {
-    migrateLegacyAlertRecipients_: original.migrate, readAllMarketsAlertPreferences_: original.readAll,
+    readAllMarketsAlertPreferences_: original.readAll,
     readExistingAlertKeys_: original.readExisting, buildRatingDropAlerts_: original.drops,
     buildCompetitiveCrossoverAlerts_: original.crossovers, appendAlertEvents_: original.append,
     sendAlertEmails_: original.send
   });
+});
+
+test("the alert center validates only the sheets it consumes", () => {
+  const checked = [];
+  context.currentMarketsUserEmail_ = () => "felix.delbarrio@bbva.com";
+  context.openMarketsSpreadsheet_ = () => ({ id: "sheet" });
+  context.requireCurrentSheetContract_ = (_ss, name) => { checked.push(name); };
+  context.readControl_ = () => ({ SEND_ALERT_EMAILS: true });
+  context.registerOrTouchMarketsAlertUser_ = (_ss, email) => preferences({ email });
+  context.readRecentMarketsAlertEventsForUser_ = () => [];
+  const result = context.getMarketsAlertPreferences();
+  assert.equal(result.user.email, "felix.delbarrio@bbva.com");
+  assert.deepEqual(checked, ["CONTROL", "ALERT_SUBSCRIPTIONS", "ALERT_LOG"]);
+  assert.equal(checked.includes("RUN_LOG"), false);
 });

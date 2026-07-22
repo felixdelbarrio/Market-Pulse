@@ -20,17 +20,13 @@ function ensureWorkbookSchema_(ss) {
   workbookDefinitions_().forEach(function (definition) {
     const sheet = getOrCreateSheet_(ss, definition[0]);
     if ([MARKETS_CONFIG.sheets.competition, MARKETS_CONFIG.sheets.trends].indexOf(definition[0]) < 0) {
-      ensureAppendOnlyHeader_(sheet, definition[1]);
+      ensureCurrentSheetContract_(sheet, definition[1]);
     }
   });
 }
 
 function initializeWorkbook_(ss) {
   ensureWorkbookSchema_(ss);
-  ['DASHBOARD_KPIS', 'REVIEWS'].forEach(function (name) {
-    const obsolete = ss.getSheetByName(name);
-    if (obsolete) ss.deleteSheet(obsolete);
-  });
   seedControl_(ss.getSheetByName(MARKETS_CONFIG.sheets.control));
   seedCatalogDefaults_(ss.getSheetByName(MARKETS_CONFIG.sheets.catalog));
   workbookDefinitions_().forEach(function (definition) {
@@ -44,42 +40,43 @@ function getOrCreateSheet_(ss, name) {
   return ss.getSheetByName(name) || ss.insertSheet(name);
 }
 
-function ensureAppendOnlyHeader_(sheet, expected) {
+function ensureCurrentSheetContract_(sheet, expected) {
   ensureSheetCapacity_(sheet, 2, expected.length);
-  const currentWidth = Math.max(1, sheet.getLastColumn());
-  const current = sheet.getRange(1, 1, 1, currentWidth).getValues()[0].map(trimString_);
+  const current = readSheetHeader_(sheet);
   const hasContent = current.some(function (value) { return Boolean(value); });
   if (!hasContent) {
     sheet.getRange(1, 1, 1, expected.length).setValues([expected]);
     return;
   }
+  assertCurrentSheetContract_(sheet, expected, current);
+}
+
+function requireCurrentSheetContract_(ss, name, expected) {
+  const sheet = ss.getSheetByName(name);
+  if (!sheet) throw new Error('Falta la hoja obligatoria ' + name + '. Ejecuta setupProject() con la version publicada.');
+  assertCurrentSheetContract_(sheet, expected, readSheetHeader_(sheet));
+  return sheet;
+}
+
+function readSheetHeader_(sheet) {
+  const currentWidth = Math.max(1, sheet.getLastColumn());
+  return sheet.getRange(1, 1, 1, currentWidth).getValues()[0].map(trimString_);
+}
+
+function assertCurrentSheetContract_(sheet, expected, current) {
   const populatedWidth = current.reduce(function (last, value, index) {
     return value ? index + 1 : last;
   }, 0);
-  if (populatedWidth > expected.length) {
-    throw new Error('Contrato incompatible en ' + sheet.getName() + '. Hay columnas no reconocidas despues del contrato.');
-  }
-  const mismatch = current.slice(0, populatedWidth).some(function (header, index) {
+  const mismatch = populatedWidth !== expected.length || current.slice(0, expected.length).some(function (header, index) {
     return header !== expected[index];
   });
   if (mismatch) {
-    throw new Error('Contrato incompatible en ' + sheet.getName() + '. Esperado: ' + expected.join(', '));
-  }
-  if (populatedWidth < expected.length) {
-    sheet.getRange(1, populatedWidth + 1, 1, expected.length - populatedWidth)
-      .setValues([expected.slice(populatedWidth)]);
+    throw new Error('Contrato incompatible en ' + sheet.getName() + '. La version publicada requiere exactamente: ' + expected.join(', '));
   }
 }
 
 function seedControl_(sheet) {
-  let existingRows = sheet.getLastRow() > 1
-    ? sheet.getRange(2, 1, sheet.getLastRow() - 1, 3).getValues() : [];
-  const obsoleteKeys = ['RUN_HOUR', 'RUN_MINUTE', 'TARGET_SPREADSHEET_ID',
-    'REQUIRE_COMPLETE_RANKING', 'REQUIRE_WEIGHT_SOURCE'];
-  for (let index = existingRows.length - 1; index >= 0; index -= 1) {
-    if (obsoleteKeys.indexOf(trimString_(existingRows[index][0])) >= 0) sheet.deleteRow(index + 2);
-  }
-  existingRows = sheet.getLastRow() > 1
+  const existingRows = sheet.getLastRow() > 1
     ? sheet.getRange(2, 1, sheet.getLastRow() - 1, 3).getValues() : [];
   const rowByKey = existingRows.reduce(function (out, row, index) {
     const key = trimString_(row[0]);
@@ -187,11 +184,6 @@ function readControl_(ss) {
     if (key) out[key] = row[1];
     return out;
   }, {});
-  if (control.SEND_ALERT_MAILS !== undefined) {
-    control.SEND_ALERT_EMAILS = parseBoolean_(control.SEND_ALERT_EMAILS, false) ||
-      parseBoolean_(control.SEND_ALERT_MAILS, false);
-    control.ALERT_CONFIG_WARNING = 'SEND_ALERT_MAILS esta obsoleto; usa SEND_ALERT_EMAILS.';
-  }
   return control;
 }
 
@@ -215,9 +207,6 @@ function readAppCatalog_(ss) {
       isBbva: parseBoolean_(row[indexes.is_bbva], false),
       enabled: parseBoolean_(row[indexes.enabled], true),
       locale: trimString_(row[indexes.locale]) || 'en',
-      recipients: trimString_(row[indexes.alert_recipients]),
-      warningDrop: Math.abs(toFiniteNumber_(row[indexes.warning_drop]) || 0.30),
-      criticalDrop: Math.abs(toFiniteNumber_(row[indexes.critical_drop]) || 0.50),
       minObservations7d: toNonNegativeInteger_(row[indexes.min_observations_7d]) || 5,
       competitorAlerts: parseBoolean_(row[indexes.competitor_alerts], true),
       countryPlatformWeight: nonNegativeNumberOrZero_(row[indexes.country_platform_weight]),
