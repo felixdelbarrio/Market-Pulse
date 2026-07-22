@@ -103,16 +103,17 @@ function sendMarketsMonitorHealthEmail_(recipient, health, sentAt) {
   const detail = trimString_(health.detail);
   const runId = trimString_(health.runId) || 'sin ejecucion';
   const appUrl = marketsWebAppUrl_();
+  const loginUrl = marketsWebAppLoginUrl_(recipient);
   const plain = 'BBVA COMMERCIAL - MONITOR TECNICO\n\n' + reason + '\n\nFecha esperada: ' +
     health.dateKey + '\nRun: ' + runId + (detail ? '\nDetalle: ' + detail : '') +
-    '\n\nEjecuta runNow() manualmente y revisa RUN_LOG.\n' + appUrl;
+    '\n\nEjecuta runNow() manualmente y revisa RUN_LOG.\n' + loginUrl + '\nURL directa: ' + appUrl;
   const html = '<!doctype html><html><body style="margin:0;background:#F4F5F6;font-family:Arial,Helvetica,sans-serif;color:#121212;">' +
     '<div style="max-width:620px;margin:24px auto;background:#FFFFFF;border-radius:12px;overflow:hidden;">' +
     '<div style="padding:22px 26px;background:#072146;color:#FFFFFF;"><div style="color:#5AC4C4;font-size:11px;font-weight:700;letter-spacing:.8px;">COMMERCIAL · MONITOR TECNICO</div><h1 style="margin:8px 0 0;font-size:24px;line-height:30px;">El proceso diario necesita revisión</h1></div>' +
     '<div style="padding:24px 26px;"><p style="margin:0 0 18px;line-height:22px;">' + escapeMarketsAlertHtml_(reason) + '</p>' +
     '<div style="padding:14px 16px;border-left:4px solid #B92A45;background:#F9E9ED;font-size:13px;line-height:20px;"><strong>Fecha esperada:</strong> ' + escapeMarketsAlertHtml_(health.dateKey) + '<br><strong>Run:</strong> ' + escapeMarketsAlertHtml_(runId) + (detail ? '<br><strong>Detalle:</strong> ' + escapeMarketsAlertHtml_(detail) : '') + '</div>' +
     '<p style="margin:20px 0 0;font-size:14px;line-height:21px;">Ejecuta <strong>runNow()</strong> manualmente y revisa <strong>RUN_LOG</strong>.</p>' +
-    '<p style="margin:18px 0 0;"><a href="' + escapeMarketsAlertHtml_(appUrl) + '" style="color:#1464A5;font-weight:700;">Ir a la aplicación</a></p>' +
+    '<p style="margin:18px 0 0;"><a href="' + escapeMarketsAlertHtml_(loginUrl) + '" style="color:#1464A5;font-weight:700;">Ir a la aplicación</a></p>' +
     '<p style="margin:18px 0 0;color:#7C8893;font-size:10px;line-height:15px;">Comprobación automática ' + escapeMarketsAlertHtml_(marketsAlertDateLabel_(sentAt)) + ' · aviso único por día.</p></div></div></body></html>';
   const token = Utilities.getUuid().replace(/-/g, '');
   const boundary = 'bbva_health_' + token;

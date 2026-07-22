@@ -11,6 +11,15 @@ function marketsWebAppUrl_() {
   return url;
 }
 
+/** Fuerza la seleccion de la cuenta Workspace antes de entrar desde un correo. */
+function marketsWebAppLoginUrl_(email) {
+  const account = trimString_(email).toLowerCase();
+  const query = [];
+  if (/^[^\s@]+@bbva\.com$/.test(account)) query.push('Email=' + encodeURIComponent(account));
+  query.push('continue=' + encodeURIComponent(marketsWebAppUrl_()));
+  return 'https://accounts.google.com/AccountChooser?' + query.join('&');
+}
+
 function normalizeHeader_(value) {
   return trimString_(value).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
 }

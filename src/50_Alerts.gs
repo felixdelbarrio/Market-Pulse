@@ -277,8 +277,8 @@ function sendAlertEmails_(events, ss) {
 function marketsAlertEmailMessage_(recipient, events, inlineImages, sender) {
   const normalizedRecipient = normalizeMarketsAlertEmail_(recipient);
   const subject = marketsAlertEmailSubject_(events);
-  const plainText = renderMarketsAlertPlainText_(events);
-  const html = renderMarketsAlertEmail_(events);
+  const plainText = renderMarketsAlertPlainText_(events, normalizedRecipient);
+  const html = renderMarketsAlertEmail_(events, normalizedRecipient);
   const image = inlineImages && inlineImages.bbvaLogo;
   if (!image || typeof image.getBytes !== 'function') {
     throw new Error('No se ha podido incorporar el logotipo oficial de BBVA al correo.');
@@ -406,9 +406,10 @@ function marketsAlertEmailSubject_(events) {
     (events.length === 1 ? '' : 's') + ' en ratings';
 }
 
-function renderMarketsAlertPlainText_(events) {
+function renderMarketsAlertPlainText_(events, recipient) {
   const isTest = marketsAlertIsTest_(events);
   const appUrl = marketsWebAppUrl_();
+  const loginUrl = marketsWebAppLoginUrl_(recipient);
   const lines = (events || []).map(function (event) {
     if (event.type === 'TEST') {
       return 'PRUEBA DE ENTREGA — NO ES UNA ALERTA REAL\nIdentificador: ' + trimString_(event.ruleId) +
@@ -425,18 +426,20 @@ function renderMarketsAlertPlainText_(events) {
   return 'BBVA COMMERCIAL\nAlerta por cambios en ratings\n' +
     (isTest ? 'Esta es una prueba; no se ha detectado ningún cambio real.\n\n' : '\n') +
     lines.join('\n\n') + '\n\nDatos obtenidos: ' + marketsAlertDataDateLabel_(events) +
-    '\nGestiona tus alertas desde COMMERCIAL.\n' + appUrl;
+    '\nGestiona tus alertas desde COMMERCIAL.\nAbrir con la cuenta corporativa: ' + loginUrl + '\nURL directa: ' + appUrl;
 }
 
-function renderMarketsAlertEmail_(events) {
+function renderMarketsAlertEmail_(events, recipient) {
   const isTest = marketsAlertIsTest_(events);
   const critical = (events || []).filter(function (event) { return event.severity === 'CRITICAL'; }).length;
   const warning = (events || []).filter(function (event) { return event.severity === 'WARNING'; }).length;
   const positive = (events || []).filter(function (event) { return event.severity === 'POSITIVE'; }).length;
   const cards = (events || []).map(renderMarketsAlertEmailCard_).join('');
   const appUrl = marketsWebAppUrl_();
+  const loginUrl = marketsWebAppLoginUrl_(recipient);
   const safeAppUrl = escapeMarketsAlertHtml_(appUrl);
-  const cta = '<table role="presentation" cellspacing="0" cellpadding="0"><tr><td bgcolor="#1464A5" style="border-radius:8px;"><a href="' + safeAppUrl + '" target="_blank" style="display:block;padding:13px 22px;border-radius:8px;color:#FFFFFF;text-decoration:none;font-weight:700;">Ir a la aplicación</a></td></tr></table>' +
+  const safeLoginUrl = escapeMarketsAlertHtml_(loginUrl);
+  const cta = '<table role="presentation" cellspacing="0" cellpadding="0"><tr><td bgcolor="#1464A5" style="border-radius:8px;"><a href="' + safeLoginUrl + '" target="_blank" style="display:block;padding:13px 22px;border-radius:8px;color:#FFFFFF;text-decoration:none;font-weight:700;">Ir a la aplicación</a></td></tr></table>' +
     '<p style="margin:12px 0 0;color:#5B6670;font-size:11px;line-height:17px;">Si el botón no se abre, utiliza este <a href="' + safeAppUrl + '" target="_blank" style="color:#1464A5;font-weight:700;">acceso directo a COMMERCIAL</a>.</p>';
   const subtitle = isTest ? 'Esta es una prueba de entrega. No se ha detectado ningún cambio real en los ratings.' :
     events.length + ' cambio' + (events.length === 1 ? ' ha' : 's han') + ' superado tus condiciones personalizadas. Aquí tienes el contexto completo para que puedas profundizar en la situación.';
