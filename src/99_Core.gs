@@ -4,12 +4,11 @@ function trimString_(value) {
 
 /** URL corporativa unica para web, correos y diagnostico. */
 function marketsWebAppUrl_() {
-  const source = trimString_(ScriptApp.getService().getUrl());
-  const domain = trimString_(MARKETS_CONFIG.webAppDomain).toLowerCase();
-  if (!source || !domain) return '';
-  const match = source.match(/^https:\/\/script\.google\.com\/(?:a\/macros\/[^/]+\/|macros\/)s\/([^/?#]+)\/exec$/i);
-  if (!match) return '';
-  return 'https://script.google.com/a/macros/' + encodeURIComponent(domain) + '/s/' + match[1] + '/exec';
+  const url = trimString_(MARKETS_CONFIG.webAppUrl);
+  if (!/^https:\/\/script\.google\.com\/a\/macros\/bbva\.com\/s\/[A-Za-z0-9_-]+\/exec$/.test(url)) {
+    throw new Error('MARKETS_CONFIG.webAppUrl debe contener la URL corporativa /exec completa.');
+  }
+  return url;
 }
 
 function normalizeHeader_(value) {

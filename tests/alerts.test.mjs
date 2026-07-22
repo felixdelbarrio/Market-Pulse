@@ -219,8 +219,9 @@ test("BBVA alert email uses the official image slot, brand system and safe conte
   assert.match(html, /el límite que has configurado para el nivel amarillo \(0,30 puntos\)/);
   assert.match(html, /el límite que has configurado para el nivel rojo \(0,50 puntos\)/);
   assert.match(html, /Abre la Visión del VoC por geografías/);
-  assert.match(html, />Abrir VoC Commercial</);
-  assert.match(html, /href="https:\/\/script\.google\.com\/a\/macros\/bbva\.com\/s\/example\/exec"/);
+  assert.match(html, />Ir a la aplicación</);
+  assert.match(html, /acceso directo a COMMERCIAL/);
+  assert.ok(html.includes(`href="${context.MARKETS_CONFIG.webAppUrl}"`));
   assert.match(html, /Siguiente paso/);
   assert.match(html, /Datos obtenidos el 21\/07\/2026/);
   assert.doesNotMatch(html, /Markets Data Studio/i);
@@ -230,16 +231,12 @@ test("BBVA alert email uses the official image slot, brand system and safe conte
   assert.equal(context.marketsAlertEmailSubject_(events), "[VoC] Comunicación de alertas personalizadas - 2 cambios en ratings");
   const plainText = context.renderMarketsAlertPlainText_(events);
   assert.match(plainText, /Datos obtenidos: 21\/07\/2026/);
-  assert.match(plainText, /https:\/\/script\.google\.com\/a\/macros\/bbva\.com\/s\/example\/exec/);
+  assert.ok(plainText.includes(context.MARKETS_CONFIG.webAppUrl));
 });
 
-test("web app links always retain the BBVA domain route", () => {
-  assert.equal(context.marketsWebAppUrl_(), "https://script.google.com/a/macros/bbva.com/s/example/exec");
-  context.ScriptApp.getService = () => ({ getUrl: () => "https://script.google.com/a/macros/other.example/s/current/exec" });
-  assert.equal(context.marketsWebAppUrl_(), "https://script.google.com/a/macros/bbva.com/s/current/exec");
-  context.ScriptApp.getService = () => ({ getUrl: () => "https://example.com/not-a-deployment" });
-  assert.equal(context.marketsWebAppUrl_(), "");
-  context.ScriptApp.getService = () => ({ getUrl: () => "https://script.google.com/macros/s/example/exec" });
+test("web app links use the single mobile-safe BBVA deployment URL", () => {
+  assert.equal(context.marketsWebAppUrl_(), context.MARKETS_CONFIG.webAppUrl);
+  assert.match(context.marketsWebAppUrl_(), /^https:\/\/script\.google\.com\/a\/macros\/bbva\.com\/s\/[A-Za-z0-9_-]+\/exec$/);
 });
 
 test("alert delivery uses the verified Google Group alias and preserves individual recipients", () => {

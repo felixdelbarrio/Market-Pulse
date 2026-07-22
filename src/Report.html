@@ -19,7 +19,8 @@
       const target=input?.target;
       if(!target)throw new Error("No se ha encontrado el contenedor del informe.");
       const meta=input.meta||{},snapshot=input.snapshot||[],trends=input.trends||[],segment=input.benchmarkSegment||"BANK",generatedAt=input.generatedAt||new Date();
-      const view=["overview","benchmark","evolution"].includes(input.view)?input.view:"overview";
+      if(!["overview","benchmark","evolution"].includes(input.view))throw new Error("La vista actual no admite descarga de informe.");
+      const view=input.view;
       const selection={country:input.selection?.country||"ALL",platform:input.selection?.platform||"ALL"};
       const platforms=selection.platform==="ALL"?D.config.platforms:[selection.platform];
       const bbva=D.selectionRows(snapshot,selection,"BANK").filter(row=>row.isBbva);
@@ -31,9 +32,10 @@
       const expected=bbva.length;
       const fresh=bbva.filter(row=>row.fresh&&finite(row.rating)).length;
       const coverage=expected?fresh/expected:null;
-      const period=D.periodModel(trends,input.periodYear||"",input.periodMonth||"").period;
-      const evolution=D.evolutionKpis(D.trendRows(trends,selection),snapshot,selection,period);
-      const series=D.prepareSeries(D.trendRows(trends,selection),selection);
+      const trendRows=D.trendRows(trends,selection);
+      const period=D.periodModel(trendRows,view==="evolution"?input.periodYear||"":"",view==="evolution"?input.periodMonth||"":"").period;
+      const evolution=D.evolutionKpis(trendRows,snapshot,selection,period);
+      const series=D.prepareSeries(trendRows,selection);
       const displaySeries=series.map(item=>({...item,label:item.label.replace("BBVA Empresas ","")}));
       const scopeLabel=`${selection.country==="ALL"?"Todos los mercados":countryName(selection.country,meta)} · ${D.config.platformLabels[selection.platform]||selection.platform}`;
       const viewLabel={overview:"Resumen",benchmark:"Benchmark",evolution:"Evolución"}[view];
@@ -41,7 +43,9 @@
       const geography=buildGeography(bbva,meta,platforms);
       const comparison=D.ratingComparison(snapshot,selection);
       const benchmark=buildBenchmark(competitive,meta);
-      const movements=view==="evolution"?buildMovements(displaySeries):[];
+      const benchmarkRows=view==="benchmark"?buildBenchmarkRows(competitive,meta):[];
+      const movements=view==="evolution"?buildMovements(displaySeries,period):[];
+      const monthly=view==="evolution"?D.monthlyRatingMatrix(trends,snapshot,selection,period,6):null;
       const detail=buildDetail(bbva,benchmark,meta);
       const signals=buildSignals(observed,benchmark,coverage,meta);
       const builders=[];
@@ -51,16 +55,17 @@
         builders.push((context,page)=>geographyPage(context,{geography,platforms,scopeLabel},page,"03"));
         chunk(detail,12).forEach((rows,index)=>builders.push((context,page)=>detailPage(context,{detail:rows},page,chunkLabel(rows),`04${detail.length>12?String.fromCharCode(65+index):""}`)));
       }else if(view==="benchmark"){
-        chunk(benchmark,12).forEach((rows,index)=>builders.push((context,page)=>benchmarkPage(context,{benchmark:rows,segment,scopeLabel},page,chunkLabel(rows),`01${benchmark.length>12?String.fromCharCode(65+index):""}`)));
+        chunk(benchmarkRows,12).forEach((rows,index)=>builders.push((context,page)=>benchmarkPage(context,{benchmark:rows,segment,scopeLabel},page,chunkLabel(rows),`01${benchmarkRows.length>12?String.fromCharCode(65+index):""}`)));
       }else{
         builders.push((context,page)=>evolutionPage(context,{chart,movements,evolution,period,scopeLabel},page,"01"));
+        builders.push((context,page)=>monthlyPulsePage(context,{monthly,scopeLabel},page,"02"));
       }
       const totalPages=1+builders.length;
       const context={meta,generatedAt,totalPages,view,viewLabel,scopeLabel,segment};
       const pages=[coverPage(context,{average,coverage,leaders,volume,evolution}),...builders.map((builder,index)=>builder(context,index+2))];
       target.innerHTML=pages.join("");
       target.setAttribute("aria-hidden","false");
-      return{pages:totalPages,rows:{geography:geography.length,benchmark:benchmark.length,detail:detail.length},period};
+      return{pages:totalPages,rows:{geography:geography.length,benchmark:view==="benchmark"?benchmarkRows.length:benchmark.length,detail:detail.length,monthly:monthly?.rows?.length||0},period};
     }
 
     const chunk=(rows,size)=>Array.from({length:Math.ceil(rows.length/size)},(_,index)=>rows.slice(index*size,(index+1)*size));
@@ -81,8 +86,15 @@
       }).sort((a,b)=>a.country.localeCompare(b.country,"es")||platformOrder(a.platform)-platformOrder(b.platform));
     }
 
-    function buildMovements(series){
-      return series.map(item=>{const points=[...(item.points||[])].filter(point=>finite(point.value)).sort((a,b)=>a.month.localeCompare(b.month));const current=points.at(-1),previous=points.at(-2);return{label:item.label,current:current?.value,period:current?.month,delta:current&&previous?current.value-previous.value:null}}).sort((a,b)=>(a.delta??0)-(b.delta??0));
+    function buildMovements(series,period){
+      return series.map(item=>{const points=[...(item.points||[])].filter(point=>finite(point.value)&&(!period||point.month<=period)).sort((a,b)=>a.month.localeCompare(b.month));const current=points.at(-1),previous=points.at(-2);return{label:item.label,current:current?.value,period:current?.month,delta:current&&previous?current.value-previous.value:null}}).filter(item=>finite(item.current)).sort((a,b)=>(a.delta??0)-(b.delta??0));
+    }
+
+    function buildBenchmarkRows(rows,meta){
+      return Object.values(D.groupBy(rows,row=>`${row.countryCode}|${row.platform}`)).flatMap(group=>{
+        const ranked=D.rankRows(group),complete=ranked.length>1&&ranked.every(row=>row.rankingComplete);
+        return ranked.map(row=>({...row,country:countryName(row.countryCode,meta),apps:ranked.length,complete}));
+      }).sort((a,b)=>a.country.localeCompare(b.country,"es")||platformOrder(a.platform)-platformOrder(b.platform)||a.computedRank-b.computedRank||D.appName(a).localeCompare(D.appName(b),"es"));
     }
 
     function buildDetail(rows,benchmark,meta){
@@ -141,9 +153,9 @@
     }
 
     function benchmarkPage(context,data,pageNumber,rangeLabel,sectionNumber){
-      const rows=data.benchmark.map(item=>{const isLeader=item.bbva?.computedRank===1&&item.complete;const leaderName=item.leader?.isBbva?"BBVA Empresas":item.leader?.appName||"—";return`<tr><th><strong>${esc(item.country)}</strong><small>${esc(item.platform)}</small></th><td><strong>${fmt(item.bbva?.rating,2)}</strong></td><td><span class="report-rank ${isLeader?"leader":""}">${item.complete&&item.bbva?`${item.bbva.computedRank} / ${item.apps}`:"WIP"}</span></td><td><strong>${esc(leaderName)}</strong><small>${fmt(item.leader?.rating,2)}</small></td><td class="${tone(item.gap)}"><strong>${signed(item.gap)}</strong></td><td><span class="report-quality ${item.complete?"complete":"pending"}">${item.complete?"Comparable":"Cobertura parcial"}</span></td></tr>`}).join("");
+      const rows=data.benchmark.map(item=>`<tr class="${item.isBbva?"report-row-bbva":""}"><th><strong>${esc(item.country)}</strong><small>${esc(item.platform)}</small></th><td><span class="report-rank ${item.computedRank===1&&item.complete?"leader":""}">${item.computedRank} / ${item.apps}</span></td><td><strong>${esc(D.appName(item))}</strong><small>${item.isBbva?"BBVA Empresas":"Competidor"}</small></td><td><strong>${fmt(item.rating,2)}</strong><small class="${tone(item.delta30d)}">${signed(item.delta30d)}</small></td><td><strong>${integer(item.ratingCount)}</strong><small>acumuladas</small></td><td><span class="report-quality ${item.complete&&item.fresh?"complete":"pending"}">${item.complete&&item.fresh?"Actualizado":item.complete?"Carga anterior":"Cobertura parcial"}</span></td></tr>`).join("");
       const pageScope=context.totalPages>2&&rangeLabel?`${data.scopeLabel} · ${rangeLabel}`:data.scopeLabel;
-      const body=`<div class="report-title compact"><span>${esc(sectionNumber)} · Posición competitiva</span><h2>Dónde lideramos y dónde cerrar distancia</h2><p>${esc(D.config.segmentLabels[data.segment]||data.segment)} · ${esc(pageScope)}.</p></div><div class="report-table-wrap"><table class="report-table report-benchmark-table"><thead><tr><th>Mercado / store</th><th>BBVA</th><th>Posición</th><th>Líder</th><th>Brecha</th><th>Fiabilidad</th></tr></thead><tbody>${rows}</tbody></table></div><aside class="report-note compact"><strong>Brecha</strong><span>Diferencia entre el rating de BBVA Empresas y el líder. Una posición solo se presenta como comparable cuando la carga incluye el conjunto esperado de aplicaciones.</span></aside>`;
+      const body=`<div class="report-title compact"><span>${esc(sectionNumber)} · Posición competitiva</span><h2>Ranking completo del mercado</h2><p>${esc(D.config.segmentLabels[data.segment]||data.segment)} · ${esc(pageScope)}.</p></div><div class="report-table-wrap"><table class="report-table report-benchmark-table"><thead><tr><th>Mercado / store</th><th>Posición</th><th>Aplicación</th><th>Rating / Δ30d</th><th>Opiniones</th><th>Calidad</th></tr></thead><tbody>${rows}</tbody></table></div><aside class="report-note compact"><strong>Lectura</strong><span>El informe reproduce todas las aplicaciones visibles en Benchmark. La posición solo es comparable cuando la carga incluye el conjunto esperado.</span></aside>`;
       return pageShell(context,pageNumber,"Benchmark competitivo",pageScope,body);
     }
 
@@ -158,6 +170,14 @@
     function evolutionPage(context,data,pageNumber,sectionNumber){
       const body=`<div class="report-title compact"><span>${esc(sectionNumber)} · Evolución</span><h2>La trayectoria detrás del dato actual</h2><p>${esc(data.scopeLabel)} · hasta ${esc(monthLabel(data.period))}.</p></div><div class="report-evolution-kpis"><article><span>Cierre</span><strong>${fmt(data.evolution.current,2)}</strong><small>${esc(monthLabel(data.evolution.currentPeriod))}</small></article><article class="${tone(data.evolution.monthly)}"><span>vs. mes anterior</span><strong>${signed(data.evolution.monthly)}</strong><small>${esc(monthLabel(data.evolution.monthPeriod))}</small></article><article class="${tone(data.evolution.annual)}"><span>vs. año anterior</span><strong>${signed(data.evolution.annual)}</strong><small>${esc(monthLabel(data.evolution.yearPeriod))}</small></article><article><span>Cobertura del cierre</span><strong>${pct(data.evolution.coverage)}</strong><small>${integer(data.evolution.observed)} de ${integer(data.evolution.expected)} apps</small></article></div><div class="report-evolution-layout"><section class="report-chart"><div>${data.chart.svg}</div><div class="report-chart-legend">${data.chart.legend}</div></section><aside class="report-movements"><h3>Último movimiento</h3><p>Variación frente al cierre anterior disponible.</p>${data.movements.slice(0,8).map(item=>`<div><span>${esc(item.label.replace("BBVA Empresas ",""))}</span><strong>${fmt(item.current,2)}</strong><b class="${tone(item.delta)}">${signed(item.delta)}</b></div>`).join("")}</aside></div>`;
       return pageShell(context,pageNumber,"Evolución de ratings",data.scopeLabel,body);
+    }
+
+    function monthlyPulsePage(context,data,pageNumber,sectionNumber){
+      const model=data.monthly;
+      const header=(model.periods||[]).map((month,index)=>`<th class="${index===model.periods.length-1?"latest":""}">${esc(monthLabel(month))}</th>`).join("");
+      const rows=(model.rows||[]).map(row=>`<tr><th><strong>${esc(row.country)}</strong><small>${esc(row.countryCode)}</small></th>${row.cells.map((cell,index)=>`<td class="${index===row.cells.length-1?"latest":""}"><strong>${fmt(cell.rating,2)}</strong><em class="${tone(cell.delta)}">${signed(cell.delta)}</em>${cell.platforms.map(item=>`<small><b>${esc(item.platform)}</b> ${item.unavailable?"N/D":integer(item.value)}</small>`).join("")}</td>`).join("")}</tr>`).join("");
+      const body=`<div class="report-title compact"><span>${esc(sectionNumber)} · Pulso mensual</span><h2>BBVA Empresas, cierre a cierre</h2><p>${esc(data.scopeLabel)} · hasta ${esc(monthLabel(model.periods?.at(-1)))}.</p></div><div class="report-table-wrap"><table class="report-table report-monthly-table"><thead><tr><th>Geografía</th>${header}</tr></thead><tbody>${rows}</tbody></table></div><aside class="report-note compact"><strong>Opiniones acumuladas</strong><span>Se muestran por plataforma y respetan el corte seleccionado. N/D identifica una ficha Android compartida que no admite desglose fiable por geografía.</span></aside>`;
+      return pageShell(context,pageNumber,"Pulso mensual de BBVA Empresas",data.scopeLabel,body);
     }
 
     function detailPage(context,data,pageNumber,rangeLabel,sectionNumber){

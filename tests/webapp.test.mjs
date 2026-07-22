@@ -276,13 +276,17 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(report, /else if\(view==="benchmark"\)/);
   assert.match(report, /comparisonPage\(context,\{comparison,selection,meta,scopeLabel\}/);
   assert.match(report, /const chart=view==="evolution"\?/);
+  assert.match(report, /monthlyPulsePage/);
+  assert.match(report, /buildMovements\(displaySeries,period\)/);
+  assert.match(report, /if\(!\["overview","benchmark","evolution"\]\.includes\(input\.view\)\)throw/);
   assert.match(report, /const totalPages=1\+builders\.length/);
-  assert.match(report, /chunk\(benchmark,12\)/);
+  assert.match(report, /chunk\(benchmarkRows,12\)/);
   assert.match(report, /chunk\(detail,12\)/);
   assert.match(report, /input\.periodYear/);
   assert.match(reportStyles, /width:297mm;height:210mm/);
   assert.match(reportStyles, /report-cover/);
   assert.match(reportStyles, /report-benchmark-table/);
+  assert.match(reportStyles, /report-monthly-table/);
   assert.doesNotMatch(fs.readFileSync(new URL("../src/DesignSystem.html", import.meta.url), "utf8"), /\.view,\.view\.hidden\{display:block!important/);
   assert.match(app, /target=\"_blank\"/);
   assert.match(app, /rel=\"noopener noreferrer\"/);
@@ -309,9 +313,7 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(index, /id="overview-comparison"/);
   assert.doesNotMatch(index + app, /overview-chart|renderOverviewChart/);
   assert.match(app, /C\.ratingBars/);
-  assert.match(app, /U\.platformBadge/);
-  assert.equal((app.match(/U\.platformBadge/g) || []).length, 1);
-  assert.doesNotMatch(report, /platformBadge/);
+  assert.doesNotMatch(index + app + report + reportStyles, /platformBadge|platform-symbol|platform-monogram|platform-legal/);
   assert.ok(index.indexOf('id="kpi-grid"') < index.indexOf('id="overview-comparison"'));
   assert.ok(index.indexOf('id="overview-comparison"') < index.indexOf('id="signal-list"'));
   const overviewMarkup = index.slice(index.indexOf('id="view-overview"'), index.indexOf('id="view-benchmark"'));
@@ -328,9 +330,7 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(app, /const compactInteger=/);
   assert.doesNotMatch(charts, /Cierre mensual|<span>\/ 5<\/span>/);
   const components = fs.readFileSync(new URL("../src/Components.html", import.meta.url), "utf8");
-  assert.match(components, /viewBox="0 0 152 89"/);
-  assert.match(components, /fill="#34A853"/);
-  assert.doesNotMatch(components, /aria-label="Apple"|apple-logo/);
+  assert.doesNotMatch(components, /platformBadge|platformSymbol|aria-label="Android"|aria-label="iOS"|Huawei AppGallery|#34A853/);
   assert.match(index, /id="alert-country-scope-summary"/);
   assert.match(index, /id="alert-platform-scope-summary"/);
   assert.match(index, /id="review-warning"[^>]*disabled/);
@@ -366,6 +366,53 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(assets, /data:font\/woff2;base64,/);
   assert.match(assets, /--asset-bbva-logo:url\("data:image\/png;base64,/);
   assert.doesNotMatch(index + app, /(?:market|itms-apps|appmarket):\/\//);
+});
+
+test("each downloadable report reproduces its current view and period", () => {
+  const browser = {};
+  browser.window = browser;
+  vm.createContext(browser);
+  ["DesignSystem", "Domain", "Components", "Charts", "Report"].forEach(name => {
+    const html = fs.readFileSync(new URL(`../src/${name}.html`, import.meta.url), "utf8");
+    [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].forEach(match => vm.runInContext(match[1], browser));
+  });
+  const snapshot = [
+    { appKey: "BBVA", appName: "BBVA", platform: "Android", countryCode: "MX", country: "México", segment: "BANK", isBbva: true, rating: 4.8, delta30d: 0.1, ratingCount: 1200, ratingCountDelta30d: 40, rankingComplete: true, fresh: true, volumeKey: "BBVA", volumeScope: "MARKET" },
+    { appKey: "RIVAL", appName: "Banco Rival", platform: "Android", countryCode: "MX", country: "México", segment: "BANK", isBbva: false, rating: 4.9, delta30d: -0.02, ratingCount: 800, ratingCountDelta30d: 10, rankingComplete: true, fresh: true, volumeKey: "RIVAL", volumeScope: "MARKET" }
+  ];
+  const trends = [
+    { appKey: "BBVA", appName: "BBVA", platform: "Android", countryCode: "MX", country: "México", segment: "BANK", isBbva: true, month: "2026-05", ratingEom: 4.2, ratingCountEom: 1000 },
+    { appKey: "BBVA", appName: "BBVA", platform: "Android", countryCode: "MX", country: "México", segment: "BANK", isBbva: true, month: "2026-06", ratingEom: 4.5, ratingCountEom: 1100 },
+    { appKey: "BBVA", appName: "BBVA", platform: "Android", countryCode: "MX", country: "México", segment: "BANK", isBbva: true, month: "2026-07", ratingEom: 4.99, ratingCountEom: 1200 },
+    { appKey: "RIVAL", appName: "Banco Rival", platform: "Android", countryCode: "MX", country: "México", segment: "BANK", isBbva: false, month: "2026-05", ratingEom: 4.7, ratingCountEom: 700 },
+    { appKey: "RIVAL", appName: "Banco Rival", platform: "Android", countryCode: "MX", country: "México", segment: "BANK", isBbva: false, month: "2026-06", ratingEom: 4.8, ratingCountEom: 750 },
+    { appKey: "RIVAL", appName: "Banco Rival", platform: "Android", countryCode: "MX", country: "México", segment: "BANK", isBbva: false, month: "2026-07", ratingEom: 4.9, ratingCountEom: 800 }
+  ];
+  const base = { meta: { dataDate: "2026-07-22", countries: [{ code: "MX", name: "México" }] }, snapshot, trends, benchmarkSegment: "BANK", selection: { country: "MX", platform: "Android" }, generatedAt: new Date("2026-07-22T12:00:00Z") };
+  const execute = input => {
+    const target = { innerHTML: "", setAttribute() {} };
+    const result = browser.MarketsReport.render({ ...base, ...input, target });
+    return { result: JSON.parse(JSON.stringify(result)), html: target.innerHTML };
+  };
+  const overview = execute({ view: "overview", periodYear: "2026", periodMonth: "05" });
+  assert.equal(overview.result.period, "2026-07");
+  assert.equal(overview.result.pages, 5);
+  assert.match(overview.html, /Resumen ejecutivo/);
+  assert.match(overview.html, /Rating actual por plataforma/);
+  assert.match(overview.html, /Detalle operativo por store/);
+  const benchmark = execute({ view: "benchmark" });
+  assert.equal(benchmark.result.rows.benchmark, 2);
+  assert.match(benchmark.html, /Ranking completo del mercado/);
+  assert.match(benchmark.html, /BBVA Empresas/);
+  assert.match(benchmark.html, /Banco Rival/);
+  const evolution = execute({ view: "evolution", periodYear: "2026", periodMonth: "06" });
+  assert.equal(evolution.result.period, "2026-06");
+  assert.equal(evolution.result.pages, 3);
+  assert.equal(evolution.result.rows.monthly, 1);
+  assert.match(evolution.html, /Pulso mensual de BBVA Empresas/);
+  assert.match(evolution.html, /4,50/);
+  assert.doesNotMatch(evolution.html, /4,99/);
+  assert.throws(() => execute({ view: "alerts" }), /no admite descarga/i);
 });
 
 test("client domain deduplicates shared Android volumes and excludes competitors", () => {
