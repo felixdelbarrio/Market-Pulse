@@ -308,6 +308,8 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.doesNotMatch(index + app, /overview-chart|renderOverviewChart/);
   assert.match(app, /C\.ratingBars/);
   assert.match(app, /U\.platformBadge/);
+  assert.equal((app.match(/U\.platformBadge/g) || []).length, 1);
+  assert.doesNotMatch(report, /platformBadge/);
   assert.ok(index.indexOf('id="kpi-grid"') < index.indexOf('id="overview-comparison"'));
   assert.ok(index.indexOf('id="overview-comparison"') < index.indexOf('id="signal-list"'));
   assert.ok(index.indexOf('id="signal-list"') < index.indexOf('id="monthly-matrix"'));
@@ -316,6 +318,7 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(charts, /class="rating-bar-metric"/);
   assert.match(charts, /<\/span><b aria-label="Rating/);
   assert.match(charts, /function monthlyMatrix/);
+  assert.doesNotMatch(charts, /platformBadge/);
   assert.match(app, /monthlyRatingMatrix\(state\.trends,state\.snapshot,selection\(\),6\)/);
   assert.match(app, /const compactInteger=/);
   assert.doesNotMatch(charts, /Cierre mensual|<span>\/ 5<\/span>/);
