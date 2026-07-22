@@ -65,6 +65,20 @@
       return[...grouped.values()].sort((a,b)=>Number(b.isBbva)-Number(a.isBbva)||latestValue(b)-latestValue(a)||a.label.localeCompare(b.label));
     }
     const latestValue=series=>[...(series.points||[])].sort((a,b)=>a.month.localeCompare(b.month)).at(-1)?.value||0;
-    window.MarketsDomain=Object.freeze({config,finite,sum,sumOrNull,mean,groupBy,appName,selectionRows,trendRows,uniqueStoreRows,volumeSummary,rankRows,countBbvaLeaders,availablePeriods,periodModel,evolutionKpis,prepareSeries,latestValue});
+    function ratingComparison(snapshot,selection){
+      const platforms=selection.platform==="ALL"?config.platforms:[selection.platform];
+      return platforms.map(platform=>{
+        const rows=selectionRows(snapshot,{country:selection.country,platform},"BANK")
+          .filter(row=>finite(row.rating)&&(selection.country!=="ALL"||row.isBbva));
+        return{platform,rows:rankRows(rows)};
+      }).filter(group=>group.rows.length);
+    }
+    function exclusiveScopeSelection(values,changedValue,checked){
+      const selected=[...new Set((values||[]).filter(Boolean))];
+      if(changedValue==="ALL"&&checked)return["ALL"];
+      const specific=selected.filter(value=>value!=="ALL");
+      return specific.length?specific:["ALL"];
+    }
+    window.MarketsDomain=Object.freeze({config,finite,sum,sumOrNull,mean,groupBy,appName,selectionRows,trendRows,uniqueStoreRows,volumeSummary,rankRows,countBbvaLeaders,availablePeriods,periodModel,evolutionKpis,prepareSeries,latestValue,ratingComparison,exclusiveScopeSelection});
   })();
 </script>

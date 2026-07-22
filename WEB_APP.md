@@ -13,8 +13,10 @@ El backend evita enviar las 32k observaciones completas:
 - La foto ejecutiva se pinta primero y las tendencias se solicitan en segundo plano.
 - El snapshot mas reciente se localiza leyendo solo el final de `DASHBOARD_COMPETITION`, no sus 32k fechas.
 - Las filas Android, iOS y Huawei, tanto en geografia como en competencia, abren fichas web oficiales con geografia explicita en otra pestaña; los enlaces se resuelven desde `APP_CATALOG` y nunca usan esquemas de tiendas nativas.
-- `Resumen` y `Evolucion` no muestran el selector competitivo: todos los mercados representan BBVA Empresas por geografia y un mercado individual representa el mercado completo. El selector de universo solo se muestra en `Benchmark`.
+- `Resumen` sustituye la trayectoria duplicada por barras de rating actual en Android, iOS y Huawei: todos los mercados comparan BBVA por geografia y un mercado individual compara BBVA con los bancos del pais. El historico queda en `Evolucion`; el selector de universo solo se muestra en `Benchmark`.
 - `Alertas` carga un contrato privado independiente; el servidor deriva la cuenta desde `Session.getActiveUser()` y nunca confia en un email del cliente. Esa identidad protege el autoservicio, no limita el trigger programado.
+- `Administracion` solo se anuncia a cuentas incluidas en `CONTROL.ADMIN_EMAILS`; `getMarketsAdminDashboard()` repite la autorizacion en servidor antes de leer datos privados.
+- Los filtros analiticos se guardan en `localStorage` bajo una clave derivada del email y se validan contra el contrato vigente antes de restaurarse.
 - Los rankings permiten abrir la ficha oficial de cualquier participante —BBVA, banco, fintech o neobanco— haciendo clic en toda la fila.
 - Cada volumen Android se identifica por `packageName`. Si el package aparece en varios paises, el bootstrap lo marca como ficha compartida para contabilizarlo una sola vez en los KPI y no atribuirlo a una tarjeta geografica. Los packages exclusivos de un pais, iOS y Huawei mantienen alcance de mercado.
 - El snapshot incluye placeholders ligeros para apps activas sin observacion en la fecha publicada; asi la cobertura usa como denominador el catalogo esperado y no solo las respuestas correctas.
@@ -55,7 +57,7 @@ Despues de crear el grupo, añadalo en Gmail > Configuracion > Cuentas > Enviar 
 
 ## Comprobacion rapida
 
-Abra la URL `/exec` del despliegue y confirme que el pie muestra `Contrato 2026.07.22.12 · Web 2026.07.22.23`, las tarjetas aparecen sin espera adicional, los filtros actualizan las tendencias y `Alertas` muestra el email conectado. Active temporalmente el canal y pulse **Enviar prueba**; la pantalla devuelve un identificador `COM-*`, destinatario, grupo remitente, cuenta ejecutora, Gmail Message ID, versiones y estado de auditoria. La API confirma la aceptación de la solicitud, no la entrega final: si el mensaje no aparece, busque el identificador exacto en Recibidos, spam o cuarentena corporativa. Confirme tambien que el correo incluye, en cuerpo pequeno, la fecha de obtencion de los datos.
+Abra la URL `/exec` del despliegue y confirme que el pie muestra `Contrato 2026.07.22.14 · Web 2026.07.22.25`, las tarjetas aparecen sin espera adicional, los filtros actualizan las tendencias y `Alertas` muestra el email conectado. Verifique también que una cuenta administradora ve `Administracion` y una cuenta ordinaria no. Active temporalmente el canal y pulse **Enviar prueba**; la pantalla devuelve un identificador `COM-*`, destinatario, grupo remitente, cuenta ejecutora, Gmail Message ID, versiones y estado de auditoria. La API confirma la aceptación de la solicitud, no la entrega final: si el mensaje no aparece, busque el identificador exacto en Recibidos, spam o cuarentena corporativa. Confirme tambien que el correo incluye, en cuerpo pequeno, la fecha de obtencion de los datos.
 
 ## Comportamiento esperado
 

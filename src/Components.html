@@ -10,6 +10,13 @@
     const loading=(title="Cargando datos de evolución",copy="La vista ejecutiva ya está disponible.")=>`<div class="loading-state"><div><strong>${esc(title)}</strong><span>${esc(copy)}</span><div class="loading-line"></div></div></div>`;
     const legend=(items,palette)=>(items||[]).map((item,index)=>`<span class="legend-item"><i class="legend-swatch" style="background:${palette[index%palette.length]}"></i>${esc(item.label)}</span>`).join("");
     const option=(value,label,selected=false)=>`<option value="${esc(value)}"${selected?' selected':''}>${esc(label)}</option>`;
-    window.MarketsUI=Object.freeze({esc,icon,metric,metrics,empty,loading,legend,option});
+    const platformSymbol=platform=>{
+      if(platform==="Android")return`<svg viewBox="0 0 152 89" role="img" aria-label="Android"><path fill="#34A853" d="M151.025 85.224q-.071-.464-.147-.92a75.665 75.665 0 0 0-7.546-22.597 76.5 76.5 0 0 0-5.511-8.995 76 76 0 0 0-8.322-9.808 76.034 76.034 0 0 0-13.398-10.626l4.657-8.045 4.47-7.712 3.208-5.54a6.97 6.97 0 0 0 .452-7.057 6.9 6.9 0 0 0-2.406-2.398 6.98 6.98 0 0 0-9.55 2.483l-3.208 5.54-4.47 7.712-5.073 8.762a75.9 75.9 0 0 0-28.228-5.23A75.7 75.7 0 0 0 48.369 25.968l-5.04-8.703-4.47-7.713-3.208-5.54A6.93 6.93 0 0 0 29.055.58a6.9 6.9 0 0 0-2.954.95 6.92 6.92 0 0 0-2.454 9.455l3.208 5.54 4.47 7.713 4.609 7.963A76.3 76.3 0 0 0 22.407 42.912a76.5 76.5 0 0 0-8.322 9.808 75.4 75.4 0 0 0-5.51 8.995 75.7 75.7 0 0 0-7.546 22.597 76.038 76.038 0 0 0-.581 4.247h151a77 77 0 0 0-.434-3.327z"/><path fill="#202124" d="M115.225 67.663c3.022-2.012 3.461-6.668.981-10.4-2.48-3.73-6.939-5.123-9.96-3.11-3.021 2.012-3.46 6.668-.98 10.4 2.479 3.73 6.938 5.123 9.959 3.11M46.762 64.564c2.48-3.73 2.04-8.387-.98-10.4-3.022-2.012-7.481-.619-9.96 3.112s-2.041 8.387.98 10.4 7.48.62 9.96-3.112"/></svg>`;
+      if(platform==="iOS")return`<svg viewBox="0 0 32 32" role="img" aria-label="iOS"><rect x="8" y="3.5" width="16" height="25" rx="4.5" fill="none" stroke="currentColor" stroke-width="2"/><rect x="11" y="7" width="10" height="15" rx="1.5" fill="currentColor" opacity=".2"/><path d="M13 25.3h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`;
+      if(platform==="Huawei")return`<span class="platform-monogram appgallery" aria-label="Huawei AppGallery">AG</span>`;
+      return`<span class="platform-monogram all" aria-label="Todas las plataformas">•••</span>`;
+    };
+    const platformBadge=(platform,showLabel=true)=>`<span class="platform-badge platform-${esc(String(platform||"ALL").toLowerCase())}"><span class="platform-symbol">${platformSymbol(platform)}</span>${showLabel?`<span>${esc(({ALL:"Todas",Android:"Android",iOS:"iOS",Huawei:"Huawei"})[platform]||platform)}</span>`:""}</span>`;
+    window.MarketsUI=Object.freeze({esc,icon,metric,metrics,empty,loading,legend,option,platformBadge});
   })();
 </script>

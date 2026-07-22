@@ -30,7 +30,7 @@ El libro maestro contiene nueve pestañas:
 
    Antes de publicar, confirme que `clasp status` enumera los archivos de `src/`; una lista vacia significa que no se subira ningun cambio.
 
-2. Ejecute `setupProject()` una vez. La funcion solicita todos los permisos del manifiesto, valida el contrato vigente, aplica formato, completa las semillas necesarias e instala los triggers diario y de vigilancia. Los encabezados existentes deben coincidir exactamente con esta version: no se amplian contratos antiguos de forma automatica.
+2. Ejecute `setupProject()` una vez. La funcion solicita todos los permisos del manifiesto, valida el contrato vigente, aplica formato, completa las semillas necesarias, registra al ejecutor inicial en `CONTROL.ADMIN_EMAILS` e instala los triggers diario y de vigilancia. Añada despues otros administradores `@bbva.com` separados por coma. Los encabezados existentes deben coincidir exactamente con esta version: no se amplian contratos antiguos de forma automatica.
 3. Ejecute `validateProject()` y revise el resultado.
 4. Ejecute `runNow()` con `SEND_ALERT_EMAILS = FALSE` y compruebe `RUN_LOG` y `FETCH_LOG`.
 5. Cree o actualice el despliegue **Aplicacion web**, con **Ejecutar como: yo** y acceso restringido al dominio o grupo apropiado.
@@ -62,11 +62,13 @@ El proceso de datos y el canal de correo son dominios de fallo independientes. U
 
 Los enlaces de Android, iOS y Huawei se generan como HTTPS web con geografia explicita, se validan contra dominios oficiales y se abren en otra pestaña. Esto se aplica tanto a BBVA como a la competencia.
 
-`Resumen` y `Evolucion` no muestran el selector `Benchmark`. Para todos los mercados representan las series territoriales de BBVA Empresas; al elegir un mercado muestran todo su mercado. El selector competitivo solo aparece en `Benchmark`, donde permite comparar bancos, fintech y neobancos en una unica pagina. Cada fila del ranking enlaza a la ficha web oficial de la app.
+La interfaz reutiliza el robot oficial de Android con la atribucion exigida por Google. iOS y Huawei AppGallery emplean identificadores visuales propios del dashboard: no se incrustan la manzana aislada ni el logotipo corporativo de Huawei sin la autorizacion de marca correspondiente.
+
+`Resumen` y `Evolucion` no muestran el selector `Benchmark`. `Resumen` compara el rating actual por Android, iOS y Huawei: con todos los mercados muestra `BBVA + geografia`; con un mercado muestra BBVA y sus bancos comparables. El historico queda exclusivamente en `Evolucion`. El selector competitivo solo aparece en `Benchmark`, donde permite comparar bancos, fintech y neobancos en una unica pagina. Cada fila del ranking enlaza a la ficha web oficial de la app. Mercado, plataforma, benchmark y periodo se conservan en `localStorage`, aislados por email, para restaurarlos en la siguiente visita.
 
 ## Informe ejecutivo
 
-**Descargar informe** no imprime las pantallas del dashboard. Genera un entregable BBVA COMMERCIAL condicionado por la vista y los filtros activos. `Resumen` incluye lectura ejecutiva, panorama geografico, evolucion y detalle; `Benchmark` exporta exclusivamente la comparativa del universo seleccionado; `Evolucion` conserva mercado, plataforma y periodo. En `Alertas` la descarga analitica se oculta para no mezclar datos de mercado con configuracion privada. El informe no incluye una seccion de metodologia. El renderer espera Benton Sans BBVA, reutiliza el logotipo oficial de `BrandAssets` y pagina las tablas antes de imprimir para que ninguna fila o grafico quede cortado.
+**Descargar informe** no imprime las pantallas del dashboard. Genera un entregable BBVA COMMERCIAL condicionado por la vista y los filtros activos. `Resumen` incluye lectura ejecutiva, panorama geografico, comparativa actual por plataforma y detalle; `Benchmark` exporta exclusivamente la comparativa del universo seleccionado; `Evolucion` conserva mercado, plataforma y periodo. En `Alertas` y `Administracion` la descarga analitica se oculta para no mezclar datos de mercado con informacion privada. El informe no incluye una seccion de metodologia. El renderer espera Benton Sans BBVA, reutiliza el logotipo oficial de `BrandAssets` y pagina las tablas antes de imprimir para que ninguna fila o grafico quede cortado.
 
 ## Alertas privadas
 
@@ -78,7 +80,7 @@ La pestaña `Alertas` obtiene la identidad con `Session.getActiveUser()` y no ac
 - Las tres ventanas son independientes y combinables, con limites personales `0,30/0,50` por defecto.
 - Los avisos MTD/YTD no se repiten durante el mismo periodo y severidad. Una escalada amarilla a roja si avisa; el usuario puede habilitar recordatorios diarios mientras persista la caida.
 - Cruce competitivo: avisa cuando un competidor supera a BBVA Empresas o BBVA recupera la posicion.
-- Ambito personalizado por mercado y plataforma, pausa global y restauracion de valores recomendados.
+- Ambito multiseleccion por mercado y plataforma (`Todos`, uno o varios), pausa global y restauracion de valores recomendados.
 - Un unico email-resumen BBVA por usuario y ejecucion, con logotipo oficial, paleta corporativa y radios `16/8 px`.
 
 La regla propuesta de porcentaje de reseñas de 1 y 2 estrellas conserva sus valores `15%/30%`, pero aparece explicitamente como **WIP · Fuente pendiente**: las fuentes actuales solo entregan rating y volumen agregados. No se evalua hasta incorporar una fuente autorizada con reparto de estrellas de las ultimas 24 horas.
@@ -87,7 +89,7 @@ La regla propuesta de porcentaje de reseñas de 1 y 2 estrellas conserva sus val
 
 - Autoservicio: las funciones web usan la sesion corporativa y solo permiten operar sobre la fila propia.
 - Ejecucion programada: `runDailyRatingMonitor()` y `runNow()` se ejecutan como propietario, leen **todas** las filas activas de `ALERT_SUBSCRIPTIONS` y envian aunque ningun usuario tenga la aplicacion abierta.
-- Administrador: la hoja `ALERT_SUBSCRIPTIONS` muestra email, estado, reglas, alta, ultimo acceso, ultima prueba y ultima entrega. `validateProject()` devuelve ademas usuarios registrados, activos, pausados y suscripciones por ventana.
+- Administrador: solo las cuentas incluidas en `CONTROL.ADMIN_EMAILS` ven la pestaña `Administracion`. Su endpoint vuelve a autorizar en servidor antes de devolver versiones, configuracion operativa, ejecuciones, incidencias, suscripciones y eventos. Ocultar la pestaña no se usa como control de seguridad.
 - Los usuarios del Web App no reciben acceso directo al Sheet ni pueden consultar la configuracion de otra cuenta.
 
 `SEND_ALERT_EMAILS = TRUE` habilita el canal, pero `runNow()` solo envia si `ALERTS_CREATED > 0`. El resultado manual incluye `alerts`, `alertSubscribers` y `emailsSent`; use **Enviar prueba** para distinguir un problema de entrega de la ausencia legitima de eventos.

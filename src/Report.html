@@ -37,17 +37,18 @@
       const displaySeries=series.map(item=>({...item,label:item.label.replace("BBVA Empresas ","")}));
       const scopeLabel=`${selection.country==="ALL"?"Todos los mercados":countryName(selection.country,meta)} · ${D.config.platformLabels[selection.platform]||selection.platform}`;
       const viewLabel={overview:"Resumen",benchmark:"Benchmark",evolution:"Evolución"}[view];
-      const chart=C.lineChart(displaySeries,{period,idPrefix:"report",format:fmt,monthLabel,allMarkets:selection.country==="ALL",context:scopeLabel});
+      const chart=view==="evolution"?C.lineChart(displaySeries,{period,idPrefix:"report",format:fmt,monthLabel,allMarkets:selection.country==="ALL",context:scopeLabel}):null;
       const geography=buildGeography(bbva,meta,platforms);
+      const comparison=D.ratingComparison(snapshot,selection);
       const benchmark=buildBenchmark(competitive,meta);
-      const movements=buildMovements(displaySeries);
+      const movements=view==="evolution"?buildMovements(displaySeries):[];
       const detail=buildDetail(bbva,benchmark,meta);
       const signals=buildSignals(observed,benchmark,coverage,meta);
       const builders=[];
       if(view==="overview"){
         builders.push((context,page)=>executivePage(context,{average,coverage,leaders,volume,evolution,signals,observed,expected,scopeLabel},page,"01"));
-        builders.push((context,page)=>geographyPage(context,{geography,platforms,scopeLabel},page,"02"));
-        builders.push((context,page)=>evolutionPage(context,{chart,movements,evolution,period,scopeLabel},page,"03"));
+        builders.push((context,page)=>comparisonPage(context,{comparison,selection,meta,scopeLabel},page,"02"));
+        builders.push((context,page)=>geographyPage(context,{geography,platforms,scopeLabel},page,"03"));
         chunk(detail,12).forEach((rows,index)=>builders.push((context,page)=>detailPage(context,{detail:rows},page,chunkLabel(rows),`04${detail.length>12?String.fromCharCode(65+index):""}`)));
       }else if(view==="benchmark"){
         chunk(benchmark,12).forEach((rows,index)=>builders.push((context,page)=>benchmarkPage(context,{benchmark:rows,segment,scopeLabel},page,chunkLabel(rows),`01${benchmark.length>12?String.fromCharCode(65+index):""}`)));
@@ -130,7 +131,7 @@
 
     function geographyPage(context,data,pageNumber,sectionNumber){
       const rows=data.geography.map(item=>`<tr><th><span class="report-flag">${esc(D.config.flags[item.countryCode]||"🌐")}</span><div><strong>${esc(item.country)}</strong><small>${item.rated} de ${item.expected} stores con rating</small></div></th><td class="report-rating"><strong>${fmt(item.rating,2)}</strong><span class="${tone(item.delta)}">${signed(item.delta)}</span></td>${data.platforms.map(platform=>platformCell(item.platforms[platform])).join("")}<td><span class="report-coverage"><i style="width:${Math.round(item.coverage*100)}%"></i></span><small>${pct(item.coverage)}</small></td></tr>`).join("");
-      const body=`<div class="report-title"><span>${esc(sectionNumber)} · Panorama geográfico</span><h2>BBVA Empresas, mercado a mercado</h2><p>${esc(data.scopeLabel)} · rating actual y variación a 30 días.</p></div><div class="report-table-wrap"><table class="report-table report-geo-table"><thead><tr><th>Mercado</th><th>Media</th>${data.platforms.map(platform=>`<th>${esc(platform)}</th>`).join("")}<th>Cobertura</th></tr></thead><tbody>${rows}</tbody></table></div><div class="report-legend"><span><i class="positive"></i> Mejora</span><span><i class="negative"></i> Retroceso</span><span><i class="neutral"></i> Estable o sin comparable</span><small>La variación indicada corresponde a 30 días.</small></div>`;
+      const body=`<div class="report-title"><span>${esc(sectionNumber)} · Panorama geográfico</span><h2>BBVA Empresas, mercado a mercado</h2><p>${esc(data.scopeLabel)} · rating actual y variación a 30 días.</p></div><div class="report-table-wrap"><table class="report-table report-geo-table"><thead><tr><th>Mercado</th><th>Media</th>${data.platforms.map(platform=>`<th>${U.platformBadge(platform)}</th>`).join("")}<th>Cobertura</th></tr></thead><tbody>${rows}</tbody></table></div><div class="report-legend"><span><i class="positive"></i> Mejora</span><span><i class="negative"></i> Retroceso</span><span><i class="neutral"></i> Estable o sin comparable</span><small>La variación indicada corresponde a 30 días.</small></div>`;
       return pageShell(context,pageNumber,"Panorama geográfico",data.scopeLabel,body);
     }
 
@@ -144,6 +145,14 @@
       const pageScope=context.totalPages>2&&rangeLabel?`${data.scopeLabel} · ${rangeLabel}`:data.scopeLabel;
       const body=`<div class="report-title compact"><span>${esc(sectionNumber)} · Posición competitiva</span><h2>Dónde lideramos y dónde cerrar distancia</h2><p>${esc(D.config.segmentLabels[data.segment]||data.segment)} · ${esc(pageScope)}.</p></div><div class="report-table-wrap"><table class="report-table report-benchmark-table"><thead><tr><th>Mercado / store</th><th>BBVA</th><th>Posición</th><th>Líder</th><th>Brecha</th><th>Fiabilidad</th></tr></thead><tbody>${rows}</tbody></table></div><aside class="report-note compact"><strong>Brecha</strong><span>Diferencia entre el rating de BBVA Empresas y el líder. Una posición solo se presenta como comparable cuando la carga incluye el conjunto esperado de aplicaciones.</span></aside>`;
       return pageShell(context,pageNumber,"Benchmark competitivo",pageScope,body);
+    }
+
+    function comparisonPage(context,data,pageNumber,sectionNumber){
+      const label=row=>data.selection.country==="ALL"?`BBVA ${countryName(row.countryCode,data.meta)}`:row.isBbva?`BBVA ${countryName(row.countryCode,data.meta)}`:D.appName(row);
+      const boards=data.comparison.map(group=>`<section><header>${U.platformBadge(group.platform)}<span>${group.rows.length} referencias</span></header><ol>${group.rows.map(row=>`<li><span>${esc(label(row))}</span><i><b style="width:${Math.max(0,Math.min(100,row.rating/5*100))}%"></b></i><strong>${fmt(row.rating,1)}</strong></li>`).join("")}</ol></section>`).join("");
+      const scope=data.selection.country==="ALL"?"BBVA Empresas por geografía":`BBVA Empresas y bancos de ${countryName(data.selection.country,data.meta)}`;
+      const body=`<div class="report-title compact"><span>${esc(sectionNumber)} · Rating actual</span><h2>Comparativa por plataforma</h2><p>${esc(scope)} · escala pública 1–5.</p></div><div class="report-rating-compare">${boards||U.empty("Sin ratings comparables","No hay observaciones con el filtro seleccionado.")}</div>`;
+      return pageShell(context,pageNumber,"Rating actual por plataforma",data.scopeLabel,body);
     }
 
     function evolutionPage(context,data,pageNumber,sectionNumber){

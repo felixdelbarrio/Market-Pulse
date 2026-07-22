@@ -1,6 +1,6 @@
 /** Configuracion unica del monitor real de ratings Android, iOS y Huawei. */
 var MARKETS_CONFIG = Object.freeze({
-  codeVersion: '2026.07.22.12',
+  codeVersion: '2026.07.22.14',
   spreadsheetId: '1IkJgvM2imxm3r1x092q5dqpThrlnDoZ-5QvH8n2h2oQ',
   timeZone: 'Europe/Madrid', runHour: 7, runMinute: 5,
   healthCheckHour: 9, healthCheckMinute: 15, lockTimeoutMs: 30000,
@@ -64,12 +64,13 @@ var MARKETS_CONFIG = Object.freeze({
     ])
   }),
   controlDefaults: Object.freeze([
-    ['CODE_VERSION', '2026.07.22.12', 'Version del contrato de datos y del Apps Script'],
+    ['CODE_VERSION', '2026.07.22.14', 'Version del contrato de datos y del Apps Script'],
     ['TIME_ZONE', 'Europe/Madrid', 'Zona horaria de ejecucion y fechas'],
     ['SEND_ALERT_EMAILS', false, 'Enviar emails; mantener FALSE durante la validacion inicial'],
     ['ALERT_SENDER_ALIAS', 'voc-commercial.group@bbva.com', 'Remitente verificado en Gmail > Enviar como para las alertas VoC'],
     ['MONITOR_HEALTH_ENABLED', true, 'Verificar cada manana que el proceso diario y su canal de alertas han finalizado'],
     ['MONITOR_ADMIN_EMAIL', 'voc-commercial.group@bbva.com', 'Destino operativo para incidencias del proceso diario'],
+    ['ADMIN_EMAILS', '', 'Administradores autorizados, separados por coma; setupProject registra al propietario inicial'],
     ['RATING_LOOKBACK_DAYS', 30, 'Ventana para DELTA_30D']
   ])
 });

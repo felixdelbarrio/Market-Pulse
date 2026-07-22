@@ -2,6 +2,7 @@ function setupProject() {
   ScriptApp.requireAllScopes(ScriptApp.AuthMode.FULL);
   const ss = openMarketsSpreadsheet_();
   initializeWorkbook_(ss);
+  seedInitialMarketsAdministrator_(ss);
   installDailyTrigger_();
   return validateProject();
 }

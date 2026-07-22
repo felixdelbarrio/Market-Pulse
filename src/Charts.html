@@ -19,6 +19,11 @@
       const svg=`<svg viewBox="0 0 ${width} ${height}" role="img" aria-labelledby="${idPrefix}-chart-title ${idPrefix}-chart-desc"><title id="${idPrefix}-chart-title">Evolución mensual de ratings</title><desc id="${idPrefix}-chart-desc">${ui.esc(scope)}. Periodo hasta ${ui.esc(options.monthLabel(months.at(-1)))}</desc>${grid}<line x1="${left}" y1="${top}" x2="${left}" y2="${height-bottom}" stroke="${theme.axis}"/>${labels}${lines}</svg>`;
       return{svg,legend:ui.legend(visible,theme.palette),series:visible};
     }
-    window.MarketsCharts=Object.freeze({lineChart});
+    function ratingBars(groups,options){
+      const ui=window.MarketsUI,finite=window.MarketsDomain.finite;
+      const boards=(groups||[]).map(group=>`<section class="rating-board"><header>${ui.platformBadge(group.platform)}<span>${group.rows.length} ${group.rows.length===1?"referencia":"referencias"}</span></header><ol>${group.rows.map(row=>{const value=finite(row.rating)?row.rating:0;return`<li><span class="rating-bar-label" title="${ui.esc(options.label(row))}">${ui.esc(options.label(row))}</span><span class="rating-bar-metric"><span class="rating-bar-track"><i style="width:${Math.max(0,Math.min(100,value/5*100))}%"></i></span><b aria-label="Rating ${ui.esc(options.format(value,1))} sobre 5">${ui.esc(options.format(value,1))}</b></span></li>`}).join("")}</ol></section>`).join("");
+      return boards?`<div class="rating-comparison-grid">${boards}</div>`:ui.empty("Sin ratings comparables","Prueba otro mercado o plataforma.");
+    }
+    window.MarketsCharts=Object.freeze({lineChart,ratingBars});
   })();
 </script>

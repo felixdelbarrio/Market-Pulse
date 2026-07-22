@@ -50,6 +50,7 @@ test("automation defaults configure an independent daily health check", () => {
   const controls = Object.fromEntries(Array.from(context.MARKETS_CONFIG.controlDefaults, row => [row[0], row[1]]));
   assert.equal(controls.MONITOR_HEALTH_ENABLED, true);
   assert.equal(controls.MONITOR_ADMIN_EMAIL, "voc-commercial.group@bbva.com");
+  assert.equal(controls.ADMIN_EMAILS, "");
   assert.equal(context.MARKETS_CONFIG.healthCheckHour, 9);
   assert.equal(context.MARKETS_CONFIG.healthCheckMinute, 15);
 });

@@ -11,7 +11,7 @@
   <div id="app" class="app-shell">
     <header class="topbar">
       <div class="brand"><div class="brand-mark"><span class="bbva-logo" role="img" aria-label="BBVA"></span></div><div class="brand-divider"></div><div class="brand-product">Markets Data Studio<span>Commercial</span></div></div>
-      <nav class="main-nav" aria-label="Secciones"><button class="nav-button active" data-view="overview" type="button">Resumen</button><button class="nav-button" data-view="benchmark" type="button">Benchmark</button><button class="nav-button" data-view="evolution" type="button">Evolución</button><button class="nav-button" data-view="alerts" type="button">Alertas</button></nav>
+      <nav class="main-nav" aria-label="Secciones"><button class="nav-button active" data-view="overview" type="button">Resumen</button><button class="nav-button" data-view="benchmark" type="button">Benchmark</button><button class="nav-button" data-view="evolution" type="button">Evolución</button><button class="nav-button" data-view="alerts" type="button">Alertas</button><button id="admin-nav" class="nav-button hidden" data-view="admin" type="button">Administración</button></nav>
       <button id="report-button" class="button button-secondary" type="button" title="Descargar informe completo" aria-label="Descargar informe completo"><span aria-hidden="true">↓</span><span>Descargar informe</span></button>
     </header>
 
@@ -33,9 +33,9 @@
       <section id="view-overview" class="view">
         <div class="section-head"><div><span class="section-kicker">Pulso del mercado</span><h2>Resumen ejecutivo</h2><p id="overview-subtitle">Todos los mercados · Todas · BBVA Empresas</p></div><span id="data-date" class="tag">—</span></div>
         <div id="kpi-grid" class="kpi-grid"></div>
-        <section class="section panel"><div class="panel-head"><div><h3>BBVA Empresas por geografía</h3><span>Rating, evolución y volumen de BBVA por plataforma</span></div><span id="market-count" class="panel-meta"></span></div><div id="country-grid" class="panel-body country-grid"></div></section>
+        <section class="section panel"><div class="panel-head"><div><h3>Rating actual por plataforma</h3><span id="overview-comparison-context">BBVA Empresas por mercado</span></div><span class="panel-meta">Escala 1–5</span></div><div id="overview-comparison" class="rating-comparison"></div></section>
         <div id="signal-list" class="signals"></div>
-        <section class="section panel"><div class="panel-head"><div><h3>Trayectoria del mercado</h3><span id="overview-chart-context">Todos los mercados muestran exclusivamente BBVA Empresas</span></div><span class="panel-meta">Histórico disponible</span></div><div id="overview-chart" class="chart-wrap"></div><div id="overview-legend" class="chart-legend"></div></section>
+        <section class="section panel"><div class="panel-head"><div><h3>BBVA Empresas por geografía</h3><span>Rating, evolución y volumen de BBVA por plataforma</span></div><span id="market-count" class="panel-meta"></span></div><div id="country-grid" class="panel-body country-grid"></div></section>
       </section>
 
       <section id="view-benchmark" class="view hidden">
@@ -70,7 +70,7 @@
           <form id="alert-form">
             <section class="alert-config-section">
               <div class="alert-section-heading"><div><span class="alert-step">01</span><div><h3>Ámbito que quieres vigilar</h3><p>Combina mercados y plataformas. “Todos” mantiene automáticamente las nuevas geografías.</p></div></div></div>
-              <div class="scope-layout"><div><strong class="scope-label">Mercados</strong><div id="alert-country-scope" class="scope-chips"></div></div><div><strong class="scope-label">Plataformas</strong><div id="alert-platform-scope" class="scope-chips"></div></div></div>
+              <div class="scope-layout"><div><strong class="scope-label">Mercados</strong><div id="alert-country-scope" class="scope-chips"></div><small id="alert-country-scope-summary" class="scope-summary"></small></div><div><strong class="scope-label">Plataformas</strong><div id="alert-platform-scope" class="scope-chips"></div><small id="alert-platform-scope-summary" class="scope-summary"></small></div></div>
             </section>
 
             <section class="alert-config-section">
@@ -110,8 +110,20 @@
           <section class="section panel alert-activity-panel"><div class="panel-head"><div><h3>Actividad reciente</h3><span>Solo eventos dirigidos a tu cuenta</span></div><span class="panel-meta">Últimos 6</span></div><div id="alert-activity" class="alert-activity"></div></section>
         </div>
       </section>
+
+      <section id="view-admin" class="view hidden">
+        <div class="section-head"><div><span class="section-kicker">Acceso restringido</span><h2>Salud y operación</h2><p>Información privada para administrar la carga, las entregas y las suscripciones.</p></div><span class="privacy-badge">Solo administradores</span></div>
+        <div id="admin-loading" class="panel alert-loading">Validando permisos y preparando el diagnóstico…</div>
+        <div id="admin-content" class="hidden">
+          <div id="admin-kpis" class="kpi-grid"></div>
+          <section class="section panel"><div class="panel-head"><div><h3>Configuración operativa</h3><span id="admin-generated-at">—</span></div><button id="admin-refresh" class="alert-button secondary" type="button">Actualizar</button></div><div id="admin-system" class="admin-system-grid panel-body"></div></section>
+          <section class="section panel"><div class="panel-head"><div><h3>Últimas ejecuciones</h3><span>Estado, cobertura y entrega de alertas</span></div><span class="panel-meta">Últimas 14</span></div><div id="admin-runs" class="admin-table-wrap"></div></section>
+          <div class="section admin-columns"><section class="panel"><div class="panel-head"><div><h3>Incidencias de captura</h3><span>Registros recientes distintos de OK</span></div></div><div id="admin-issues" class="admin-list"></div></section><section class="panel"><div class="panel-head"><div><h3>Suscripciones</h3><span>Ámbito y actividad por cuenta</span></div></div><div id="admin-subscribers" class="admin-list"></div></section></div>
+          <section class="section panel"><div class="panel-head"><div><h3>Eventos de alertas</h3><span>Auditoría reciente de señales y destinatarios</span></div><span class="panel-meta">Últimos 30</span></div><div id="admin-alerts" class="admin-table-wrap"></div></section>
+        </div>
+      </section>
     </main>
-    <footer class="footer"><span><strong>Markets Data Studio</strong> · Ratings y valoraciones públicas de las stores</span><span id="footer-version">Contrato de datos</span></footer>
+    <footer class="footer"><span><strong>Markets Data Studio</strong> · Ratings y valoraciones públicas de las stores<small class="platform-legal">The Android robot is reproduced or modified from work created and shared by Google and used according to terms described in the Creative Commons 3.0 Attribution License. Android is a trademark of Google LLC.</small></span><span id="footer-version">Contrato de datos</span></footer>
   </div>
 
   <section id="print-report" class="print-report" aria-hidden="true"></section>

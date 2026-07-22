@@ -263,7 +263,7 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(app, /MarketsReport\.render/);
   assert.match(app, /const request=trendRequest\(\)/);
   assert.match(app, /view:state\.view,selection:selection\(\),periodYear:state\.periodYear,periodMonth:state\.periodMonth/);
-  assert.match(app, /report-button"\)\.classList\.toggle\("hidden",alerts\)/);
+  assert.match(app, /report-button"\)\.classList\.toggle\("hidden",privateView\)/);
   const report = fs.readFileSync(new URL("../src/Report.html", import.meta.url), "utf8");
   const reportStyles = fs.readFileSync(new URL("../src/ReportStyles.html", import.meta.url), "utf8");
   assert.match(report, /La voz del mercado/);
@@ -271,6 +271,8 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.doesNotMatch(report, /Confianza y metodología|qualityPage|Qué sabemos y con qué nivel de certeza/);
   assert.match(report, /if\(view==="overview"\)/);
   assert.match(report, /else if\(view==="benchmark"\)/);
+  assert.match(report, /comparisonPage\(context,\{comparison,selection,meta,scopeLabel\}/);
+  assert.match(report, /const chart=view==="evolution"\?/);
   assert.match(report, /const totalPages=1\+builders\.length/);
   assert.match(report, /chunk\(benchmark,12\)/);
   assert.match(report, /chunk\(detail,12\)/);
@@ -291,6 +293,28 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(index, /data-view="evolution"[^>]*>Evolución<\/button><button class="nav-button" data-view="alerts"/);
   assert.match(index, /id="view-alerts"/);
   assert.match(index, /Privado para tu cuenta/);
+  assert.match(index, /id="admin-nav" class="nav-button hidden"/);
+  assert.match(index, /id="view-admin"/);
+  assert.match(app, /if\(view==="admin"&&!state\.userContext\?\.isAdmin\)return/);
+  assert.match(app, /getMarketsAdminDashboard\(\)/);
+  assert.match(app, /localStorage\.setItem\(preferenceKey\(\)/);
+  assert.match(app, /localStorage\.getItem\(preferenceKey\(\)/);
+  assert.match(index, /id="overview-comparison"/);
+  assert.doesNotMatch(index + app, /overview-chart|renderOverviewChart/);
+  assert.match(app, /C\.ratingBars/);
+  assert.match(app, /U\.platformBadge/);
+  assert.ok(index.indexOf('id="kpi-grid"') < index.indexOf('id="overview-comparison"'));
+  assert.ok(index.indexOf('id="overview-comparison"') < index.indexOf('id="signal-list"'));
+  assert.ok(index.indexOf('id="signal-list"') < index.indexOf('id="country-grid"'));
+  const charts = fs.readFileSync(new URL("../src/Charts.html", import.meta.url), "utf8");
+  assert.match(charts, /class="rating-bar-metric"/);
+  assert.match(charts, /<\/span><b aria-label="Rating/);
+  const components = fs.readFileSync(new URL("../src/Components.html", import.meta.url), "utf8");
+  assert.match(components, /viewBox="0 0 152 89"/);
+  assert.match(components, /fill="#34A853"/);
+  assert.doesNotMatch(components, /aria-label="Apple"|apple-logo/);
+  assert.match(index, /id="alert-country-scope-summary"/);
+  assert.match(index, /id="alert-platform-scope-summary"/);
   assert.match(index, /id="review-warning"[^>]*disabled/);
   assert.match(index, /id="review-critical"[^>]*disabled/);
   assert.match(app, /\$\("review-warning"\)\.value=draft\.reviewWarningPct/);
@@ -381,6 +405,31 @@ test("all-markets evolution is BBVA-only and individual markets show the whole m
   assert.match(app, /function trendRequest\(\)\{return\{[^}]*segment:"ALL"/);
   assert.match(app, /function activeTrendRows\(\)\{return D\.trendRows\(state\.trends,selection\(\)\)\}/);
   assert.doesNotMatch(app, /activeTrendRows\(\).*benchmarkSegment/);
+});
+
+test("summary comparison uses BBVA by geography and banks within one country", () => {
+  const html = fs.readFileSync(new URL("../src/Domain.html", import.meta.url), "utf8");
+  const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+  const browser = {};
+  browser.window = browser;
+  vm.createContext(browser);
+  vm.runInContext(script, browser);
+  const rows = [
+    { appKey: "BBVA-CO-A", appName: "BBVA", platform: "Android", countryCode: "CO", segment: "BANK", isBbva: true, rating: 4.8 },
+    { appKey: "PEER-CO-A", appName: "Banco Colombia", platform: "Android", countryCode: "CO", segment: "BANK", isBbva: false, rating: 4.6 },
+    { appKey: "BBVA-PE-A", appName: "BBVA", platform: "Android", countryCode: "PE", segment: "BANK", isBbva: true, rating: 4.7 },
+    { appKey: "BBVA-CO-I", appName: "BBVA", platform: "iOS", countryCode: "CO", segment: "BANK", isBbva: true, rating: 4.9 }
+  ];
+  const all = JSON.parse(JSON.stringify(browser.MarketsDomain.ratingComparison(rows, { country: "ALL", platform: "ALL" })));
+  assert.deepEqual(all.map(group => [group.platform, group.rows.map(row => row.appKey)]), [
+    ["Android", ["BBVA-CO-A", "BBVA-PE-A"]], ["iOS", ["BBVA-CO-I"]]
+  ]);
+  const country = JSON.parse(JSON.stringify(browser.MarketsDomain.ratingComparison(rows, { country: "CO", platform: "Android" })));
+  assert.deepEqual(country[0].rows.map(row => row.appKey), ["BBVA-CO-A", "PEER-CO-A"]);
+  assert.deepEqual(Array.from(browser.MarketsDomain.exclusiveScopeSelection(["ALL", "AR"], "AR", true)), ["AR"]);
+  assert.deepEqual(Array.from(browser.MarketsDomain.exclusiveScopeSelection(["AR", "PE"], "PE", true)), ["AR", "PE"]);
+  assert.deepEqual(Array.from(browser.MarketsDomain.exclusiveScopeSelection(["AR", "ALL"], "ALL", true)), ["ALL"]);
+  assert.deepEqual(Array.from(browser.MarketsDomain.exclusiveScopeSelection([], "AR", false)), ["ALL"]);
 });
 
 test("all-markets benchmark keeps every market on one page", () => {
