@@ -314,15 +314,17 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.doesNotMatch(report, /platformBadge/);
   assert.ok(index.indexOf('id="kpi-grid"') < index.indexOf('id="overview-comparison"'));
   assert.ok(index.indexOf('id="overview-comparison"') < index.indexOf('id="signal-list"'));
-  assert.ok(index.indexOf('id="signal-list"') < index.indexOf('id="monthly-matrix"'));
-  assert.ok(index.indexOf('id="monthly-matrix"') < index.indexOf('id="country-grid"'));
+  const overviewMarkup = index.slice(index.indexOf('id="view-overview"'), index.indexOf('id="view-benchmark"'));
+  const evolutionMarkup = index.slice(index.indexOf('id="view-evolution"'), index.indexOf('id="view-alerts"'));
+  assert.doesNotMatch(overviewMarkup, /monthly-matrix/);
+  assert.match(evolutionMarkup, /id="evolution-chart"[\s\S]*id="monthly-matrix"/);
   const charts = fs.readFileSync(new URL("../src/Charts.html", import.meta.url), "utf8");
   assert.match(charts, /class="rating-bar-metric"/);
   assert.match(charts, /<\/span><b aria-label="Rating/);
   assert.match(charts, /function monthlyMatrix/);
   assert.doesNotMatch(charts, /platformBadge/);
   assert.match(app, /const mobileViewport=window\.matchMedia\("\(max-width:780px\)"\)/);
-  assert.match(app, /monthlyRatingMatrix\(state\.trends,state\.snapshot,selection\(\),mobileViewport\.matches\?3:6\)/);
+  assert.match(app, /monthlyRatingMatrix\(state\.trends,state\.snapshot,selection\(\),period,mobileViewport\.matches\?3:6\)/);
   assert.match(app, /const compactInteger=/);
   assert.doesNotMatch(charts, /Cierre mensual|<span>\/ 5<\/span>/);
   const components = fs.readFileSync(new URL("../src/Components.html", import.meta.url), "utf8");
@@ -412,7 +414,7 @@ test("monthly summary matrix respects filters and marks shared Android volume as
     { appKey: "IOS|CO|BBVA", platform: "iOS", countryCode: "CO", country: "Colombia", isBbva: true, month: "2026-07", ratingEom: 4.8, ratingCountEom: 640 },
     { appKey: "PEER", platform: "iOS", countryCode: "CO", country: "Colombia", isBbva: false, month: "2026-07", ratingEom: 5, ratingCountEom: 99999 }
   ];
-  const matrix = browser.MarketsDomain.monthlyRatingMatrix(trends, snapshot, { country: "ALL", platform: "ALL" }, 8);
+  const matrix = browser.MarketsDomain.monthlyRatingMatrix(trends, snapshot, { country: "ALL", platform: "ALL" }, "2026-07", 8);
   assert.deepEqual(Array.from(matrix.periods), ["2026-06", "2026-07"]);
   assert.equal(matrix.rows.length, 1);
   assert.ok(Math.abs(matrix.rows[0].cells[1].rating - 4.7) < 1e-10);
@@ -421,10 +423,13 @@ test("monthly summary matrix respects filters and marks shared Android volume as
   assert.equal(matrix.rows[0].cells[1].platforms[0].value, null);
   assert.equal(matrix.rows[0].cells[1].platforms[1].value, 640);
   assert.equal(matrix.hasSharedAndroid, true);
-  const ios = browser.MarketsDomain.monthlyRatingMatrix(trends, snapshot, { country: "CO", platform: "iOS" }, 8);
+  const ios = browser.MarketsDomain.monthlyRatingMatrix(trends, snapshot, { country: "CO", platform: "iOS" }, "2026-07", 8);
   assert.deepEqual(Array.from(ios.platforms), ["iOS"]);
   assert.equal(ios.rows[0].cells[1].rating, 4.8);
   assert.equal(ios.rows[0].cells[1].platforms[0].value, 640);
+  const june = browser.MarketsDomain.monthlyRatingMatrix(trends, snapshot, { country: "ALL", platform: "ALL" }, "2026-06", 8);
+  assert.deepEqual(Array.from(june.periods), ["2026-06"]);
+  assert.equal(june.rows[0].cells[0].rating, 4.6);
 });
 
 test("all-markets evolution is BBVA-only and individual markets show the whole market", () => {

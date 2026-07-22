@@ -16,7 +16,7 @@ El libro maestro contiene nueve pestañas:
 - `ALERT_SUBSCRIPTIONS`: configuracion privada, personalizada y auditable de cada usuario.
 - `RUN_LOG`: trazabilidad de ejecuciones.
 
-`DASHBOARD_COMPETITION` alimenta las tarjetas y benchmarks. `DASHBOARD_TRENDS` alimenta las graficas y la matriz mensual de Resumen. Los consolidados se calculan durante la construccion de la cache desde el snapshot y los pesos de `APP_CATALOG`; no existe una tabla wide intermedia.
+`DASHBOARD_COMPETITION` alimenta las tarjetas y benchmarks. `DASHBOARD_TRENDS` alimenta las gráficas y el Pulso mensual de `Evolución`. Los consolidados se calculan durante la construccion de la cache desde el snapshot y los pesos de `APP_CATALOG`; no existe una tabla wide intermedia.
 
 ## Puesta en marcha
 
@@ -66,7 +66,7 @@ Los enlaces de Android, iOS y Huawei se generan como HTTPS web con geografia exp
 
 La interfaz reserva los identificadores visuales de Android, iOS y Huawei para el selector global de plataforma, donde representan una accion. El resto de tablas, tarjetas, alertas, incidencias, administracion e informes usa etiquetas tipograficas para evitar ruido y repeticion. El robot de Android conserva la atribucion exigida por Google; iOS y Huawei AppGallery emplean identificadores propios del dashboard, sin incrustar marcas no autorizadas.
 
-`Resumen` y `Evolucion` no muestran el selector `Benchmark`. `Resumen` compara el rating actual por Android, iOS y Huawei: con todos los mercados muestra `BBVA + geografia`; con un mercado muestra BBVA y sus bancos comparables. Entre las señales ejecutivas y el detalle geografico presenta los seis cierres mas recientes con rating y volumen compacto por plataforma; los valores exactos siguen disponibles como ayuda contextual y los packages Android compartidos muestran `N/D` porque Google Play no permite atribuir ese volumen a un pais. El historico grafico queda exclusivamente en `Evolucion`. El selector competitivo solo aparece en `Benchmark`, donde permite comparar bancos, fintech y neobancos en una unica pagina. Cada fila del ranking enlaza a la ficha web oficial de la app. Mercado, plataforma, benchmark y periodo se conservan en `localStorage`, aislados por email, para restaurarlos en la siguiente visita.
+`Resumen` y `Evolucion` no muestran el selector `Benchmark`. `Resumen` compara el rating actual por Android, iOS y Huawei: con todos los mercados muestra `BBVA + geografia`; con un mercado muestra BBVA y sus bancos comparables. `Evolucion` contiene el historico gráfico y, justo debajo, el Pulso mensual de BBVA Empresas: presenta los seis cierres más recientes hasta el periodo seleccionado —tres en móvil— con rating y volumen compacto por plataforma. Mercado, plataforma y periodo se aplican jerárquicamente al bloque; los packages Android compartidos muestran `N/D` porque Google Play no permite atribuir ese volumen a un país. El selector competitivo solo aparece en `Benchmark`, donde permite comparar bancos, fintech y neobancos en una unica pagina. Cada fila del ranking enlaza a la ficha web oficial de la app. Mercado, plataforma, benchmark y periodo se conservan en `localStorage`, aislados por email, para restaurarlos en la siguiente visita.
 
 ## Informe ejecutivo
 

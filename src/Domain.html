@@ -73,8 +73,8 @@
         return{platform,rows:rankRows(rows)};
       }).filter(group=>group.rows.length);
     }
-    function monthlyRatingMatrix(trends,snapshot,selection,limit=8){
-      const rows=(trends||[]).filter(row=>row.isBbva&&finite(row.ratingEom)&&(selection.country==="ALL"||row.countryCode===selection.country)&&(selection.platform==="ALL"||row.platform===selection.platform));
+    function monthlyRatingMatrix(trends,snapshot,selection,endPeriod,limit=8){
+      const rows=(trends||[]).filter(row=>row.isBbva&&finite(row.ratingEom)&&(!endPeriod||row.month<=endPeriod)&&(selection.country==="ALL"||row.countryCode===selection.country)&&(selection.platform==="ALL"||row.platform===selection.platform));
       const periods=[...new Set(rows.map(row=>row.month))].sort().slice(-Math.max(1,limit));
       const platforms=selection.platform==="ALL"?config.platforms:[selection.platform];
       const metadata=new Map((snapshot||[]).filter(row=>row.isBbva).map(row=>[row.appKey,row]));
