@@ -39,19 +39,23 @@ El backend evita enviar las 32k observaciones completas:
 6. Autorice los scopes y abra la URL `/exec` entregada por Google.
 7. En cambios posteriores, use **Gestionar implementaciones > Editar > Nueva version**. Un `clasp push` no actualiza por si solo una version ya desplegada.
 8. Tras el primer despliegue, ejecute una vez `warmMarketsDashboardCache()` para materializar la revision existente. Desde ese momento, cada RUN diario sustituye automaticamente ambas capas justo despues de actualizar los datasets.
-9. Ejecute `setupProject()` con esta version para crear `ALERT_SUBSCRIPTIONS`, active `SEND_ALERT_EMAILS` y valide el canal con **Enviar prueba** en la pestaña `Alertas`.
+9. Ejecute `setupProject()` con esta version para crear `ALERT_SUBSCRIPTIONS` y ampliar los contratos de `RUN_LOG`.
+10. Ejecute manualmente `authorizeAndInstallMarketsAutomation()` desde el editor, acepte todos los scopes y confirme que el alias queda `accepted`. Esto reinstala el proceso de las 07:05 y su vigilancia de las 09:15 bajo la misma cuenta autorizada.
+11. Active `SEND_ALERT_EMAILS`, valide el canal con **Enviar prueba** en `Alertas` y ejecute `sendMarketsMonitorHealthTestEmail()`.
 
 El autoservicio requiere que el despliegue corporativo exponga el email del usuario a `Session.getActiveUser()`. Abra la URL con una cuenta `@bbva.com` y confirme que la pestaña muestra esa misma cuenta antes de activar la operacion. Mantenga **Ejecutar como: yo** para que los usuarios no necesiten acceso directo al Sheet y restrinja el acceso al dominio o grupo BBVA.
 
 El trigger no actua como el usuario que visita la pantalla. `runDailyRatingMonitor()` se ejecuta como propietario del proyecto, lee todas las suscripciones activas y agrupa un correo por destinatario. Por tanto, la aplicacion puede estar cerrada y no necesita una sesion conectada para enviar.
 
-Los avisos se envian individualmente mediante la API de Gmail con **BBVA VoC Commercial `<voc-commercial.group@bbva.com>`** como identidad `From`. El grupo nunca es destinatario ni distribuye alertas. Antes de enviar, el backend comprueba que esa direccion figure en Gmail > **Enviar como** para la cuenta ejecutora y que su estado sea `accepted`; si falta o sigue pendiente, el proceso se detiene sin recurrir a la direccion personal. El manifiesto limita el acceso a `gmail.send` y `gmail.settings.basic`: permite enviar y comprobar las identidades autorizadas, pero no leer el buzon.
+Los avisos se envian individualmente mediante la API de Gmail con **BBVA VoC Commercial `<voc-commercial.group@bbva.com>`** como identidad `From`. El grupo nunca es destinatario ni distribuye las alertas personalizadas. Antes de enviar, el backend comprueba que esa direccion figure en Gmail > **Enviar como** para la cuenta ejecutora y que su estado sea `accepted`; si falta o sigue pendiente, se detiene esa entrega sin recurrir a la direccion personal, pero el proceso de datos continua. El manifiesto limita el acceso a `gmail.send` y `gmail.settings.basic`: permite enviar y comprobar las identidades autorizadas, pero no leer el buzon.
+
+La comprobacion del alias ya no puede invalidar una carga de ratings correcta. Si falla, las alertas afectadas no se auditan como entregadas, permanecen reintentables y `RUN_LOG.ALERT_DELIVERY_STATUS` queda en `ERROR` o `PARTIAL`. El monitor tecnico usa un envio independiente al destino `MONITOR_ADMIN_EMAIL`, de forma que pueda advertir precisamente de una incidencia en el canal principal.
 
 Despues de crear el grupo, añadalo en Gmail > Configuracion > Cuentas > Enviar como para la cuenta propietaria del trigger, complete la verificacion recibida por el grupo y ejecute `validateMarketsAlertSender()`. El resultado correcto incluye `available: true`, `verificationStatus: accepted` y `address: voc-commercial.group@bbva.com`. Si cambia el remitente, actualice `ALERT_SENDER_ALIAS` en `CONTROL`.
 
 ## Comprobacion rapida
 
-Abra la URL `/exec` del despliegue y confirme que el pie muestra `Contrato 2026.07.21.9 · Web 2026.07.21.20`, las tarjetas aparecen sin espera adicional, los filtros actualizan las tendencias y `Alertas` muestra el email conectado. Active temporalmente el canal y pulse **Enviar prueba**; la pantalla devuelve un identificador `COM-*`, destinatario, grupo remitente, cuenta ejecutora, Gmail Message ID, versiones y estado de auditoria. La API confirma la aceptación de la solicitud, no la entrega final: si el mensaje no aparece, busque el identificador exacto en Recibidos, spam y cuarentena corporativa.
+Abra la URL `/exec` del despliegue y confirme que el pie muestra `Contrato 2026.07.22.10 · Web 2026.07.22.21`, las tarjetas aparecen sin espera adicional, los filtros actualizan las tendencias y `Alertas` muestra el email conectado. Active temporalmente el canal y pulse **Enviar prueba**; la pantalla devuelve un identificador `COM-*`, destinatario, grupo remitente, cuenta ejecutora, Gmail Message ID, versiones y estado de auditoria. La API confirma la aceptación de la solicitud, no la entrega final: si el mensaje no aparece, busque el identificador exacto en Recibidos, spam o cuarentena corporativa. Confirme tambien que el correo incluye, en cuerpo pequeno, la fecha de obtencion de los datos.
 
 ## Comportamiento esperado
 
@@ -71,3 +75,5 @@ Las vistas analiticas son de solo lectura; `Alertas` solo escribe la fila privad
 El trigger diario y `runNow()` actualizan datasets, evaluan para todos los usuarios las reglas diaria, desde inicio de mes, desde inicio de año y cruce competitivo, deduplican eventos en `ALERT_LOG` y agrupan un unico resumen por destinatario. La regla anual es la unica caida activa por defecto. MTD/YTD solo notifican una vez por periodo, app y severidad salvo que el usuario active recordatorios. `SEND_ALERT_EMAILS = TRUE` no fuerza un correo: si el RUN devuelve `ALERTS_CREATED = 0`, no existe ningun evento que enviar.
 
 Al terminar, el RUN construye una generacion nueva, cambia el puntero persistente de forma atomica y elimina la anterior. Si L1 caduca, se repone desde L2 sin abrir el spreadsheet. Si la materializacion falla, ambas capas se invalidan para que la siguiente peticion reconstruya desde Google Sheets en lugar de servir una revision antigua.
+
+Consulte [GOOGLE_WORKSPACE_SETUP.md](GOOGLE_WORKSPACE_SETUP.md) antes de modificar el grupo: explica que una direccion de Google Groups no posee una carpeta Enviados de Gmail y detalla la configuracion segura para identidad, historial y vigilancia.

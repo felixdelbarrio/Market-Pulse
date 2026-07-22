@@ -13,17 +13,41 @@ function buildAndProcessAlerts_(ss, referenceDate, catalog, runId, control, rati
   const catalogByKey = (catalog || []).reduce(function (out, app) { out[app.appKey] = app; return out; }, {});
   let events = [];
   subscribers.forEach(function (preferences) {
-    events = events.concat(buildRatingDropAlerts_(ratings, referenceDate, preferences, catalogByKey, existing));
+    events = events.concat(buildRatingDropAlerts_(ratings, referenceDate, preferences, existing));
     events = events.concat(buildCompetitiveCrossoverAlerts_(ratings, referenceDate, preferences, catalogByKey, existing));
   });
   events.forEach(function (event) { event.runId = runId; });
-  appendAlertEvents_(ss, events);
-  events.deliveryCount = parseBoolean_(control.SEND_ALERT_EMAILS, false) ? sendAlertEmails_(events, ss) : 0;
   events.subscriberCount = subscribers.length;
+  events.deliveryCount = 0;
+  events.deliveryStatus = events.length ? 'DISABLED' : 'NOT_REQUIRED';
+  events.deliveryDetail = '';
+  if (!events.length || !parseBoolean_(control.SEND_ALERT_EMAILS, false)) {
+    appendAlertEvents_(ss, events);
+    return events;
+  }
+  try {
+    events.deliveryCount = sendAlertEmails_(events, ss);
+    const delivered = events.deliveredRecipients || [];
+    const acceptedEvents = events.filter(function (event) {
+      return uniqueStrings_(trimString_(event.recipients).split(/[;,]/)).some(function (recipient) {
+        return delivered.indexOf(normalizeEmailForComparison_(recipient)) >= 0;
+      });
+    });
+    appendAlertEvents_(ss, acceptedEvents);
+    const failed = events.deliveryFailures || [];
+    events.deliveryStatus = failed.length ? (events.deliveryCount ? 'PARTIAL' : 'ERROR') : 'DELIVERED';
+    events.deliveryDetail = failed.map(function (item) {
+      return item.recipient + ': ' + item.error;
+    }).join(' | ');
+  } catch (error) {
+    events.deliveryStatus = 'ERROR';
+    events.deliveryDetail = errorToString_(error);
+    console.error('Las alertas se conservaran para reintento porque Gmail no las ha aceptado: ' + events.deliveryDetail);
+  }
   return events;
 }
 
-function buildRatingDropAlerts_(ratings, referenceDate, preferences, catalogByKey, existing) {
+function buildRatingDropAlerts_(ratings, referenceDate, preferences, existing) {
   if (!preferences.active) return [];
   const definitions = [
     { period: 'DAILY', enabled: preferences.dailyDropEnabled,
@@ -170,9 +194,29 @@ function marketsAlertScopeMatches_(preferences, item) {
 function readExistingAlertKeys_(ss) {
   const sheet = ss.getSheetByName(MARKETS_CONFIG.sheets.alerts);
   if (sheet.getLastRow() <= 1) return {};
-  return sheet.getRange(2, 2, sheet.getLastRow() - 1, 1).getValues().reduce(function (out, row) {
+  const failedRuns = readFailedAlertRunIds_(ss);
+  return sheet.getRange(2, 2, sheet.getLastRow() - 1, 9).getValues().reduce(function (out, row) {
     const key = trimString_(row[0]);
-    if (key) out[key] = true;
+    const runId = trimString_(row[8]);
+    if (key && !failedRuns[runId]) out[key] = true;
+    return out;
+  }, {});
+}
+
+function readFailedAlertRunIds_(ss) {
+  const sheet = ss.getSheetByName(MARKETS_CONFIG.sheets.runs);
+  if (!sheet || sheet.getLastRow() <= 1) return {};
+  const width = Math.min(sheet.getLastColumn(), MARKETS_CONFIG.headers.runs.length);
+  const headers = sheet.getRange(1, 1, 1, width).getValues()[0];
+  const indexes = indexHeaders_(headers);
+  return sheet.getRange(2, 1, sheet.getLastRow() - 1, width).getValues().reduce(function (out, row) {
+    const runId = trimString_(row[indexes.run_id]);
+    const status = trimString_(row[indexes.status]).toUpperCase();
+    const delivery = indexes.alert_delivery_status === undefined ? '' :
+      trimString_(row[indexes.alert_delivery_status]).toUpperCase();
+    if (runId && (['ERROR', 'PARTIAL'].indexOf(delivery) >= 0 || (!delivery && status === 'ERROR'))) {
+      out[runId] = true;
+    }
     return out;
   }, {});
 }
@@ -201,24 +245,33 @@ function sendAlertEmails_(events, ss) {
   const sender = requireMarketsAlertSender_(ss);
   const inlineImages = buildMarketsAlertInlineImages_();
   const deliveries = [];
+  const failures = [];
   recipients.forEach(function (recipient) {
-    const recipientEvents = grouped[recipient];
-    const message = marketsAlertEmailMessage_(recipient, recipientEvents, inlineImages, sender);
-    const accepted = Gmail.Users.Messages.send({ raw: message.raw }, 'me');
-    if (!accepted || !trimString_(accepted.id)) {
-      throw new Error('Gmail no ha devuelto un identificador para el correo dirigido a ' + recipient + '.');
-    }
-    deliveries.push({
-      recipient: recipient, messageId: trimString_(accepted.id), threadId: trimString_(accepted.threadId),
-      senderAddress: sender.address, senderName: sender.name,
-      verificationStatus: sender.verificationStatus
-    });
-    if (ss) {
-      try { touchMarketsAlertTimestamp_(ss, recipient, 'LAST_DELIVERY_AT', new Date()); }
-      catch (auditError) { console.error('Email aceptado para ' + recipient + ', pero fallo LAST_DELIVERY_AT: ' + errorToString_(auditError)); }
+    try {
+      const recipientEvents = grouped[recipient];
+      const message = marketsAlertEmailMessage_(recipient, recipientEvents, inlineImages, sender);
+      const accepted = Gmail.Users.Messages.send({ raw: message.raw }, 'me');
+      if (!accepted || !trimString_(accepted.id)) {
+        throw new Error('Gmail no ha devuelto un identificador de mensaje.');
+      }
+      deliveries.push({
+        recipient: recipient, messageId: trimString_(accepted.id), threadId: trimString_(accepted.threadId),
+        senderAddress: sender.address, senderName: sender.name,
+        verificationStatus: sender.verificationStatus
+      });
+      if (ss) {
+        try { touchMarketsAlertTimestamp_(ss, recipient, 'LAST_DELIVERY_AT', new Date()); }
+        catch (auditError) { console.error('Email aceptado para ' + recipient + ', pero fallo LAST_DELIVERY_AT: ' + errorToString_(auditError)); }
+      }
+    } catch (error) {
+      failures.push({ recipient: normalizeEmailForComparison_(recipient), error: errorToString_(error) });
     }
   });
   events.deliveryResults = deliveries;
+  events.deliveryFailures = failures;
+  events.deliveredRecipients = deliveries.map(function (item) {
+    return normalizeEmailForComparison_(item.recipient);
+  });
   return deliveries.length;
 }
 
@@ -371,7 +424,8 @@ function renderMarketsAlertPlainText_(events) {
   });
   return 'BBVA COMMERCIAL\nAlerta por cambios en ratings\n' +
     (isTest ? 'Esta es una prueba; no se ha detectado ningún cambio real.\n\n' : '\n') +
-    lines.join('\n\n') + '\n\nGestiona tus alertas desde COMMERCIAL.';
+    lines.join('\n\n') + '\n\nDatos obtenidos: ' + marketsAlertDataDateLabel_(events) +
+    '\nGestiona tus alertas desde COMMERCIAL.';
 }
 
 function renderMarketsAlertEmail_(events) {
@@ -395,7 +449,7 @@ function renderMarketsAlertEmail_(events) {
     '<tr><td width="100%" style="padding:24px 28px;background:#072146;"><img src="cid:bbvaLogo" width="92" alt="BBVA" style="display:block;width:92px;height:auto;"><div style="margin-top:22px;color:#5AC4C4;font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">COMMERCIAL · ' + (isTest ? 'PRUEBA DE CANAL' : 'ALERTAS DE RATINGS') + '</div><h1 style="margin:8px 0 0;color:#FFFFFF;font-size:28px;line-height:34px;">Alerta por cambios en ratings</h1><p style="margin:10px 0 0;color:#B6D5F5;font-size:15px;line-height:22px;">' + escapeMarketsAlertHtml_(subtitle) + '</p></td></tr>' +
     '<tr><td width="100%" style="padding:22px 28px 8px;">' + summary + '</td></tr>' +
     '<tr><td width="100%" style="padding:14px 28px 8px;">' + cards + '</td></tr>' +
-    '<tr><td width="100%" style="padding:18px 28px 30px;">' + cta + '<p style="margin:18px 0 0;color:#5B6670;font-size:12px;line-height:18px;">Este correo es privado y contiene únicamente señales configuradas para tu cuenta. Las preferencias de otros usuarios nunca son visibles.</p></td></tr>' +
+    '<tr><td width="100%" style="padding:18px 28px 30px;">' + cta + '<p style="margin:18px 0 0;color:#5B6670;font-size:12px;line-height:18px;">Este correo es privado y contiene únicamente señales configuradas para tu cuenta. Las preferencias de otros usuarios nunca son visibles.</p><p style="margin:7px 0 0;color:#7C8893;font-size:10px;line-height:15px;">Datos obtenidos el ' + escapeMarketsAlertHtml_(marketsAlertDataDateLabel_(events)) + '.</p></td></tr>' +
     '<tr><td width="100%" style="padding:16px 28px;background:#061B36;color:#B6D5F5;font-size:11px;line-height:17px;"><strong style="color:#FFFFFF;">BBVA COMMERCIAL</strong><br>Ratings y valoraciones públicas de las stores · Android, iOS y Huawei.</td></tr>' +
     '</table></td></tr></table></body></html>';
 }
@@ -513,6 +567,17 @@ function marketsAlertDateLabel_(value) {
   if (isNaN(date.getTime())) return trimString_(value);
   try { return Utilities.formatDate(date, MARKETS_CONFIG.timeZone, 'dd/MM/yyyy'); }
   catch (ignored) { return date.toISOString().slice(0, 10); }
+}
+
+function marketsAlertDataDateLabel_(events) {
+  const dates = (events || []).map(function (event) {
+    return event.currentDate || event.referenceDate || null;
+  }).map(function (value) {
+    if (!value) return null;
+    const date = value instanceof Date ? value : new Date(value);
+    return isNaN(date.getTime()) ? null : date;
+  }).filter(Boolean).sort(function (a, b) { return b.getTime() - a.getTime(); });
+  return dates.length ? marketsAlertDateLabel_(dates[0]) : 'no disponible';
 }
 
 function marketsAlertRuleLabel_(type) {

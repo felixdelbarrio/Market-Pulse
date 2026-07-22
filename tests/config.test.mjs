@@ -40,6 +40,15 @@ test("persistent and compact web contracts expose only required fields", () => {
   assert.deepEqual(Array.from(headers.trends), ["PERIOD_MONTH", "PLATFORM", "COUNTRY_CODE", "COUNTRY", "APP_KEY", "APP_NAME", "IS_BBVA", "RATING_EOM", "MARKET_SEGMENT"]);
   assert.deepEqual(Array.from(headers.competition), ["OBSERVED_DATE", "PLATFORM", "COUNTRY_CODE", "COUNTRY", "MARKET_SEGMENT", "APP_KEY", "APP_NAME", "IS_BBVA", "DISPLAY_ORDER", "RATING", "RATING_COUNT", "RANKING_IS_COMPLETE", "DELTA_30D", "IS_FRESH_THIS_RUN", "RATING_COUNT_DELTA_30D", "STORE_WEB_URL"]);
   assert.deepEqual(Array.from(headers.alerts).slice(-6), ["USER_EMAIL", "RULE_ID", "METRIC_VALUE", "THRESHOLD", "APP_KEY", "DIRECTION"]);
+  assert.deepEqual(Array.from(headers.runs).slice(-4), ["ALERT_SUBSCRIBERS", "EMAILS_SENT", "ALERT_DELIVERY_STATUS", "ALERT_DELIVERY_DETAIL"]);
   assert.equal(headers.alertPreferences.length, 31);
   assert.deepEqual(Array.from(headers.alertPreferences).slice(-4), ["REGISTERED_AT", "LAST_SEEN_AT", "LAST_TEST_AT", "LAST_DELIVERY_AT"]);
+});
+
+test("automation defaults configure an independent daily health check", () => {
+  const controls = Object.fromEntries(Array.from(context.MARKETS_CONFIG.controlDefaults, row => [row[0], row[1]]));
+  assert.equal(controls.MONITOR_HEALTH_ENABLED, true);
+  assert.equal(controls.MONITOR_ADMIN_EMAIL, "voc-commercial.group@bbva.com");
+  assert.equal(context.MARKETS_CONFIG.healthCheckHour, 9);
+  assert.equal(context.MARKETS_CONFIG.healthCheckMinute, 15);
 });

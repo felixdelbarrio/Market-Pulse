@@ -30,13 +30,15 @@ El libro maestro contiene nueve pestañas:
 
    Antes de publicar, confirme que `clasp status` enumera los archivos de `src/`; una lista vacia significa que no se subira ningun cambio.
 
-2. Ejecute `setupProject()` una vez. Inicializa el contrato, aplica formato, completa las semillas necesarias, retira las hojas obsoletas `DASHBOARD_KPIS` y `REVIEWS` e instala el trigger diario.
+2. Ejecute `setupProject()` una vez. La funcion solicita todos los permisos del manifiesto, inicializa el contrato, aplica formato, completa las semillas necesarias, retira las hojas obsoletas `DASHBOARD_KPIS` y `REVIEWS` e instala los triggers diario y de vigilancia.
 3. Ejecute `validateProject()` y revise el resultado.
 4. Ejecute `runNow()` con `SEND_ALERT_EMAILS = FALSE` y compruebe `RUN_LOG` y `FETCH_LOG`.
 5. Cree o actualice el despliegue **Aplicacion web**, con **Ejecutar como: yo** y acceso restringido al dominio o grupo apropiado.
 6. Abra la pestaña `Alertas` con una cuenta `@bbva.com` y confirme que aparece su email. Si la identidad queda vacia, revise el acceso corporativo del despliegue antes de habilitar correos.
-7. Cambie `SEND_ALERT_EMAILS` a `TRUE`, guarde `CONTROL` y use **Enviar prueba** desde `Alertas` para validar el canal sin depender de que se dispare una regla.
-8. Ejecute `warmMarketsDashboardCache()` después de publicar una nueva version.
+7. Ejecute `authorizeAndInstallMarketsAutomation()` desde el editor, acepte expresamente `gmail.send` y `gmail.settings.basic`, y compruebe que devuelve `verificationStatus: accepted`. Este paso es obligatorio al incorporar permisos nuevos: un trigger no puede mostrar el dialogo de autorización.
+8. Cambie `SEND_ALERT_EMAILS` a `TRUE`, guarde `CONTROL` y use **Enviar prueba** desde `Alertas` para validar el canal sin depender de que se dispare una regla.
+9. Ejecute `sendMarketsMonitorHealthTestEmail()` y confirme que el aviso tecnico queda registrado en el grupo configurado.
+10. Ejecute `warmMarketsDashboardCache()` después de publicar una nueva version.
 
 Un `clasp push` no cambia una version ya desplegada. Use **Gestionar implementaciones > Editar > Nueva version**.
 
@@ -48,10 +50,15 @@ Un `clasp push` no cambia una version ya desplegada. Use **Gestionar implementac
 - `validateProject()`: valida catalogo y contrato.
 - `setupProject()`: inicializacion e instalacion idempotente del trigger.
 - `warmMarketsDashboardCache()`: reconstruccion manual de cache compartida.
+- `authorizeAndInstallMarketsAutomation()`: solicita los scopes vigentes, valida el alias y reinstala ambos triggers bajo la cuenta efectiva.
+- `checkDailyRatingMonitorHealth()`: verifica a las 09:15 que existe un run util del dia y que el canal de alertas no termino en error.
+- `sendMarketsMonitorHealthTestEmail()`: prueba el canal tecnico independiente dirigido a `MONITOR_ADMIN_EMAIL`.
 - `validateMarketsAlertSender()`: confirma que `voc-commercial.group@bbva.com` esta autorizado y verificado como identidad **Enviar como** para la cuenta ejecutora.
 - `sendMarketsAlertTestEmail()`: prueba el canal BBVA para el usuario conectado y devuelve identificador de entrega, grupo remitente, cuenta ejecutora, Gmail Message ID y versiones. La aceptación de la API queda auditada como evento `TEST`; la entrega final al buzon depende de Gmail y de la cuarentena corporativa.
 
 La cache tiene dos niveles: `CacheService` para acceso rapido y `PropertiesService` para persistencia compartida comprimida. Cada RUN reemplaza la generacion despues de actualizar los datasets. Si falla, se invalida para que la siguiente peticion reconstruya desde Sheets.
+
+El proceso de datos y el canal de correo son dominios de fallo independientes. Un error al validar o usar el alias no descarta los ratings ya obtenidos ni convierte una carga util en un falso run vacio. `RUN_LOG` conserva suscriptores, emails aceptados, estado del canal y detalle. Una alerta solo se incorpora al conjunto deduplicado despues de que Gmail la acepte; si el alias o un destinatario fallan, queda disponible para reintento en el siguiente run.
 
 Los enlaces de Android, iOS y Huawei se generan como HTTPS web con geografia explicita, se validan contra dominios oficiales y se abren en otra pestaña. Esto se aplica tanto a BBVA como a la competencia.
 
@@ -86,6 +93,8 @@ La regla propuesta de porcentaje de reseñas de 1 y 2 estrellas conserva sus val
 `SEND_ALERT_EMAILS = TRUE` habilita el canal, pero `runNow()` solo envia si `ALERTS_CREATED > 0`. El resultado manual incluye `alerts`, `alertSubscribers` y `emailsSent`; use **Enviar prueba** para distinguir un problema de entrega de la ausencia legitima de eventos.
 
 El volumen de Google Play se gobierna por `packageName`: si el mismo package esta activo en varios paises, sus valoraciones y su variacion a 30 dias representan una unica ficha compartida. El Web App las contabiliza una sola vez en los KPI y no las atribuye a las tarjetas geograficas. Un package exclusivo de un pais —como el Android de Mexico— conserva alcance de mercado. iOS y Huawei mantienen alcance territorial.
+
+Cada correo de alerta muestra discretamente la fecha efectiva de los datos. El segundo trigger se ejecuta dos horas despues del proceso principal y emite un unico aviso operativo por dia cuando el run falta, no produjo datos utilizables o el canal de alertas quedo degradado. La configuracion recomendada del grupo, la diferencia entre alias y buzon, y la secuencia de reautorizacion estan documentadas en [GOOGLE_WORKSPACE_SETUP.md](GOOGLE_WORKSPACE_SETUP.md).
 
 ## Reglas de datos
 

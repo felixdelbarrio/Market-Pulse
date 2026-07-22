@@ -1,4 +1,5 @@
 function setupProject() {
+  ScriptApp.requireAllScopes(ScriptApp.AuthMode.FULL);
   const ss = openMarketsSpreadsheet_();
   initializeWorkbook_(ss);
   migrateLegacyAlertRecipients_(ss, readAppCatalog_(ss));
@@ -43,6 +44,8 @@ function validateProject() {
       senderAddress: alertSender.address,
       senderAvailable: alertSender.available,
       senderVerificationStatus: alertSender.verificationStatus,
+      healthMonitorEnabled: parseBoolean_(control.MONITOR_HEALTH_ENABLED, true),
+      healthMonitorRecipient: trimString_(control.MONITOR_ADMIN_EMAIL) || MARKETS_ALERT_EMAIL.senderAddress,
       adminSheet: MARKETS_CONFIG.sheets.alertPreferences,
       warning: trimString_(control.ALERT_CONFIG_WARNING)
     },
@@ -70,12 +73,36 @@ function installDailyTrigger_() {
     .everyDays(1)
     .inTimezone(MARKETS_CONFIG.timeZone)
     .create();
+  ScriptApp.newTrigger('checkDailyRatingMonitorHealth')
+    .timeBased()
+    .atHour(MARKETS_CONFIG.healthCheckHour)
+    .nearMinute(MARKETS_CONFIG.healthCheckMinute)
+    .everyDays(1)
+    .inTimezone(MARKETS_CONFIG.timeZone)
+    .create();
 }
 
 function removeManagedTriggers_() {
   ScriptApp.getProjectTriggers().forEach(function (trigger) {
-    if (trigger.getHandlerFunction() === 'runDailyRatingMonitor') ScriptApp.deleteTrigger(trigger);
+    if (['runDailyRatingMonitor', 'checkDailyRatingMonitorHealth'].indexOf(trigger.getHandlerFunction()) >= 0) {
+      ScriptApp.deleteTrigger(trigger);
+    }
   });
+}
+
+function authorizeAndInstallMarketsAutomation() {
+  ScriptApp.requireAllScopes(ScriptApp.AuthMode.FULL);
+  const ss = openMarketsSpreadsheet_();
+  ensureWorkbookSchema_(ss);
+  const sender = requireMarketsAlertSender_(ss);
+  installDailyTrigger_();
+  return {
+    authorized: true, sender: sender.address, verificationStatus: sender.verificationStatus,
+    dailySchedule: String(MARKETS_CONFIG.runHour).padStart(2, '0') + ':' +
+      String(MARKETS_CONFIG.runMinute).padStart(2, '0') + ' ' + MARKETS_CONFIG.timeZone,
+    healthSchedule: String(MARKETS_CONFIG.healthCheckHour).padStart(2, '0') + ':' +
+      String(MARKETS_CONFIG.healthCheckMinute).padStart(2, '0') + ' ' + MARKETS_CONFIG.timeZone
+  };
 }
 
 function onOpen() {
@@ -84,6 +111,8 @@ function onOpen() {
     .addItem('Ejecutar ahora', 'runNow')
     .addItem('Recalcular metricas', 'rebuildAllMetrics')
     .addSeparator()
-    .addItem('Instalar trigger diario', 'installDailyTrigger_')
+    .addItem('Autorizar e instalar automatizacion', 'authorizeAndInstallMarketsAutomation')
+    .addItem('Comprobar salud ahora', 'checkDailyRatingMonitorHealth')
+    .addItem('Probar aviso tecnico', 'sendMarketsMonitorHealthTestEmail')
     .addToUi();
 }

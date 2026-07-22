@@ -8,6 +8,12 @@ const source = ["../src/99_Core.gs", "../src/00_Config.gs", "../src/55_AlertPref
   .join("\n");
 const context = {
   console, Date, Math, Number, String, Boolean, Array, Object, JSON, RegExp, isFinite, isNaN,
+  Utilities: {
+    formatDate(value, _zone, pattern) {
+      if (pattern === "dd/MM/yyyy") return `${String(value.getDate()).padStart(2, "0")}/${String(value.getMonth() + 1).padStart(2, "0")}/${value.getFullYear()}`;
+      return value.toISOString();
+    }
+  },
   ScriptApp: { getService() { return { getUrl() { return "https://script.google.com/macros/s/example/exec"; } }; } }
 };
 vm.createContext(context);
@@ -141,7 +147,7 @@ test("daily, month-to-date and year-to-date drops are independent", () => {
   ];
   const events = context.buildRatingDropAlerts_(rows, new Date(2026, 6, 14, 12), preferences({
     dailyDropEnabled: true, mtdDropEnabled: true, ytdDropEnabled: true
-  }), {}, {});
+  }), {});
   assert.deepEqual(plain(events.map(event => event.type)), ["RATING_DROP_DAILY", "RATING_DROP_MTD", "RATING_DROP_YTD"]);
   assert.deepEqual(plain(events.map(event => event.metricValue)), [0.4, 0.5, 0.7]);
   assert.deepEqual(plain(events.map(event => event.severity)), ["WARNING", "CRITICAL", "CRITICAL"]);
@@ -152,13 +158,13 @@ test("year-to-date is the only default drop rule and does not repeat unless requ
     rating(2, 4.8, { observedDate: new Date(2026, 0, 2, 12) }),
     rating(14, 4.1), rating(15, 4.1)
   ];
-  const first = context.buildRatingDropAlerts_(rows, new Date(2026, 6, 14, 12), preferences(), {}, {});
+  const first = context.buildRatingDropAlerts_(rows, new Date(2026, 6, 14, 12), preferences(), {});
   assert.equal(first.length, 1);
   assert.equal(first[0].type, "RATING_DROP_YTD");
   const existing = { [first[0].eventKey]: true };
-  const suppressed = context.buildRatingDropAlerts_(rows, new Date(2026, 6, 15, 12), preferences(), {}, existing);
+  const suppressed = context.buildRatingDropAlerts_(rows, new Date(2026, 6, 15, 12), preferences(), existing);
   assert.equal(suppressed.length, 0);
-  const reminder = context.buildRatingDropAlerts_(rows, new Date(2026, 6, 15, 12), preferences({ repeatWhileBreached: true }), {}, existing);
+  const reminder = context.buildRatingDropAlerts_(rows, new Date(2026, 6, 15, 12), preferences({ repeatWhileBreached: true }), existing);
   assert.equal(reminder.length, 1);
   assert.match(reminder[0].eventKey, /2026-07-15$/);
 });
@@ -215,11 +221,13 @@ test("BBVA alert email uses the official image slot, brand system and safe conte
   assert.match(html, /Abre la Visión del VoC por geografías/);
   assert.match(html, />Abrir VoC Commercial</);
   assert.match(html, /Siguiente paso/);
+  assert.match(html, /Datos obtenidos el 21\/07\/2026/);
   assert.doesNotMatch(html, /Markets Data Studio/i);
   assert.doesNotMatch(html, /Tu pulso de mercado requiere atención/);
   assert.doesNotMatch(html, /<script>/);
   assert.match(html, /Android &lt;script&gt;/);
   assert.equal(context.marketsAlertEmailSubject_(events), "[VoC] Comunicación de alertas personalizadas - 2 cambios en ratings");
+  assert.match(context.renderMarketsAlertPlainText_(events), /Datos obtenidos: 21\/07\/2026/);
 });
 
 test("alert delivery uses the verified Google Group alias and preserves individual recipients", () => {
@@ -280,6 +288,25 @@ test("group delivery fails closed when the sender alias is missing or pending", 
   context.readControl_ = original.readControl;
 });
 
+test("events from a failed legacy run remain eligible for retry", () => {
+  const original = context.readFailedAlertRunIds_;
+  context.readFailedAlertRunIds_ = () => ({ "failed-run": true });
+  const rows = [
+    ["retry-me", null, null, null, null, null, null, null, "failed-run"],
+    ["already-delivered", null, null, null, null, null, null, null, "healthy-run"]
+  ];
+  const sheet = {
+    getLastRow: () => 3,
+    getRange: () => ({ getValues: () => rows })
+  };
+  const existing = context.readExistingAlertKeys_({
+    getSheetByName: name => name === "ALERT_LOG" ? sheet : null
+  });
+  assert.equal(existing["retry-me"], undefined);
+  assert.equal(existing["already-delivered"], true);
+  context.readFailedAlertRunIds_ = original;
+});
+
 test("test email is explicit, useful and previews the detail of a real alert", () => {
   const events = [{
     severity: "POSITIVE", type: "TEST", platform: "Todas", countryCode: "GLOBAL",
@@ -323,11 +350,51 @@ test("the scheduled engine processes every active subscriber without a connected
   }];
   context.buildCompetitiveCrossoverAlerts_ = () => [];
   context.appendAlertEvents_ = () => {};
-  context.sendAlertEmails_ = events => new Set(events.map(event => event.recipients)).size;
+  context.sendAlertEmails_ = events => {
+    events.deliveredRecipients = [...new Set(events.map(event => event.recipients))];
+    return events.deliveredRecipients.length;
+  };
   const result = context.buildAndProcessAlerts_({}, new Date(2026, 6, 20, 12), [], "run", { SEND_ALERT_EMAILS: true }, []);
   assert.equal(result.length, 2);
   assert.equal(result.subscriberCount, 2);
   assert.equal(result.deliveryCount, 2);
+  assert.equal(result.deliveryStatus, "DELIVERED");
+  Object.assign(context, {
+    migrateLegacyAlertRecipients_: original.migrate, readAllMarketsAlertPreferences_: original.readAll,
+    readExistingAlertKeys_: original.readExisting, buildRatingDropAlerts_: original.drops,
+    buildCompetitiveCrossoverAlerts_: original.crossovers, appendAlertEvents_: original.append,
+    sendAlertEmails_: original.send
+  });
+});
+
+test("a Gmail authorization failure does not audit undelivered events or abort the data run", () => {
+  const original = {
+    migrate: context.migrateLegacyAlertRecipients_, readAll: context.readAllMarketsAlertPreferences_,
+    readExisting: context.readExistingAlertKeys_, drops: context.buildRatingDropAlerts_,
+    crossovers: context.buildCompetitiveCrossoverAlerts_, append: context.appendAlertEvents_,
+    send: context.sendAlertEmails_
+  };
+  let appended = null;
+  context.migrateLegacyAlertRecipients_ = () => {};
+  context.readAllMarketsAlertPreferences_ = () => [preferences()];
+  context.readExistingAlertKeys_ = () => ({});
+  context.buildRatingDropAlerts_ = (_ratings, referenceDate, pref) => [{
+    timestamp: new Date(), eventKey: "YTD|pending", referenceDate,
+    platform: "iOS", countryCode: "CO", type: "RATING_DROP_YTD", severity: "WARNING",
+    detail: "test", recipients: pref.email, userEmail: pref.email, ruleId: "YTD_DROP",
+    metricValue: 0.4, threshold: 0.3, appKey: "IOS|CO|BBVA", direction: "DOWN", source: "TEST"
+  }];
+  context.buildCompetitiveCrossoverAlerts_ = () => [];
+  context.appendAlertEvents_ = (_ss, events) => { appended = events; };
+  context.sendAlertEmails_ = () => { throw new Error("gmail.settings.basic no autorizado"); };
+
+  const result = context.buildAndProcessAlerts_({}, new Date(2026, 6, 22, 12), [], "run", { SEND_ALERT_EMAILS: true }, []);
+  assert.equal(result.length, 1);
+  assert.equal(result.deliveryCount, 0);
+  assert.equal(result.deliveryStatus, "ERROR");
+  assert.match(result.deliveryDetail, /gmail\.settings\.basic/);
+  assert.equal(appended, null);
+
   Object.assign(context, {
     migrateLegacyAlertRecipients_: original.migrate, readAllMarketsAlertPreferences_: original.readAll,
     readExistingAlertKeys_: original.readExisting, buildRatingDropAlerts_: original.drops,

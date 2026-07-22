@@ -1,8 +1,9 @@
 /** Configuracion unica del monitor real de ratings Android, iOS y Huawei. */
 var MARKETS_CONFIG = Object.freeze({
-  codeVersion: '2026.07.21.9',
+  codeVersion: '2026.07.22.10',
   spreadsheetId: '1IkJgvM2imxm3r1x092q5dqpThrlnDoZ-5QvH8n2h2oQ',
-  timeZone: 'Europe/Madrid', runHour: 7, runMinute: 5, lockTimeoutMs: 30000,
+  timeZone: 'Europe/Madrid', runHour: 7, runMinute: 5,
+  healthCheckHour: 9, healthCheckMinute: 15, lockTimeoutMs: 30000,
   requestRetries: 2, retryBaseDelayMs: 1200, huaweiBatchSize: 6, huaweiBatchDelayMs: 300,
   countryCodes: Object.freeze(['AR', 'CO', 'ES', 'MX', 'PE', 'TR', 'UY', 'VE']),
   sheets: Object.freeze({
@@ -58,14 +59,17 @@ var MARKETS_CONFIG = Object.freeze({
     runs: Object.freeze([
       'STARTED_AT', 'RUN_ID', 'STATUS', 'APPS_TOTAL', 'APPS_OK', 'APPS_NO_RATING', 'APPS_ERROR',
       'ROWS_UPSERTED', 'ALERTS_CREATED', 'DURATION_MS', 'DETAIL', 'SCORECARD_ROWS', 'TREND_ROWS',
-      'COMPETITION_ROWS', 'FRESH_APPS', 'WEIGHT_CONFIG_STATUS'
+      'COMPETITION_ROWS', 'FRESH_APPS', 'WEIGHT_CONFIG_STATUS', 'ALERT_SUBSCRIBERS', 'EMAILS_SENT',
+      'ALERT_DELIVERY_STATUS', 'ALERT_DELIVERY_DETAIL'
     ])
   }),
   controlDefaults: Object.freeze([
-    ['CODE_VERSION', '2026.07.21.9', 'Version del contrato de datos y del Apps Script'],
+    ['CODE_VERSION', '2026.07.22.10', 'Version del contrato de datos y del Apps Script'],
     ['TIME_ZONE', 'Europe/Madrid', 'Zona horaria de ejecucion y fechas'],
     ['SEND_ALERT_EMAILS', false, 'Enviar emails; mantener FALSE durante la validacion inicial'],
     ['ALERT_SENDER_ALIAS', 'voc-commercial.group@bbva.com', 'Remitente verificado en Gmail > Enviar como para las alertas VoC'],
+    ['MONITOR_HEALTH_ENABLED', true, 'Verificar cada manana que el proceso diario y su canal de alertas han finalizado'],
+    ['MONITOR_ADMIN_EMAIL', 'voc-commercial.group@bbva.com', 'Destino operativo para incidencias del proceso diario'],
     ['RATING_LOOKBACK_DAYS', 30, 'Ventana para DELTA_30D']
   ])
 });

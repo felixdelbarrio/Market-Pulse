@@ -28,12 +28,14 @@ function runDailyRatingMonitor() {
       { referenceDate: referenceDate, results: results });
     const alerts = buildAndProcessAlerts_(ss, referenceDate, catalog, runId, control, ratings);
     const stats = summarizeFetchResults_(results);
-    const status = stats.error === 0 ? (stats.noRating > 0 ? 'PARTIAL' : 'OK') : (stats.ok > 0 ? 'PARTIAL' : 'ERROR');
+    const dataStatus = stats.error === 0 ? (stats.noRating > 0 ? 'PARTIAL' : 'OK') : (stats.ok > 0 ? 'PARTIAL' : 'ERROR');
+    const status = ['ERROR', 'PARTIAL'].indexOf(alerts.deliveryStatus) >= 0 && dataStatus === 'OK' ? 'PARTIAL' : dataStatus;
     appendRunLog_(ss, [
       startedAt, runId, status, results.length, stats.ok, stats.noRating, stats.error,
-      upserted, alerts.length, new Date().getTime() - startedAt.getTime(), buildRunDetail_(results),
+      upserted, alerts.length, new Date().getTime() - startedAt.getTime(), buildRunDetail_(results, alerts.deliveryDetail),
       0, dashboard.trendRows, dashboard.competitionRows,
-      stats.ok, validateWeightConfiguration_(catalog)
+      stats.ok, validateWeightConfiguration_(catalog), alerts.subscriberCount || 0, alerts.deliveryCount || 0,
+      alerts.deliveryStatus || 'UNKNOWN', alerts.deliveryDetail || ''
     ]);
     try {
       refreshMarketsDashboardCache_(ss, catalog);
@@ -42,12 +44,14 @@ function runDailyRatingMonitor() {
       console.error('No se pudo actualizar la cache del dashboard: ' + errorToString_(cacheError));
     }
     return { runId: runId, status: status, apps: results.length, rowsUpserted: upserted,
-      alerts: alerts.length, alertSubscribers: alerts.subscriberCount || 0, emailsSent: alerts.deliveryCount || 0 };
+      alerts: alerts.length, alertSubscribers: alerts.subscriberCount || 0, emailsSent: alerts.deliveryCount || 0,
+      alertDeliveryStatus: alerts.deliveryStatus || 'UNKNOWN', alertDeliveryDetail: alerts.deliveryDetail || '' };
   } catch (error) {
     if (ss) {
       try {
         appendRunLog_(ss, [startedAt, runId, 'ERROR', 0, 0, 0, 1, 0, 0,
-          new Date().getTime() - startedAt.getTime(), errorToString_(error), 0, 0, 0, 0, 'UNKNOWN']);
+          new Date().getTime() - startedAt.getTime(), errorToString_(error), 0, 0, 0, 0, 'UNKNOWN',
+          0, 0, 'NOT_RUN', errorToString_(error)]);
       } catch (ignored) {}
     }
     throw error;
@@ -65,11 +69,13 @@ function summarizeFetchResults_(results) {
   }, { ok: 0, noRating: 0, error: 0 });
 }
 
-function buildRunDetail_(results) {
+function buildRunDetail_(results, alertDeliveryDetail) {
   const errors = (results || []).filter(function (result) { return !result.ok; }).map(function (result) {
     return result.app.platform + '/' + result.app.countryCode + '/' + result.app.appName + ': ' + result.error;
   });
-  return errors.slice(0, 20).join(' | ') + (errors.length > 20 ? ' | +' + (errors.length - 20) + ' errores' : '');
+  const fetchDetail = errors.slice(0, 20).join(' | ') + (errors.length > 20 ? ' | +' + (errors.length - 20) + ' errores' : '');
+  const alertDetail = trimString_(alertDeliveryDetail);
+  return [fetchDetail, alertDetail ? 'Canal de alertas: ' + alertDetail : ''].filter(Boolean).join(' | ');
 }
 
 function runNow() {

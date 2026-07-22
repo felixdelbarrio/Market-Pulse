@@ -6,9 +6,6 @@ var MARKETS_ALERT_DEFAULTS = Object.freeze({
   reviewShareEnabled: false,
   reviewWarningPct: 15,
   reviewCriticalPct: 30,
-  weeklyDropEnabled: false,
-  weeklyWarningDrop: 0.30,
-  weeklyCriticalDrop: 0.50,
   dailyDropEnabled: false,
   dailyWarningDrop: 0.30,
   dailyCriticalDrop: 0.50,
@@ -34,9 +31,6 @@ function defaultMarketsAlertPreferences_(email) {
     reviewShareEnabled: MARKETS_ALERT_DEFAULTS.reviewShareEnabled,
     reviewWarningPct: MARKETS_ALERT_DEFAULTS.reviewWarningPct,
     reviewCriticalPct: MARKETS_ALERT_DEFAULTS.reviewCriticalPct,
-    weeklyDropEnabled: MARKETS_ALERT_DEFAULTS.weeklyDropEnabled,
-    weeklyWarningDrop: MARKETS_ALERT_DEFAULTS.weeklyWarningDrop,
-    weeklyCriticalDrop: MARKETS_ALERT_DEFAULTS.weeklyCriticalDrop,
     dailyDropEnabled: MARKETS_ALERT_DEFAULTS.dailyDropEnabled,
     dailyWarningDrop: MARKETS_ALERT_DEFAULTS.dailyWarningDrop,
     dailyCriticalDrop: MARKETS_ALERT_DEFAULTS.dailyCriticalDrop,
@@ -63,8 +57,6 @@ function normalizeMarketsAlertPreferences_(source, email) {
   const platforms = normalizeMarketsAlertScope_(input.platforms, ['Android', 'iOS', 'Huawei']);
   const reviewWarning = marketsAlertNumber_(input.reviewWarningPct, defaults.reviewWarningPct, 0, 100);
   const reviewCritical = marketsAlertNumber_(input.reviewCriticalPct, defaults.reviewCriticalPct, 0, 100);
-  const weeklyWarning = marketsAlertNumber_(input.weeklyWarningDrop, defaults.weeklyWarningDrop, 0.01, 5);
-  const weeklyCritical = marketsAlertNumber_(input.weeklyCriticalDrop, defaults.weeklyCriticalDrop, 0.01, 5);
   const dailyWarning = marketsAlertNumber_(input.dailyWarningDrop, defaults.dailyWarningDrop, 0.01, 5);
   const dailyCritical = marketsAlertNumber_(input.dailyCriticalDrop, defaults.dailyCriticalDrop, 0.01, 5);
   const mtdWarning = marketsAlertNumber_(input.mtdWarningDrop, defaults.mtdWarningDrop, 0.01, 5);
@@ -72,7 +64,6 @@ function normalizeMarketsAlertPreferences_(source, email) {
   const ytdWarning = marketsAlertNumber_(input.ytdWarningDrop, defaults.ytdWarningDrop, 0.01, 5);
   const ytdCritical = marketsAlertNumber_(input.ytdCriticalDrop, defaults.ytdCriticalDrop, 0.01, 5);
   if (reviewCritical <= reviewWarning) throw new Error('El umbral critico de resenas debe ser mayor que el de advertencia.');
-  validateMarketsAlertThresholds_('semanal', weeklyWarning, weeklyCritical);
   validateMarketsAlertThresholds_('diaria', dailyWarning, dailyCritical);
   validateMarketsAlertThresholds_('mensual', mtdWarning, mtdCritical);
   validateMarketsAlertThresholds_('anual', ytdWarning, ytdCritical);
@@ -86,9 +77,6 @@ function normalizeMarketsAlertPreferences_(source, email) {
     reviewShareEnabled: parseBoolean_(input.reviewShareEnabled, defaults.reviewShareEnabled),
     reviewWarningPct: reviewWarning,
     reviewCriticalPct: reviewCritical,
-    weeklyDropEnabled: parseBoolean_(input.weeklyDropEnabled, defaults.weeklyDropEnabled),
-    weeklyWarningDrop: weeklyWarning,
-    weeklyCriticalDrop: weeklyCritical,
     dailyDropEnabled: parseBoolean_(input.dailyDropEnabled, defaults.dailyDropEnabled),
     dailyWarningDrop: dailyWarning,
     dailyCriticalDrop: dailyCritical,
@@ -179,8 +167,6 @@ function alertPreferencesFromRow_(row, indexes) {
     countries: row[indexes.countries], platforms: row[indexes.platforms],
     reviewShareEnabled: row[indexes.review_share_enabled],
     reviewWarningPct: row[indexes.review_warning_pct], reviewCriticalPct: row[indexes.review_critical_pct],
-    weeklyDropEnabled: row[indexes.weekly_drop_enabled],
-    weeklyWarningDrop: row[indexes.weekly_warning_drop], weeklyCriticalDrop: row[indexes.weekly_critical_drop],
     dailyDropEnabled: row[indexes.daily_drop_enabled],
     dailyWarningDrop: row[indexes.daily_warning_drop], dailyCriticalDrop: row[indexes.daily_critical_drop],
     mtdDropEnabled: row[indexes.mtd_drop_enabled],
@@ -201,7 +187,7 @@ function marketsAlertPreferencesRow_(preferences, updatedBy) {
   return [
     preferences.email, preferences.active, preferences.countries.join(','), preferences.platforms.join(','),
     preferences.reviewShareEnabled, preferences.reviewWarningPct, preferences.reviewCriticalPct,
-    preferences.weeklyDropEnabled, preferences.weeklyWarningDrop, preferences.weeklyCriticalDrop,
+    false, 0.30, 0.50,
     preferences.crossoverEnabled, preferences.crossoverDirection, preferences.deliveryMode,
     now, updatedBy || preferences.email, preferences.configVersion, preferences.status,
     preferences.dailyDropEnabled, preferences.dailyWarningDrop, preferences.dailyCriticalDrop,
