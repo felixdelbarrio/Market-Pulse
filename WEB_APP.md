@@ -55,7 +55,7 @@ Despues de crear el grupo, añadalo en Gmail > Configuracion > Cuentas > Enviar 
 
 ## Comprobacion rapida
 
-Abra la URL `/exec` del despliegue y confirme que el pie muestra `Contrato 2026.07.22.10 · Web 2026.07.22.21`, las tarjetas aparecen sin espera adicional, los filtros actualizan las tendencias y `Alertas` muestra el email conectado. Active temporalmente el canal y pulse **Enviar prueba**; la pantalla devuelve un identificador `COM-*`, destinatario, grupo remitente, cuenta ejecutora, Gmail Message ID, versiones y estado de auditoria. La API confirma la aceptación de la solicitud, no la entrega final: si el mensaje no aparece, busque el identificador exacto en Recibidos, spam o cuarentena corporativa. Confirme tambien que el correo incluye, en cuerpo pequeno, la fecha de obtencion de los datos.
+Abra la URL `/exec` del despliegue y confirme que el pie muestra `Contrato 2026.07.22.11 · Web 2026.07.22.22`, las tarjetas aparecen sin espera adicional, los filtros actualizan las tendencias y `Alertas` muestra el email conectado. Active temporalmente el canal y pulse **Enviar prueba**; la pantalla devuelve un identificador `COM-*`, destinatario, grupo remitente, cuenta ejecutora, Gmail Message ID, versiones y estado de auditoria. La API confirma la aceptación de la solicitud, no la entrega final: si el mensaje no aparece, busque el identificador exacto en Recibidos, spam o cuarentena corporativa. Confirme tambien que el correo incluye, en cuerpo pequeno, la fecha de obtencion de los datos.
 
 ## Comportamiento esperado
 

@@ -31,7 +31,7 @@ El aviso tecnico del watchdog si se dirige a `MONITOR_ADMIN_EMAIL`, cuyo valor r
 
 1. Publicar los archivos de `src/`, incluido `57_MonitorHealth.gs` y el manifiesto.
 2. Ejecutar `setupProject()` desde el editor de Apps Script.
-3. Ejecutar `authorizeAndInstallMarketsAutomation()` desde el editor y aceptar todos los permisos solicitados. El resultado esperado contiene `verificationStatus: accepted`, proceso `07:05 Europe/Madrid` y vigilancia `09:15 Europe/Madrid`.
+3. Ejecutar `authorizeAndInstallMarketsAutomation()` desde el editor y aceptar todos los permisos solicitados, incluidos `userinfo.email`, `gmail.send` y `gmail.settings.basic`. El resultado esperado contiene `verificationStatus: accepted`, proceso `07:05 Europe/Madrid` y vigilancia `09:15 Europe/Madrid`.
 4. Ejecutar `validateMarketsAlertSender()` y comprobar `available: true`.
 5. Ejecutar `sendMarketsAlertTestEmail()` desde la aplicacion y verificar destinatario, `From`, Gmail Message ID y fecha de datos.
 6. Ejecutar `sendMarketsMonitorHealthTestEmail()` y comprobar que el aviso aparece en el Group/destino tecnico.

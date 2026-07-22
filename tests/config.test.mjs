@@ -4,6 +4,7 @@ import test from "node:test";
 import vm from "node:vm";
 
 const source = fs.readFileSync(new URL("../src/00_Config.gs", import.meta.url), "utf8");
+const manifest = JSON.parse(fs.readFileSync(new URL("../src/appsscript.json", import.meta.url), "utf8"));
 const context = { Object };
 vm.createContext(context);
 vm.runInContext(source, context);
@@ -51,4 +52,12 @@ test("automation defaults configure an independent daily health check", () => {
   assert.equal(controls.MONITOR_ADMIN_EMAIL, "voc-commercial.group@bbva.com");
   assert.equal(context.MARKETS_CONFIG.healthCheckHour, 9);
   assert.equal(context.MARKETS_CONFIG.healthCheckMinute, 15);
+});
+
+test("the explicit manifest authorizes identity and the narrow Gmail operations", () => {
+  const scopes = new Set(manifest.oauthScopes);
+  assert.equal(scopes.has("https://www.googleapis.com/auth/userinfo.email"), true);
+  assert.equal(scopes.has("https://www.googleapis.com/auth/gmail.send"), true);
+  assert.equal(scopes.has("https://www.googleapis.com/auth/gmail.settings.basic"), true);
+  assert.equal(scopes.has("https://mail.google.com/"), false);
 });
