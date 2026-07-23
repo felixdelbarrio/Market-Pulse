@@ -46,6 +46,7 @@
       const benchmarkRows=view==="benchmark"?buildBenchmarkRows(competitive,meta):[];
       const movements=view==="evolution"?buildMovements(displaySeries,period):[];
       const monthly=view==="evolution"?D.monthlyRatingMatrix(trends,snapshot,selection,period,6):null;
+      const newReviewImpact=view==="evolution"?D.monthlyNewReviewImpact(trends,snapshot,selection,period):null;
       const detail=buildDetail(bbva,benchmark,meta);
       const signals=buildSignals(observed,benchmark,coverage,meta);
       const builders=[];
@@ -59,13 +60,14 @@
       }else{
         builders.push((context,page)=>evolutionPage(context,{chart,movements,evolution,period,scopeLabel},page,"01"));
         builders.push((context,page)=>monthlyPulsePage(context,{monthly,scopeLabel},page,"02"));
+        builders.push((context,page)=>newReviewImpactPage(context,{model:newReviewImpact,scopeLabel},page,"03"));
       }
       const totalPages=1+builders.length;
       const context={meta,generatedAt,totalPages,view,viewLabel,scopeLabel,segment};
       const pages=[coverPage(context,{average,coverage,leaders,volume,evolution}),...builders.map((builder,index)=>builder(context,index+2))];
       target.innerHTML=pages.join("");
       target.setAttribute("aria-hidden","false");
-      return{pages:totalPages,rows:{geography:geography.length,benchmark:view==="benchmark"?benchmarkRows.length:benchmark.length,detail:detail.length,monthly:monthly?.rows?.length||0},period};
+      return{pages:totalPages,rows:{geography:geography.length,benchmark:view==="benchmark"?benchmarkRows.length:benchmark.length,detail:detail.length,monthly:monthly?.rows?.length||0,newReviewImpact:newReviewImpact?.rows?.length||0},period};
     }
 
     const chunk=(rows,size)=>Array.from({length:Math.ceil(rows.length/size)},(_,index)=>rows.slice(index*size,(index+1)*size));
@@ -178,6 +180,15 @@
       const rows=(model.rows||[]).map(row=>`<tr><th><strong>${esc(row.country)}</strong><small>${esc(row.countryCode)}</small></th>${row.cells.map((cell,index)=>`<td class="${index===row.cells.length-1?"latest":""}"><strong>${fmt(cell.rating,2)}</strong><em class="${tone(cell.delta)}">${signed(cell.delta)}</em>${cell.platforms.map(item=>`<small><b>${esc(item.platform)}</b> ${item.unavailable?"N/D":integer(item.value)}</small>`).join("")}</td>`).join("")}</tr>`).join("");
       const body=`<div class="report-title compact"><span>${esc(sectionNumber)} · Pulso mensual</span><h2>BBVA Empresas, cierre a cierre</h2><p>${esc(data.scopeLabel)} · hasta ${esc(monthLabel(model.periods?.at(-1)))}.</p></div><div class="report-table-wrap"><table class="report-table report-monthly-table"><thead><tr><th>Geografía</th>${header}</tr></thead><tbody>${rows}</tbody></table></div><aside class="report-note compact"><strong>Opiniones acumuladas</strong><span>Se muestran por plataforma y respetan el corte seleccionado. N/D identifica una ficha Android compartida que no admite desglose fiable por geografía.</span></aside>`;
       return pageShell(context,pageNumber,"Pulso mensual de BBVA Empresas",data.scopeLabel,body);
+    }
+
+    function newReviewImpactPage(context,data,pageNumber,sectionNumber){
+      const model=data.model||{},summary=model.summary||{},status=value=>!finite(value)?["Sin estimación","neutral"]:value>.005?["Impulsa el rating","positive"]:value<-.005?["Presiona el rating","negative"]:["Mantiene el nivel","neutral"],signal=status(summary.impact);
+      const reason=row=>row.reasons.includes("SHARED_LISTING")?"Ficha compartida sin desglose por mercado":row.reasons.includes("ROUNDING")?"Redondeo acumulado no fiable":row.reasons.includes("NO_NEW_REVIEWS")?"Sin nuevas opiniones":"Falta cierre comparable";
+      const rows=(model.rows||[]).map(row=>{const rowSignal=status(row.impact);return`<tr><th><strong>${esc(row.country)}</strong><small>${esc(row.platforms.length?row.platforms.join(" · "):"Alcance seleccionado")}</small></th><td><strong>${finite(row.rating)?fmt(row.rating,2):"N/D"}</strong><small>${finite(row.rating)?"rating estimado / 5":esc(reason(row))}</small></td><td><strong>${integer(row.newReviews)}</strong><small>opiniones nuevas</small></td><td><strong class="${rowSignal[1]}">${signed(row.impact)}</strong><small>vs. rating previo</small></td><td><span class="report-quality ${rowSignal[1]}">${esc(rowSignal[0])}</span></td></tr>`}).join("");
+      const coverage=summary.totalApps?summary.availableApps/summary.totalApps:null;
+      const body=`<div class="report-title compact"><span>${esc(sectionNumber)} · Voz nueva del mes</span><h2>Qué nota dejan las nuevas opiniones</h2><p>${esc(data.scopeLabel)} · ${esc(monthLabel(model.previousPeriod))} a ${esc(monthLabel(model.period))}.</p></div><div class="report-new-review-summary"><article><span>Rating de las nuevas opiniones</span><strong>${finite(summary.rating)?fmt(summary.rating,2):"N/D"}</strong><small class="${signal[1]}">${esc(signal[0])} · ${signed(summary.impact)}</small></article><article><span>Opiniones nuevas</span><strong>${integer(summary.newReviews)}</strong><small>Volumen utilizable</small></article><article><span>Mercados al alza</span><strong>${integer(summary.improving)}</strong><small>${integer(summary.pressuring)} presionan a la baja</small></article><article><span>Cobertura</span><strong>${pct(coverage)}</strong><small>${integer(summary.availableApps)} de ${integer(summary.totalApps)} fichas</small></article></div><div class="report-table-wrap"><table class="report-table report-new-review-table"><thead><tr><th>Mercado</th><th>Nota del mes</th><th>Volumen</th><th>Efecto</th><th>Lectura</th></tr></thead><tbody>${rows}</tbody></table></div><aside class="report-note compact"><strong>Lectura responsable</strong><span>Estimación basada en la diferencia de rating y volumen entre dos cierres acumulados consecutivos. N/D evita atribuir fichas compartidas o resultados inestables por redondeo.</span></aside>`;
+      return pageShell(context,pageNumber,"Voz nueva del mes",data.scopeLabel,body);
     }
 
     function detailPage(context,data,pageNumber,rangeLabel,sectionNumber){

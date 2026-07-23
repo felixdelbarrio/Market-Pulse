@@ -319,11 +319,12 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   const overviewMarkup = index.slice(index.indexOf('id="view-overview"'), index.indexOf('id="view-benchmark"'));
   const evolutionMarkup = index.slice(index.indexOf('id="view-evolution"'), index.indexOf('id="view-alerts"'));
   assert.doesNotMatch(overviewMarkup, /monthly-matrix/);
-  assert.match(evolutionMarkup, /id="evolution-chart"[\s\S]*id="monthly-matrix"/);
+  assert.match(evolutionMarkup, /id="evolution-chart"[\s\S]*id="monthly-matrix"[\s\S]*id="new-review-impact"/);
   const charts = fs.readFileSync(new URL("../src/Charts.html", import.meta.url), "utf8");
   assert.match(charts, /class="rating-bar-metric"/);
   assert.match(charts, /<\/span><b aria-label="Rating/);
   assert.match(charts, /function monthlyMatrix/);
+  assert.match(charts, /function newReviewImpact/);
   assert.doesNotMatch(charts, /platformBadge/);
   assert.match(app, /const mobileViewport=window\.matchMedia\("\(max-width:780px\)"\)/);
   assert.match(app, /monthlyRatingMatrix\(state\.trends,state\.snapshot,selection\(\),period,mobileViewport\.matches\?3:6\)/);
@@ -407,9 +408,11 @@ test("each downloadable report reproduces its current view and period", () => {
   assert.match(benchmark.html, /Banco Rival/);
   const evolution = execute({ view: "evolution", periodYear: "2026", periodMonth: "06" });
   assert.equal(evolution.result.period, "2026-06");
-  assert.equal(evolution.result.pages, 3);
+  assert.equal(evolution.result.pages, 4);
   assert.equal(evolution.result.rows.monthly, 1);
+  assert.equal(evolution.result.rows.newReviewImpact, 1);
   assert.match(evolution.html, /Pulso mensual de BBVA Empresas/);
+  assert.match(evolution.html, /Qué nota dejan las nuevas opiniones/);
   assert.match(evolution.html, /4,50/);
   assert.doesNotMatch(evolution.html, /4,99/);
   assert.throws(() => execute({ view: "alerts" }), /no admite descarga/i);
@@ -477,6 +480,39 @@ test("monthly summary matrix respects filters and marks shared Android volume as
   const june = browser.MarketsDomain.monthlyRatingMatrix(trends, snapshot, { country: "ALL", platform: "ALL" }, "2026-06", 8);
   assert.deepEqual(Array.from(june.periods), ["2026-06"]);
   assert.equal(june.rows[0].cells[0].rating, 4.6);
+});
+
+test("new-review impact reproduces the GEMA month-rating calculation and protects unreliable scopes", () => {
+  const html = fs.readFileSync(new URL("../src/Domain.html", import.meta.url), "utf8");
+  const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+  const browser = {};
+  browser.window = browser;
+  vm.createContext(browser);
+  vm.runInContext(script, browser);
+  const snapshot = [
+    { appKey: "IOS|ES|BBVA", isBbva: true, volumeScope: "MARKET" },
+    { appKey: "ANDROID|AR|BBVA", isBbva: true, volumeScope: "SHARED_LISTING" }
+  ];
+  const trends = [
+    { appKey: "IOS|ES|BBVA", platform: "iOS", countryCode: "ES", country: "España", isBbva: true, month: "2026-05", ratingEom: 3.9, ratingCountEom: 1519 },
+    { appKey: "IOS|ES|BBVA", platform: "iOS", countryCode: "ES", country: "España", isBbva: true, month: "2026-06", ratingEom: 3.97, ratingCountEom: 1670 },
+    { appKey: "ANDROID|AR|BBVA", platform: "Android", countryCode: "AR", country: "Argentina", isBbva: true, month: "2026-05", ratingEom: 2.6, ratingCountEom: 7000 },
+    { appKey: "ANDROID|AR|BBVA", platform: "Android", countryCode: "AR", country: "Argentina", isBbva: true, month: "2026-06", ratingEom: 2.61, ratingCountEom: 7100 }
+  ];
+  const model = browser.MarketsDomain.monthlyNewReviewImpact(trends, snapshot, { country: "ALL", platform: "ALL" }, "2026-06");
+  const spain = model.rows.find(row => row.countryCode === "ES");
+  const argentina = model.rows.find(row => row.countryCode === "AR");
+  assert.equal(spain.newReviews, 151);
+  assert.ok(Math.abs(spain.rating - 4.674172185430463) < 1e-10);
+  assert.ok(Math.abs(spain.impact - (4.674172185430463 - 3.9)) < 1e-10);
+  assert.equal(argentina.rating, null);
+  assert.deepEqual(Array.from(argentina.reasons), ["SHARED_LISTING"]);
+  assert.equal(model.summary.newReviews, 151);
+  assert.equal(model.summary.availableApps, 1);
+  assert.equal(model.summary.totalApps, 2);
+  const ios = browser.MarketsDomain.monthlyNewReviewImpact(trends, snapshot, { country: "ES", platform: "iOS" }, "2026-06");
+  assert.equal(ios.rows.length, 1);
+  assert.ok(Math.abs(ios.summary.rating - 4.674172185430463) < 1e-10);
 });
 
 test("all-markets evolution is BBVA-only and individual markets show the whole market", () => {
