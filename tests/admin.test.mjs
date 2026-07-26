@@ -81,6 +81,14 @@ test("admin client exposes subscriber maintenance and manual rating recovery", (
   assert.match(app, /function handleAdminSubscriberFilterScope/);
   assert.match(app, /function clearAdminSubscriberFilters/);
   assert.match(app, /selected\.some\(value=>\(values\|\|\[\]\)\.includes\(value\)\)/);
+  assert.match(app, /const bindOptional=\(id,event,handler\)=>\$\(id\)\?\.addEventListener/);
+  [
+    "admin-subscriber-search", "admin-subscriber-status", "admin-subscriber-filter-clear",
+    "admin-filter-country-pills", "admin-filter-platform-pills"
+  ].forEach(id => {
+    assert.match(app, new RegExp(`bindOptional\\(${JSON.stringify(id)}`));
+    assert.doesNotMatch(app, new RegExp(`\\$\\(${JSON.stringify(id)}\\)\\.addEventListener`));
+  });
   assert.match(index, /id="admin-panel-usage"/);
   assert.match(app, /function renderAdminUsage/);
   assert.match(app, /recordMarketsUsageEvents\(batch\)/);
