@@ -515,6 +515,55 @@ test("new-review impact reproduces the GEMA month-rating calculation and protect
   assert.ok(Math.abs(ios.summary.rating - 4.674172185430463) < 1e-10);
 });
 
+test("new-review impact rejects the real rounded Mexico and Turkey closes but accepts preserved source precision", () => {
+  const html = fs.readFileSync(new URL("../src/Domain.html", import.meta.url), "utf8");
+  const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+  const browser = {};
+  browser.window = browser;
+  vm.createContext(browser);
+  vm.runInContext(script, browser);
+  const snapshot = [
+    { appKey: "ANDROID|MX|BBVA", isBbva: true, volumeScope: "MARKET" },
+    { appKey: "IOS|MX|BBVA", isBbva: true, volumeScope: "MARKET" },
+    { appKey: "ANDROID|TR|BBVA", isBbva: true, volumeScope: "MARKET" },
+    { appKey: "IOS|TR|BBVA", isBbva: true, volumeScope: "MARKET" }
+  ];
+  const trends = [
+    { appKey: "ANDROID|MX|BBVA", platform: "Android", countryCode: "MX", country: "México", isBbva: true, month: "2026-06", ratingEom: 4.24, ratingCountEom: 55676 },
+    { appKey: "ANDROID|MX|BBVA", platform: "Android", countryCode: "MX", country: "México", isBbva: true, month: "2026-07", ratingEom: 4.2, ratingCountEom: 56090 },
+    { appKey: "IOS|MX|BBVA", platform: "iOS", countryCode: "MX", country: "México", isBbva: true, month: "2026-06", ratingEom: 4.83, ratingCountEom: 76501 },
+    { appKey: "IOS|MX|BBVA", platform: "iOS", countryCode: "MX", country: "México", isBbva: true, month: "2026-07", ratingEom: 4.82, ratingCountEom: 76819 },
+    { appKey: "ANDROID|TR|BBVA", platform: "Android", countryCode: "TR", country: "Turquía", isBbva: true, month: "2026-06", ratingEom: 4.61, ratingCountEom: 2231649 },
+    { appKey: "ANDROID|TR|BBVA", platform: "Android", countryCode: "TR", country: "Turquía", isBbva: true, month: "2026-07", ratingEom: 4.6, ratingCountEom: 2252920 },
+    { appKey: "IOS|TR|BBVA", platform: "iOS", countryCode: "TR", country: "Turquía", isBbva: true, month: "2026-06", ratingEom: 4.68, ratingCountEom: 2091394 },
+    { appKey: "IOS|TR|BBVA", platform: "iOS", countryCode: "TR", country: "Turquía", isBbva: true, month: "2026-07", ratingEom: 4.68, ratingCountEom: 2124232 }
+  ];
+  const model = browser.MarketsDomain.monthlyNewReviewImpact(trends, snapshot, { country: "ALL", platform: "ALL" }, "2026-07");
+  for (const countryCode of ["MX", "TR"]) {
+    const row = model.rows.find(item => item.countryCode === countryCode);
+    assert.equal(row.rating, null);
+    assert.deepEqual(Array.from(row.reasons), ["ROUNDING"]);
+    assert.equal(row.usableNewReviews, 0);
+  }
+  assert.equal(model.rows.find(item => item.countryCode === "MX").newReviews, 732);
+  assert.equal(model.rows.find(item => item.countryCode === "TR").newReviews, 54109);
+  assert.equal(browser.MarketsDomain.ratingRoundingHalfStep(4.2, "Android"), 0.05);
+  assert.equal(browser.MarketsDomain.ratingRoundingHalfStep(4.82, "iOS"), 0.005);
+
+  const previousCount = 2091394;
+  const currentCount = 2124232;
+  const previousRating = 4.680123;
+  const expectedNewRating = 4.5;
+  const currentRating = Math.round(((previousCount * previousRating +
+    (currentCount - previousCount) * expectedNewRating) / currentCount) * 1000000) / 1000000;
+  const precise = browser.MarketsDomain.monthlyNewReviewImpact([
+    { appKey: "IOS|TR|BBVA", platform: "iOS", countryCode: "TR", country: "Turquía", isBbva: true, month: "2026-06", ratingEom: previousRating, ratingCountEom: previousCount },
+    { appKey: "IOS|TR|BBVA", platform: "iOS", countryCode: "TR", country: "Turquía", isBbva: true, month: "2026-07", ratingEom: currentRating, ratingCountEom: currentCount }
+  ], [{ appKey: "IOS|TR|BBVA", isBbva: true, volumeScope: "MARKET" }], { country: "TR", platform: "iOS" }, "2026-07");
+  assert.ok(Math.abs(precise.summary.rating - expectedNewRating) < 0.001);
+  assert.equal(precise.summary.availableApps, 1);
+});
+
 test("all-markets evolution is BBVA-only and individual markets show the whole market", () => {
   const html = fs.readFileSync(new URL("../src/Domain.html", import.meta.url), "utf8");
   const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];

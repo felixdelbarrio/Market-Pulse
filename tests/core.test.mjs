@@ -9,7 +9,7 @@ vm.createContext(context);
 vm.runInContext(source, context);
 
 test("normalizeRating_ accepts only the public 1-5 scale", () => {
-  assert.equal(context.normalizeRating_(4.876), 4.88);
+  assert.equal(context.normalizeRating_(4.87654321), 4.876543);
   assert.equal(context.normalizeRating_("4,7"), 4.7);
   assert.equal(context.normalizeRating_(0), null);
   assert.equal(context.normalizeRating_(5.1), null);
