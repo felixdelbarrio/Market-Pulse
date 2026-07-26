@@ -32,6 +32,7 @@ test("geographic seeds match the catalog contract and have unique keys", () => {
   assert.equal(context.MARKETS_CONFIG.sheets.reviews, undefined);
   assert.equal(context.MARKETS_CONFIG.sheets.scorecards, undefined);
   assert.equal(context.MARKETS_CONFIG.sheets.alertPreferences, "ALERT_SUBSCRIPTIONS");
+  assert.equal(context.MARKETS_CONFIG.sheets.usage, "USAGE_LOG");
   assert.match(context.MARKETS_CONFIG.webAppUrl, /^https:\/\/script\.google\.com\/a\/macros\/bbva\.com\/s\/[A-Za-z0-9_-]+\/exec$/);
   assert.deepEqual(Array.from(context.MARKETS_CONFIG.countryCodes), ["AR", "CO", "ES", "MX", "PE", "TR", "UY", "VE"]);
 });
@@ -45,6 +46,7 @@ test("persistent and compact web contracts expose only required fields", () => {
   assert.deepEqual(Array.from(headers.runs).slice(-4), ["ALERT_SUBSCRIBERS", "EMAILS_SENT", "ALERT_DELIVERY_STATUS", "ALERT_DELIVERY_DETAIL"]);
   assert.equal(headers.alertPreferences.length, 31);
   assert.deepEqual(Array.from(headers.alertPreferences).slice(-4), ["REGISTERED_AT", "LAST_SEEN_AT", "LAST_TEST_AT", "LAST_DELIVERY_AT"]);
+  assert.deepEqual(Array.from(headers.usage), ["TIMESTAMP", "USER_EMAIL", "SESSION_ID", "EVENT_TYPE", "VIEW", "ACTION", "DETAIL", "WEB_VERSION", "DEVICE"]);
 });
 
 test("automation defaults configure an independent daily health check", () => {

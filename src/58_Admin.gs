@@ -57,6 +57,8 @@ function getMarketsAdminDashboard() {
   const subscribers = readAllMarketsAlertPreferences_(ss);
   const issues = readRecentMarketsAdminFetchIssues_(ss, 40);
   const alerts = readRecentMarketsAdminAlertEvents_(ss, 30);
+  const usage = readMarketsUsageAnalytics_(ss,
+    trimString_(access.control.TIME_ZONE) || MARKETS_CONFIG.timeZone);
   return {
     generatedAt: new Date().toISOString(),
     administrator: access.email,
@@ -81,7 +83,8 @@ function getMarketsAdminDashboard() {
       pausedSubscribers: subscribers.filter(function (item) { return !item.active; }).length,
       recentRuns: runs.length,
       recentIssues: issues.length,
-      recentAlertEvents: alerts.length
+      recentAlertEvents: alerts.length,
+      usersThisMonth: usage.kpis.usersMonth
     },
     recentRuns: runs,
     fetchIssues: issues,
@@ -94,7 +97,8 @@ function getMarketsAdminDashboard() {
       client.registeredAt = adminDateTime_(item.registeredAt);
       return client;
     }),
-    recentAlerts: alerts
+    recentAlerts: alerts,
+    usage: usage
   };
 }
 

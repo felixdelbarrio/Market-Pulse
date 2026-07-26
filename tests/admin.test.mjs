@@ -11,7 +11,7 @@ const context = {
   MARKETS_CONFIG: {
     codeVersion: "test", timeZone: "Europe/Madrid", runHour: 7, runMinute: 5,
     healthCheckHour: 9, healthCheckMinute: 15,
-    sheets: { control: "CONTROL", runs: "RUN_LOG", fetchLog: "FETCH_LOG", alerts: "ALERT_LOG", alertPreferences: "ALERT_SUBSCRIPTIONS" },
+    sheets: { control: "CONTROL", runs: "RUN_LOG", fetchLog: "FETCH_LOG", alerts: "ALERT_LOG", alertPreferences: "ALERT_SUBSCRIPTIONS", usage: "USAGE_LOG" },
     headers: { control: ["PARAMETER", "VALUE", "DESCRIPTION"] }
   },
   MARKETS_WEB: { version: "test" }
@@ -44,6 +44,7 @@ test("admin endpoint always performs server-side authorization", () => {
   assert.match(admin, /runDailyRatingMonitor\(\)/);
   assert.match(admin, /requireCurrentSheetContract_/);
   assert.match(admin, /webAppUrl:\s*marketsWebAppUrl_\(\)/);
+  assert.match(admin, /readMarketsUsageAnalytics_/);
 });
 
 test("admin client exposes subscriber maintenance and manual rating recovery", () => {
@@ -55,4 +56,7 @@ test("admin client exposes subscriber maintenance and manual rating recovery", (
   assert.match(index, /id="admin-add-subscriber"/);
   assert.match(index, /id="admin-recovery"/);
   assert.match(index, /id="admin-subscriber-dialog"/);
+  assert.match(index, /id="admin-panel-usage"/);
+  assert.match(app, /function renderAdminUsage/);
+  assert.match(app, /recordMarketsUsageEvents\(batch\)/);
 });

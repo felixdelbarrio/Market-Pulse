@@ -12,7 +12,8 @@ function workbookDefinitions_() {
     [MARKETS_CONFIG.sheets.fetchLog, MARKETS_CONFIG.headers.fetchLog],
     [MARKETS_CONFIG.sheets.alerts, MARKETS_CONFIG.headers.alerts],
     [MARKETS_CONFIG.sheets.alertPreferences, MARKETS_CONFIG.headers.alertPreferences],
-    [MARKETS_CONFIG.sheets.runs, MARKETS_CONFIG.headers.runs]
+    [MARKETS_CONFIG.sheets.runs, MARKETS_CONFIG.headers.runs],
+    [MARKETS_CONFIG.sheets.usage, MARKETS_CONFIG.headers.usage]
   ];
 }
 
@@ -163,6 +164,8 @@ function applyTableStyle_(sheet, width) {
     sheet.getRange('Y:Z').setNumberFormat('0.00');
     sheet.getRange('AB:AE').setNumberFormat('yyyy-mm-dd hh:mm:ss');
   } else if (sheet.getName() === MARKETS_CONFIG.sheets.runs) {
+    sheet.getRange('A:A').setNumberFormat('yyyy-mm-dd hh:mm:ss');
+  } else if (sheet.getName() === MARKETS_CONFIG.sheets.usage) {
     sheet.getRange('A:A').setNumberFormat('yyyy-mm-dd hh:mm:ss');
   }
 }

@@ -303,7 +303,8 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(index, /id="admin-nav" class="nav-button hidden"/);
   assert.match(index, /id="view-admin"/);
   assert.match(index, /id="admin-tabs"[^>]*role="tablist"/);
-  assert.equal((index.match(/data-admin-tab=/g) || []).length, 5);
+  assert.equal((index.match(/data-admin-tab=/g) || []).length, 6);
+  assert.match(index, /data-admin-tab="usage"/);
   assert.match(app, /function activateAdminTab/);
   assert.match(app, /function handleAdminTabKeydown/);
   assert.match(app, /if\(view==="admin"&&!state\.userContext\?\.isAdmin\)return/);

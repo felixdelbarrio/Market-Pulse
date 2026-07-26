@@ -1,6 +1,6 @@
 /** Configuracion unica del monitor real de ratings Android, iOS y Huawei. */
 var MARKETS_CONFIG = Object.freeze({
-  codeVersion: '2026.07.26.21',
+  codeVersion: '2026.07.26.22',
   spreadsheetId: '1IkJgvM2imxm3r1x092q5dqpThrlnDoZ-5QvH8n2h2oQ',
   webAppUrl: 'https://script.google.com/a/macros/bbva.com/s/AKfycbzcrsLIXgG5vUM2jRilCO7-i5ZK6A_X0Yv-kPXqkBLFX5HOi5Soo6KF037RAgs9WxRk4g/exec',
   timeZone: 'Europe/Madrid', runHour: 7, runMinute: 5,
@@ -10,7 +10,8 @@ var MARKETS_CONFIG = Object.freeze({
   sheets: Object.freeze({
     control: 'CONTROL', catalog: 'APP_CATALOG', ratings: 'RATINGS',
     competition: 'DASHBOARD_COMPETITION', trends: 'DASHBOARD_TRENDS', fetchLog: 'FETCH_LOG',
-    alerts: 'ALERT_LOG', alertPreferences: 'ALERT_SUBSCRIPTIONS', runs: 'RUN_LOG'
+    alerts: 'ALERT_LOG', alertPreferences: 'ALERT_SUBSCRIPTIONS', runs: 'RUN_LOG',
+    usage: 'USAGE_LOG'
   }),
   headers: Object.freeze({
     control: Object.freeze(['PARAMETER', 'VALUE', 'DESCRIPTION']),
@@ -62,10 +63,14 @@ var MARKETS_CONFIG = Object.freeze({
       'ROWS_UPSERTED', 'ALERTS_CREATED', 'DURATION_MS', 'DETAIL', 'SCORECARD_ROWS', 'TREND_ROWS',
       'COMPETITION_ROWS', 'FRESH_APPS', 'WEIGHT_CONFIG_STATUS', 'ALERT_SUBSCRIBERS', 'EMAILS_SENT',
       'ALERT_DELIVERY_STATUS', 'ALERT_DELIVERY_DETAIL'
+    ]),
+    usage: Object.freeze([
+      'TIMESTAMP', 'USER_EMAIL', 'SESSION_ID', 'EVENT_TYPE', 'VIEW', 'ACTION', 'DETAIL',
+      'WEB_VERSION', 'DEVICE'
     ])
   }),
   controlDefaults: Object.freeze([
-    ['CODE_VERSION', '2026.07.26.21', 'Version del contrato de datos y del Apps Script'],
+    ['CODE_VERSION', '2026.07.26.22', 'Version del contrato de datos y del Apps Script'],
     ['TIME_ZONE', 'Europe/Madrid', 'Zona horaria de ejecucion y fechas'],
     ['SEND_ALERT_EMAILS', false, 'Enviar emails; mantener FALSE durante la validacion inicial'],
     ['ALERT_SENDER_ALIAS', 'voc-commercial.group@bbva.com', 'Remitente verificado en Gmail > Enviar como para las alertas VoC'],

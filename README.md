@@ -4,7 +4,7 @@ Monitor de ratings publicos de Google Play, Apple App Store y Huawei AppGallery,
 
 ## Arquitectura activa
 
-El libro maestro contiene nueve pestañas:
+El libro maestro contiene diez pestañas:
 
 - `CONTROL`: parametros operativos.
 - `APP_CATALOG`: apps, geografias, identificadores de tienda, pesos y evidencias.
@@ -15,6 +15,7 @@ El libro maestro contiene nueve pestañas:
 - `ALERT_LOG`: alertas deduplicadas.
 - `ALERT_SUBSCRIPTIONS`: configuracion privada, personalizada y auditable de cada usuario.
 - `RUN_LOG`: trazabilidad de ejecuciones.
+- `USAGE_LOG`: telemetría funcional mínima de sesiones, vistas, filtros, acciones e incidencias.
 
 `DASHBOARD_COMPETITION` alimenta las tarjetas y benchmarks. `DASHBOARD_TRENDS` alimenta las gráficas y el Pulso mensual de `Evolución`. Los consolidados se calculan durante la construccion de la cache desde el snapshot y los pesos de `APP_CATALOG`; no existe una tabla wide intermedia.
 
@@ -93,8 +94,10 @@ La regla propuesta de porcentaje de reseñas de 1 y 2 estrellas conserva sus val
 
 - Autoservicio: las funciones web usan la sesion corporativa y solo permiten operar sobre la fila propia.
 - Ejecucion programada: `runDailyRatingMonitor()` y `runNow()` se ejecutan como propietario, leen **todas** las filas activas de `ALERT_SUBSCRIPTIONS` y envian aunque ningun usuario tenga la aplicacion abierta.
-- Administrador: solo las cuentas incluidas en `CONTROL.ADMIN_EMAILS` ven la pestaña `Administracion`. Cada endpoint vuelve a autorizar en servidor. Desde `Suscripciones` se monitoriza toda la base de newsletter, se dan de alta cuentas `@bbva.com`, se pausan o reactivan y se modifican su ámbito y reglas de alerta. `Recuperar ratings ahora` lanza bajo demanda el proceso completo y deja su resultado en `RUN_LOG`, igual que una carga programada. Ocultar la pestaña no se usa como control de seguridad.
+- Administrador: solo las cuentas incluidas en `CONTROL.ADMIN_EMAILS` ven la pestaña `Administracion`. Cada endpoint vuelve a autorizar en servidor. `Adopción` muestra usuarios únicos y sesiones del día, mes y año, comparación semanal sobre el mismo tramo de días, tendencia de 14 días, secciones y acciones más utilizadas, dispositivos, cuentas con mayor y menor adopción e incidencias de interfaz. Desde `Suscripciones` se monitoriza toda la base de newsletter, se dan de alta cuentas `@bbva.com`, se pausan o reactivan y se modifican su ámbito y reglas de alerta. `Recuperar ratings ahora` lanza bajo demanda el proceso completo y deja su resultado en `RUN_LOG`, igual que una carga programada. Ocultar la pestaña no se usa como control de seguridad.
 - Los usuarios del Web App no reciben acceso directo al Sheet ni pueden consultar la configuracion de otra cuenta.
+
+La telemetría empieza a contar después de desplegar esta versión; no reconstruye accesos históricos. El servidor obtiene la identidad de la sesión corporativa y solo persiste metadatos funcionales allowlisted, versión y tipo de dispositivo: no guarda valores de negocio, formularios ni contenido libre salvo el mensaje técnico acotado de una incidencia. La analítica anual lee como máximo los 200.000 eventos más recientes y lo indica expresamente si la lectura queda truncada.
 
 `SEND_ALERT_EMAILS = TRUE` habilita el canal, pero `runNow()` solo envia si `ALERTS_CREATED > 0`. El resultado manual incluye `alerts`, `alertSubscribers` y `emailsSent`; use **Enviar prueba** para distinguir un problema de entrega de la ausencia legitima de eventos.
 
@@ -118,6 +121,6 @@ Cada correo de alerta muestra discretamente la fecha efectiva de los datos e inc
 npm test
 ```
 
-La suite cubre adaptadores, normalizacion, ranking, variacion y volumen a 30 dias, materializaciones, consolidados, cache persistente, URLs oficiales, reglas de alerta, privacidad de preferencias, email BBVA y compilacion del HTML.
+La suite cubre adaptadores, normalizacion, ranking, variacion y volumen a 30 dias, materializaciones, consolidados, cache persistente, URLs oficiales, reglas de alerta, privacidad de preferencias, telemetría de adopción, email BBVA y compilacion del HTML.
 
 Consulte [WEB_APP.md](WEB_APP.md) para detalles del despliegue y comportamiento de cache.
