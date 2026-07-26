@@ -6,10 +6,10 @@ var MARKETS_ALERT_DEFAULTS = Object.freeze({
   reviewShareEnabled: false,
   reviewWarningPct: 15,
   reviewCriticalPct: 30,
-  dailyDropEnabled: false,
-  dailyWarningDrop: 0.30,
-  dailyCriticalDrop: 0.50,
-  mtdDropEnabled: false,
+  dailyDropEnabled: true,
+  dailyWarningDrop: 0.10,
+  dailyCriticalDrop: 0.15,
+  mtdDropEnabled: true,
   mtdWarningDrop: 0.30,
   mtdCriticalDrop: 0.50,
   ytdDropEnabled: true,
@@ -19,7 +19,7 @@ var MARKETS_ALERT_DEFAULTS = Object.freeze({
   crossoverEnabled: true,
   crossoverDirection: 'BOTH',
   deliveryMode: 'DAILY_DIGEST',
-  configVersion: '2'
+  configVersion: '3'
 });
 
 function defaultMarketsAlertPreferences_(email) {

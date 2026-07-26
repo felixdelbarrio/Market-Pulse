@@ -343,7 +343,7 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(index, /id="mtd-enabled"/);
   assert.match(index, /id="ytd-enabled"/);
   assert.match(index, /id="repeat-enabled"/);
-  assert.match(index, /Recomendada por defecto/);
+  assert.match(index, /Activa por defecto/);
   assert.match(index, /Toda la base activa/);
   assert.match(app, /draft\[period\+"DropEnabled"\]/);
   assert.match(index, /Enviar prueba/);

@@ -80,8 +80,8 @@ La pestaña `Alertas` obtiene la identidad con `Session.getActiveUser()` y no ac
 
 - Caida diaria: ultimo rating frente a la observacion anterior.
 - Caida desde inicio de mes: ultimo rating frente a la primera observacion del mes.
-- Caida desde inicio de año: ultimo rating frente a la primera observacion del año; es la unica ventana activa por defecto.
-- Las tres ventanas son independientes y combinables, con limites personales `0,30/0,50` por defecto.
+- Caida desde inicio de año: ultimo rating frente a la primera observacion del año.
+- Las tres ventanas están activas por defecto y son independientes: diaria `0,10/0,15`, desde inicio de mes `0,30/0,50` y desde inicio de año `0,30/0,50`.
 - Los avisos MTD/YTD no se repiten durante el mismo periodo y severidad. Una escalada amarilla a roja si avisa; el usuario puede habilitar recordatorios diarios mientras persista la caida.
 - Cruce competitivo: avisa cuando un competidor supera a BBVA Empresas o BBVA recupera la posicion.
 - Ambito multiseleccion por mercado y plataforma (`Todos`, uno o varios), pausa global y restauracion de valores recomendados.

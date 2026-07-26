@@ -43,8 +43,12 @@ test("alert defaults and personalized thresholds are normalized", () => {
   assert.equal(defaults.email, "felix.delbarrio@bbva.com");
   assert.equal(defaults.reviewWarningPct, 15);
   assert.equal(defaults.reviewCriticalPct, 30);
-  assert.equal(defaults.dailyDropEnabled, false);
-  assert.equal(defaults.mtdDropEnabled, false);
+  assert.equal(defaults.dailyDropEnabled, true);
+  assert.equal(defaults.dailyWarningDrop, 0.1);
+  assert.equal(defaults.dailyCriticalDrop, 0.15);
+  assert.equal(defaults.mtdDropEnabled, true);
+  assert.equal(defaults.mtdWarningDrop, 0.3);
+  assert.equal(defaults.mtdCriticalDrop, 0.5);
   assert.equal(defaults.ytdDropEnabled, true);
   assert.equal(defaults.repeatWhileBreached, false);
   assert.equal(defaults.ytdWarningDrop, 0.3);
@@ -150,18 +154,18 @@ test("daily, month-to-date and year-to-date drops are independent", () => {
   }), {});
   assert.deepEqual(plain(events.map(event => event.type)), ["RATING_DROP_DAILY", "RATING_DROP_MTD", "RATING_DROP_YTD"]);
   assert.deepEqual(plain(events.map(event => event.metricValue)), [0.4, 0.5, 0.7]);
-  assert.deepEqual(plain(events.map(event => event.severity)), ["WARNING", "CRITICAL", "CRITICAL"]);
+  assert.deepEqual(plain(events.map(event => event.severity)), ["CRITICAL", "CRITICAL", "CRITICAL"]);
 });
 
-test("year-to-date is the only default drop rule and does not repeat unless requested", () => {
+test("default drop windows do not repeat unless requested", () => {
   const rows = [
     rating(2, 4.8, { observedDate: new Date(2026, 0, 2, 12) }),
     rating(14, 4.1), rating(15, 4.1)
   ];
   const first = context.buildRatingDropAlerts_(rows, new Date(2026, 6, 14, 12), preferences(), {});
-  assert.equal(first.length, 1);
-  assert.equal(first[0].type, "RATING_DROP_YTD");
-  const existing = { [first[0].eventKey]: true };
+  assert.equal(first.length, 2);
+  assert.deepEqual(plain(first.map(event => event.type)), ["RATING_DROP_DAILY", "RATING_DROP_YTD"]);
+  const existing = Object.fromEntries(first.map(event => [event.eventKey, true]));
   const suppressed = context.buildRatingDropAlerts_(rows, new Date(2026, 6, 15, 12), preferences(), existing);
   assert.equal(suppressed.length, 0);
   const reminder = context.buildRatingDropAlerts_(rows, new Date(2026, 6, 15, 12), preferences({ repeatWhileBreached: true }), existing);
