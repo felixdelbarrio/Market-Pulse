@@ -47,6 +47,27 @@ test("bootstrap carries the initial chart without a second RPC", () => {
   assert.equal(bootstrap.trends[0].isBbva, true);
 });
 
+test("web cache identity is stable across visual releases", () => {
+  assert.equal(context.marketsBootstrapCacheKey_(), "markets-web:bootstrap:2026.07.26.38");
+  assert.doesNotMatch(context.marketsBootstrapCacheKey_(), /2026\.07\.26\.39/);
+  assert.match(context.marketsTrendCacheKey_({ segment: "BANK" }), /2026\.07\.26\.38/);
+});
+
+test("persistent cache failures never block serving calculated data", () => {
+  context.PropertiesService = {
+    getScriptProperties() {
+      return { getProperty() { return null; }, setProperties() { throw new Error("quota"); } };
+    }
+  };
+  context.Utilities.getUuid = () => "12345678-1234-1234-1234-123456789abc";
+  context.Utilities.newBlob = value => ({ getBytes() { return Buffer.from(String(value)); } });
+  context.Utilities.gzip = blob => blob;
+  context.Utilities.base64Encode = bytes => Buffer.from(bytes).toString("base64");
+  const result = context.tryWriteMarketsPersistentCache_("bootstrap", { ready: true }, "run-1");
+  assert.equal(result.ok, false);
+  assert.match(result.error, /quota/);
+});
+
 test("warm trend cache avoids opening the spreadsheet", () => {
   let spreadsheetOpens = 0;
   context.openMarketsSpreadsheet_ = () => { spreadsheetOpens += 1; throw new Error("cache miss"); };
@@ -61,8 +82,10 @@ test("warm trend cache avoids opening the spreadsheet", () => {
 
 test("persistent shared cache survives L1 expiry and swaps generations", () => {
   const values = new Map();
+  let bulkReads = 0;
   const properties = {
     getProperty(key) { return values.get(key) ?? null; },
+    getProperties() { bulkReads += 1; return Object.fromEntries(values); },
     setProperty(key, value) { values.set(key, String(value)); return this; },
     setProperties(entries) { Object.entries(entries).forEach(([key, value]) => values.set(key, String(value))); return this; },
     deleteProperty(key) { values.delete(key); return this; }
@@ -92,6 +115,7 @@ test("persistent shared cache survives L1 expiry and swaps generations", () => {
   assert.deepEqual(JSON.parse(JSON.stringify(context.readMarketsPersistentCache_("bootstrap"))), second);
   assert.equal(secondMeta.revision, "run-2");
   assert.equal([...values.keys()].some(key => key.includes(firstMeta.generation)), false);
+  assert.equal(bulkReads, 2);
 });
 
 test("doGet builds an HtmlService response using supported metadata", () => {
@@ -356,7 +380,12 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(app, /draft\[period\+"DropEnabled"\]/);
   assert.match(index, /Probar alertas/);
   assert.match(index, /id="newsletter-test-button"/);
+  assert.match(index, /id="loader-retry"/);
   assert.match(app, /sendMarketsNewsletterTestEmail/);
+  assert.match(app, /state\.userContext=data\.userContext/);
+  assert.match(app, /Market Pulse no ha respondido a tiempo/);
+  assert.doesNotMatch(app, /Promise\.all\\(\\[callServer\\("bootstrap"\\),callServer\\("user:context"\\)\\]\\)/);
+  assert.match(app, /function renderDashboard\(\)\{if\(state\.view==="overview"\)/);
   assert.match(index, /id="alert-test-result"/);
   assert.match(app, /Gmail ha aceptado la prueba/);
   assert.match(app, /result\.senderAddress/);

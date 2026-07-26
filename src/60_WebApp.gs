@@ -1,13 +1,16 @@
 /** Web app de lectura para el dashboard de ratings. */
 var MARKETS_WEB = Object.freeze({
-  version: '2026.07.26.38',
+  version: '2026.07.26.39',
+  // Solo debe cambiar si cambia el formato serializado. Un cambio visual no
+  // puede obligar al primer usuario a reconstruir la cache desde Sheets.
+  cacheSchemaVersion: '2026.07.26.38',
   cacheSeconds: 21600,
   maxCacheCharacters: 95000,
   defaultTrendMonths: 18,
   maxTrendMonths: 36,
   latestSnapshotTailRows: 500,
   persistentChunkCharacters: 7500,
-  persistentMaxCharacters: 300000,
+  persistentMaxCharacters: 220000,
   countryCodes: Object.freeze(['AR', 'CO', 'ES', 'MX', 'PE', 'TR', 'UY', 'VE'])
 });
 
@@ -26,17 +29,23 @@ function includeMarketsWebPartial_(name) {
 /** RPC inicial consumido por Index.html. */
 function getMarketsDashboardBootstrap() {
   const cacheKey = marketsBootstrapCacheKey_();
-  return readMarketsWebCache_(cacheKey, function () {
+  const data = readMarketsWebCache_(cacheKey, function () {
     const persistent = readMarketsPersistentCache_('bootstrap');
     if (persistent) return persistent;
     const ss = openMarketsSpreadsheet_();
     let allTrends = readMarketsPersistentCache_('trends');
     if (!allTrends) allTrends = buildAllDashboardTrendsForWeb_(ss, MARKETS_WEB.maxTrendMonths);
     const bootstrap = buildMarketsDashboardBootstrap_(ss, allTrends);
-    writeMarketsPersistentCache_('bootstrap', bootstrap, bootstrap.meta.dataDate);
-    writeMarketsPersistentCache_('trends', allTrends, bootstrap.meta.dataDate);
+    tryWriteMarketsPersistentCache_('bootstrap', bootstrap, bootstrap.meta.dataDate);
+    tryWriteMarketsPersistentCache_('trends', allTrends, bootstrap.meta.dataDate);
     return bootstrap;
   });
+  // La identidad nunca se almacena en la cache compartida.
+  data.meta = data.meta || {};
+  data.meta.codeVersion = MARKETS_CONFIG.codeVersion;
+  data.meta.webVersion = MARKETS_WEB.version;
+  data.userContext = getMarketsUserContext();
+  return data;
 }
 
 /** Incluye la tendencia inicial para evitar una segunda RPC durante el arranque. */
@@ -65,7 +74,7 @@ function getMarketsDashboardTrends(request) {
     if (!allTrends) {
       const ss = openMarketsSpreadsheet_();
       allTrends = buildAllDashboardTrendsForWeb_(ss, MARKETS_WEB.maxTrendMonths);
-      writeMarketsPersistentCache_('trends', allTrends, readLatestCompetitionDateForWeb_(ss));
+      tryWriteMarketsPersistentCache_('trends', allTrends, readLatestCompetitionDateForWeb_(ss));
     }
     return filterDashboardTrendsForWeb_(allTrends, normalized);
   });
@@ -430,14 +439,14 @@ function writeMarketsWebCache_(cache, key, value) {
 }
 
 function marketsBootstrapCacheKey_() {
-  return 'markets-web:bootstrap:' + MARKETS_WEB.version;
+  return 'markets-web:bootstrap:' + MARKETS_WEB.cacheSchemaVersion;
 }
 
 function marketsTrendCacheKey_(request) {
   const normalized = normalizeDashboardTrendRequest_(request);
   const keyParts = [normalized.countryCode || 'ALL', normalized.platform || 'ALL', normalized.segment,
     normalized.bbvaOnly ? 'BBVA' : 'ALL', normalized.months];
-  return 'markets-web:trends:' + MARKETS_WEB.version + ':' + keyParts.join(':');
+  return 'markets-web:trends:' + MARKETS_WEB.cacheSchemaVersion + ':' + keyParts.join(':');
 }
 
 function defaultMarketsTrendRequest_() {
@@ -472,7 +481,7 @@ function writeMarketsPersistentCache_(name, value, revision) {
   }
   properties.setProperties(chunks, false);
   const meta = {
-    version: MARKETS_WEB.version,
+    version: MARKETS_WEB.cacheSchemaVersion,
     generation: generation,
     parts: parts,
     revision: trimString_(revision),
@@ -485,14 +494,28 @@ function writeMarketsPersistentCache_(name, value, revision) {
   return meta;
 }
 
+function tryWriteMarketsPersistentCache_(name, value, revision) {
+  try {
+    return { ok: true, meta: writeMarketsPersistentCache_(name, value, revision), error: '' };
+  } catch (error) {
+    const detail = errorToString_(error);
+    console.warn('La cache persistente ' + name + ' no se ha actualizado: ' + detail);
+    return { ok: false, meta: null, error: detail };
+  }
+}
+
 function readMarketsPersistentCache_(name) {
   try {
     const properties = PropertiesService.getScriptProperties();
-    const meta = safeJsonParse_(properties.getProperty(marketsPersistentMetaKey_(name)));
-    if (!meta || (name !== 'logos' && meta.version !== MARKETS_WEB.version) || !meta.generation || !meta.parts) return null;
+    const values = typeof properties.getProperties === 'function' ? properties.getProperties() : null;
+    const metaKey = marketsPersistentMetaKey_(name);
+    const meta = safeJsonParse_(values ? values[metaKey] : properties.getProperty(metaKey));
+    if (!meta || (name !== 'logos' && meta.version !== MARKETS_WEB.cacheSchemaVersion) ||
+        !meta.generation || !meta.parts) return null;
     let encoded = '';
     for (let index = 0; index < meta.parts; index += 1) {
-      const chunk = properties.getProperty(marketsPersistentChunkKey_(name, meta.generation, index));
+      const chunkKey = marketsPersistentChunkKey_(name, meta.generation, index);
+      const chunk = values ? values[chunkKey] : properties.getProperty(chunkKey);
       if (!chunk) return null;
       encoded += chunk;
     }
@@ -533,8 +556,8 @@ function refreshMarketsDashboardCache_(ss, catalog) {
   const allTrends = buildAllDashboardTrendsForWeb_(ss, MARKETS_WEB.maxTrendMonths);
   const bootstrap = buildMarketsDashboardBootstrap_(ss, allTrends, catalog);
   const revision = bootstrap.meta.dataDate;
-  writeMarketsPersistentCache_('bootstrap', bootstrap, revision);
-  writeMarketsPersistentCache_('trends', allTrends, revision);
+  const bootstrapPersistence = tryWriteMarketsPersistentCache_('bootstrap', bootstrap, revision);
+  const trendPersistence = tryWriteMarketsPersistentCache_('trends', allTrends, revision);
   try { cache.removeAll(marketsInteractiveTrendCacheKeys_(bootstrap.snapshot)); } catch (ignored) {}
   writeMarketsWebCache_(cache, marketsBootstrapCacheKey_(), bootstrap);
   const trends = filterDashboardTrendsForWeb_(allTrends,
@@ -546,7 +569,9 @@ function refreshMarketsDashboardCache_(ss, catalog) {
     trendRows: trends.length,
     persistedTrendRows: allTrends.length,
     revision: trimString_(revision),
-    cacheSeconds: MARKETS_WEB.cacheSeconds
+    cacheSeconds: MARKETS_WEB.cacheSeconds,
+    persistentCacheReady: bootstrapPersistence.ok && trendPersistence.ok,
+    persistentCacheDetail: [bootstrapPersistence.error, trendPersistence.error].filter(Boolean).join(' | ')
   };
 }
 

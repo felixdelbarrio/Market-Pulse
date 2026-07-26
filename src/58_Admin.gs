@@ -23,10 +23,21 @@ function seedInitialMarketsAdministrator_(ss) {
 }
 
 function getMarketsUserContext() {
-  const email = currentMarketsUserEmail_();
-  const ss = openMarketsSpreadsheet_();
-  requireCurrentSheetContract_(ss, MARKETS_CONFIG.sheets.control, MARKETS_CONFIG.headers.control);
-  return { email: email, isAdmin: isMarketsAdministrator_(email, readControl_(ss)) };
+  const email = normalizeEmailForComparison_(currentMarketsUserEmail_());
+  const cache = CacheService.getScriptCache();
+  const cacheKey = 'markets-web:administrator-emails:' + MARKETS_CONFIG.codeVersion;
+  let administrators = null;
+  try {
+    const cached = cache.get(cacheKey);
+    administrators = cached ? JSON.parse(cached) : null;
+  } catch (ignored) {}
+  if (!Array.isArray(administrators)) {
+    const ss = openMarketsSpreadsheet_();
+    requireCurrentSheetContract_(ss, MARKETS_CONFIG.sheets.control, MARKETS_CONFIG.headers.control);
+    administrators = marketsAdministratorEmails_(readControl_(ss));
+    try { cache.put(cacheKey, JSON.stringify(administrators), 300); } catch (ignored) {}
+  }
+  return { email: email, isAdmin: administrators.indexOf(email) >= 0 };
 }
 
 function requireMarketsAdministrator_() {

@@ -8,6 +8,11 @@ const source = ["../src/99_Core.gs", "../src/55_AlertPreferences.gs", "../src/58
   .join("\n");
 const context = {
   console, Date, Math, Number, String, Boolean, Array, Object, JSON, RegExp, isFinite, isNaN,
+  CacheService: {
+    getScriptCache() {
+      return { get() { return null; }, put() {} };
+    }
+  },
   MARKETS_CONFIG: {
     codeVersion: "test", timeZone: "Europe/Madrid", runHour: 7, runMinute: 5,
     healthCheckHour: 9, healthCheckMinute: 15,
