@@ -271,7 +271,7 @@ function getMarketsAlertPreferences() {
       reviewDataMessage: 'La fuente actual publica rating y volumen agregados, no el reparto de estrellas 1 y 2 en las últimas 24 horas.',
       configWarning: trimString_(control.ALERT_CONFIG_WARNING),
       schedule: 'Resumen diario tras la actualización de las 07:05',
-      privacy: 'Solo tu cuenta puede leer y modificar esta configuración.',
+      privacy: 'Puedes modificar esta configuración desde Alertas aunque el alta la haya realizado un administrador. Administración conserva la gestión y la auditoría.',
       deliveryScope: 'Todos los usuarios activos · sin sesión',
       adminVisibility: 'Los administradores auditan altas y actividad en ALERT_SUBSCRIPTIONS.'
     },

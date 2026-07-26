@@ -356,6 +356,12 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(index, /id="admin-tabs"[^>]*role="tablist"/);
   assert.equal((index.match(/data-admin-tab=/g) || []).length, 6);
   assert.match(index, /data-admin-tab="usage"/);
+  assert.match(index, /id="admin-country-pills"[^>]*role="group"/);
+  assert.match(index, /id="admin-platform-pills"[^>]*role="group"/);
+  assert.doesNotMatch(index, /admin-subscriber-countries|admin-subscriber-platforms/);
+  assert.match(app, /normalizeAdminScope\("country",adminScopeSelection\("country"\)\)/);
+  assert.match(app, /normalizeAdminScope\("platform",adminScopeSelection\("platform"\)\)/);
+  assert.doesNotMatch(app, /function adminScopeValue/);
   assert.match(app, /function activateAdminTab/);
   assert.match(app, /function handleAdminTabKeydown/);
   assert.match(app, /if\(view==="admin"&&!state\.userContext\?\.isAdmin\)return/);

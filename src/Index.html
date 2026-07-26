@@ -147,7 +147,23 @@
           </div>
           <div id="admin-panel-runs" class="admin-tab-panel hidden" data-admin-panel="runs" role="tabpanel" aria-labelledby="admin-tab-runs"><section class="panel"><div class="panel-head"><div><h3>Últimas ejecuciones</h3><span>Estado, cobertura y entrega de alertas</span></div><span class="panel-meta">Últimas 14</span></div><div id="admin-runs" class="admin-table-wrap"></div></section></div>
           <div id="admin-panel-issues" class="admin-tab-panel hidden" data-admin-panel="issues" role="tabpanel" aria-labelledby="admin-tab-issues"><section class="panel"><div class="panel-head"><div><h3>Incidencias de captura</h3><span>Registros recientes distintos de OK</span></div></div><div id="admin-issues" class="admin-list"></div></section></div>
-          <div id="admin-panel-subscribers" class="admin-tab-panel hidden" data-admin-panel="subscribers" role="tabpanel" aria-labelledby="admin-tab-subscribers"><section class="panel"><div class="panel-head"><div><h3>Newsletter y alertas</h3><span>Altas, actividad y reglas de cada cuenta</span></div><button id="admin-add-subscriber" class="alert-button primary" type="button">Dar de alta usuario</button></div><div id="admin-subscribers" class="admin-list"></div></section></div>
+          <div id="admin-panel-subscribers" class="admin-tab-panel hidden" data-admin-panel="subscribers" role="tabpanel" aria-labelledby="admin-tab-subscribers">
+            <section class="panel">
+              <div class="panel-head"><div><h3>Newsletter y alertas</h3><span>Altas, actividad y reglas de cada cuenta</span></div><button id="admin-add-subscriber" class="alert-button primary" type="button">Dar de alta usuario</button></div>
+              <section class="admin-subscriber-filters" aria-labelledby="admin-subscriber-filters-title">
+                <header><div><strong id="admin-subscriber-filters-title">Encuentra cualquier suscripción</strong><span>Combina usuario, mercados, plataformas y estado.</span></div><div><b id="admin-subscriber-results" aria-live="polite">—</b><button id="admin-subscriber-filter-clear" type="button">Limpiar filtros</button></div></header>
+                <div class="admin-subscriber-filter-grid">
+                  <label class="admin-filter-search" for="admin-subscriber-search"><span>Usuario</span><input id="admin-subscriber-search" type="search" placeholder="Buscar por nombre o correo…" autocomplete="off"><i aria-hidden="true">⌕</i></label>
+                  <label class="select-field" for="admin-subscriber-status"><span>Estado</span><select id="admin-subscriber-status" class="select-control"><option value="ALL">Todos los estados</option><option value="ACTIVE">Solo activas</option><option value="PAUSED">Solo pausadas</option></select></label>
+                </div>
+                <div class="admin-filter-scope-grid">
+                  <section aria-labelledby="admin-filter-country-title"><div><strong id="admin-filter-country-title">Mercados</strong><small>Coincide con cualquiera de los seleccionados</small></div><div id="admin-filter-country-pills" class="admin-filter-pills" role="group" aria-labelledby="admin-filter-country-title"></div></section>
+                  <section aria-labelledby="admin-filter-platform-title"><div><strong id="admin-filter-platform-title">Plataformas</strong><small>Una, varias o todas</small></div><div id="admin-filter-platform-pills" class="admin-filter-pills" role="group" aria-labelledby="admin-filter-platform-title"></div></section>
+                </div>
+              </section>
+              <div id="admin-subscribers" class="admin-list"></div>
+            </section>
+          </div>
           <div id="admin-panel-alerts" class="admin-tab-panel hidden" data-admin-panel="alerts" role="tabpanel" aria-labelledby="admin-tab-alerts"><section class="panel"><div class="panel-head"><div><h3>Eventos de alertas</h3><span>Auditoría reciente de señales y destinatarios</span></div><span class="panel-meta">Últimos 30</span></div><div id="admin-alerts" class="admin-table-wrap"></div></section></div>
         </div>
       </section>
@@ -164,7 +180,10 @@
       <div class="admin-subscriber-form-body">
         <label class="select-field" for="admin-subscriber-email">Correo corporativo<input id="admin-subscriber-email" class="select-control" type="email" required placeholder="nombre@bbva.com" autocomplete="off"></label>
         <label class="admin-active-control"><span><strong>Suscripción activa</strong><small>Recibirá la newsletter y las alertas seleccionadas.</small></span><input id="admin-subscriber-active" type="checkbox"><i aria-hidden="true"></i></label>
-        <fieldset><legend>Ámbito</legend><div class="admin-form-grid"><label class="select-field" for="admin-subscriber-countries">Mercados<input id="admin-subscriber-countries" class="select-control" type="text" placeholder="ALL o ES,MX,CO"></label><label class="select-field" for="admin-subscriber-platforms">Plataformas<input id="admin-subscriber-platforms" class="select-control" type="text" placeholder="ALL o Android,iOS,Huawei"></label></div></fieldset>
+        <fieldset class="admin-scope-fieldset"><legend>Ámbito de la suscripción</legend><p class="admin-scope-intro">Selecciona “Todos” o combina únicamente los mercados y plataformas que debe recibir esta cuenta.</p><div class="admin-scope-grid">
+          <section class="admin-scope-card" aria-labelledby="admin-country-scope-title"><header><div><strong id="admin-country-scope-title">Mercados</strong><span>Uno, varios o todos</span></div><b id="admin-country-scope-summary" aria-live="polite">Todos</b></header><div id="admin-country-pills" class="admin-scope-pills" role="group" aria-labelledby="admin-country-scope-title"></div></section>
+          <section class="admin-scope-card" aria-labelledby="admin-platform-scope-title"><header><div><strong id="admin-platform-scope-title">Plataformas</strong><span>Una, varias o todas</span></div><b id="admin-platform-scope-summary" aria-live="polite">Todas</b></header><div id="admin-platform-pills" class="admin-scope-pills" role="group" aria-labelledby="admin-platform-scope-title"></div></section>
+        </div></fieldset>
         <fieldset><legend>Alertas de caída de rating</legend><div class="admin-rule-grid">
           <article><label><input id="admin-daily-enabled" type="checkbox"> Diaria</label><div><input id="admin-daily-warning" type="number" min="0.01" max="5" step="0.01" aria-label="Umbral amarillo diario"><input id="admin-daily-critical" type="number" min="0.01" max="5" step="0.01" aria-label="Umbral rojo diario"></div></article>
           <article><label><input id="admin-mtd-enabled" type="checkbox"> Mes en curso</label><div><input id="admin-mtd-warning" type="number" min="0.01" max="5" step="0.01" aria-label="Umbral amarillo mensual"><input id="admin-mtd-critical" type="number" min="0.01" max="5" step="0.01" aria-label="Umbral rojo mensual"></div></article>

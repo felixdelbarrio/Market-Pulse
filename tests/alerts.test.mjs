@@ -88,6 +88,45 @@ test("the server derives the account and ignores an email injected by the client
   assert.equal(written.email, "felix.delbarrio@bbva.com");
 });
 
+test("a user can edit the same preferences previously created by an administrator", () => {
+  const original = {
+    currentUser: context.currentMarketsUserEmail_, open: context.openMarketsSpreadsheet_,
+    requireContract: context.requireCurrentSheetContract_, readControl: context.readControl_,
+    register: context.registerOrTouchMarketsAlertUser_, recent: context.readRecentMarketsAlertEventsForUser_,
+    upsert: context.upsertMarketsAlertPreferences_, LockService: context.LockService
+  };
+  let written = null;
+  const adminCreated = preferences({
+    email: "director@bbva.com", active: true, countries: ["MX"], platforms: ["iOS"],
+    persisted: true, updatedBy: "admin@bbva.com"
+  });
+  context.currentMarketsUserEmail_ = () => "director@bbva.com";
+  context.openMarketsSpreadsheet_ = () => ({ id: "sheet" });
+  context.requireCurrentSheetContract_ = () => {};
+  context.readControl_ = () => ({ SEND_ALERT_EMAILS: true });
+  context.registerOrTouchMarketsAlertUser_ = () => adminCreated;
+  context.readRecentMarketsAlertEventsForUser_ = () => [];
+  context.LockService = { getScriptLock() { return { tryLock() { return true; }, releaseLock() {} }; } };
+  context.upsertMarketsAlertPreferences_ = (_ss, value, updatedBy) => {
+    written = Object.assign({}, value, { persisted: true, updatedBy });
+    return written;
+  };
+
+  const loaded = context.getMarketsAlertPreferences();
+  assert.deepEqual(plain(loaded.preferences.countries), ["MX"]);
+  assert.deepEqual(plain(loaded.preferences.platforms), ["iOS"]);
+  assert.match(loaded.system.privacy, /aunque el alta la haya realizado un administrador/i);
+
+  const saved = context.saveMarketsAlertPreferences(Object.assign({}, loaded.preferences, {
+    countries: ["MX", "ES"], platforms: ["Android", "iOS"]
+  }));
+  assert.equal(written.email, "director@bbva.com");
+  assert.equal(written.updatedBy, "director@bbva.com");
+  assert.deepEqual(plain(saved.countries), ["MX", "ES"]);
+  assert.deepEqual(plain(saved.platforms), ["Android", "iOS"]);
+  Object.assign(context, original);
+});
+
 test("a test email returns traceable acceptance diagnostics and is audited", () => {
   const original = {
     currentUser: context.currentMarketsUserEmail_, open: context.openMarketsSpreadsheet_,
