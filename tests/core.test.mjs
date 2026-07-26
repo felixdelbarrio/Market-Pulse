@@ -35,3 +35,15 @@ test("rating keys are deterministic", () => {
   const key = "ANDROID|ES|CAIXABANK_NOW";
   assert.equal(context.makeRatingKey_(new Date(2026, 6, 16, 12), key), "2026-07-16|ANDROID|ES|CAIXABANK_NOW");
 });
+
+test("Huawei is complementary while Android and iOS define operational coverage", () => {
+  const items = [
+    { platform: "Android", id: "a" },
+    { platform: "iOS", id: "i" },
+    { platform: "Huawei", id: "h" }
+  ];
+  assert.equal(context.isMarketsCriticalPlatform_("Android"), true);
+  assert.equal(context.isMarketsCriticalPlatform_("iOS"), true);
+  assert.equal(context.isMarketsCriticalPlatform_("Huawei"), false);
+  assert.deepEqual(Array.from(context.marketsCriticalItems_(items)).map(item => item.id), ["a", "i"]);
+});

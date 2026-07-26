@@ -56,6 +56,20 @@ test("weighted score remains blank when a configured platform is missing", () =>
   assert.equal(result.coverage, 0.6);
 });
 
+test("missing Huawei never blocks a weighted Android and iOS score", () => {
+  const catalog = [
+    app("ANDROID|VE|BBVA", "Android", "VE", 0.6),
+    app("IOS|VE|BBVA", "iOS", "VE", 0.4),
+    app("HUAWEI|VE|BBVA", "Huawei", "VE", 0.2)
+  ];
+  const result = context.weightedMetric_(catalog, {
+    "ANDROID|VE|BBVA": rating("ANDROID|VE|BBVA", "Android", "VE", 4, 0.2),
+    "IOS|VE|BBVA": rating("IOS|VE|BBVA", "iOS", "VE", 5, 0.1)
+  }, "rating", "countryPlatformWeight");
+  assert.equal(result.value, 4.4);
+  assert.equal(result.coverage, 1);
+});
+
 test("monthly trend keeps only the end-of-month observation required by the web chart", () => {
   const first = rating("ANDROID|VE|BBVA", "Android", "VE", 4, 0.1, new Date(2026, 6, 1, 12));
   const last = rating("ANDROID|VE|BBVA", "Android", "VE", 5, 0.2, new Date(2026, 6, 31, 12));

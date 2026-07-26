@@ -2,6 +2,8 @@
 
 Monitor de ratings publicos de Google Play, Apple App Store y Huawei AppGallery, servido como Google Apps Script Web App. El Google Sheet es el almacenamiento operativo; toda la experiencia de consulta vive en `src/Index.html` y `src/60_WebApp.gs`.
 
+Android e iOS forman el núcleo operativo y determinan si una captura está completa. Huawei es una fuente complementaria: sus datos se incorporan cuando están disponibles, pero su ausencia no genera alertas técnicas, no degrada la salud del proceso y no impide cálculos, newsletters, informes ni navegación.
+
 ## Arquitectura activa
 
 El libro maestro contiene diez pestañas:
@@ -96,7 +98,7 @@ La pestaña `Alertas` obtiene la identidad con `Session.getActiveUser()` y no ac
 
 ### Newsletter mensual
 
-La newsletter se ejecuta exclusivamente el día 1 y resume el mes natural anterior con datos reales de `RATINGS` y el universo activo de `APP_CATALOG`. Adapta asunto, apertura y agrupación a una geografía, varias geografías o visión global. Presenta inicio de año, inicio y cierre de mes, variación, nuevas valoraciones por plataforma y posición competitiva solo cuando la cobertura del mercado es completa. El efecto estimado de las nuevas valoraciones se muestra únicamente cuando la fórmula inversa es matemáticamente fiable; si el redondeo o una ficha compartida impiden atribuirlo, se omite.
+La newsletter se ejecuta exclusivamente el día 1 y resume el mes natural anterior con datos reales de `RATINGS` y el universo activo de `APP_CATALOG`. Adapta asunto, apertura y agrupación a una geografía, varias geografías o visión global. Su motor editorial identifica cierres generalizados, balances mixtos, principal avance, ajuste más relevante, contexto frente al inicio de año, liderazgo competitivo y concentración de valoraciones. No utiliza un modelo generativo: cada frase se construye a partir de hechos tipados del propio modelo y no puede incorporar cifras, mercados o conclusiones externas. Presenta la trayectoria `Inicio de año → Inicio de mes → Cierre` y, en un bloque separado, las variaciones mensual y anual con su referencia explícita, además de las nuevas valoraciones. La posición competitiva se expresa como `Líder entre N bancos` o `N.ª posición entre M bancos` y solo se publica cuando la cobertura del mercado es completa. El efecto estimado de las nuevas valoraciones se muestra únicamente cuando la fórmula inversa es matemáticamente fiable; si el redondeo o una ficha compartida impiden atribuirlo, se omite.
 
 En visión global, el volumen de una ficha Android compartida se suma una sola vez al total de su plataforma, pero nunca se reparte entre países. Cada envío aceptado se deduplica por mes y destinatario en `ALERT_LOG`. `SEND_NEWSLETTER_EMAILS` permite activar o pausar este canal de forma independiente a las alertas.
 
@@ -124,7 +126,7 @@ Cada correo de alerta muestra discretamente la fecha efectiva de los datos e inc
 - Reejecucion diaria: actualiza por clave determinista y no duplica observaciones.
 - Fallos de store: conservan el historico y quedan trazados en `FETCH_LOG`.
 - Consolidados: requieren pesos positivos, fuente, fecha efectiva y cobertura completa.
-- Cobertura: compara observaciones publicadas con todas las apps activas esperadas en `APP_CATALOG`.
+- Cobertura: compara las observaciones Android e iOS publicadas con sus apps activas esperadas en `APP_CATALOG`; Huawei queda fuera del denominador y se añade únicamente cuando existe un dato válido.
 - Distribucion de reseñas por estrellas: pendiente de una fuente autorizada y geograficamente comparable; nunca se infiere desde el rating agregado.
 
 ## Pruebas

@@ -69,11 +69,101 @@ test("single-country newsletter uses real closes, reliable review effect and com
   assert.equal(model.items[0].position.rank, 2);
   assert.equal(model.items[0].position.total, 2);
   assert.equal(model.items[0].effect.newReviewRating, 4.81);
+  const brief = context.marketsNewsletterExecutiveBrief_(model);
+  assert.equal(brief.headline, "iOS cierra el mes al alza en España.");
+  assert.match(brief.summary, /iOS avanza de 4,11 a 4,21 \(\+0,10\)/);
+  assert.match(brief.summary, /El mes suma 20 nuevas valoraciones/);
   const html = context.renderMarketsNewsletterHtml_(model);
   assert.match(html, /España · Todas las plataformas|España · iOS/);
   assert.match(html, /EFECTO ESTIMADO DE LAS NUEVAS VALORACIONES/);
-  assert.match(html, /2 de 2 frente a banca/);
+  assert.match(html, /2\.ª posición entre 2 bancos/);
   assert.doesNotMatch(html, /mock|simulad/i);
+  assert.match(html, /LECTURA EJECUTIVA/);
+  assert.match(html, /exclusivamente a partir de las cifras mostradas/);
+});
+
+test("competitive position and rating changes use explicit director-friendly labels", () => {
+  assert.equal(context.marketsNewsletterPositionLabel_({ available: true, rank: 1, total: 5 }),
+    "Líder entre 5 bancos");
+  assert.equal(context.marketsNewsletterPositionLabel_({ available: true, rank: 2, total: 5 }),
+    "2.ª posición entre 5 bancos");
+  assert.equal(context.marketsNewsletterPositionLabel_({ available: false }),
+    "No disponible");
+
+  const html = context.marketsNewsletterRowHtml_({
+    platform: "Android",
+    yearStartRating: 4.54,
+    monthStartRating: 4.24,
+    endRating: 4.2,
+    yearDelta: -0.34,
+    monthDelta: -0.04,
+    newReviews: 397,
+    volumeAvailable: true,
+    position: { available: true, rank: 2, total: 5 }
+  });
+  assert.match(html, /Posición competitiva/);
+  assert.match(html, /2\.ª posición entre 5 bancos/);
+  assert.match(html, /Inicio de año[\s\S]*4,54[\s\S]*Inicio de mes[\s\S]*4,24[\s\S]*Cierre[\s\S]*4,20/);
+  assert.match(html, /Variación mensual[\s\S]*-0,04[\s\S]*vs\. inicio de mes/);
+  assert.match(html, /Variación anual[\s\S]*-0,34[\s\S]*vs\. inicio de año/);
+  assert.match(html, /Nuevas valoraciones[\s\S]*397[\s\S]*recibidas en el mes/);
+  assert.doesNotMatch(html, /frente a banca/);
+});
+
+test("single-market pressure produces a concise executive narrative without zero-count wording", () => {
+  const items = [
+    { country: "México", countryCode: "MX", platform: "Android", monthStartRating: 4.24,
+      endRating: 4.2, monthDelta: -0.04, yearDelta: -0.04,
+      position: { available: true, rank: 2, total: 3 }, newReviews: 442 },
+    { country: "México", countryCode: "MX", platform: "iOS", monthStartRating: 4.83,
+      endRating: 4.82, monthDelta: -0.01, yearDelta: 0.02,
+      position: { available: true, rank: 1, total: 3 }, newReviews: 327 }
+  ];
+  const model = {
+    scope: { type: "SINGLE", countryLabel: "México" },
+    items,
+    totals: { series: 2, improving: 0, declining: 2, stable: 0,
+      newReviews: 769, reviewsByPlatform: { Android: 442, iOS: 327 } },
+    strongest: items[1], weakest: items[0]
+  };
+  const brief = context.marketsNewsletterExecutiveBrief_(model);
+  assert.equal(brief.headline, "México cierra el mes con presión en todas las plataformas.");
+  assert.match(brief.summary, /^Las dos plataformas analizadas retroceden\./);
+  assert.match(brief.summary, /Android concentra el ajuste más relevante \(-0,04\)/);
+  assert.doesNotMatch(brief.headline + brief.summary, /0 series|México · Android/);
+});
+
+test("executive narrative adapts to generalized, stable and mixed closes", () => {
+  const item = (country, platform, delta) => ({
+    country, platform, monthStartRating: 4.5, endRating: 4.5 + delta,
+    monthDelta: delta, yearDelta: delta, position: { available: false }, newReviews: null
+  });
+  const cases = [
+    {
+      model: { scope: { type: "MULTI" }, items: [item("España", "iOS", 0.1), item("México", "Android", 0.05)],
+        totals: { series: 2, improving: 2, declining: 0, stable: 0, newReviews: null, reviewsByPlatform: {} },
+        strongest: item("España", "iOS", 0.1), weakest: item("México", "Android", 0.05) },
+      expected: /avances generalizados/
+    },
+    {
+      model: { scope: { type: "ALL" }, items: [item("España", "iOS", 0), item("México", "Android", 0)],
+        totals: { series: 2, improving: 0, declining: 0, stable: 2, newReviews: null, reviewsByPlatform: {} },
+        strongest: item("España", "iOS", 0), weakest: item("México", "Android", 0) },
+      expected: /sin cambios/
+    },
+    {
+      model: { scope: { type: "ALL" }, items: [item("España", "iOS", 0.1), item("México", "Android", -0.04)],
+        totals: { series: 2, improving: 1, declining: 1, stable: 0, newReviews: null, reviewsByPlatform: {} },
+        strongest: item("España", "iOS", 0.1), weakest: item("México", "Android", -0.04) },
+      expected: /cierre mixto/
+    }
+  ];
+  cases.forEach(({ model, expected }) => {
+    const narrative = context.marketsNewsletterExecutiveNarrative_(model);
+    assert.match(narrative, expected);
+    assert.doesNotMatch(narrative, /\b0 (?:serie|plataforma)/);
+    assert.doesNotMatch(narrative, /9,99|Turquía/);
+  });
 });
 
 test("multi-market newsletter has a distinct executive scope and hides shared Android attribution", () => {
@@ -102,6 +192,18 @@ test("global newsletter is deduplicated and only exposes defensible effects", ()
   });
   assert.match(context.marketsNewsletterExecutiveNarrative_(model), /visión global/i);
   assert.match(context.renderMarketsNewsletterHtml_(model), /Cobertura de cierre: 2 de 3/);
+});
+
+test("missing Huawei is omitted silently and does not reduce newsletter coverage", () => {
+  const huawei = { appKey: "HUAWEI|ES|BBVA", platform: "Huawei", countryCode: "ES",
+    country: "España", appId: "C1", appName: "BBVA", isBbva: true, enabled: true,
+    marketSegment: "BANK" };
+  const model = context.buildMarketsNewsletterModel_(ratings, catalog.concat(huawei),
+    pref(["ES"], ["ALL"]), "2026-06", {});
+  assert.equal(model.coverage.complete, true);
+  assert.equal(model.coverage.observed, 1);
+  assert.equal(model.coverage.expected, 1);
+  assert.doesNotMatch(context.renderMarketsNewsletterHtml_(model), /Cobertura de cierre:/);
 });
 
 test("competitive position remains hidden when an expected bank is missing", () => {

@@ -23,13 +23,14 @@ function buildExecutionStatus_(execution) {
 
 /** Solo publica consolidados con pesos positivos, documentados y completos. */
 function weightedMetric_(configs, itemsByAppKey, field, weightField) {
-  const weightedConfigs = (configs || []).filter(function (app) {
+  const criticalConfigs = marketsCriticalItems_(configs);
+  const weightedConfigs = criticalConfigs.filter(function (app) {
     return nonNegativeNumberOrZero_(app[weightField]) > 0 && trimString_(app.weightSource) && app.weightEffectiveDate;
   });
   const totalWeight = weightedConfigs.reduce(function (sum, app) {
     return sum + nonNegativeNumberOrZero_(app[weightField]);
   }, 0);
-  if (!totalWeight || weightedConfigs.length !== (configs || []).length) return { value: '', coverage: 0 };
+  if (!totalWeight || weightedConfigs.length !== criticalConfigs.length) return { value: '', coverage: 0 };
   let availableWeight = 0;
   let weightedValue = 0;
   weightedConfigs.forEach(function (app) {
@@ -45,7 +46,9 @@ function weightedMetric_(configs, itemsByAppKey, field, weightField) {
 }
 
 function validateWeightConfiguration_(catalog) {
-  const bbva = (catalog || []).filter(function (app) { return app.isBbva && (app.marketSegment || 'BANK') === 'BANK'; });
+  const bbva = marketsCriticalItems_((catalog || []).filter(function (app) {
+    return app.isBbva && (app.marketSegment || 'BANK') === 'BANK';
+  }));
   const configured = bbva.filter(function (app) {
     return (app.countryPlatformWeight > 0 || app.groupUserWeight > 0) && app.weightSource && app.weightEffectiveDate;
   }).length;

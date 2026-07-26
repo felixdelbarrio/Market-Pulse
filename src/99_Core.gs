@@ -138,3 +138,22 @@ function uniqueStrings_(values) {
     return true;
   });
 }
+
+/**
+ * Android e iOS sostienen la cobertura operativa. Huawei se conserva como
+ * fuente complementaria: se captura y publica cuando existe, pero su ausencia
+ * nunca degrada una ejecución, un agregado ni una alerta técnica.
+ */
+function isMarketsCriticalPlatform_(platform) {
+  return ['Android', 'iOS'].indexOf(trimString_(platform)) >= 0;
+}
+
+function marketsCriticalItems_(items) {
+  return (items || []).filter(function (item) {
+    const source = item && item.app ? item.app : item;
+    const explicit = trimString_(source && source.platform);
+    const prefix = trimString_(source && source.appKey).split('|')[0].toUpperCase();
+    const platform = explicit || (prefix === 'ANDROID' ? 'Android' : prefix === 'IOS' ? 'iOS' : prefix === 'HUAWEI' ? 'Huawei' : '');
+    return isMarketsCriticalPlatform_(platform);
+  });
+}

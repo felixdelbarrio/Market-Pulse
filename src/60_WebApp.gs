@@ -1,9 +1,9 @@
 /** Web app de lectura para el dashboard de ratings. */
 var MARKETS_WEB = Object.freeze({
-  version: '2026.07.26.39',
+  version: '2026.07.26.40',
   // Solo debe cambiar si cambia el formato serializado. Un cambio visual no
   // puede obligar al primer usuario a reconstruir la cache desde Sheets.
-  cacheSchemaVersion: '2026.07.26.38',
+  cacheSchemaVersion: '2026.07.26.40',
   cacheSeconds: 21600,
   maxCacheCharacters: 95000,
   defaultTrendMonths: 18,
@@ -391,24 +391,35 @@ function readLatestRunForWeb_(ss) {
   const indexes = indexHeaders_(headers);
   const row = sheet.getRange(sheet.getLastRow(), 1, 1, width).getValues()[0];
   const runId = trimString_(row[indexes.run_id]);
+  const fetchSummary = readRunFetchSummaryForWeb_(ss, runId,
+    Math.max(1, webNumber_(row[indexes.apps_total]) || 1));
+  const deliveryStatus = indexes.alert_delivery_status === undefined ? '' :
+    trimString_(row[indexes.alert_delivery_status]).toUpperCase();
+  let status = trimString_(row[indexes.status]).toUpperCase();
+  if (status === 'PARTIAL' && fetchSummary.total > 0 && !fetchSummary.incidents.length &&
+      ['ERROR', 'PARTIAL'].indexOf(deliveryStatus) < 0) status = 'OK';
   return {
     startedAt: webDateTime_(row[indexes.started_at]),
-    status: trimString_(row[indexes.status]),
-    appsTotal: webNumber_(row[indexes.apps_total]),
-    appsOk: webNumber_(row[indexes.apps_ok]),
-    incidents: readRunIncidentsForWeb_(ss, runId, webNumber_(row[indexes.apps_total]))
+    status: status,
+    appsTotal: fetchSummary.total,
+    appsOk: fetchSummary.ok,
+    incidents: fetchSummary.incidents
   };
 }
 
-function readRunIncidentsForWeb_(ss, runId, appsTotal) {
+function readRunFetchSummaryForWeb_(ss, runId, appsTotal) {
   const sheet = ss.getSheetByName(MARKETS_CONFIG.sheets.fetchLog);
-  if (!runId || !sheet || sheet.getLastRow() <= 1) return [];
-  const count = Math.min(Math.max(1, appsTotal || 1), sheet.getLastRow() - 1);
+  if (!runId || !sheet || sheet.getLastRow() <= 1) return { total: 0, ok: 0, incidents: [] };
+  const count = Math.min(Math.max(20, (appsTotal || 1) * 2), sheet.getLastRow() - 1);
   const headers = MARKETS_CONFIG.headers.fetchLog;
   const indexes = indexHeaders_(headers);
   const rows = sheet.getRange(sheet.getLastRow() - count + 1, 1, count, headers.length).getValues();
-  return rows.filter(function (item) {
-    return trimString_(item[indexes.run_id]) === runId && trimString_(item[indexes.status]) !== 'OK';
+  const critical = rows.filter(function (item) {
+    return trimString_(item[indexes.run_id]) === runId &&
+      isMarketsCriticalPlatform_(item[indexes.platform]);
+  });
+  const incidents = critical.filter(function (item) {
+    return trimString_(item[indexes.status]) !== 'OK';
   }).map(function (item) {
     return {
       appKey: trimString_(item[indexes.app_key]),
@@ -418,6 +429,11 @@ function readRunIncidentsForWeb_(ss, runId, appsTotal) {
       detail: trimString_(item[indexes.detail])
     };
   });
+  return {
+    total: critical.length,
+    ok: critical.filter(function (item) { return trimString_(item[indexes.status]) === 'OK'; }).length,
+    incidents: incidents
+  };
 }
 
 function readMarketsWebCache_(key, builder) {

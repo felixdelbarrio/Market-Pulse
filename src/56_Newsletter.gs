@@ -204,8 +204,9 @@ function buildMarketsNewsletterModel_(ratings, catalog, preferences, period, opt
     };
   }).filter(Boolean);
   if (!items.length) throw new Error('No hay cierres BBVA reales para ' + period + ' en el ámbito configurado.');
+  const criticalCatalog = marketsCriticalItems_(scopedCatalog);
   const observedKeys = items.reduce(function (out, item) { out[item.appKey] = true; return out; }, {});
-  const missing = scopedCatalog.filter(function (app) { return !observedKeys[app.appKey]; })
+  const missing = criticalCatalog.filter(function (app) { return !observedKeys[app.appKey]; })
     .map(function (app) {
       return { appKey: app.appKey, country: app.country, countryCode: app.countryCode, platform: app.platform };
     });
@@ -227,7 +228,8 @@ function buildMarketsNewsletterModel_(ratings, catalog, preferences, period, opt
     },
     items: items, totals: totals,
     coverage: {
-      observed: items.length, expected: scopedCatalog.length,
+      observed: criticalCatalog.filter(function (app) { return observedKeys[app.appKey]; }).length,
+      expected: criticalCatalog.length,
       complete: missing.length === 0, missing: missing
     },
     strongest: movements.length ? movements[0] : null,
@@ -379,6 +381,7 @@ function marketsNewsletterEmailMessage_(recipient, model, inlineImages, sender) 
 }
 
 function renderMarketsNewsletterPlainText_(model) {
+  const brief = marketsNewsletterExecutiveBrief_(model);
   const lines = model.items.map(function (item) {
     return [item.country, item.platform].join(' · ') + ': ' +
       marketsNewsletterRatingLabel_(item.monthStartRating) + ' → ' +
@@ -391,7 +394,7 @@ function renderMarketsNewsletterPlainText_(model) {
   return 'MARKET PULSE\nBBVA Banca de Empresas e Instituciones\n\n' +
     (model.isTest ? 'VISTA PREVIA CON DATOS REALES — NO ES UN ENVÍO MENSUAL\n' : '') +
     'Cierre ejecutivo · ' + model.periodLabel + '\n' + marketsNewsletterScopeTitle_(model) + '\n\n' +
-    marketsNewsletterExecutiveNarrative_(model) +
+    brief.headline + '\n' + brief.summary +
     (model.coverage && !model.coverage.complete ? '\nCobertura de cierre: ' +
       model.coverage.observed + ' de ' + model.coverage.expected +
       ' series; se omiten las series sin dato real.' : '') +
@@ -402,6 +405,7 @@ function renderMarketsNewsletterPlainText_(model) {
 function renderMarketsNewsletterHtml_(model) {
   const groups = marketsNewsletterGroups_(model.items);
   const scopeTitle = marketsNewsletterScopeTitle_(model);
+  const brief = marketsNewsletterExecutiveBrief_(model);
   const preview = model.isTest ?
     '<tr><td style="padding:12px 24px;background:#FFE761;color:#070E46;font-size:12px;font-weight:700;text-align:center;">VISTA PREVIA · DATOS REALES · NO ES UN ENVÍO MENSUAL</td></tr>' : '';
   const groupHtml = groups.map(function (group) {
@@ -439,8 +443,10 @@ function renderMarketsNewsletterHtml_(model) {
     '<h1 style="margin:8px 0 0;font-family:Georgia,serif;font-size:31px;line-height:37px;">' +
     escapeMarketsAlertHtml_(model.periodLabel) + '</h1><p style="margin:9px 0 0;color:#85C8FF;font-size:15px;line-height:22px;">' +
     escapeMarketsAlertHtml_(scopeTitle) + '</p></td></tr>' +
-    '<tr><td style="padding:24px 30px 12px;"><div style="font-family:Georgia,serif;color:#070E46;font-size:22px;line-height:29px;">' +
-    escapeMarketsAlertHtml_(marketsNewsletterExecutiveNarrative_(model)) + '</div></td></tr>' +
+    '<tr><td style="padding:24px 30px 12px;"><div style="color:#001391;font-size:10px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;">LECTURA EJECUTIVA</div>' +
+    '<div style="margin-top:7px;font-family:Georgia,serif;color:#070E46;font-size:24px;line-height:31px;">' +
+    escapeMarketsAlertHtml_(brief.headline) + '</div><div style="margin-top:10px;color:#46536D;font-size:14px;line-height:21px;">' +
+    escapeMarketsAlertHtml_(brief.summary) + '</div></td></tr>' +
     '<tr><td style="padding:10px 26px 22px;"><table role="presentation" width="100%" cellspacing="8" cellpadding="0"><tr>' +
     marketsNewsletterKpiHtml_('Mejoran', model.totals.improving, 'de ' + model.totals.series + ' series') +
     marketsNewsletterKpiHtml_('Retroceden', model.totals.declining, model.totals.stable + ' estables') +
@@ -451,7 +457,7 @@ function renderMarketsNewsletterHtml_(model) {
       platformVolumes + '</div>' : '') + '</td></tr>' + coverage + groupHtml + effects +
     '<tr><td style="padding:4px 30px 28px;"><table role="presentation" cellspacing="0" cellpadding="0"><tr><td bgcolor="#001391" style="border-radius:8px;"><a href="' +
     appUrl + '" style="display:block;padding:13px 22px;color:#FFFFFF;text-decoration:none;font-weight:700;">Abrir Market Pulse</a></td></tr></table>' +
-    '<p style="margin:16px 0 0;color:#ADB8C2;font-size:10px;line-height:15px;">Solo se muestran posiciones con cobertura competitiva completa. Los volúmenes no atribuibles y los efectos no fiables se presentan como N/D o se omiten.</p></td></tr>' +
+    '<p style="margin:16px 0 0;color:#ADB8C2;font-size:10px;line-height:15px;">La lectura ejecutiva se genera exclusivamente a partir de las cifras mostradas. Solo se publican posiciones con cobertura competitiva completa; los volúmenes no atribuibles y los efectos no fiables se presentan como N/D o se omiten.</p></td></tr>' +
     '<tr><td style="padding:16px 30px;background:#070E46;color:#85C8FF;font-size:11px;line-height:17px;"><strong style="color:#FFFFFF;">Market Pulse</strong><br>BBVA Banca de Empresas e Instituciones · Uso interno.</td></tr>' +
     '</table></td></tr></table></body></html>';
 }
@@ -470,24 +476,37 @@ function marketsNewsletterGroups_(items) {
 
 function marketsNewsletterRowHtml_(item) {
   const movementColor = item.monthDelta > 0 ? '#277A3E' : item.monthDelta < 0 ? '#B92A45' : '#46536D';
+  const yearColor = item.yearDelta > 0 ? '#277A3E' : item.yearDelta < 0 ? '#B92A45' : '#46536D';
   const volume = item.newReviews === null ? (item.volumeAvailable ? 'N/D' : 'No atribuible') :
     marketsAlertIntegerLabel_(item.newReviews);
-  return '<tr><td style="width:24%;padding:14px 16px;border-top:1px solid #E2E6EA;vertical-align:top;"><strong style="display:block;color:#070E46;font-size:14px;">' +
-    escapeMarketsAlertHtml_(item.platform) + '</strong><span style="display:block;margin-top:4px;color:#46536D;font-size:11px;">' +
+  return '<tr><td style="width:28%;padding:16px;border-top:1px solid #E2E6EA;vertical-align:top;"><strong style="display:block;color:#070E46;font-size:15px;">' +
+    escapeMarketsAlertHtml_(item.platform) + '</strong><span style="display:block;margin-top:10px;color:#46536D;font-size:9px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;">Posición competitiva</span>' +
+    '<span style="display:block;margin-top:3px;color:#070E46;font-size:12px;line-height:17px;">' +
     escapeMarketsAlertHtml_(marketsNewsletterPositionLabel_(item.position)) + '</span></td>' +
-    '<td style="padding:14px 16px;border-top:1px solid #E2E6EA;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr>' +
-    marketsNewsletterMiniCell_('Inicio año', marketsNewsletterRatingLabel_(item.yearStartRating), marketsNewsletterSigned_(item.yearDelta), '#46536D') +
-    marketsNewsletterMiniCell_('Inicio mes', marketsNewsletterRatingLabel_(item.monthStartRating), '', '#46536D') +
-    marketsNewsletterMiniCell_('Cierre', marketsNewsletterRatingLabel_(item.endRating), marketsNewsletterSigned_(item.monthDelta), movementColor) +
-    marketsNewsletterMiniCell_('Nuevas valoraciones', volume, item.volumeAvailable ? '' : 'ficha compartida', '#001391') +
+    '<td style="padding:16px;border-top:1px solid #E2E6EA;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr>' +
+    marketsNewsletterMiniCell_('Inicio de año', marketsNewsletterRatingLabel_(item.yearStartRating), '', '#46536D') +
+    marketsNewsletterMiniCell_('Inicio de mes', marketsNewsletterRatingLabel_(item.monthStartRating), '', '#46536D') +
+    marketsNewsletterMiniCell_('Cierre', marketsNewsletterRatingLabel_(item.endRating), '', movementColor) +
+    '</tr></table><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-top:12px;border-radius:8px;background:#F7F8F8;"><tr>' +
+    marketsNewsletterContextCell_('Variación mensual', marketsNewsletterSigned_(item.monthDelta), 'vs. inicio de mes', movementColor) +
+    marketsNewsletterContextCell_('Variación anual', marketsNewsletterSigned_(item.yearDelta), 'vs. inicio de año', yearColor) +
+    marketsNewsletterContextCell_('Nuevas valoraciones', volume,
+      item.volumeAvailable ? 'recibidas en el mes' : 'ficha compartida', '#001391') +
     '</tr></table></td></tr>';
 }
 
 function marketsNewsletterMiniCell_(label, value, note, color) {
-  return '<td style="width:25%;padding:0 7px;vertical-align:top;"><span style="display:block;color:#46536D;font-size:9px;text-transform:uppercase;">' +
+  return '<td style="width:33.33%;padding:0 7px;vertical-align:top;"><span style="display:block;color:#46536D;font-size:9px;text-transform:uppercase;">' +
     escapeMarketsAlertHtml_(label) + '</span><strong style="display:block;margin-top:4px;color:' + color + ';font-size:15px;">' +
     escapeMarketsAlertHtml_(value) + '</strong>' + (note ? '<small style="display:block;margin-top:2px;color:' + color + ';font-size:10px;">' +
     escapeMarketsAlertHtml_(note) + '</small>' : '') + '</td>';
+}
+
+function marketsNewsletterContextCell_(label, value, note, color) {
+  return '<td style="width:33.33%;padding:10px 8px;vertical-align:top;"><span style="display:block;color:#46536D;font-size:8px;font-weight:700;letter-spacing:.25px;text-transform:uppercase;">' +
+    escapeMarketsAlertHtml_(label) + '</span><strong style="display:block;margin-top:3px;color:' + color + ';font-size:14px;">' +
+    escapeMarketsAlertHtml_(value) + '</strong><small style="display:block;margin-top:1px;color:#6B7280;font-size:8px;line-height:11px;">' +
+    escapeMarketsAlertHtml_(note) + '</small></td>';
 }
 
 function marketsNewsletterKpiHtml_(label, value, note) {
@@ -505,26 +524,164 @@ function marketsNewsletterScopeTitle_(model) {
 }
 
 function marketsNewsletterExecutiveNarrative_(model) {
+  const brief = marketsNewsletterExecutiveBrief_(model);
+  return [brief.headline, brief.summary].filter(Boolean).join(' ');
+}
+
+function marketsNewsletterExecutiveBrief_(model) {
   const totals = model.totals;
-  let opening = model.scope.type === 'SINGLE' ? 'El mes en ' + model.scope.countryLabel :
-    model.scope.type === 'MULTI' ? 'El perímetro seleccionado cierra el mes' :
-      'La visión global de BBVA Empresas cierra el mes';
-  opening += ' con ' + totals.improving + ' serie' + (totals.improving === 1 ? '' : 's') +
-    ' al alza y ' + totals.declining + ' a la baja.';
-  if (model.strongest && model.strongest.monthDelta > 0) {
-    opening += ' El avance más relevante se produce en ' + model.strongest.country + ' · ' +
-      model.strongest.platform + ' (' + marketsNewsletterSigned_(model.strongest.monthDelta) + ').';
+  const single = model.scope.type === 'SINGLE';
+  const unit = single ? 'plataforma' : 'serie';
+  const subject = single ? model.scope.countryLabel :
+    model.scope.type === 'MULTI' ? 'El perímetro seleccionado' : 'La visión global de BBVA Empresas';
+  let headline = '';
+  if (totals.series === 1 && model.items.length === 1) {
+    const only = model.items[0];
+    headline = only.platform + (only.monthDelta > 0 ? ' cierra el mes al alza en ' :
+      only.monthDelta < 0 ? ' cierra el mes a la baja en ' : ' cierra el mes sin cambios en ') +
+      only.country + '.';
+  } else if (totals.declining === totals.series && totals.series > 0) {
+    headline = single ? subject + ' cierra el mes con presión en todas las plataformas.' :
+      subject + ' cierra el mes con presión generalizada.';
+  } else if (totals.improving === totals.series && totals.series > 0) {
+    headline = single ? subject + ' avanza en todas las plataformas analizadas.' :
+      subject + ' cierra el mes con avances generalizados.';
+  } else if (totals.stable === totals.series && totals.series > 0) {
+    headline = single ? subject + ' cierra sin movimientos en sus ratings.' :
+      subject + ' mantiene sus ratings sin cambios.';
+  } else if (totals.declining > totals.improving) {
+    headline = single ? subject + ' cierra con un balance de cautela.' :
+      subject + ' cierra con un balance de cautela.';
+  } else if (totals.improving > totals.declining) {
+    headline = single ? subject + ' cierra con un balance favorable.' :
+      subject + ' cierra con un balance favorable.';
+  } else {
+    headline = single ? subject + ' presenta un cierre mixto.' : subject + ' presenta un cierre mixto.';
   }
-  if (model.weakest && model.weakest.monthDelta < 0) {
-    opening += ' La principal señal de atención está en ' + model.weakest.country + ' · ' +
-      model.weakest.platform + ' (' + marketsNewsletterSigned_(model.weakest.monthDelta) + ').';
+
+  const facts = [];
+  if (totals.series === 1 && model.items.length === 1) {
+    const item = model.items[0];
+    const direction = item.monthDelta > 0 ? 'avanza' : item.monthDelta < 0 ? 'retrocede' : 'se mantiene';
+    facts.push((single ? item.platform : marketsNewsletterItemLabel_(item, model)) + ' ' + direction +
+      ' de ' + marketsNewsletterRatingLabel_(item.monthStartRating) + ' a ' +
+      marketsNewsletterRatingLabel_(item.endRating) + ' (' +
+      marketsNewsletterSigned_(item.monthDelta) + ').');
+  } else {
+    if (totals.improving === totals.series) {
+      facts.push('Las ' + marketsNewsletterCountLabel_(totals.series) + ' ' + unit +
+        's analizadas avanzan.');
+    } else if (totals.declining === totals.series) {
+      facts.push('Las ' + marketsNewsletterCountLabel_(totals.series) + ' ' + unit +
+        's analizadas retroceden.');
+    } else if (totals.stable === totals.series) {
+      facts.push('Las ' + marketsNewsletterCountLabel_(totals.series) + ' ' + unit +
+        's analizadas permanecen estables.');
+    } else {
+      const movementParts = [];
+      if (totals.improving) movementParts.push(marketsNewsletterCountPhrase_(
+        totals.improving, unit, totals.improving === 1 ? 'avanza' : 'avanzan'));
+      if (totals.declining) movementParts.push(marketsNewsletterCountPhrase_(
+        totals.declining, unit, totals.declining === 1 ? 'retrocede' : 'retroceden'));
+      if (totals.stable) movementParts.push(marketsNewsletterCountPhrase_(
+        totals.stable, unit, totals.stable === 1 ? 'permanece estable' : 'permanecen estables'));
+      if (movementParts.length) facts.push(marketsNewsletterJoinFacts_(movementParts) + '.');
+    }
+    if (model.strongest && model.strongest.monthDelta > 0 && totals.improving) {
+      facts.push(marketsNewsletterItemLabel_(model.strongest, model) +
+        ' marca el mejor comportamiento (' + marketsNewsletterSigned_(model.strongest.monthDelta) + ').');
+    }
+    if (model.weakest && model.weakest.monthDelta < 0 && totals.declining) {
+      facts.push(marketsNewsletterItemLabel_(model.weakest, model) +
+        ' concentra el ajuste más relevante (' + marketsNewsletterSigned_(model.weakest.monthDelta) + ').');
+    }
   }
-  return opening;
+
+  const yearContext = marketsNewsletterYearContext_(model);
+  if (yearContext) facts.push(yearContext);
+  const positionContext = marketsNewsletterPositionContext_(model);
+  if (positionContext) facts.push(positionContext);
+  const volumeContext = marketsNewsletterVolumeContext_(model);
+  if (volumeContext) facts.push(volumeContext);
+  return { headline: headline, summary: facts.slice(0, 3).join(' ') };
+}
+
+function marketsNewsletterItemLabel_(item, model) {
+  return model.scope.type === 'SINGLE' ? item.platform : item.country + ' · ' + item.platform;
+}
+
+function marketsNewsletterCountPhrase_(count, noun, verb) {
+  return (count === 1 ? 'Una' : String(count)) + ' ' + noun + (count === 1 ? '' : 's') + ' ' + verb;
+}
+
+function marketsNewsletterCountLabel_(count) {
+  return ({ 2: 'dos', 3: 'tres', 4: 'cuatro', 5: 'cinco', 6: 'seis',
+    7: 'siete', 8: 'ocho', 9: 'nueve', 10: 'diez' })[count] || String(count);
+}
+
+function marketsNewsletterJoinFacts_(parts) {
+  if (parts.length < 2) return parts[0] || '';
+  if (parts.length === 2) return parts[0] + ' y ' + parts[1].toLowerCase();
+  return parts.slice(0, -1).join(', ') + ' y ' + parts[parts.length - 1].toLowerCase();
+}
+
+function marketsNewsletterYearContext_(model) {
+  const item = (model.items || []).find(function (candidate) {
+    return candidate.monthDelta < 0 && candidate.yearDelta > 0;
+  });
+  if (item) {
+    return 'Pese al ajuste mensual, ' + marketsNewsletterItemLabel_(item, model) +
+      ' se mantiene ' + marketsNewsletterSigned_(item.yearDelta) + ' sobre el inicio de año.';
+  }
+  const rebound = (model.items || []).find(function (candidate) {
+    return candidate.monthDelta > 0 && candidate.yearDelta < 0;
+  });
+  return rebound ? 'El avance mensual de ' + marketsNewsletterItemLabel_(rebound, model) +
+    ' todavía deja el rating ' + marketsNewsletterSigned_(rebound.yearDelta) +
+    ' frente al inicio de año.' : '';
+}
+
+function marketsNewsletterPositionContext_(model) {
+  const comparable = (model.items || []).filter(function (item) {
+    return item.position && item.position.available;
+  });
+  if (!comparable.length) return '';
+  const leaders = comparable.filter(function (item) { return item.position.rank === 1; });
+  if (leaders.length) {
+    if (comparable.length === 1) {
+      return 'BBVA mantiene el liderazgo frente a la banca comparable.';
+    }
+    return 'BBVA lidera en ' + leaders.length + ' de ' + comparable.length +
+      ' ' + (model.scope.type === 'SINGLE' ? 'plataformas comparables.' : 'series comparables.');
+  }
+  const best = comparable.slice().sort(function (a, b) {
+    return a.position.rank - b.position.rank || b.endRating - a.endRating;
+  })[0];
+  return 'En ' + marketsNewsletterItemLabel_(best, model) + ', BBVA ocupa la ' +
+    best.position.rank + '.ª posición entre ' + best.position.total + ' bancos comparados.';
+}
+
+function marketsNewsletterVolumeContext_(model) {
+  const total = toFiniteNumber_(model.totals && model.totals.newReviews);
+  if (total === null || total <= 0) return '';
+  const byPlatform = model.totals.reviewsByPlatform || {};
+  const platforms = Object.keys(byPlatform).filter(function (platform) {
+    return toFiniteNumber_(byPlatform[platform]) !== null && byPlatform[platform] > 0;
+  }).sort(function (a, b) { return byPlatform[b] - byPlatform[a]; });
+  let text = 'El mes suma ' + marketsAlertIntegerLabel_(total) + ' nuevas valoraciones';
+  if (platforms.length > 1 && byPlatform[platforms[0]] / total >= 0.5) {
+    text += ', concentradas principalmente en ' + platforms[0] + ' (' +
+      Math.round(byPlatform[platforms[0]] / total * 100) + '%)';
+  }
+  return text + '.';
 }
 
 function marketsNewsletterPositionLabel_(position) {
-  return position && position.available ? position.rank + ' de ' + position.total + ' frente a banca' :
-    'Posición N/D';
+  if (!position || !position.available) return 'No disponible';
+  if (position.rank === 1) return 'Líder entre ' + position.total +
+    (position.total === 1 ? ' banco' : ' bancos');
+  return position.rank + '.ª posición entre ' + position.total +
+    (position.total === 1 ? ' banco' : ' bancos');
 }
 
 function marketsNewsletterRatingLabel_(value) {

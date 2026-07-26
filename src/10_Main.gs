@@ -1,4 +1,4 @@
-/** Punto de entrada diario unico para Android, iOS y Huawei. */
+/** Punto de entrada diario. Huawei se captura como fuente complementaria. */
 function runDailyRatingMonitor() {
   const startedAt = new Date();
   const runId = Utilities.formatDate(startedAt, MARKETS_CONFIG.timeZone, 'yyyyMMdd-HHmmss') + '-' + Utilities.getUuid().slice(0, 8);
@@ -27,12 +27,14 @@ function runDailyRatingMonitor() {
     const dashboard = rebuildDashboardDatasets_(ss, catalog, ratings,
       { referenceDate: referenceDate, results: results });
     const alerts = buildAndProcessAlerts_(ss, referenceDate, catalog, runId, control, ratings);
-    const stats = summarizeFetchResults_(results);
-    const dataStatus = stats.error === 0 ? (stats.noRating > 0 ? 'PARTIAL' : 'OK') : (stats.ok > 0 ? 'PARTIAL' : 'ERROR');
+    const operationalResults = marketsCriticalItems_(results);
+    const stats = summarizeFetchResults_(operationalResults);
+    const dataStatus = !operationalResults.length ? 'ERROR' :
+      stats.error === 0 ? (stats.noRating > 0 ? 'PARTIAL' : 'OK') : (stats.ok > 0 ? 'PARTIAL' : 'ERROR');
     const status = ['ERROR', 'PARTIAL'].indexOf(alerts.deliveryStatus) >= 0 && dataStatus === 'OK' ? 'PARTIAL' : dataStatus;
     appendRunLog_(ss, [
-      startedAt, runId, status, results.length, stats.ok, stats.noRating, stats.error,
-      upserted, alerts.length, new Date().getTime() - startedAt.getTime(), buildRunDetail_(results, alerts.deliveryDetail),
+      startedAt, runId, status, operationalResults.length, stats.ok, stats.noRating, stats.error,
+      upserted, alerts.length, new Date().getTime() - startedAt.getTime(), buildRunDetail_(operationalResults, alerts.deliveryDetail),
       0, dashboard.trendRows, dashboard.competitionRows,
       stats.ok, validateWeightConfiguration_(catalog), alerts.subscriberCount || 0, alerts.deliveryCount || 0,
       alerts.deliveryStatus || 'UNKNOWN', alerts.deliveryDetail || ''
@@ -43,7 +45,7 @@ function runDailyRatingMonitor() {
       try { invalidateMarketsDashboardCache_(); } catch (ignored) {}
       console.error('No se pudo actualizar la cache del dashboard: ' + errorToString_(cacheError));
     }
-    return { runId: runId, status: status, apps: results.length, rowsUpserted: upserted,
+    return { runId: runId, status: status, apps: operationalResults.length, rowsUpserted: upserted,
       alerts: alerts.length, alertSubscribers: alerts.subscriberCount || 0, emailsSent: alerts.deliveryCount || 0,
       alertDeliveryStatus: alerts.deliveryStatus || 'UNKNOWN', alertDeliveryDetail: alerts.deliveryDetail || '' };
   } catch (error) {

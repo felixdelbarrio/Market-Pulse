@@ -5,6 +5,7 @@
       flags:Object.freeze({AR:"🇦🇷",CO:"🇨🇴",ES:"🇪🇸",MX:"🇲🇽",PE:"🇵🇪",TR:"🇹🇷",UY:"🇺🇾",VE:"🇻🇪"}),
       countries:Object.freeze({AR:"Argentina",CO:"Colombia",ES:"España",MX:"México",PE:"Perú",TR:"Turquía",UY:"Uruguay",VE:"Venezuela"}),
       platforms:Object.freeze(["Android","iOS","Huawei"]),
+      criticalPlatforms:Object.freeze(["Android","iOS"]),
       platformLabels:Object.freeze({ALL:"Todas",Android:"Android",iOS:"iOS",Huawei:"Huawei"}),
       storeLabels:Object.freeze({Android:"Google Play",iOS:"App Store",Huawei:"AppGallery"}),
       segmentLabels:Object.freeze({BANK:"Banca empresas",FINTECH:"Fintech y Neobancos",ALL:"Todo el mercado"})
@@ -15,7 +16,9 @@
     const mean=values=>{const clean=values.filter(finite);return clean.length?sum(clean)/clean.length:null};
     const groupBy=(rows,selector)=>rows.reduce((out,row)=>{const key=selector(row);(out[key]||(out[key]=[])).push(row);return out},{});
     const appName=row=>row.isBbva?"BBVA Empresas":row.appName;
+    const isCriticalPlatform=platform=>config.criticalPlatforms.includes(platform);
     const selectionRows=(snapshot,selection,segment="BANK",includeBbva=false)=>(snapshot||[]).filter(row=>(selection.country==="ALL"||row.countryCode===selection.country)&&(selection.platform==="ALL"||row.platform===selection.platform)&&(segment==="ALL"||row.segment===segment||(includeBbva&&segment==="FINTECH"&&row.isBbva)));
+    const coverageRows=(rows,selection)=>(selection?.platform||"ALL")==="ALL"?(rows||[]).filter(row=>isCriticalPlatform(row.platform)):(rows||[]);
     const trendRows=(trends,selection)=>(trends||[]).filter(row=>(selection.country==="ALL"||row.countryCode===selection.country)&&(selection.platform==="ALL"||row.platform===selection.platform)&&(selection.country!=="ALL"||row.isBbva));
     function uniqueStoreRows(rows){
       const byKey=new Map();
@@ -54,8 +57,10 @@
       const bbva=(rows||[]).filter(row=>row.isBbva&&row.month<=period);const periods=availablePeriods(bbva);const currentPeriod=periods.includes(period)?period:previousAvailable(periods,`${period}-z`);
       const monthPeriod=previousAvailable(periods,currentPeriod);const yearPeriod=previousYearClose(periods,currentPeriod);
       const current=ratingAt(bbva,currentPeriod),monthClose=ratingAt(bbva,monthPeriod),yearClose=ratingAt(bbva,yearPeriod);
-      const expected=new Set(selectionRows(snapshot,selection,"BANK").filter(row=>row.isBbva).map(row=>row.appKey)).size;
-      const observed=new Set(bbva.filter(row=>row.month===currentPeriod&&finite(row.ratingEom)).map(row=>row.appKey)).size;
+      const expectedRows=coverageRows(selectionRows(snapshot,selection,"BANK").filter(row=>row.isBbva),selection);
+      const observedRows=coverageRows(bbva,selection);
+      const expected=new Set(expectedRows.map(row=>row.appKey)).size;
+      const observed=new Set(observedRows.filter(row=>row.month===currentPeriod&&finite(row.ratingEom)).map(row=>row.appKey)).size;
       return{currentPeriod,yearPeriod,monthPeriod,current,yearClose,monthClose,annual:finite(current)&&finite(yearClose)?current-yearClose:null,monthly:finite(current)&&finite(monthClose)?current-monthClose:null,coverage:expected?observed/expected:null,observed,expected};
     }
     function prepareSeries(rows,selection){
@@ -76,7 +81,7 @@
     function monthlyRatingMatrix(trends,snapshot,selection,endPeriod,limit=8){
       const rows=(trends||[]).filter(row=>row.isBbva&&finite(row.ratingEom)&&(!endPeriod||row.month<=endPeriod)&&(selection.country==="ALL"||row.countryCode===selection.country)&&(selection.platform==="ALL"||row.platform===selection.platform));
       const periods=[...new Set(rows.map(row=>row.month))].sort().slice(-Math.max(1,limit));
-      const platforms=selection.platform==="ALL"?config.platforms:[selection.platform];
+      const platforms=selection.platform==="ALL"?config.platforms.filter(platform=>isCriticalPlatform(platform)||rows.some(row=>row.platform===platform&&finite(row.ratingEom))):[selection.platform];
       const metadata=new Map((snapshot||[]).filter(row=>row.isBbva).map(row=>[row.appKey,row]));
       const countryCodes=[...new Set(rows.map(row=>row.countryCode))].sort((a,b)=>(config.countries[a]||a).localeCompare(config.countries[b]||b,"es"));
       const matrixRows=countryCodes.map(countryCode=>{
@@ -127,13 +132,14 @@
         if(!finite(rating)||rating<1||rating>5||roundingUncertainty>.5){items.push({...base,newReviews,available:false,reason:"ROUNDING"});return}
         items.push({...base,newReviews,rating,available:true,confidence:roundingUncertainty<=.1?"HIGH":roundingUncertainty<=.25?"MEDIUM":"INDICATIVE"});
       });
-      const countries=Object.values(groupBy(items,item=>item.countryCode)).map(countryItems=>{
+      const effectiveItems=items.filter(item=>isCriticalPlatform(item.platform)||item.available);
+      const countries=Object.values(groupBy(effectiveItems,item=>item.countryCode)).map(countryItems=>{
         const valid=countryItems.filter(item=>item.available),usableNewReviews=sum(valid.map(item=>item.newReviews)),observedNewReviews=sum(countryItems.filter(item=>finite(item.newReviews)&&item.newReviews>0).map(item=>item.newReviews)),rating=usableNewReviews?sum(valid.map(item=>item.rating*item.newReviews))/usableNewReviews:null,referenceRating=usableNewReviews?sum(valid.map(item=>item.previousRating*item.newReviews))/usableNewReviews:null;
         const reasons=[...new Set(countryItems.filter(item=>!item.available).map(item=>item.reason))];
         return{countryCode:countryItems[0].countryCode,country:countryItems[0].country,platforms:[...new Set(valid.map(item=>item.platform))],rating,newReviews:observedNewReviews,usableNewReviews,impact:finite(rating)&&finite(referenceRating)?rating-referenceRating:null,reasons,confidence:valid.some(item=>item.confidence==="INDICATIVE")?"INDICATIVE":valid.some(item=>item.confidence==="MEDIUM")?"MEDIUM":valid.length?"HIGH":"NONE"};
       }).sort((a,b)=>Number(finite(b.rating))-Number(finite(a.rating))||(a.impact??0)-(b.impact??0)||b.newReviews-a.newReviews||a.country.localeCompare(b.country,"es"));
-      const validItems=items.filter(item=>item.available),newReviews=sum(validItems.map(item=>item.newReviews)),rating=newReviews?sum(validItems.map(item=>item.rating*item.newReviews))/newReviews:null,referenceRating=newReviews?sum(validItems.map(item=>item.previousRating*item.newReviews))/newReviews:null;
-      return{period,previousPeriod,rows:countries,summary:{rating,newReviews,impact:finite(rating)&&finite(referenceRating)?rating-referenceRating:null,improving:countries.filter(row=>finite(row.impact)&&row.impact>.005).length,pressuring:countries.filter(row=>finite(row.impact)&&row.impact<-.005).length,availableApps:validItems.length,totalApps:items.length}};
+      const validItems=effectiveItems.filter(item=>item.available),newReviews=sum(validItems.map(item=>item.newReviews)),rating=newReviews?sum(validItems.map(item=>item.rating*item.newReviews))/newReviews:null,referenceRating=newReviews?sum(validItems.map(item=>item.previousRating*item.newReviews))/newReviews:null;
+      return{period,previousPeriod,rows:countries,summary:{rating,newReviews,impact:finite(rating)&&finite(referenceRating)?rating-referenceRating:null,improving:countries.filter(row=>finite(row.impact)&&row.impact>.005).length,pressuring:countries.filter(row=>finite(row.impact)&&row.impact<-.005).length,availableApps:validItems.length,totalApps:effectiveItems.length}};
     }
     function exclusiveScopeSelection(values,changedValue,checked){
       const selected=[...new Set((values||[]).filter(Boolean))];
@@ -141,6 +147,6 @@
       const specific=selected.filter(value=>value!=="ALL");
       return specific.length?specific:["ALL"];
     }
-    window.MarketsDomain=Object.freeze({config,finite,sum,sumOrNull,mean,groupBy,appName,selectionRows,trendRows,uniqueStoreRows,volumeSummary,rankRows,countBbvaLeaders,availablePeriods,periodModel,evolutionKpis,prepareSeries,latestValue,ratingComparison,monthlyRatingMatrix,ratingRoundingHalfStep,monthlyNewReviewImpact,exclusiveScopeSelection});
+    window.MarketsDomain=Object.freeze({config,finite,sum,sumOrNull,mean,groupBy,appName,isCriticalPlatform,selectionRows,coverageRows,trendRows,uniqueStoreRows,volumeSummary,rankRows,countBbvaLeaders,availablePeriods,periodModel,evolutionKpis,prepareSeries,latestValue,ratingComparison,monthlyRatingMatrix,ratingRoundingHalfStep,monthlyNewReviewImpact,exclusiveScopeSelection});
   })();
 </script>

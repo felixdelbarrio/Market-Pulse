@@ -47,10 +47,9 @@ test("bootstrap carries the initial chart without a second RPC", () => {
   assert.equal(bootstrap.trends[0].isBbva, true);
 });
 
-test("web cache identity is stable across visual releases", () => {
-  assert.equal(context.marketsBootstrapCacheKey_(), "markets-web:bootstrap:2026.07.26.38");
-  assert.doesNotMatch(context.marketsBootstrapCacheKey_(), /2026\.07\.26\.39/);
-  assert.match(context.marketsTrendCacheKey_({ segment: "BANK" }), /2026\.07\.26\.38/);
+test("web cache identity advances when bootstrap semantics change", () => {
+  assert.equal(context.marketsBootstrapCacheKey_(), "markets-web:bootstrap:2026.07.26.40");
+  assert.match(context.marketsTrendCacheKey_({ segment: "BANK" }), /2026\.07\.26\.40/);
 });
 
 test("persistent cache failures never block serving calculated data", () => {
@@ -66,6 +65,27 @@ test("persistent cache failures never block serving calculated data", () => {
   const result = context.tryWriteMarketsPersistentCache_("bootstrap", { ready: true }, "run-1");
   assert.equal(result.ok, false);
   assert.match(result.error, /quota/);
+});
+
+test("web operational status ignores unavailable Huawei captures", () => {
+  const headers = ["RUN_ID", "REFERENCE_DATE", "FETCHED_AT", "APP_KEY", "PLATFORM",
+    "COUNTRY_CODE", "MARKET_SEGMENT", "STATUS", "HTTP_STATUS", "RATING",
+    "RATING_COUNT", "RETRYABLE", "DETAIL", "SOURCE"];
+  context.MARKETS_CONFIG.sheets = { fetchLog: "FETCH_LOG" };
+  context.MARKETS_CONFIG.headers = { fetchLog: headers };
+  const rows = [
+    ["run-1", "", "", "ANDROID|MX|BBVA", "Android", "MX", "BANK", "OK", 200, 4.2, 10, false, "", ""],
+    ["run-1", "", "", "IOS|MX|BBVA", "iOS", "MX", "BANK", "OK", 200, 4.8, 10, false, "", ""],
+    ["run-1", "", "", "HUAWEI|MX|BBVA", "Huawei", "MX", "BANK", "ERROR", 503, "", "", true, "No disponible", ""]
+  ];
+  const sheet = {
+    getLastRow: () => rows.length + 1,
+    getRange: () => ({ getValues: () => rows })
+  };
+  const summary = JSON.parse(JSON.stringify(context.readRunFetchSummaryForWeb_({
+    getSheetByName: () => sheet
+  }, "run-1", 3)));
+  assert.deepEqual(summary, { total: 2, ok: 2, incidents: [] });
 });
 
 test("warm trend cache avoids opening the spreadsheet", () => {
@@ -505,6 +525,7 @@ test("monthly summary matrix respects filters and marks shared Android volume as
   ];
   const matrix = browser.MarketsDomain.monthlyRatingMatrix(trends, snapshot, { country: "ALL", platform: "ALL" }, "2026-07", 8);
   assert.deepEqual(Array.from(matrix.periods), ["2026-06", "2026-07"]);
+  assert.deepEqual(Array.from(matrix.platforms), ["Android", "iOS"]);
   assert.equal(matrix.rows.length, 1);
   assert.ok(Math.abs(matrix.rows[0].cells[1].rating - 4.7) < 1e-10);
   assert.ok(Math.abs(matrix.rows[0].cells[1].delta - 0.1) < 1e-10);
@@ -530,13 +551,15 @@ test("new-review impact reproduces the GEMA month-rating calculation and protect
   vm.runInContext(script, browser);
   const snapshot = [
     { appKey: "IOS|ES|BBVA", isBbva: true, volumeScope: "MARKET" },
-    { appKey: "ANDROID|AR|BBVA", isBbva: true, volumeScope: "SHARED_LISTING" }
+    { appKey: "ANDROID|AR|BBVA", isBbva: true, volumeScope: "SHARED_LISTING" },
+    { appKey: "HUAWEI|VE|BBVA", isBbva: true, volumeScope: "MARKET" }
   ];
   const trends = [
     { appKey: "IOS|ES|BBVA", platform: "iOS", countryCode: "ES", country: "España", isBbva: true, month: "2026-05", ratingEom: 3.9, ratingCountEom: 1519 },
     { appKey: "IOS|ES|BBVA", platform: "iOS", countryCode: "ES", country: "España", isBbva: true, month: "2026-06", ratingEom: 3.97, ratingCountEom: 1670 },
     { appKey: "ANDROID|AR|BBVA", platform: "Android", countryCode: "AR", country: "Argentina", isBbva: true, month: "2026-05", ratingEom: 2.6, ratingCountEom: 7000 },
-    { appKey: "ANDROID|AR|BBVA", platform: "Android", countryCode: "AR", country: "Argentina", isBbva: true, month: "2026-06", ratingEom: 2.61, ratingCountEom: 7100 }
+    { appKey: "ANDROID|AR|BBVA", platform: "Android", countryCode: "AR", country: "Argentina", isBbva: true, month: "2026-06", ratingEom: 2.61, ratingCountEom: 7100 },
+    { appKey: "HUAWEI|VE|BBVA", platform: "Huawei", countryCode: "VE", country: "Venezuela", isBbva: true, month: "2026-06", ratingEom: 4.1, ratingCountEom: 50 }
   ];
   const model = browser.MarketsDomain.monthlyNewReviewImpact(trends, snapshot, { country: "ALL", platform: "ALL" }, "2026-06");
   const spain = model.rows.find(row => row.countryCode === "ES");
@@ -549,6 +572,7 @@ test("new-review impact reproduces the GEMA month-rating calculation and protect
   assert.equal(model.summary.newReviews, 151);
   assert.equal(model.summary.availableApps, 1);
   assert.equal(model.summary.totalApps, 2);
+  assert.equal(model.rows.some(row => row.countryCode === "VE"), false);
   const ios = browser.MarketsDomain.monthlyNewReviewImpact(trends, snapshot, { country: "ES", platform: "iOS" }, "2026-06");
   assert.equal(ios.rows.length, 1);
   assert.ok(Math.abs(ios.summary.rating - 4.674172185430463) < 1e-10);
@@ -683,6 +707,7 @@ test("evolution KPIs use BBVA closes for the selected period", () => {
   const snapshot = [
     { appKey: "BBVA-A", platform: "Android", countryCode: "MX", segment: "BANK", isBbva: true },
     { appKey: "BBVA-I", platform: "iOS", countryCode: "MX", segment: "BANK", isBbva: true },
+    { appKey: "BBVA-H", platform: "Huawei", countryCode: "MX", segment: "BANK", isBbva: true },
     { appKey: "PEER", platform: "Android", countryCode: "MX", segment: "BANK", isBbva: false }
   ];
   const result = browser.MarketsDomain.evolutionKpis(trends, snapshot, { country: "MX", platform: "ALL" }, "2026-07");

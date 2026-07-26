@@ -22,15 +22,16 @@
       if(!["overview","benchmark","evolution"].includes(input.view))throw new Error("La vista actual no admite descarga de informe.");
       const view=input.view;
       const selection={country:input.selection?.country||"ALL",platform:input.selection?.platform||"ALL"};
-      const platforms=selection.platform==="ALL"?D.config.platforms:[selection.platform];
       const bbva=D.selectionRows(snapshot,selection,"BANK").filter(row=>row.isBbva);
-      const observed=bbva.filter(row=>finite(row.rating));
+      const platforms=selection.platform==="ALL"?D.config.platforms.filter(platform=>D.isCriticalPlatform(platform)||bbva.some(row=>row.platform===platform&&finite(row.rating))):[selection.platform];
+      const coverageRows=D.coverageRows(bbva,selection);
+      const observed=coverageRows.filter(row=>finite(row.rating));
       const competitive=D.selectionRows(snapshot,selection,view==="benchmark"?segment:"ALL",true).filter(row=>finite(row.rating));
       const volume=D.volumeSummary(bbva);
       const leaders=D.countBbvaLeaders(competitive);
       const average=D.mean(observed.map(row=>row.rating));
-      const expected=bbva.length;
-      const fresh=bbva.filter(row=>row.fresh&&finite(row.rating)).length;
+      const expected=coverageRows.length;
+      const fresh=coverageRows.filter(row=>row.fresh&&finite(row.rating)).length;
       const coverage=expected?fresh/expected:null;
       const trendRows=D.trendRows(trends,selection);
       const period=D.periodModel(trendRows,view==="evolution"?input.periodYear||"":"",view==="evolution"?input.periodMonth||"":"").period;
@@ -40,14 +41,14 @@
       const scopeLabel=`${selection.country==="ALL"?"Todos los mercados":countryName(selection.country,meta)} · ${D.config.platformLabels[selection.platform]||selection.platform}`;
       const viewLabel={overview:"Resumen",benchmark:"Benchmark",evolution:"Evolución"}[view];
       const chart=view==="evolution"?C.lineChart(displaySeries,{period,idPrefix:"report",format:fmt,monthLabel,allMarkets:selection.country==="ALL",context:scopeLabel}):null;
-      const geography=buildGeography(bbva,meta,platforms);
+      const geography=buildGeography(bbva,meta,platforms,selection);
       const comparison=D.ratingComparison(snapshot,selection);
       const benchmark=buildBenchmark(competitive,meta);
       const benchmarkRows=view==="benchmark"?buildBenchmarkRows(competitive,meta):[];
       const movements=view==="evolution"?buildMovements(displaySeries,period):[];
       const monthly=view==="evolution"?D.monthlyRatingMatrix(trends,snapshot,selection,period,6):null;
       const newReviewImpact=view==="evolution"?D.monthlyNewReviewImpact(trends,snapshot,selection,period):null;
-      const detail=buildDetail(bbva,benchmark,meta);
+      const detail=buildDetail(bbva.filter(row=>D.isCriticalPlatform(row.platform)||finite(row.rating)),benchmark,meta);
       const signals=buildSignals(observed,benchmark,coverage,meta);
       const builders=[];
       if(view==="overview"){
@@ -73,11 +74,12 @@
     const chunk=(rows,size)=>Array.from({length:Math.ceil(rows.length/size)},(_,index)=>rows.slice(index*size,(index+1)*size));
     const chunkLabel=rows=>{const countries=[...new Set(rows.map(row=>row.country||countryName(row.countryCode)))];return countries.length===1?countries[0]:`${countries[0]||"Sin datos"}–${countries.at(-1)||""}`};
 
-    function buildGeography(rows,meta,platforms){
+    function buildGeography(rows,meta,platforms,selection){
       return Object.entries(D.groupBy(rows,row=>row.countryCode)).map(([countryCode,items])=>{
         const byPlatform=Object.fromEntries(platforms.map(platform=>[platform,items.find(row=>row.platform===platform)]));
         const rated=items.filter(row=>finite(row.rating));
-        return{countryCode,country:countryName(countryCode,meta),rating:D.mean(rated.map(row=>row.rating)),delta:D.mean(rated.map(row=>row.delta30d)),coverage:rated.length/platforms.length,rated:rated.length,expected:platforms.length,platforms:byPlatform};
+        const essential=D.coverageRows(items,selection),essentialRated=essential.filter(row=>finite(row.rating));
+        return{countryCode,country:countryName(countryCode,meta),rating:D.mean(rated.map(row=>row.rating)),delta:D.mean(rated.map(row=>row.delta30d)),coverage:essential.length?essentialRated.length/essential.length:null,rated:essentialRated.length,expected:essential.length,platforms:byPlatform};
       }).sort((a,b)=>a.country.localeCompare(b.country,"es"));
     }
 
@@ -144,18 +146,18 @@
     }
 
     function geographyPage(context,data,pageNumber,sectionNumber){
-      const rows=data.geography.map(item=>`<tr><th><span class="report-flag">${esc(D.config.flags[item.countryCode]||"🌐")}</span><div><strong>${esc(item.country)}</strong><small>${item.rated} de ${item.expected} stores con rating</small></div></th><td class="report-rating"><strong>${fmt(item.rating,2)}</strong><span class="${tone(item.delta)}">${signed(item.delta)}</span></td>${data.platforms.map(platform=>platformCell(item.platforms[platform])).join("")}<td><span class="report-coverage"><i style="width:${Math.round(item.coverage*100)}%"></i></span><small>${pct(item.coverage)}</small></td></tr>`).join("");
+      const rows=data.geography.map(item=>`<tr><th><span class="report-flag">${esc(D.config.flags[item.countryCode]||"🌐")}</span><div><strong>${esc(item.country)}</strong><small>${item.rated} de ${item.expected} fuentes esenciales</small></div></th><td class="report-rating"><strong>${fmt(item.rating,2)}</strong><span class="${tone(item.delta)}">${signed(item.delta)}</span></td>${data.platforms.map(platform=>platformCell(item.platforms[platform],platform)).join("")}<td><span class="report-coverage"><i style="width:${Math.round((item.coverage||0)*100)}%"></i></span><small>${pct(item.coverage)}</small></td></tr>`).join("");
       const body=`<div class="report-title"><span>${esc(sectionNumber)} · Panorama geográfico</span><h2>BBVA Empresas, mercado a mercado</h2><p>${esc(data.scopeLabel)} · rating actual y variación a 30 días.</p></div><div class="report-table-wrap"><table class="report-table report-geo-table"><thead><tr><th>Mercado</th><th>Media</th>${data.platforms.map(platform=>`<th>${esc(platform)}</th>`).join("")}<th>Cobertura</th></tr></thead><tbody>${rows}</tbody></table></div><div class="report-legend"><span><i class="positive"></i> Mejora</span><span><i class="negative"></i> Retroceso</span><span><i class="neutral"></i> Estable o sin comparable</span><small>La variación indicada corresponde a 30 días.</small></div>`;
       return pageShell(context,pageNumber,"Panorama geográfico",data.scopeLabel,body);
     }
 
-    function platformCell(row){
-      if(!row||!finite(row.rating))return`<td class="report-platform-cell missing"><strong>—</strong><small>Fuente pendiente</small></td>`;
+    function platformCell(row,platform){
+      if(!row||!finite(row.rating))return platform==="Huawei"?`<td class="report-platform-cell"><strong>—</strong><small>Dato complementario</small></td>`:`<td class="report-platform-cell missing"><strong>—</strong><small>Fuente pendiente</small></td>`;
       return`<td class="report-platform-cell"><strong>${fmt(row.rating,2)}</strong><small class="${tone(row.delta30d)}">${signed(row.delta30d)}</small></td>`;
     }
 
     function benchmarkPage(context,data,pageNumber,rangeLabel,sectionNumber){
-      const rows=data.benchmark.map(item=>`<tr class="${item.isBbva?"report-row-bbva":""}"><th><strong>${esc(item.country)}</strong><small>${esc(item.platform)}</small></th><td><span class="report-rank ${item.computedRank===1&&item.complete?"leader":""}">${item.computedRank} / ${item.apps}</span></td><td><strong>${esc(D.appName(item))}</strong><small>${item.isBbva?"BBVA Empresas":"Competidor"}</small></td><td><strong>${fmt(item.rating,2)}</strong><small class="${tone(item.delta30d)}">${signed(item.delta30d)}</small></td><td><strong>${integer(item.ratingCount)}</strong><small>acumuladas</small></td><td><span class="report-quality ${item.complete&&item.fresh?"complete":"pending"}">${item.complete&&item.fresh?"Actualizado":item.complete?"Carga anterior":"Cobertura parcial"}</span></td></tr>`).join("");
+      const rows=data.benchmark.map(item=>`<tr class="${item.isBbva?"report-row-bbva":""}"><th><strong>${esc(item.country)}</strong><small>${esc(item.platform)}</small></th><td><span class="report-rank ${item.computedRank===1&&item.complete?"leader":""}">${item.computedRank} / ${item.apps}</span></td><td><strong>${esc(D.appName(item))}</strong><small>${item.isBbva?"BBVA Empresas":"Competidor"}</small></td><td><strong>${fmt(item.rating,2)}</strong><small class="${tone(item.delta30d)}">${signed(item.delta30d)}</small></td><td><strong>${integer(item.ratingCount)}</strong><small>acumuladas</small></td><td><span class="report-quality ${item.platform==="Huawei"||item.complete&&item.fresh?"complete":"pending"}">${item.platform==="Huawei"?"Dato complementario":item.complete&&item.fresh?"Actualizado":item.complete?"Carga anterior":"Cobertura parcial"}</span></td></tr>`).join("");
       const pageScope=context.totalPages>2&&rangeLabel?`${data.scopeLabel} · ${rangeLabel}`:data.scopeLabel;
       const body=`<div class="report-title compact"><span>${esc(sectionNumber)} · Posición competitiva</span><h2>Ranking completo del mercado</h2><p>${esc(D.config.segmentLabels[data.segment]||data.segment)} · ${esc(pageScope)}.</p></div><div class="report-table-wrap"><table class="report-table report-benchmark-table"><thead><tr><th>Mercado / store</th><th>Posición</th><th>Aplicación</th><th>Rating / Δ30d</th><th>Opiniones</th><th>Calidad</th></tr></thead><tbody>${rows}</tbody></table></div><aside class="report-note compact"><strong>Lectura</strong><span>El informe reproduce todas las aplicaciones visibles en Benchmark. La posición solo es comparable cuando la carga incluye el conjunto esperado.</span></aside>`;
       return pageShell(context,pageNumber,"Benchmark competitivo",pageScope,body);
@@ -170,7 +172,7 @@
     }
 
     function evolutionPage(context,data,pageNumber,sectionNumber){
-      const body=`<div class="report-title compact"><span>${esc(sectionNumber)} · Evolución</span><h2>La trayectoria detrás del dato actual</h2><p>${esc(data.scopeLabel)} · hasta ${esc(monthLabel(data.period))}.</p></div><div class="report-evolution-kpis"><article><span>Cierre</span><strong>${fmt(data.evolution.current,2)}</strong><small>${esc(monthLabel(data.evolution.currentPeriod))}</small></article><article class="${tone(data.evolution.monthly)}"><span>vs. mes anterior</span><strong>${signed(data.evolution.monthly)}</strong><small>${esc(monthLabel(data.evolution.monthPeriod))}</small></article><article class="${tone(data.evolution.annual)}"><span>vs. año anterior</span><strong>${signed(data.evolution.annual)}</strong><small>${esc(monthLabel(data.evolution.yearPeriod))}</small></article><article><span>Cobertura del cierre</span><strong>${pct(data.evolution.coverage)}</strong><small>${integer(data.evolution.observed)} de ${integer(data.evolution.expected)} apps</small></article></div><div class="report-evolution-layout"><section class="report-chart"><div>${data.chart.svg}</div><div class="report-chart-legend">${data.chart.legend}</div></section><aside class="report-movements"><h3>Último movimiento</h3><p>Variación frente al cierre anterior disponible.</p>${data.movements.slice(0,8).map(item=>`<div><span>${esc(item.label.replace("BBVA Empresas ",""))}</span><strong>${fmt(item.current,2)}</strong><b class="${tone(item.delta)}">${signed(item.delta)}</b></div>`).join("")}</aside></div>`;
+      const body=`<div class="report-title compact"><span>${esc(sectionNumber)} · Evolución</span><h2>La trayectoria detrás del dato actual</h2><p>${esc(data.scopeLabel)} · hasta ${esc(monthLabel(data.period))}.</p></div><div class="report-evolution-kpis"><article><span>Cierre</span><strong>${fmt(data.evolution.current,2)}</strong><small>${esc(monthLabel(data.evolution.currentPeriod))}</small></article><article class="${tone(data.evolution.monthly)}"><span>vs. mes anterior</span><strong>${signed(data.evolution.monthly)}</strong><small>${esc(monthLabel(data.evolution.monthPeriod))}</small></article><article class="${tone(data.evolution.annual)}"><span>vs. año anterior</span><strong>${signed(data.evolution.annual)}</strong><small>${esc(monthLabel(data.evolution.yearPeriod))}</small></article><article><span>Cobertura esencial</span><strong>${pct(data.evolution.coverage)}</strong><small>${integer(data.evolution.observed)} de ${integer(data.evolution.expected)} series Android/iOS</small></article></div><div class="report-evolution-layout"><section class="report-chart"><div>${data.chart.svg}</div><div class="report-chart-legend">${data.chart.legend}</div></section><aside class="report-movements"><h3>Último movimiento</h3><p>Variación frente al cierre anterior disponible.</p>${data.movements.slice(0,8).map(item=>`<div><span>${esc(item.label.replace("BBVA Empresas ",""))}</span><strong>${fmt(item.current,2)}</strong><b class="${tone(item.delta)}">${signed(item.delta)}</b></div>`).join("")}</aside></div>`;
       return pageShell(context,pageNumber,"Evolución de ratings",data.scopeLabel,body);
     }
 
@@ -192,7 +194,7 @@
     }
 
     function detailPage(context,data,pageNumber,rangeLabel,sectionNumber){
-      const rows=data.detail.map(row=>`<tr><th><strong>${esc(row.country)}</strong><small>${esc(row.platform)}</small></th><td><strong>${fmt(row.rating,2)}</strong><small class="${tone(row.delta30d)}">${signed(row.delta30d)}</small></td><td>${row.rankComplete&&row.computedRank?`<strong>${row.computedRank} / ${row.rankApps}</strong>`:"<span class=\"report-quality pending\">WIP</span>"}</td><td><strong>${row.leader?esc(row.leader.isBbva?"BBVA Empresas":row.leader.appName):"—"}</strong><small>${fmt(row.leader?.rating,2)}</small></td><td><strong>${row.volumeScope==="SHARED_LISTING"?"Compartido":integer(row.ratingCount)}</strong><small>${row.volumeScope==="SHARED_LISTING"?"Listing multipaís":`${integer(row.ratingCountDelta30d)} nuevas`}</small></td><td><span class="report-quality ${row.fresh&&finite(row.rating)?"complete":"pending"}">${row.fresh&&finite(row.rating)?"Actualizado":"Fuente pendiente"}</span></td></tr>`).join("");
+      const rows=data.detail.map(row=>`<tr><th><strong>${esc(row.country)}</strong><small>${esc(row.platform)}</small></th><td><strong>${fmt(row.rating,2)}</strong><small class="${tone(row.delta30d)}">${signed(row.delta30d)}</small></td><td>${row.rankComplete&&row.computedRank?`<strong>${row.computedRank} / ${row.rankApps}</strong>`:row.platform==="Huawei"?"—":"<span class=\"report-quality pending\">WIP</span>"}</td><td><strong>${row.leader?esc(row.leader.isBbva?"BBVA Empresas":row.leader.appName):"—"}</strong><small>${fmt(row.leader?.rating,2)}</small></td><td><strong>${row.volumeScope==="SHARED_LISTING"?"Compartido":integer(row.ratingCount)}</strong><small>${row.volumeScope==="SHARED_LISTING"?"Listing multipaís":`${integer(row.ratingCountDelta30d)} nuevas`}</small></td><td><span class="report-quality ${row.platform==="Huawei"||row.fresh&&finite(row.rating)?"complete":"pending"}">${row.platform==="Huawei"?"Dato complementario":row.fresh&&finite(row.rating)?"Actualizado":"Fuente pendiente"}</span></td></tr>`).join("");
       const body=`<div class="report-title compact"><span>${esc(sectionNumber)} · Anexo de gestión</span><h2>Detalle operativo por store</h2><p>${esc(rangeLabel)} · una fila por mercado y plataforma para facilitar el seguimiento local.</p></div><div class="report-table-wrap"><table class="report-table report-detail-table"><thead><tr><th>Mercado / store</th><th>Rating / Δ30d</th><th>Posición</th><th>Líder</th><th>Reseñas</th><th>Estado</th></tr></thead><tbody>${rows}</tbody></table></div>`;
       return pageShell(context,pageNumber,"Detalle por store",rangeLabel,body);
     }

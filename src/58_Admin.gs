@@ -205,7 +205,9 @@ function readRecentMarketsAdminFetchIssues_(ss, limit) {
   const indexes = indexHeaders_(headers);
   const count = Math.min(600, sheet.getLastRow() - 1);
   return sheet.getRange(sheet.getLastRow() - count + 1, 1, count, headers.length).getValues().reverse()
-    .filter(function (row) { return trimString_(row[indexes.status]) !== 'OK'; })
+    .filter(function (row) {
+      return isMarketsCriticalPlatform_(row[indexes.platform]) && trimString_(row[indexes.status]) !== 'OK';
+    })
     .slice(0, limit).map(function (row) {
       return {
         fetchedAt: adminDateTime_(row[indexes.fetched_at]), runId: trimString_(row[indexes.run_id]),
