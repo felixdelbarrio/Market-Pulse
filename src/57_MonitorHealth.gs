@@ -98,40 +98,49 @@ function evaluateMarketsMonitorHealth_(run, expectedDateKey) {
 function sendMarketsMonitorHealthEmail_(recipient, health, sentAt) {
   const executor = normalizeEmailForComparison_(Session.getEffectiveUser().getEmail());
   if (!executor) throw new Error('No se puede identificar la cuenta propietaria del trigger de vigilancia.');
-  const subject = '[ACCION REQUERIDA] COMMERCIAL · Proceso diario · ' + health.dateKey;
+  const subject = '[ACCIÓN REQUERIDA] Market Pulse · Proceso diario · ' + health.dateKey;
   const reason = trimString_(health.reason || 'La ejecucion diaria necesita revision.');
   const detail = trimString_(health.detail);
   const runId = trimString_(health.runId) || 'sin ejecucion';
   const appUrl = marketsWebAppUrl_();
   const loginUrl = marketsWebAppLoginUrl_(recipient);
-  const plain = 'BBVA COMMERCIAL - MONITOR TECNICO\n\n' + reason + '\n\nFecha esperada: ' +
+  const plain = 'MARKET PULSE\nBBVA Banca de Empresas e Instituciones\nMONITOR TÉCNICO\n\n' + reason + '\n\nFecha esperada: ' +
     health.dateKey + '\nRun: ' + runId + (detail ? '\nDetalle: ' + detail : '') +
     '\n\nEjecuta runNow() manualmente y revisa RUN_LOG.\n' + loginUrl + '\nURL directa: ' + appUrl;
-  const html = '<!doctype html><html><body style="margin:0;background:#F4F5F6;font-family:Arial,Helvetica,sans-serif;color:#121212;">' +
+  const html = '<!doctype html><html><body style="margin:0;background:#F7F8F8;font-family:\'BBVABentonSans\',\'Benton Sans BBVA\',Arial,Helvetica,sans-serif;color:#000519;">' +
     '<div style="max-width:620px;margin:24px auto;background:#FFFFFF;border-radius:12px;overflow:hidden;">' +
-    '<div style="padding:22px 26px;background:#072146;color:#FFFFFF;"><div style="color:#5AC4C4;font-size:11px;font-weight:700;letter-spacing:.8px;">COMMERCIAL · MONITOR TECNICO</div><h1 style="margin:8px 0 0;font-size:24px;line-height:30px;">El proceso diario necesita revisión</h1></div>' +
+    '<div style="padding:22px 26px;background:#001391;color:#FFFFFF;"><img src="cid:bbvaLogo" width="156" alt="BBVA Banca de Empresas e Instituciones" style="display:block;width:156px;height:auto;"><div style="margin-top:20px;color:#8BE1E9;font-size:11px;font-weight:700;letter-spacing:.8px;">MARKET PULSE · MONITOR TÉCNICO</div><h1 style="margin:8px 0 0;font-size:24px;line-height:30px;">El proceso diario necesita revisión</h1></div>' +
     '<div style="padding:24px 26px;"><p style="margin:0 0 18px;line-height:22px;">' + escapeMarketsAlertHtml_(reason) + '</p>' +
     '<div style="padding:14px 16px;border-left:4px solid #B92A45;background:#F9E9ED;font-size:13px;line-height:20px;"><strong>Fecha esperada:</strong> ' + escapeMarketsAlertHtml_(health.dateKey) + '<br><strong>Run:</strong> ' + escapeMarketsAlertHtml_(runId) + (detail ? '<br><strong>Detalle:</strong> ' + escapeMarketsAlertHtml_(detail) : '') + '</div>' +
     '<p style="margin:20px 0 0;font-size:14px;line-height:21px;">Ejecuta <strong>runNow()</strong> manualmente y revisa <strong>RUN_LOG</strong>.</p>' +
-    '<p style="margin:18px 0 0;"><a href="' + escapeMarketsAlertHtml_(loginUrl) + '" style="color:#1464A5;font-weight:700;">Ir a la aplicación</a></p>' +
-    '<p style="margin:18px 0 0;color:#7C8893;font-size:10px;line-height:15px;">Comprobación automática ' + escapeMarketsAlertHtml_(marketsAlertDateLabel_(sentAt)) + ' · aviso único por día.</p></div></div></body></html>';
+    '<p style="margin:18px 0 0;"><a href="' + escapeMarketsAlertHtml_(loginUrl) + '" style="color:#001391;font-weight:700;">Ir a Market Pulse</a></p>' +
+    '<p style="margin:18px 0 0;color:#ADB8C2;font-size:10px;line-height:15px;">Comprobación automática ' + escapeMarketsAlertHtml_(marketsAlertDateLabel_(sentAt)) + ' · aviso único por día.</p></div></div></body></html>';
   const token = Utilities.getUuid().replace(/-/g, '');
-  const boundary = 'bbva_health_' + token;
+  const relatedBoundary = 'bbva_health_related_' + token;
+  const alternativeBoundary = 'bbva_health_alternative_' + token;
+  const image = buildMarketsAlertInlineImages_().bbvaLogo;
   const crlf = '\r\n';
   const mime = [
-    'From: ' + marketsAlertEncodedHeader_('BBVA VoC Commercial · Monitor técnico') + ' <' + executor + '>',
+    'From: ' + marketsAlertEncodedHeader_('BBVA Market Pulse · Monitor técnico') + ' <' + executor + '>',
     'To: ' + recipient,
     'Reply-To: ' + recipient,
     'Subject: ' + marketsAlertEncodedHeader_(subject),
     'Date: ' + sentAt.toUTCString(),
     'Message-ID: <' + token + '@voc-commercial.bbva.com>',
     'MIME-Version: 1.0',
-    'Content-Type: multipart/alternative; boundary="' + boundary + '"', '',
-    '--' + boundary, 'Content-Type: text/plain; charset="UTF-8"',
+    'Content-Type: multipart/related; boundary="' + relatedBoundary + '"', '',
+    '--' + relatedBoundary,
+    'Content-Type: multipart/alternative; boundary="' + alternativeBoundary + '"', '',
+    '--' + alternativeBoundary, 'Content-Type: text/plain; charset="UTF-8"',
     'Content-Transfer-Encoding: base64', '', marketsAlertMimeText_(plain),
-    '--' + boundary, 'Content-Type: text/html; charset="UTF-8"',
+    '--' + alternativeBoundary, 'Content-Type: text/html; charset="UTF-8"',
     'Content-Transfer-Encoding: base64', '', marketsAlertMimeText_(html),
-    '--' + boundary + '--', ''
+    '--' + alternativeBoundary + '--', '',
+    '--' + relatedBoundary, 'Content-Type: image/png; name="bbva-bei.png"',
+    'Content-Transfer-Encoding: base64', 'Content-ID: <bbvaLogo>',
+    'Content-Disposition: inline; filename="bbva-bei.png"', '',
+    marketsAlertMimeBytes_(image.getBytes()),
+    '--' + relatedBoundary + '--', ''
   ].join(crlf);
   const accepted = Gmail.Users.Messages.send({
     raw: Utilities.base64EncodeWebSafe(mime, Utilities.Charset.UTF_8).replace(/=+$/g, '')

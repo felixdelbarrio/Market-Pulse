@@ -106,7 +106,7 @@ function authorizeAndInstallMarketsAutomation() {
 }
 
 function onOpen() {
-  SpreadsheetApp.getUi().createMenu('Markets Ratings')
+  SpreadsheetApp.getUi().createMenu('Market Pulse')
     .addItem('Validar proyecto', 'validateProject')
     .addItem('Ejecutar ahora', 'runNow')
     .addItem('Recalcular metricas', 'rebuildAllMetrics')

@@ -2,26 +2,29 @@
 <html lang="es">
 <head>
   <meta charset="utf-8">
-  <meta name="theme-color" content="#072146">
+  <meta name="theme-color" content="#001391">
+  <meta name="application-name" content="Market Pulse">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Market Pulse">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <?!= includeMarketsWebPartial_('BrandAssets'); ?>
+  <?!= includeMarketsWebPartial_('BrandIdentity'); ?>
   <?!= includeMarketsWebPartial_('DesignSystem'); ?>
   <?!= includeMarketsWebPartial_('ReportStyles'); ?>
 </head>
 <body>
-  <div id="loader" class="loader" aria-live="polite"><div class="loader-inner"><div class="loader-mark"><span class="bbva-logo" role="img" aria-label="BBVA"></span></div><div class="loader-bar"></div><span>Preparando la visión de mercados…</span></div></div>
+  <div id="loader" class="loader" aria-live="polite"><div class="loader-inner"><div class="loader-mark"><span class="bbva-logo" role="img" aria-label="BBVA Banca de Empresas e Instituciones"></span></div><div class="loader-bar"></div><span>Preparando Market Pulse…</span></div></div>
   <div id="app" class="app-shell">
     <header class="topbar">
-      <div class="brand"><div class="brand-mark"><span class="bbva-logo" role="img" aria-label="BBVA"></span></div><div class="brand-divider"></div><div class="brand-product">Markets Data Studio<span>Commercial</span></div></div>
+      <div class="brand"><div class="brand-mark"><span class="bbva-logo" role="img" aria-label="BBVA Banca de Empresas e Instituciones"></span></div><div class="brand-divider"></div><div class="brand-product">Market Pulse</div></div>
       <nav class="main-nav" aria-label="Secciones"><button class="nav-button active" data-view="overview" type="button">Resumen</button><button class="nav-button" data-view="benchmark" type="button">Benchmark</button><button class="nav-button" data-view="evolution" type="button">Evolución</button><button class="nav-button" data-view="alerts" type="button">Alertas</button><button id="admin-nav" class="nav-button hidden" data-view="admin" type="button">Administración</button></nav>
       <button id="report-button" class="button button-secondary" type="button" title="Descargar informe completo" aria-label="Descargar informe completo"><span aria-hidden="true">↓</span><span>Descargar informe</span></button>
     </header>
 
     <section class="hero">
       <div class="hero-inner">
-        <div><p class="eyebrow">Commercial intelligence · Voice of Customer</p><h1>Visión del VoC por geografías</h1><p class="hero-copy">Percepción pública de BBVA Empresas frente al mercado, en Android, iOS y Huawei</p></div>
+        <div><p class="eyebrow">Market Pulse · Voice of Customer</p><h1>Visión del VoC por geografías</h1><p class="hero-copy">Percepción pública de BBVA Empresas frente al mercado, en Android, iOS y Huawei</p></div>
         <div class="run-card"><span class="run-label">Última ejecución</span><div class="run-row"><div class="run-status"><i id="run-dot" class="status-dot"></i><span id="run-status">Cargando</span></div><button id="incident-button" class="incident-button" type="button" disabled>Sin incidencias</button></div><div id="run-date" class="run-date">—</div></div>
       </div>
     </section>
@@ -33,7 +36,7 @@
     </section></div>
 
     <main>
-      <div id="print-cover" class="print-cover"><strong>Markets Data Studio · Commercial</strong><span id="print-context"></span></div>
+      <div id="print-cover" class="print-cover"><strong>Market Pulse · BBVA Banca de Empresas e Instituciones</strong><span id="print-context"></span></div>
       <section id="view-overview" class="view">
         <div class="section-head"><div><span class="section-kicker">Pulso del mercado</span><h2>Resumen ejecutivo</h2><p id="overview-subtitle">Todos los mercados · Todas · BBVA Empresas</p></div><span id="data-date" class="tag">—</span></div>
         <div id="kpi-grid" class="kpi-grid"></div>
@@ -149,7 +152,7 @@
         </div>
       </section>
     </main>
-    <footer class="footer"><span><strong>Markets Data Studio</strong> · Ratings y valoraciones públicas de las stores</span><span id="footer-version">Contrato de datos</span></footer>
+    <footer class="footer"><span><strong>Market Pulse</strong> · BBVA Banca de Empresas e Instituciones · Ratings y valoraciones públicas</span><span id="footer-version">Contrato de datos</span></footer>
   </div>
 
   <section id="print-report" class="print-report" aria-hidden="true"></section>

@@ -110,7 +110,7 @@ test("doGet builds an HtmlService response using supported metadata", () => {
   assert.deepEqual(calls, [
     ["template", "Index"],
     ["evaluate"],
-    ["title", "Markets Ratings Intelligence"],
+    ["title", "Market Pulse · BBVA Banca de Empresas e Instituciones"],
     ["meta", "viewport", "width=device-width, initial-scale=1, viewport-fit=cover"]
   ]);
 });
@@ -257,9 +257,16 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   const index = fs.readFileSync(new URL("../src/Index.html", import.meta.url), "utf8");
   const app = fs.readFileSync(new URL("../src/App.html", import.meta.url), "utf8");
   const assets = fs.readFileSync(new URL("../src/BrandAssets.html", import.meta.url), "utf8");
+  const identity = fs.readFileSync(new URL("../src/BrandIdentity.html", import.meta.url), "utf8");
   assert.match(index, /includeMarketsWebPartial_\('BrandAssets'\)/);
+  assert.match(index, /includeMarketsWebPartial_\('BrandIdentity'\)/);
+  assert.match(identity, /--asset-bbva-bei-logo:url\("data:image\/png;base64,/);
+  assert.match(index, /Market Pulse/);
+  assert.doesNotMatch(index, /Markets Data Studio/);
   assert.match(index, /name="mobile-web-app-capable" content="yes"/);
   assert.match(index, /name="apple-mobile-web-app-capable" content="yes"/);
+  assert.match(index, /name="application-name" content="Market Pulse"/);
+  assert.match(index, /name="apple-mobile-web-app-title" content="Market Pulse"/);
   names.forEach(name => assert.match(index, new RegExp(`includeMarketsWebPartial_\\('${name}'\\)`)));
   assert.match(index, /includeMarketsWebPartial_\('ReportStyles'\)/);
   assert.match(index, /id="print-report" class="print-report"/);

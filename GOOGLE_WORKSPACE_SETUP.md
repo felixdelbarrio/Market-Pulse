@@ -1,4 +1,4 @@
-# Google Workspace: remitente y vigilancia de COMMERCIAL
+# Google Workspace: remitente y vigilancia de Market Pulse
 
 ## Diagnostico de la Iteracion 2
 
@@ -10,7 +10,7 @@ Las dos alertas generadas por ese run se habian escrito en `ALERT_LOG` antes de 
 
 `voc-commercial.group@bbva.com` es un Google Group. Puede ser direccion de distribucion, identidad visible y archivo de conversaciones si se publica al propio grupo, pero no es una cuenta de Gmail con carpetas Recibidos/Enviados.
 
-Las alertas personalizadas se envian con Gmail API como el usuario que creo el trigger y con el Group verificado como `From`. El destinatario ve `BBVA VoC Commercial <voc-commercial.group@bbva.com>`, pero el mensaje pertenece tecnicamente al buzon del usuario autenticado. No se envia copia al grupo porque hacerlo archivaria y distribuiria contenido privado de cada suscriptor.
+Las alertas personalizadas se envian con Gmail API como el usuario que creo el trigger y con el Group verificado como `From`. El destinatario ve `BBVA Market Pulse <voc-commercial.group@bbva.com>`, pero el mensaje pertenece tecnicamente al buzon del usuario autenticado. No se envia copia al grupo porque hacerlo archivaria y distribuiria contenido privado de cada suscriptor.
 
 Si el requisito literal es que los mensajes aparezcan en una carpeta **Enviados** propia de `voc-commercial.group@bbva.com`, hace falta una cuenta de Gmail/Workspace dedicada y delegada, no un Google Group. El codigo actual implementa el modelo compatible con Group: identidad `From` verificada y alertas individuales privadas.
 

@@ -110,7 +110,7 @@ test("a test email returns traceable acceptance diagnostics and is audited", () 
   context.sendAlertEmails_ = events => {
     sentEvents = events;
     events.deliveryResults = [{
-      senderName: "BBVA VoC Commercial", senderAddress: "voc-commercial.group@bbva.com",
+      senderName: "BBVA Market Pulse", senderAddress: "voc-commercial.group@bbva.com",
       verificationStatus: "accepted", messageId: "gmail-message-1", threadId: "gmail-thread-1"
     }];
     return 1;
@@ -123,14 +123,14 @@ test("a test email returns traceable acceptance diagnostics and is audited", () 
   assert.equal(result.accepted, true);
   assert.equal(result.deliveryId, "COM-20260720-141500-ABCD1234");
   assert.equal(result.effectiveSender, "automation.owner@bbva.com");
-  assert.equal(result.senderName, "BBVA VoC Commercial");
+  assert.equal(result.senderName, "BBVA Market Pulse");
   assert.equal(result.senderAddress, "voc-commercial.group@bbva.com");
   assert.equal(result.senderMode, "GROUP_ALIAS");
   assert.equal(result.senderVerificationStatus, "accepted");
   assert.equal(result.messageId, "gmail-message-1");
   assert.equal(result.auditLogged, true);
   assert.equal(sentEvents, auditedEvents);
-  assert.equal(context.marketsAlertEmailSubject_(sentEvents), "[PRUEBA] COMMERCIAL · Canal de alertas · COM-20260720-141500-ABCD1234");
+  assert.equal(context.marketsAlertEmailSubject_(sentEvents), "[PRUEBA] Market Pulse · Canal de alertas · COM-20260720-141500-ABCD1234");
 
   context.currentMarketsUserEmail_ = original.currentUser;
   context.openMarketsSpreadsheet_ = original.open;
@@ -210,10 +210,10 @@ test("BBVA alert email uses the official image slot, brand system and safe conte
   const html = context.renderMarketsAlertEmail_(events, "felix.delbarrio@bbva.com");
   assert.match(html, /cid:bbvaLogo/);
   assert.match(html, /Benton Sans BBVA/);
-  assert.match(html, /background:#072146/);
+  assert.match(html, /background:#001391/);
   assert.match(html, /border-radius:16px/);
   assert.match(html, /border-radius:8px/);
-  assert.match(html, /COMMERCIAL · ALERTAS DE RATINGS/);
+  assert.match(html, /MARKET PULSE · ALERTAS DE RATINGS/);
   assert.match(html, /Alerta por cambios en ratings/);
   assert.match(html, /Aquí tienes el contexto completo para que puedas profundizar en la situación/);
   assert.match(html, /BBVA España cae 0,33 puntos/);
@@ -222,9 +222,9 @@ test("BBVA alert email uses the official image slot, brand system and safe conte
   assert.match(html, /Rating actual/);
   assert.match(html, /el límite que has configurado para el nivel amarillo \(0,30 puntos\)/);
   assert.match(html, /el límite que has configurado para el nivel rojo \(0,50 puntos\)/);
-  assert.match(html, /Abre la Visión del VoC por geografías/);
-  assert.match(html, />Ir a la aplicación</);
-  assert.match(html, /acceso directo a COMMERCIAL/);
+  assert.match(html, /Abre Market Pulse/);
+  assert.match(html, />Ir a Market Pulse</);
+  assert.match(html, /acceso directo a Market Pulse/);
   assert.match(html, /https:\/\/accounts\.google\.com\/AccountChooser\?/);
   assert.ok(html.includes(`href="${context.MARKETS_CONFIG.webAppUrl}"`));
   assert.match(html, /Siguiente paso/);
@@ -233,7 +233,7 @@ test("BBVA alert email uses the official image slot, brand system and safe conte
   assert.doesNotMatch(html, /Tu pulso de mercado requiere atención/);
   assert.doesNotMatch(html, /<script>/);
   assert.match(html, /Android &lt;script&gt;/);
-  assert.equal(context.marketsAlertEmailSubject_(events), "[VoC] Comunicación de alertas personalizadas - 2 cambios en ratings");
+  assert.equal(context.marketsAlertEmailSubject_(events), "[Market Pulse] Alertas personalizadas · 2 cambios en ratings");
   const plainText = context.renderMarketsAlertPlainText_(events, "felix.delbarrio@bbva.com");
   assert.match(plainText, /Datos obtenidos: 21\/07\/2026/);
   assert.ok(plainText.includes(context.MARKETS_CONFIG.webAppUrl));
@@ -343,7 +343,8 @@ test("test email is explicit, useful and previews the detail of a real alert", (
   assert.match(html, /COM-20260720-141500-ABCD1234/);
   assert.doesNotMatch(html, /Markets Data Studio/i);
   const text = context.renderMarketsAlertPlainText_(events, "felix.delbarrio@bbva.com");
-  assert.match(text, /BBVA COMMERCIAL/);
+  assert.match(text, /MARKET PULSE/);
+  assert.match(text, /BBVA Banca de Empresas e Instituciones/);
   assert.match(text, /NO ES UNA ALERTA REAL/);
   assert.match(text, /aplicación, mercado, plataforma, periodo/);
 });

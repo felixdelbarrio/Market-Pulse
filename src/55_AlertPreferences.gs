@@ -313,7 +313,7 @@ function sendMarketsAlertTestEmail() {
   const events = [{
     timestamp: sentAt, eventKey: 'TEST|' + deliveryId + '|' + email,
     referenceDate: new Date(), platform: 'Todas', countryCode: 'GLOBAL', type: 'TEST',
-    severity: 'POSITIVE', detail: 'Prueba de entrega ' + deliveryId + '. No es una alerta real: verifica que tu canal privado puede recibir los avisos de COMMERCIAL.',
+    severity: 'POSITIVE', detail: 'Prueba de entrega ' + deliveryId + '. No es una alerta real: verifica que tu canal privado puede recibir los avisos de Market Pulse.',
     recipients: email, userEmail: email, ruleId: deliveryId, metricValue: 1, threshold: 1,
     appKey: '', direction: 'TEST', runId: deliveryId, source: 'SELF_SERVICE_TEST'
   }];

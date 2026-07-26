@@ -1,4 +1,4 @@
-/** Autorizacion y observabilidad privada para responsables de Markets Data Studio. */
+/** Autorizacion y observabilidad privada para responsables de Market Pulse. */
 function marketsAdministratorEmails_(control) {
   return uniqueStrings_(trimString_(control && control.ADMIN_EMAILS).split(/[;,\s]+/)
     .map(normalizeEmailForComparison_))

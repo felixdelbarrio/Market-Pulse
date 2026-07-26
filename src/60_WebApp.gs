@@ -1,6 +1,6 @@
 /** Web app de lectura para el dashboard de ratings. */
 var MARKETS_WEB = Object.freeze({
-  version: '2026.07.26.36',
+  version: '2026.07.26.37',
   cacheSeconds: 21600,
   maxCacheCharacters: 95000,
   defaultTrendMonths: 18,
@@ -14,7 +14,7 @@ var MARKETS_WEB = Object.freeze({
 /** Publica el dashboard bajo el control de acceso del despliegue de Apps Script. */
 function doGet() {
   return HtmlService.createTemplateFromFile('Index').evaluate()
-    .setTitle('Markets Ratings Intelligence')
+    .setTitle('Market Pulse · BBVA Banca de Empresas e Instituciones')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover');
 }
 

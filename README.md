@@ -1,4 +1,4 @@
-# Markets Ratings Web App
+# Market Pulse
 
 Monitor de ratings publicos de Google Play, Apple App Store y Huawei AppGallery, servido como Google Apps Script Web App. El Google Sheet es el almacenamiento operativo; toda la experiencia de consulta vive en `src/Index.html` y `src/60_WebApp.gs`.
 
@@ -73,7 +73,7 @@ La interfaz no utiliza logotipos ni símbolos visuales de Android, iOS o Huawei.
 
 ## Informe ejecutivo
 
-**Descargar informe** no imprime las pantallas del dashboard. Genera un entregable BBVA COMMERCIAL condicionado por la vista y los filtros activos. `Resumen` incluye lectura ejecutiva, panorama geografico, comparativa actual por plataforma y detalle; siempre utiliza el último cierre disponible. `Benchmark` exporta el ranking completo de todas las aplicaciones visibles, no solo BBVA y el líder. `Evolucion` conserva mercado, plataforma y periodo e incorpora el Pulso mensual hasta el mes elegido. En `Alertas` y `Administracion` la descarga analitica se oculta para no mezclar datos de mercado con informacion privada; una vista no soportada nunca se sustituye silenciosamente por Resumen. El informe no incluye una seccion de metodologia. El renderer espera Benton Sans BBVA, reutiliza el logotipo oficial de `BrandAssets` y pagina las tablas antes de imprimir para que ninguna fila o grafico quede cortado.
+**Descargar informe** no imprime las pantallas del dashboard. Genera un entregable Market Pulse condicionado por la vista y los filtros activos. `Resumen` incluye lectura ejecutiva, panorama geografico, comparativa actual por plataforma y detalle; siempre utiliza el último cierre disponible. `Benchmark` exporta el ranking completo de todas las aplicaciones visibles, no solo BBVA y el líder. `Evolucion` conserva mercado, plataforma y periodo e incorpora el Pulso mensual hasta el mes elegido. En `Alertas` y `Administracion` la descarga analitica se oculta para no mezclar datos de mercado con informacion privada; una vista no soportada nunca se sustituye silenciosamente por Resumen. El informe no incluye una seccion de metodologia. El renderer usa la familia corporativa BBVABentonSans con fallback seguro, Tiempos Headline para titulares y el lockup oficial BBVA Banca de Empresas e Instituciones extraído de la plantilla corporativa en `BrandIdentity`; pagina las tablas antes de imprimir para que ninguna fila o grafico quede cortado.
 
 ## Alertas privadas
 
