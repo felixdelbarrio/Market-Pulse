@@ -31,13 +31,13 @@ El libro maestro contiene diez pestañas:
 
    Antes de publicar, confirme que `clasp status` enumera los archivos de `src/`; una lista vacia significa que no se subira ningun cambio.
 
-2. Ejecute `setupProject()` una vez. La funcion solicita todos los permisos del manifiesto, valida el contrato vigente, aplica formato, completa las semillas necesarias, registra al ejecutor inicial en `CONTROL.ADMIN_EMAILS` e instala los triggers diario y de vigilancia. Añada despues otros administradores `@bbva.com` separados por coma. Los encabezados existentes deben coincidir exactamente con esta version: no se amplian contratos antiguos de forma automatica.
+2. Ejecute `setupProject()` una vez. La funcion solicita todos los permisos del manifiesto, valida el contrato vigente, aplica formato, completa las semillas necesarias, registra al ejecutor inicial en `CONTROL.ADMIN_EMAILS` e instala los triggers diario, de vigilancia y de newsletter mensual. Añada despues otros administradores `@bbva.com` separados por coma. Los encabezados existentes deben coincidir exactamente con esta version: no se amplian contratos antiguos de forma automatica.
 3. Ejecute `validateProject()` y revise el resultado.
 4. Ejecute `runNow()` con `SEND_ALERT_EMAILS = FALSE` y compruebe `RUN_LOG` y `FETCH_LOG`.
 5. Cree o actualice el despliegue **Aplicacion web**. El manifiesto fija `executeAs: USER_DEPLOYING` y `access: DOMAIN`: confirme en la interfaz **Ejecutar como: yo** y acceso para el dominio BBVA.
 6. Abra la pestaña `Alertas` con una cuenta `@bbva.com` y confirme que aparece su email. Si la identidad queda vacia, revise el acceso corporativo del despliegue antes de habilitar correos.
 7. Ejecute `authorizeAndInstallMarketsAutomation()` desde el editor, acepte expresamente `gmail.send`, `gmail.settings.basic` y `userinfo.email`, y compruebe que devuelve `verificationStatus: accepted`. Este paso es obligatorio al incorporar permisos nuevos: un trigger no puede mostrar el dialogo de autorización.
-8. Cambie `SEND_ALERT_EMAILS` a `TRUE`, guarde `CONTROL` y use **Enviar prueba** desde `Alertas` para validar el canal sin depender de que se dispare una regla.
+8. Cambie `SEND_ALERT_EMAILS` y `SEND_NEWSLETTER_EMAILS` a `TRUE`, guarde `CONTROL` y use **Probar alertas** y **Probar newsletter** desde `Alertas` para validar ambos formatos con los últimos datos reales disponibles.
 9. Ejecute `sendMarketsMonitorHealthTestEmail()` y confirme que el aviso tecnico queda registrado en el grupo configurado.
 10. Ejecute `rebuildAllMetrics()` después de publicar esta version. La funcion sustituye el contrato materializado de `DASHBOARD_TRENDS`, incorpora `RATING_COUNT_EOM` y precalienta ambas capas de cache; no ejecute solo `warmMarketsDashboardCache()` antes de esta reconstruccion.
 
@@ -53,11 +53,13 @@ Para compartir la aplicacion utilice exclusivamente la URL canónica completa qu
 - `validateProject()`: valida catalogo y contrato.
 - `setupProject()`: inicializacion e instalacion idempotente del trigger.
 - `warmMarketsDashboardCache()`: reconstruccion manual de cache compartida.
-- `authorizeAndInstallMarketsAutomation()`: solicita los scopes vigentes, valida el alias y reinstala ambos triggers bajo la cuenta efectiva.
+- `authorizeAndInstallMarketsAutomation()`: solicita los scopes vigentes, valida el alias y reinstala los tres triggers bajo la cuenta efectiva.
 - `checkDailyRatingMonitorHealth()`: verifica a las 09:15 que existe un run util del dia y que el canal de alertas no termino en error.
+- `runMarketsMonthlyNewsletter()`: el día 1 a las 08:15 envía el cierre ejecutivo del mes anterior; fuera del día 1 termina sin enviar.
 - `sendMarketsMonitorHealthTestEmail()`: prueba el canal tecnico independiente dirigido a `MONITOR_ADMIN_EMAIL`.
 - `validateMarketsAlertSender()`: confirma que `voc-commercial.group@bbva.com` esta autorizado y verificado como identidad **Enviar como** para la cuenta ejecutora.
-- `sendMarketsAlertTestEmail()`: prueba el canal BBVA para el usuario conectado y devuelve identificador de entrega, grupo remitente, cuenta ejecutora, Gmail Message ID y versiones. La aceptación de la API queda auditada como evento `TEST`; la entrega final al buzon depende de Gmail y de la cuarentena corporativa.
+- `sendMarketsAlertTestEmail()`: genera una previsualización trazable con las reglas guardadas y el último cierre real disponible; nunca inventa caídas, ratings ni volúmenes.
+- `sendMarketsNewsletterTestEmail()`: envía al usuario conectado una previsualización del último mes disponible con su ámbito vigente. El administrador también puede probar el formato exacto de cualquier suscripción desde `Administración`.
 
 La cache tiene dos niveles: `CacheService` para acceso rapido y `PropertiesService` para persistencia compartida comprimida. Cada RUN reemplaza la generacion despues de actualizar los datasets. Si falla, se invalida para que la siguiente peticion reconstruya desde Sheets.
 
@@ -84,9 +86,17 @@ La pestaña `Alertas` obtiene la identidad con `Session.getActiveUser()` y no ac
 - Caida desde inicio de año: ultimo rating frente a la primera observacion del año.
 - Las tres ventanas están activas por defecto y son independientes: diaria `0,10/0,15`, desde inicio de mes `0,30/0,50` y desde inicio de año `0,30/0,50`.
 - Los avisos MTD/YTD no se repiten durante el mismo periodo y severidad. Una escalada amarilla a roja si avisa; el usuario puede habilitar recordatorios diarios mientras persista la caida.
+- Al dar de alta desde Administración a una cuenta no administradora, cualquier alerta YTD amarilla o roja ya vigente queda reconocida en `ALERT_LOG` sin correo. Así no se reenvía un hecho pasado; si se activaron recordatorios, la siguiente comprobación diaria sí podrá avisar si la caída continúa.
 - Cruce competitivo: avisa cuando un competidor supera a BBVA Empresas o BBVA recupera la posicion.
 - Ambito multiseleccion por mercado y plataforma (`Todos`, uno o varios), pausa global y restauracion de valores recomendados.
 - Un unico email-resumen BBVA por usuario y ejecucion, con logotipo oficial, paleta corporativa y radios `16/8 px`.
+- El wording explica las reglas de forma impersonal —“límite configurado”— y evita atribuir decisiones o acciones al destinatario.
+
+### Newsletter mensual
+
+La newsletter se ejecuta exclusivamente el día 1 y resume el mes natural anterior con datos reales de `RATINGS` y el universo activo de `APP_CATALOG`. Adapta asunto, apertura y agrupación a una geografía, varias geografías o visión global. Presenta inicio de año, inicio y cierre de mes, variación, nuevas valoraciones por plataforma y posición competitiva solo cuando la cobertura del mercado es completa. El efecto estimado de las nuevas valoraciones se muestra únicamente cuando la fórmula inversa es matemáticamente fiable; si el redondeo o una ficha compartida impiden atribuirlo, se omite.
+
+En visión global, el volumen de una ficha Android compartida se suma una sola vez al total de su plataforma, pero nunca se reparte entre países. Cada envío aceptado se deduplica por mes y destinatario en `ALERT_LOG`. `SEND_NEWSLETTER_EMAILS` permite activar o pausar este canal de forma independiente a las alertas.
 
 La regla propuesta de porcentaje de reseñas de 1 y 2 estrellas conserva sus valores `15%/30%`, pero aparece explicitamente como **WIP · Fuente pendiente**: las fuentes actuales solo entregan rating y volumen agregados. No se evalua hasta incorporar una fuente autorizada con reparto de estrellas de las ultimas 24 horas.
 
@@ -99,7 +109,7 @@ La regla propuesta de porcentaje de reseñas de 1 y 2 estrellas conserva sus val
 
 La telemetría empieza a contar después de desplegar esta versión; no reconstruye accesos históricos. El servidor obtiene la identidad de la sesión corporativa y solo persiste metadatos funcionales allowlisted, versión y tipo de dispositivo: no guarda valores de negocio, formularios ni contenido libre salvo el mensaje técnico acotado de una incidencia. La analítica anual lee como máximo los 200.000 eventos más recientes y lo indica expresamente si la lectura queda truncada.
 
-`SEND_ALERT_EMAILS = TRUE` habilita el canal, pero `runNow()` solo envia si `ALERTS_CREATED > 0`. El resultado manual incluye `alerts`, `alertSubscribers` y `emailsSent`; use **Enviar prueba** para distinguir un problema de entrega de la ausencia legitima de eventos.
+`SEND_ALERT_EMAILS = TRUE` habilita el canal de alertas, pero `runNow()` solo envia si `ALERTS_CREATED > 0`. `SEND_NEWSLETTER_EMAILS = TRUE` habilita el cierre mensual. Las dos pruebas usan datos y configuración reales para distinguir un problema de entrega de la ausencia legítima de eventos.
 
 El volumen de Google Play se gobierna por `packageName`: si el mismo package esta activo en varios paises, sus valoraciones y su variacion a 30 dias representan una unica ficha compartida. El Web App las contabiliza una sola vez en los KPI y no las atribuye a las tarjetas geograficas. Un package exclusivo de un pais —como el Android de Mexico— conserva alcance de mercado. iOS y Huawei mantienen alcance territorial.
 

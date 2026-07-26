@@ -271,6 +271,10 @@ function getMarketsAlertPreferences() {
       reviewDataMessage: 'La fuente actual publica rating y volumen agregados, no el reparto de estrellas 1 y 2 en las últimas 24 horas.',
       configWarning: trimString_(control.ALERT_CONFIG_WARNING),
       schedule: 'Resumen diario tras la actualización de las 07:05',
+      newsletterDeliveryEnabled: marketsNewsletterDeliveryEnabled_(control),
+      newsletterSchedule: 'Día 1 de cada mes · ' +
+        String(MARKETS_CONFIG.newsletterHour).padStart(2, '0') + ':' +
+        String(MARKETS_CONFIG.newsletterMinute).padStart(2, '0'),
       privacy: 'Solo tu cuenta puede leer y modificar esta configuración.',
       deliveryScope: 'Todos los usuarios activos · sin sesión',
       adminVisibility: 'Los administradores auditan altas y actividad en ALERT_SUBSCRIPTIONS.'
@@ -310,18 +314,23 @@ function sendMarketsAlertTestEmail() {
   const sentAt = new Date();
   const deliveryId = 'COM-' + Utilities.formatDate(sentAt, MARKETS_CONFIG.timeZone, 'yyyyMMdd-HHmmss') + '-' +
     Utilities.getUuid().slice(0, 8).toUpperCase();
-  const events = [{
-    timestamp: sentAt, eventKey: 'TEST|' + deliveryId + '|' + email,
-    referenceDate: new Date(), platform: 'Todas', countryCode: 'GLOBAL', type: 'TEST',
-    severity: 'POSITIVE', detail: 'Prueba de entrega ' + deliveryId + '. No es una alerta real: verifica que tu canal privado puede recibir los avisos de Market Pulse.',
-    recipients: email, userEmail: email, ruleId: deliveryId, metricValue: 1, threshold: 1,
-    appKey: '', direction: 'TEST', runId: deliveryId, source: 'SELF_SERVICE_TEST'
-  }];
+  const preferences = readMarketsAlertPreferences_(ss, email);
+  const ratings = readRatingObjects_(ss);
+  const catalog = readAppCatalog_(ss);
+  const events = buildMarketsRealAlertPreviewEvents_(ratings, catalog, preferences, deliveryId);
   const delivered = sendAlertEmails_(events, ss);
   if (delivered !== 1) throw new Error('Google no ha aceptado la prueba para el destinatario esperado.');
   let auditLogged = true;
   try {
-    appendAlertEvents_(ss, events);
+    appendAlertEvents_(ss, [{
+      timestamp: sentAt, eventKey: 'TEST|' + deliveryId + '|' + email,
+      referenceDate: events[0].referenceDate || sentAt, platform: 'Configurada',
+      countryCode: preferences.countries.join(','), type: 'TEST', severity: 'POSITIVE',
+      detail: 'Vista previa con ' + events.length + ' señal(es) o cierre(s) reales según la configuración vigente.',
+      recipients: email, userEmail: email, ruleId: deliveryId, metricValue: events.length,
+      threshold: '', appKey: '', direction: 'TEST', runId: deliveryId,
+      source: 'SELF_SERVICE_TEST_REAL_DATA'
+    }]);
     touchMarketsAlertTimestamp_(ss, email, 'LAST_TEST_AT', sentAt);
   } catch (auditError) {
     auditLogged = false;
@@ -337,6 +346,7 @@ function sendMarketsAlertTestEmail() {
     senderMode: MARKETS_ALERT_EMAIL.senderMode,
     senderVerificationStatus: delivery.verificationStatus || '',
     messageId: delivery.messageId || '', threadId: delivery.threadId || '', auditLogged: auditLogged,
+    realData: true, previewItems: events.length,
     codeVersion: MARKETS_CONFIG.codeVersion, webVersion: MARKETS_WEB.version
   };
 }

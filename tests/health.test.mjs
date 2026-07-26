@@ -41,19 +41,22 @@ test("health monitor distinguishes a missing run, data failure and email failure
   assert.match(emailFailure.reason, /alias no autorizado/);
 });
 
-test("trigger installation replaces both managed schedules and preserves unrelated triggers", () => {
+test("trigger installation replaces daily, health and monthly schedules and preserves unrelated triggers", () => {
   const deleted = [];
   const created = [];
   const triggers = [
     { getHandlerFunction: () => "runDailyRatingMonitor" },
     { getHandlerFunction: () => "checkDailyRatingMonitorHealth" },
+    { getHandlerFunction: () => "runMarketsMonthlyNewsletter" },
     { getHandlerFunction: () => "unrelatedFunction" }
   ];
   const makeBuilder = handler => ({
     timeBased() { return this; }, atHour(value) { this.hour = value; return this; },
     nearMinute(value) { this.minute = value; return this; }, everyDays(value) { this.days = value; return this; },
+    onMonthDay(value) { this.monthDay = value; return this; },
     inTimezone(value) { this.zone = value; return this; },
-    create() { created.push({ handler, hour: this.hour, minute: this.minute, days: this.days, zone: this.zone }); }
+    create() { created.push({ handler, hour: this.hour, minute: this.minute, days: this.days,
+      monthDay: this.monthDay, zone: this.zone }); }
   });
   context.ScriptApp = {
     getProjectTriggers: () => triggers,
@@ -61,9 +64,10 @@ test("trigger installation replaces both managed schedules and preserves unrelat
     newTrigger: makeBuilder
   };
   context.installDailyTrigger_();
-  assert.deepEqual(deleted, ["runDailyRatingMonitor", "checkDailyRatingMonitorHealth"]);
+  assert.deepEqual(deleted, ["runDailyRatingMonitor", "checkDailyRatingMonitorHealth", "runMarketsMonthlyNewsletter"]);
   assert.deepEqual(created, [
-    { handler: "runDailyRatingMonitor", hour: 7, minute: 5, days: 1, zone: "Europe/Madrid" },
-    { handler: "checkDailyRatingMonitorHealth", hour: 9, minute: 15, days: 1, zone: "Europe/Madrid" }
+    { handler: "runDailyRatingMonitor", hour: 7, minute: 5, days: 1, monthDay: undefined, zone: "Europe/Madrid" },
+    { handler: "checkDailyRatingMonitorHealth", hour: 9, minute: 15, days: 1, monthDay: undefined, zone: "Europe/Madrid" },
+    { handler: "runMarketsMonthlyNewsletter", hour: 8, minute: 15, days: undefined, monthDay: 1, zone: "Europe/Madrid" }
   ]);
 });

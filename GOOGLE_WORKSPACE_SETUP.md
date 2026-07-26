@@ -31,11 +31,11 @@ El aviso tecnico del watchdog si se dirige a `MONITOR_ADMIN_EMAIL`, cuyo valor r
 
 1. Publicar los archivos de `src/`, incluido `57_MonitorHealth.gs` y el manifiesto. En **Implementar > Administrar implementaciones**, editar la implementacion web existente, seleccionar **Nueva version** y guardar; actualizar el codigo no cambia por si solo la version atendida por la URL `/exec`.
 2. Ejecutar `setupProject()` desde el editor de Apps Script.
-3. Ejecutar `authorizeAndInstallMarketsAutomation()` desde el editor y aceptar todos los permisos solicitados, incluidos `userinfo.email`, `gmail.send` y `gmail.settings.basic`. El resultado esperado contiene `verificationStatus: accepted`, proceso `07:05 Europe/Madrid` y vigilancia `09:15 Europe/Madrid`.
+3. Ejecutar `authorizeAndInstallMarketsAutomation()` desde el editor y aceptar todos los permisos solicitados, incluidos `userinfo.email`, `gmail.send` y `gmail.settings.basic`. El resultado esperado contiene `verificationStatus: accepted`, proceso `07:05 Europe/Madrid`, newsletter mensual el día 1 a las `08:15` y vigilancia `09:15 Europe/Madrid`.
 4. Ejecutar `validateMarketsAlertSender()` y comprobar `available: true`.
-5. Ejecutar `sendMarketsAlertTestEmail()` desde la aplicacion y verificar destinatario, `From`, Gmail Message ID y fecha de datos.
+5. Ejecutar `sendMarketsAlertTestEmail()` y `sendMarketsNewsletterTestEmail()` desde la aplicacion y verificar destinatario, `From`, Gmail Message ID, fecha de datos y que el contenido procede de la configuración vigente.
 6. Ejecutar `sendMarketsMonitorHealthTestEmail()` y comprobar que el aviso aparece en el Group/destino tecnico.
-7. Revisar en Apps Script > Triggers que existen exactamente `runDailyRatingMonitor` y `checkDailyRatingMonitorHealth` bajo la cuenta autorizada.
+7. Revisar en Apps Script > Triggers que existen exactamente `runDailyRatingMonitor`, `runMarketsMonthlyNewsletter` y `checkDailyRatingMonitorHealth` bajo la cuenta autorizada.
 8. Al dia siguiente, comprobar en `RUN_LOG` `ALERT_SUBSCRIBERS`, `EMAILS_SENT`, `ALERT_DELIVERY_STATUS` y `ALERT_DELIVERY_DETAIL`.
 
 ## Criterio de salud

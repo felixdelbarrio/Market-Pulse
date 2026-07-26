@@ -46,6 +46,9 @@ function validateProject() {
       senderVerificationStatus: alertSender.verificationStatus,
       healthMonitorEnabled: parseBoolean_(control.MONITOR_HEALTH_ENABLED, true),
       healthMonitorRecipient: trimString_(control.MONITOR_ADMIN_EMAIL) || MARKETS_ALERT_EMAIL.senderAddress,
+      newsletterEnabled: marketsNewsletterDeliveryEnabled_(control),
+      newsletterSchedule: 'Día 1 · ' + String(MARKETS_CONFIG.newsletterHour).padStart(2, '0') + ':' +
+        String(MARKETS_CONFIG.newsletterMinute).padStart(2, '0'),
       adminSheet: MARKETS_CONFIG.sheets.alertPreferences,
       warning: trimString_(control.ALERT_CONFIG_WARNING)
     },
@@ -80,11 +83,19 @@ function installDailyTrigger_() {
     .everyDays(1)
     .inTimezone(MARKETS_CONFIG.timeZone)
     .create();
+  ScriptApp.newTrigger('runMarketsMonthlyNewsletter')
+    .timeBased()
+    .onMonthDay(1)
+    .atHour(MARKETS_CONFIG.newsletterHour)
+    .nearMinute(MARKETS_CONFIG.newsletterMinute)
+    .inTimezone(MARKETS_CONFIG.timeZone)
+    .create();
 }
 
 function removeManagedTriggers_() {
   ScriptApp.getProjectTriggers().forEach(function (trigger) {
-    if (['runDailyRatingMonitor', 'checkDailyRatingMonitorHealth'].indexOf(trigger.getHandlerFunction()) >= 0) {
+    if (['runDailyRatingMonitor', 'checkDailyRatingMonitorHealth',
+        'runMarketsMonthlyNewsletter'].indexOf(trigger.getHandlerFunction()) >= 0) {
       ScriptApp.deleteTrigger(trigger);
     }
   });
@@ -101,7 +112,9 @@ function authorizeAndInstallMarketsAutomation() {
     dailySchedule: String(MARKETS_CONFIG.runHour).padStart(2, '0') + ':' +
       String(MARKETS_CONFIG.runMinute).padStart(2, '0') + ' ' + MARKETS_CONFIG.timeZone,
     healthSchedule: String(MARKETS_CONFIG.healthCheckHour).padStart(2, '0') + ':' +
-      String(MARKETS_CONFIG.healthCheckMinute).padStart(2, '0') + ' ' + MARKETS_CONFIG.timeZone
+      String(MARKETS_CONFIG.healthCheckMinute).padStart(2, '0') + ' ' + MARKETS_CONFIG.timeZone,
+    newsletterSchedule: 'Día 1 · ' + String(MARKETS_CONFIG.newsletterHour).padStart(2, '0') + ':' +
+      String(MARKETS_CONFIG.newsletterMinute).padStart(2, '0') + ' ' + MARKETS_CONFIG.timeZone
   };
 }
 
@@ -114,5 +127,6 @@ function onOpen() {
     .addItem('Autorizar e instalar automatizacion', 'authorizeAndInstallMarketsAutomation')
     .addItem('Comprobar salud ahora', 'checkDailyRatingMonitorHealth')
     .addItem('Probar aviso tecnico', 'sendMarketsMonitorHealthTestEmail')
+    .addItem('Probar newsletter mensual', 'sendMarketsNewsletterTestEmail')
     .addToUi();
 }

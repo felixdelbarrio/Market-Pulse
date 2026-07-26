@@ -3,7 +3,7 @@ import fs from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
 
-const source = ["../src/99_Core.gs", "../src/00_Config.gs", "../src/55_AlertPreferences.gs", "../src/50_Alerts.gs"]
+const source = ["../src/99_Core.gs", "../src/00_Config.gs", "../src/55_AlertPreferences.gs", "../src/50_Alerts.gs", "../src/56_Newsletter.gs"]
   .map(file => fs.readFileSync(new URL(file, import.meta.url), "utf8"))
   .join("\n");
 const context = {
@@ -93,6 +93,8 @@ test("a test email returns traceable acceptance diagnostics and is audited", () 
     currentUser: context.currentMarketsUserEmail_, open: context.openMarketsSpreadsheet_,
     requireContract: context.requireCurrentSheetContract_, readControl: context.readControl_, send: context.sendAlertEmails_,
     append: context.appendAlertEvents_, touch: context.touchMarketsAlertTimestamp_,
+    readPreferences: context.readMarketsAlertPreferences_, readRatings: context.readRatingObjects_,
+    readCatalog: context.readAppCatalog_, buildPreview: context.buildMarketsRealAlertPreviewEvents_,
     Utilities: context.Utilities, Session: context.Session, MARKETS_WEB: context.MARKETS_WEB
   };
   let sentEvents = null;
@@ -107,6 +109,16 @@ test("a test email returns traceable acceptance diagnostics and is audited", () 
   };
   context.Session = { getEffectiveUser: () => ({ getEmail: () => "automation.owner@bbva.com" }) };
   context.MARKETS_WEB = { version: "test-web" };
+  context.readMarketsAlertPreferences_ = () => preferences();
+  context.readRatingObjects_ = () => [rating(20, 4.2)];
+  context.readAppCatalog_ = () => [];
+  context.buildMarketsRealAlertPreviewEvents_ = (_ratings, _catalog, pref, deliveryId) => [{
+    timestamp: new Date(), referenceDate: new Date(2026, 6, 20), currentDate: new Date(2026, 6, 20),
+    platform: "iOS", countryCode: "CO", country: "Colombia", type: "RATING_DROP_YTD",
+    severity: "WARNING", recipients: pref.email, userEmail: pref.email, isTest: true,
+    testId: deliveryId, metricValue: 0.4, threshold: 0.3, baselineRating: 4.8,
+    currentRating: 4.4, appKey: "IOS|CO|BBVA", appName: "BBVA", source: "SELF_SERVICE_TEST_REAL_DATA"
+  }];
   context.sendAlertEmails_ = events => {
     sentEvents = events;
     events.deliveryResults = [{
@@ -129,8 +141,10 @@ test("a test email returns traceable acceptance diagnostics and is audited", () 
   assert.equal(result.senderVerificationStatus, "accepted");
   assert.equal(result.messageId, "gmail-message-1");
   assert.equal(result.auditLogged, true);
-  assert.equal(sentEvents, auditedEvents);
-  assert.equal(context.marketsAlertEmailSubject_(sentEvents), "[PRUEBA] Market Pulse · Canal de alertas · COM-20260720-141500-ABCD1234");
+  assert.equal(sentEvents[0].isTest, true);
+  assert.equal(auditedEvents[0].type, "TEST");
+  assert.equal(result.realData, true);
+  assert.equal(context.marketsAlertEmailSubject_(sentEvents), "[PRUEBA] Market Pulse · Datos reales · COM-20260720-141500-ABCD1234");
 
   context.currentMarketsUserEmail_ = original.currentUser;
   context.openMarketsSpreadsheet_ = original.open;
@@ -139,6 +153,10 @@ test("a test email returns traceable acceptance diagnostics and is audited", () 
   context.sendAlertEmails_ = original.send;
   context.appendAlertEvents_ = original.append;
   context.touchMarketsAlertTimestamp_ = original.touch;
+  context.readMarketsAlertPreferences_ = original.readPreferences;
+  context.readRatingObjects_ = original.readRatings;
+  context.readAppCatalog_ = original.readCatalog;
+  context.buildMarketsRealAlertPreviewEvents_ = original.buildPreview;
   context.Utilities = original.Utilities;
   context.Session = original.Session;
   context.MARKETS_WEB = original.MARKETS_WEB;
@@ -171,6 +189,34 @@ test("default drop windows do not repeat unless requested", () => {
   const reminder = context.buildRatingDropAlerts_(rows, new Date(2026, 6, 15, 12), preferences({ repeatWhileBreached: true }), existing);
   assert.equal(reminder.length, 1);
   assert.match(reminder[0].eventKey, /2026-07-15$/);
+});
+
+test("a new non-admin enrollment acknowledges existing YTD warning and critical levels without sending", () => {
+  const rows = [
+    rating(2, 4.8, { observedDate: new Date(2026, 0, 2, 12) }),
+    rating(20, 4.1)
+  ];
+  const pref = preferences({ repeatWhileBreached: false });
+  const events = context.buildMarketsEnrollmentYtdAcknowledgements_(rows, new Date(2026, 6, 20, 12), pref);
+  assert.deepEqual(plain(events.map(event => event.severity)), ["WARNING", "CRITICAL"]);
+  assert.ok(events.every(event => event.source === "ADMIN_ENROLLMENT_BASELINE"));
+  assert.ok(events.every(event => /Reconocida en el alta sin notificación/.test(event.detail)));
+  assert.match(events[0].eventKey, /\|WARNING$/);
+  assert.match(events[1].eventKey, /\|CRITICAL$/);
+});
+
+test("enrollment with reminders only acknowledges the first dated occurrence", () => {
+  const rows = [
+    rating(2, 4.8, { observedDate: new Date(2026, 0, 2, 12) }),
+    rating(20, 4.4)
+  ];
+  const pref = preferences({ repeatWhileBreached: true });
+  const events = context.buildMarketsEnrollmentYtdAcknowledgements_(rows, new Date(2026, 6, 20, 12), pref);
+  assert.equal(events.length, 1);
+  assert.match(events[0].eventKey, /\|2026-07-20$/);
+  const next = context.buildRatingDropAlerts_(rows.concat(rating(21, 4.4)), new Date(2026, 6, 21, 12), pref,
+    Object.fromEntries(events.map(event => [event.eventKey, true])));
+  assert.equal(next.filter(event => event.type === "RATING_DROP_YTD").length, 1);
 });
 
 test("competitive crossovers distinguish lost and regained positions", () => {
@@ -215,13 +261,13 @@ test("BBVA alert email uses the official image slot, brand system and safe conte
   assert.match(html, /border-radius:8px/);
   assert.match(html, /MARKET PULSE · ALERTAS DE RATINGS/);
   assert.match(html, /Alerta por cambios en ratings/);
-  assert.match(html, /Aquí tienes el contexto completo para que puedas profundizar en la situación/);
+  assert.match(html, /Contexto ejecutivo para valorar la situación/);
   assert.match(html, /BBVA España cae 0,33 puntos/);
   assert.match(html, /BBVA México cae 0,66 puntos/);
   assert.match(html, /Rating anterior/);
   assert.match(html, /Rating actual/);
-  assert.match(html, /el límite que has configurado para el nivel amarillo \(0,30 puntos\)/);
-  assert.match(html, /el límite que has configurado para el nivel rojo \(0,50 puntos\)/);
+  assert.match(html, /el límite configurado para el nivel amarillo \(0,30 puntos\)/);
+  assert.match(html, /el límite configurado para el nivel rojo \(0,50 puntos\)/);
   assert.match(html, /Abre Market Pulse/);
   assert.match(html, />Ir a Market Pulse</);
   assert.match(html, /acceso directo a Market Pulse/);
@@ -325,28 +371,28 @@ test("events from a failed legacy run remain eligible for retry", () => {
   context.readFailedAlertRunIds_ = original;
 });
 
-test("test email is explicit, useful and previews the detail of a real alert", () => {
+test("test email is explicit and previews real configured data without mocked content", () => {
   const events = [{
-    severity: "POSITIVE", type: "TEST", platform: "Todas", countryCode: "GLOBAL",
-    recipients: "felix.delbarrio@bbva.com", ruleId: "COM-20260720-141500-ABCD1234",
-    detail: "Prueba de entrega"
+    severity: "WARNING", type: "RATING_DROP_YTD", platform: "iOS", countryCode: "CO",
+    country: "Colombia", recipients: "felix.delbarrio@bbva.com", isTest: true,
+    testId: "COM-20260720-141500-ABCD1234", metricValue: 0.4, threshold: 0.3,
+    baselineRating: 4.82, currentRating: 4.42, baselineDate: "2026-01-02",
+    currentDate: "2026-07-20", appName: "BBVA", detail: "Caída real"
   }];
   const html = context.renderMarketsAlertEmail_(events, "felix.delbarrio@bbva.com");
   assert.match(html, /PRUEBA DE CANAL/);
-  assert.match(html, /No se ha detectado ningún cambio real/);
-  assert.match(html, /Canal de alertas verificado/);
-  assert.match(html, /NO ES UNA ALERTA REAL/);
-  assert.match(html, /EJEMPLO DE DETALLE · SIMULADO/);
+  assert.match(html, /Vista previa · datos reales/);
   assert.match(html, /BBVA Colombia cae 0,40 puntos/);
-  assert.match(html, /Mercado y plataforma:<\/strong> Colombia · iOS/);
-  assert.match(html, /4,82 → 4,42/);
-  assert.match(html, /COM-20260720-141500-ABCD1234/);
+  assert.match(html, /Rating anterior/);
+  assert.match(html, /4,82/);
+  assert.match(html, /4,42/);
+  assert.doesNotMatch(html, /SIMULADO|BBVA Colombia cae 0,40 puntos.*EJEMPLO/s);
   assert.doesNotMatch(html, /Markets Data Studio/i);
   const text = context.renderMarketsAlertPlainText_(events, "felix.delbarrio@bbva.com");
   assert.match(text, /MARKET PULSE/);
   assert.match(text, /BBVA Banca de Empresas e Instituciones/);
-  assert.match(text, /NO ES UNA ALERTA REAL/);
-  assert.match(text, /aplicación, mercado, plataforma, periodo/);
+  assert.match(text, /último cierre real/i);
+  assert.match(text, /BBVA Colombia cae 0,40 puntos/);
 });
 
 test("the scheduled engine processes every active subscriber without a connected Session", () => {

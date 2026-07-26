@@ -354,7 +354,9 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(index, /Activa por defecto/);
   assert.match(index, /Toda la base activa/);
   assert.match(app, /draft\[period\+"DropEnabled"\]/);
-  assert.match(index, /Enviar prueba/);
+  assert.match(index, /Probar alertas/);
+  assert.match(index, /id="newsletter-test-button"/);
+  assert.match(app, /sendMarketsNewsletterTestEmail/);
   assert.match(index, /id="alert-test-result"/);
   assert.match(app, /Gmail ha aceptado la prueba/);
   assert.match(app, /result\.senderAddress/);

@@ -107,6 +107,94 @@ function buildRatingDropAlerts_(ratings, referenceDate, preferences, existing) {
   }, []);
 }
 
+/**
+ * Al dar de alta a una cuenta no administradora reconoce las caídas YTD que
+ * ya estaban activas. Se auditan, pero no se envían. Si la cuenta solicita
+ * recordatorios, el siguiente día genera una clave nueva; una escalada
+ * posterior de amarilla a roja también sigue siendo notificable.
+ */
+function buildMarketsEnrollmentYtdAcknowledgements_(ratings, referenceDate, preferences) {
+  if (!preferences || !preferences.active || !preferences.ytdDropEnabled) return [];
+  const baselinePreferences = Object.assign({}, preferences, {
+    active: true,
+    dailyDropEnabled: false,
+    mtdDropEnabled: false,
+    ytdDropEnabled: true
+  });
+  const events = buildRatingDropAlerts_(ratings, referenceDate, baselinePreferences, {});
+  const acknowledged = [];
+  events.forEach(function (event) {
+    const levels = event.severity === 'CRITICAL' ? [
+      { severity: 'WARNING', threshold: preferences.ytdWarningDrop },
+      { severity: 'CRITICAL', threshold: preferences.ytdCriticalDrop }
+    ] : [{ severity: event.severity, threshold: event.threshold }];
+    levels.forEach(function (level) {
+      const clone = Object.assign({}, event, level);
+      const periodKey = dateKey_(referenceDate).slice(0, 4);
+      const parts = ['RATING_DROP_YTD', periodKey, event.appKey, preferences.email, level.severity];
+      if (preferences.repeatWhileBreached) parts.push(dateKey_(referenceDate));
+      clone.eventKey = parts.join('|');
+      clone.timestamp = new Date();
+      clone.source = 'ADMIN_ENROLLMENT_BASELINE';
+      clone.runId = 'ENROLL-' + Utilities.formatDate(clone.timestamp, MARKETS_CONFIG.timeZone, 'yyyyMMdd-HHmmss');
+      clone.detail = 'Reconocida en el alta sin notificación. ' + event.detail;
+      acknowledged.push(clone);
+    });
+  });
+  return acknowledged;
+}
+
+function latestMarketsRatingDate_(ratings, preferences) {
+  return (ratings || []).filter(function (item) {
+    return item.isBbva && item.observedDate instanceof Date && item.rating !== null &&
+      (!preferences || marketsAlertScopeMatches_(preferences, item));
+  }).reduce(function (latest, item) {
+    return !latest || item.observedDate.getTime() > latest.getTime() ? item.observedDate : latest;
+  }, null);
+}
+
+function buildMarketsRealAlertPreviewEvents_(ratings, catalog, preferences, deliveryId) {
+  const previewPreferences = Object.assign({}, preferences, { active: true, repeatWhileBreached: false });
+  const referenceDate = latestMarketsRatingDate_(ratings, previewPreferences);
+  if (!referenceDate) throw new Error('No hay ratings reales disponibles para el ámbito configurado.');
+  const catalogByKey = (catalog || []).reduce(function (out, app) { out[app.appKey] = app; return out; }, {});
+  let events = buildRatingDropAlerts_(ratings, referenceDate, previewPreferences, {});
+  events = events.concat(buildCompetitiveCrossoverAlerts_(ratings, referenceDate, previewPreferences, catalogByKey, {}));
+  const severityOrder = { CRITICAL: 0, WARNING: 1, POSITIVE: 2 };
+  events.sort(function (a, b) {
+    return (severityOrder[a.severity] || 9) - (severityOrder[b.severity] || 9) ||
+      trimString_(a.countryCode).localeCompare(trimString_(b.countryCode)) ||
+      trimString_(a.platform).localeCompare(trimString_(b.platform));
+  });
+  if (!events.length) {
+    const latest = (ratings || []).filter(function (item) {
+      return item.isBbva && item.observedDate instanceof Date &&
+        dateKey_(item.observedDate) === dateKey_(referenceDate) &&
+        marketsAlertScopeMatches_(previewPreferences, item);
+    }).sort(function (a, b) {
+      return trimString_(a.countryCode).localeCompare(trimString_(b.countryCode)) ||
+        trimString_(a.platform).localeCompare(trimString_(b.platform));
+    })[0];
+    if (!latest) throw new Error('No hay un cierre real utilizable para preparar la prueba.');
+    events = [{
+      timestamp: new Date(), referenceDate: referenceDate, currentDate: latest.observedDate,
+      platform: latest.platform, countryCode: latest.countryCode, country: latest.country,
+      type: 'TEST_SNAPSHOT', severity: 'POSITIVE', appKey: latest.appKey,
+      appName: latest.appName || 'BBVA Empresas', currentRating: latest.rating,
+      ratingCount: latest.ratingCount, metricValue: latest.rating, threshold: null,
+      detail: 'Ninguna regla configurada está activada en el último cierre disponible.',
+      direction: 'SNAPSHOT'
+    }];
+  }
+  return events.slice(0, 8).map(function (event) {
+    return Object.assign({}, event, {
+      isTest: true, testId: deliveryId, recipients: preferences.email,
+      userEmail: preferences.email, source: 'SELF_SERVICE_TEST_REAL_DATA',
+      eventKey: 'TEST_PREVIEW|' + deliveryId + '|' + trimString_(event.eventKey || event.appKey)
+    });
+  });
+}
+
 function ratingDropBaseline_(series, referenceKey, period) {
   const previous = (series || []).filter(function (item) { return dateKey_(item.observedDate) < referenceKey; });
   if (period === 'DAILY') return previous.slice().sort(function (a, b) { return b.observedDate - a.observedDate; })[0] || null;
@@ -398,9 +486,10 @@ function validateMarketsAlertSender() {
 }
 
 function marketsAlertEmailSubject_(events) {
-  const tests = (events || []).filter(function (event) { return event.type === 'TEST'; });
+  const tests = (events || []).filter(function (event) { return event.type === 'TEST' || event.isTest; });
   if (tests.length === (events || []).length && tests.length) {
-    return '[PRUEBA] Market Pulse · Canal de alertas · ' + trimString_(tests[0].ruleId || 'verificación');
+    return '[PRUEBA] Market Pulse · Datos reales · ' +
+      trimString_(tests[0].testId || tests[0].ruleId || 'verificación');
   }
   return '[Market Pulse] Alertas personalizadas · ' + events.length + ' cambio' +
     (events.length === 1 ? '' : 's') + ' en ratings';
@@ -411,11 +500,13 @@ function renderMarketsAlertPlainText_(events, recipient) {
   const appUrl = marketsWebAppUrl_();
   const loginUrl = marketsWebAppLoginUrl_(recipient);
   const lines = (events || []).map(function (event) {
-    if (event.type === 'TEST') {
-      return 'PRUEBA DE ENTREGA — NO ES UNA ALERTA REAL\nIdentificador: ' + trimString_(event.ruleId) +
-        '\nDestino: ' + trimString_(event.recipients) +
-        '\nResultado: el canal ha aceptado correctamente una prueba de correo.\n' +
-        'Las alertas reales incluirán aplicación, mercado, plataforma, periodo, rating anterior, rating actual, variación y umbral.';
+    if (event.type === 'TEST_SNAPSHOT') {
+      return 'CIERRE REAL — NINGUNA REGLA ACTIVADA\n' +
+        [event.country || event.countryCode, event.platform].filter(Boolean).join(' · ') +
+        '\nRating actual: ' + marketsAlertNumberLabel_(event.currentRating) +
+        (event.ratingCount === null || event.ratingCount === undefined ? '' :
+          '\nValoraciones acumuladas: ' + Math.round(event.ratingCount)) +
+        '\nLectura: ' + trimString_(event.detail);
     }
     return '[' + marketsAlertSeverityLabel_(event.severity).toUpperCase() + '] ' +
       marketsAlertCardTitle_(event) + '\nMercado y plataforma: ' +
@@ -424,7 +515,7 @@ function renderMarketsAlertPlainText_(events, recipient) {
       'Recomendación: ' + marketsAlertRecommendation_(event);
   });
   return 'MARKET PULSE\nBBVA Banca de Empresas e Instituciones\n\nAlerta por cambios en ratings\n' +
-    (isTest ? 'Esta es una prueba; no se ha detectado ningún cambio real.\n\n' : '\n') +
+    (isTest ? 'Vista previa construida exclusivamente con el último cierre real y la configuración vigente. No genera una alerta operativa.\n\n' : '\n') +
     lines.join('\n\n') + '\n\nDatos obtenidos: ' + marketsAlertDataDateLabel_(events) +
     '\nGestiona tus alertas desde Market Pulse.\nAbrir con la cuenta corporativa: ' + loginUrl + '\nURL directa: ' + appUrl;
 }
@@ -441,8 +532,8 @@ function renderMarketsAlertEmail_(events, recipient) {
   const safeLoginUrl = escapeMarketsAlertHtml_(loginUrl);
   const cta = '<table role="presentation" cellspacing="0" cellpadding="0"><tr><td bgcolor="#001391" style="border-radius:8px;"><a href="' + safeLoginUrl + '" target="_blank" style="display:block;padding:13px 22px;border-radius:8px;color:#FFFFFF;text-decoration:none;font-weight:700;">Ir a Market Pulse</a></td></tr></table>' +
     '<p style="margin:12px 0 0;color:#46536D;font-size:11px;line-height:17px;">Si el botón no se abre, utiliza este <a href="' + safeAppUrl + '" target="_blank" style="color:#001391;font-weight:700;">acceso directo a Market Pulse</a>.</p>';
-  const subtitle = isTest ? 'Esta es una prueba de entrega. No se ha detectado ningún cambio real en los ratings.' :
-    events.length + ' cambio' + (events.length === 1 ? ' ha' : 's han') + ' superado tus condiciones personalizadas. Aquí tienes el contexto completo para que puedas profundizar en la situación.';
+  const subtitle = isTest ? 'Vista previa con el último cierre real disponible y la configuración vigente. No genera una alerta operativa.' :
+    events.length + ' cambio' + (events.length === 1 ? ' ha' : 's han') + ' superado las condiciones configuradas. Contexto ejecutivo para valorar la situación.';
   const summary = isTest ? renderMarketsAlertTestSummary_() :
     '<table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr>' +
     marketsAlertSummaryCell_('Críticas', critical, '#B92A45', '#F9E9ED') +
@@ -460,13 +551,15 @@ function renderMarketsAlertEmail_(events, recipient) {
 }
 
 function marketsAlertIsTest_(events) {
-  return Boolean((events || []).length) && (events || []).every(function (event) { return event.type === 'TEST'; });
+  return Boolean((events || []).length) && (events || []).every(function (event) {
+    return event.type === 'TEST' || Boolean(event.isTest);
+  });
 }
 
 function renderMarketsAlertTestSummary_() {
-  return '<div style="padding:16px 18px;border-radius:8px;background:#E6F4EA;color:#277A49;">' +
-    '<strong style="display:block;font-size:17px;line-height:23px;">✓ Canal de alertas verificado</strong>' +
-    '<span style="display:block;margin-top:4px;color:#3D5A48;font-size:13px;line-height:19px;">El correo de prueba ha salido correctamente. Debajo puedes ver cómo llegará el contexto de una alerta real.</span></div>';
+  return '<div style="padding:16px 18px;border-radius:8px;background:#EAFBFA;color:#070E46;">' +
+    '<strong style="display:block;font-size:17px;line-height:23px;">Vista previa · datos reales</strong>' +
+    '<span style="display:block;margin-top:4px;color:#46536D;font-size:13px;line-height:19px;">El contenido procede del último cierre disponible y aplica el ámbito y los umbrales guardados. Esta prueba no se registra como alerta operativa.</span></div>';
 }
 
 function marketsAlertSummaryCell_(label, value, color, background) {
@@ -474,7 +567,7 @@ function marketsAlertSummaryCell_(label, value, color, background) {
 }
 
 function renderMarketsAlertEmailCard_(event) {
-  if (event.type === 'TEST') return renderMarketsAlertTestCard_(event);
+  if (event.type === 'TEST_SNAPSHOT') return renderMarketsAlertSnapshotCard_(event);
   const palette = event.severity === 'CRITICAL' ? ['#B92A45', '#F9E9ED', 'Crítico'] :
     event.severity === 'WARNING' ? ['#946200', '#FFF4CC', 'Advertencia'] : ['#277A49', '#E6F4EA', 'Movimiento positivo'];
   const market = [event.country || event.countryCode, event.platform].filter(Boolean).join(' · ');
@@ -487,23 +580,19 @@ function renderMarketsAlertEmailCard_(event) {
     '<div style="margin-top:12px;padding-top:11px;border-top:1px solid rgba(0,19,145,.12);color:#46536D;font-size:13px;line-height:19px;"><strong style="color:#070E46;">Qué significa:</strong> ' + escapeMarketsAlertHtml_(marketsAlertReason_(event)) + '<br><strong style="color:#070E46;">Siguiente paso:</strong> ' + escapeMarketsAlertHtml_(marketsAlertRecommendation_(event)) + '</div></div>';
 }
 
-function renderMarketsAlertTestCard_(event) {
-  const identifier = trimString_(event.ruleId || event.runId || 'PRUEBA');
-  const destination = trimString_(event.recipients);
-  return '<div style="width:100%;box-sizing:border-box;margin:0 0 12px;padding:18px;border-left:5px solid #277A49;border-radius:8px;background:#F3FAF5;">' +
-    '<div style="font-size:11px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;color:#277A49;">PRUEBA DE ENTREGA · NO ES UNA ALERTA REAL</div>' +
-    '<div style="margin-top:7px;color:#070E46;font-size:18px;font-weight:700;line-height:24px;">Tu canal privado está listo</div>' +
-    '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-top:12px;background:#FFFFFF;border-radius:8px;">' +
-    marketsAlertDiagnosticRow_('Identificador', identifier) + marketsAlertDiagnosticRow_('Destino', destination) + '</table>' +
-    '<div style="margin-top:16px;padding:15px;border:1px dashed #85C8FF;border-radius:8px;background:#FFFFFF;">' +
-    '<div style="color:#001391;font-size:11px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;">EJEMPLO DE DETALLE · SIMULADO</div>' +
-    '<div style="margin-top:6px;color:#070E46;font-size:16px;font-weight:700;">BBVA Colombia cae 0,40 puntos</div>' +
-    '<div style="margin-top:10px;color:#343A40;font-size:13px;line-height:20px;"><strong>Mercado y plataforma:</strong> Colombia · iOS<br><strong>Periodo:</strong> desde inicio de año<br><strong>Rating:</strong> 4,82 → 4,42 &nbsp; <strong>Caída:</strong> 0,40 pts<br><strong>Límite amarillo:</strong> 0,30 pts &nbsp; <strong>Estado:</strong> advertencia</div>' +
-    '<div style="margin-top:10px;color:#46536D;font-size:12px;line-height:18px;">Las alertas reales mostrarán estos datos con los valores exactos que hayan activado tu regla.</div></div></div>';
-}
-
-function marketsAlertDiagnosticRow_(label, value) {
-  return '<tr><td style="padding:10px 12px;border-bottom:1px solid #E2E6EA;"><span style="display:block;color:#46536D;font-size:10px;text-transform:uppercase;">' + escapeMarketsAlertHtml_(label) + '</span><strong style="display:block;margin-top:3px;color:#070E46;font-size:12px;line-height:17px;overflow-wrap:anywhere;">' + escapeMarketsAlertHtml_(value) + '</strong></td></tr>';
+function renderMarketsAlertSnapshotCard_(event) {
+  const market = [event.country || event.countryCode, event.platform].filter(Boolean).join(' · ');
+  const count = event.ratingCount === null || event.ratingCount === undefined ? 'No disponible' :
+    marketsAlertIntegerLabel_(event.ratingCount);
+  return '<div style="width:100%;box-sizing:border-box;margin:0 0 12px;padding:18px;border-left:5px solid #001391;border-radius:8px;background:#EAFBFA;">' +
+    '<div style="color:#001391;font-size:11px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;">ÚLTIMO CIERRE REAL · SIN REGLAS ACTIVADAS</div>' +
+    '<div style="margin-top:7px;color:#070E46;font-size:18px;font-weight:700;line-height:24px;">' +
+    escapeMarketsAlertHtml_(market) + '</div><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-top:13px;background:#FFFFFF;border-radius:8px;"><tr>' +
+    marketsAlertMetricCell_('Rating actual', marketsAlertNumberLabel_(event.currentRating), marketsAlertDateLabel_(event.currentDate)) +
+    marketsAlertMetricCell_('Valoraciones', count, 'acumuladas') +
+    marketsAlertMetricCell_('Estado', 'Sin señal', 'según la configuración') +
+    '</tr></table><div style="margin-top:12px;color:#46536D;font-size:13px;line-height:19px;">' +
+    escapeMarketsAlertHtml_(event.detail) + '</div></div>';
 }
 
 function marketsAlertCardTitle_(event) {
@@ -547,7 +636,7 @@ function marketsAlertReason_(event) {
   }
   const limit = event.severity === 'CRITICAL' ? 'rojo' : 'amarillo';
   return 'La caída de ' + marketsAlertNumberLabel_(event.metricValue) +
-    ' puntos supera el límite que has configurado para el nivel ' + limit +
+    ' puntos supera el límite configurado para el nivel ' + limit +
     ' (' + marketsAlertNumberLabel_(event.threshold) + ' puntos).';
 }
 
@@ -559,6 +648,12 @@ function marketsAlertRecommendation_(event) {
 function marketsAlertNumberLabel_(value) {
   const number = Number(value);
   return isFinite(number) ? number.toFixed(2).replace('.', ',') : '—';
+}
+
+function marketsAlertIntegerLabel_(value) {
+  const number = toFiniteNumber_(value);
+  if (number === null) return 'N/D';
+  return Math.round(number).toLocaleString('es-ES');
 }
 
 function marketsAlertSignedNumberLabel_(value) {

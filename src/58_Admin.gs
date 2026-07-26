@@ -69,7 +69,10 @@ function getMarketsAdminDashboard() {
       timeZone: trimString_(access.control.TIME_ZONE) || MARKETS_CONFIG.timeZone,
       dailySchedule: String(MARKETS_CONFIG.runHour).padStart(2, '0') + ':' + String(MARKETS_CONFIG.runMinute).padStart(2, '0'),
       healthSchedule: String(MARKETS_CONFIG.healthCheckHour).padStart(2, '0') + ':' + String(MARKETS_CONFIG.healthCheckMinute).padStart(2, '0'),
+      newsletterSchedule: 'Día 1 · ' + String(MARKETS_CONFIG.newsletterHour).padStart(2, '0') + ':' +
+        String(MARKETS_CONFIG.newsletterMinute).padStart(2, '0'),
       emailDeliveryEnabled: parseBoolean_(access.control.SEND_ALERT_EMAILS, false),
+      newsletterDeliveryEnabled: marketsNewsletterDeliveryEnabled_(access.control),
       healthMonitorEnabled: parseBoolean_(access.control.MONITOR_HEALTH_ENABLED, true),
       healthRecipient: trimString_(access.control.MONITOR_ADMIN_EMAIL),
       administratorEmails: marketsAdministratorEmails_(access.control),
@@ -114,8 +117,13 @@ function saveMarketsAdminSubscriber(email, payload) {
     throw new Error('Las suscripciones estan siendo actualizadas. Intentalo de nuevo.');
   }
   try {
-    requireCurrentSheetContract_(access.ss, MARKETS_CONFIG.sheets.alertPreferences,
-      MARKETS_CONFIG.headers.alertPreferences);
+    [
+      [MARKETS_CONFIG.sheets.alertPreferences, MARKETS_CONFIG.headers.alertPreferences],
+      [MARKETS_CONFIG.sheets.ratings, MARKETS_CONFIG.headers.ratings],
+      [MARKETS_CONFIG.sheets.alerts, MARKETS_CONFIG.headers.alerts]
+    ].forEach(function (definition) {
+      requireCurrentSheetContract_(access.ss, definition[0], definition[1]);
+    });
     const previous = readMarketsAlertPreferences_(access.ss, targetEmail);
     const source = Object.assign({}, payload || {}, {
       email: targetEmail,
@@ -126,7 +134,19 @@ function saveMarketsAdminSubscriber(email, payload) {
     });
     const saved = upsertMarketsAlertPreferences_(access.ss,
       normalizeMarketsAlertPreferences_(source, targetEmail), access.email);
-    return alertPreferencesForClient_(saved);
+    let acknowledgements = [];
+    if (!previous.persisted && saved.active && saved.ytdDropEnabled &&
+        !isMarketsAdministrator_(targetEmail, access.control)) {
+      const ratings = readRatingObjects_(access.ss);
+      const referenceDate = latestMarketsRatingDate_(ratings, saved);
+      if (referenceDate) {
+        acknowledgements = buildMarketsEnrollmentYtdAcknowledgements_(ratings, referenceDate, saved);
+        appendAlertEvents_(access.ss, acknowledgements);
+      }
+    }
+    const client = alertPreferencesForClient_(saved);
+    client.enrollmentYtdAcknowledged = acknowledgements.length;
+    return client;
   } finally {
     lock.releaseLock();
   }

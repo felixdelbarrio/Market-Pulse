@@ -1,10 +1,11 @@
 /** Configuracion unica del monitor real de ratings Android, iOS y Huawei. */
 var MARKETS_CONFIG = Object.freeze({
-  codeVersion: '2026.07.26.23',
+  codeVersion: '2026.07.26.24',
   spreadsheetId: '1IkJgvM2imxm3r1x092q5dqpThrlnDoZ-5QvH8n2h2oQ',
   webAppUrl: 'https://script.google.com/a/macros/bbva.com/s/AKfycbzcrsLIXgG5vUM2jRilCO7-i5ZK6A_X0Yv-kPXqkBLFX5HOi5Soo6KF037RAgs9WxRk4g/exec',
   timeZone: 'Europe/Madrid', runHour: 7, runMinute: 5,
-  healthCheckHour: 9, healthCheckMinute: 15, lockTimeoutMs: 30000,
+  healthCheckHour: 9, healthCheckMinute: 15,
+  newsletterHour: 8, newsletterMinute: 15, lockTimeoutMs: 30000,
   requestRetries: 2, retryBaseDelayMs: 1200, huaweiBatchSize: 6, huaweiBatchDelayMs: 300,
   countryCodes: Object.freeze(['AR', 'CO', 'ES', 'MX', 'PE', 'TR', 'UY', 'VE']),
   sheets: Object.freeze({
@@ -70,9 +71,10 @@ var MARKETS_CONFIG = Object.freeze({
     ])
   }),
   controlDefaults: Object.freeze([
-    ['CODE_VERSION', '2026.07.26.23', 'Version del contrato de datos y del Apps Script'],
+    ['CODE_VERSION', '2026.07.26.24', 'Version del contrato de datos y del Apps Script'],
     ['TIME_ZONE', 'Europe/Madrid', 'Zona horaria de ejecucion y fechas'],
     ['SEND_ALERT_EMAILS', false, 'Enviar emails; mantener FALSE durante la validacion inicial'],
+    ['SEND_NEWSLETTER_EMAILS', false, 'Enviar la newsletter ejecutiva el dia 1 de cada mes'],
     ['ALERT_SENDER_ALIAS', 'voc-commercial.group@bbva.com', 'Remitente verificado en Gmail > Enviar como para las alertas VoC'],
     ['MONITOR_HEALTH_ENABLED', true, 'Verificar cada manana que el proceso diario y su canal de alertas han finalizado'],
     ['MONITOR_ADMIN_EMAIL', 'voc-commercial.group@bbva.com', 'Destino operativo para incidencias del proceso diario'],
