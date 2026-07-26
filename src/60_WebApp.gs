@@ -1,6 +1,6 @@
 /** Web app de lectura para el dashboard de ratings. */
 var MARKETS_WEB = Object.freeze({
-  version: '2026.07.22.32',
+  version: '2026.07.26.33',
   cacheSeconds: 21600,
   maxCacheCharacters: 95000,
   defaultTrendMonths: 18,

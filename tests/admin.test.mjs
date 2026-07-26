@@ -38,6 +38,21 @@ test("private dashboard authorization fails closed on the server", () => {
 test("admin endpoint always performs server-side authorization", () => {
   const admin = fs.readFileSync(new URL("../src/58_Admin.gs", import.meta.url), "utf8");
   assert.match(admin, /function getMarketsAdminDashboard\(\) \{\s*const access = requireMarketsAdministrator_\(\)/);
+  assert.match(admin, /function saveMarketsAdminSubscriber\(email, payload\) \{\s*const access = requireMarketsAdministrator_\(\)/);
+  assert.match(admin, /function requestMarketsAdminRatingRecovery\(\) \{\s*const access = requireMarketsAdministrator_\(\)/);
+  assert.match(admin, /normalizeMarketsAlertEmail_\(email\)/);
+  assert.match(admin, /runDailyRatingMonitor\(\)/);
   assert.match(admin, /requireCurrentSheetContract_/);
   assert.match(admin, /webAppUrl:\s*marketsWebAppUrl_\(\)/);
+});
+
+test("admin client exposes subscriber maintenance and manual rating recovery", () => {
+  const app = fs.readFileSync(new URL("../src/App.html", import.meta.url), "utf8");
+  const index = fs.readFileSync(new URL("../src/Index.html", import.meta.url), "utf8");
+  assert.match(app, /saveMarketsAdminSubscriber\(argument\.email,argument\.preferences\)/);
+  assert.match(app, /requestMarketsAdminRatingRecovery\(\)/);
+  assert.match(app, /function openAdminSubscriber/);
+  assert.match(index, /id="admin-add-subscriber"/);
+  assert.match(index, /id="admin-recovery"/);
+  assert.match(index, /id="admin-subscriber-dialog"/);
 });

@@ -86,15 +86,60 @@ function getMarketsAdminDashboard() {
     recentRuns: runs,
     fetchIssues: issues,
     subscribers: subscribers.map(function (item) {
-      return {
-        email: item.email, active: item.active, status: item.status,
-        countries: item.countries, platforms: item.platforms,
-        lastSeenAt: adminDateTime_(item.lastSeenAt), lastTestAt: adminDateTime_(item.lastTestAt),
-        lastDeliveryAt: adminDateTime_(item.lastDeliveryAt), updatedAt: adminDateTime_(item.updatedAt)
-      };
+      const client = alertPreferencesForClient_(item);
+      client.lastSeenAt = adminDateTime_(item.lastSeenAt);
+      client.lastTestAt = adminDateTime_(item.lastTestAt);
+      client.lastDeliveryAt = adminDateTime_(item.lastDeliveryAt);
+      client.updatedAt = adminDateTime_(item.updatedAt);
+      client.registeredAt = adminDateTime_(item.registeredAt);
+      return client;
     }),
     recentAlerts: alerts
   };
+}
+
+/**
+ * Alta y mantenimiento administrativo de suscriptores. La identidad que se
+ * modifica procede del argumento separado, nunca de la sesion ni del payload.
+ */
+function saveMarketsAdminSubscriber(email, payload) {
+  const access = requireMarketsAdministrator_();
+  const targetEmail = normalizeMarketsAlertEmail_(email);
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(MARKETS_CONFIG.lockTimeoutMs)) {
+    throw new Error('Las suscripciones estan siendo actualizadas. Intentalo de nuevo.');
+  }
+  try {
+    requireCurrentSheetContract_(access.ss, MARKETS_CONFIG.sheets.alertPreferences,
+      MARKETS_CONFIG.headers.alertPreferences);
+    const previous = readMarketsAlertPreferences_(access.ss, targetEmail);
+    const source = Object.assign({}, payload || {}, {
+      email: targetEmail,
+      registeredAt: previous.registeredAt || new Date(),
+      lastSeenAt: previous.lastSeenAt || '',
+      lastTestAt: previous.lastTestAt || '',
+      lastDeliveryAt: previous.lastDeliveryAt || ''
+    });
+    const saved = upsertMarketsAlertPreferences_(access.ss,
+      normalizeMarketsAlertPreferences_(source, targetEmail), access.email);
+    return alertPreferencesForClient_(saved);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * Ejecuta una recuperacion completa bajo demanda. runDailyRatingMonitor deja
+ * la auditoria en RUN_LOG y conserva el mismo bloqueo que la carga programada.
+ */
+function requestMarketsAdminRatingRecovery() {
+  const access = requireMarketsAdministrator_();
+  const result = runDailyRatingMonitor();
+  return Object.assign({}, result, {
+    requestedBy: access.email,
+    requestedAt: new Date().toISOString(),
+    mode: 'MANUAL_ADMIN_RECOVERY'
+  });
 }
 
 function readRecentMarketsAdminRuns_(ss, limit) {

@@ -91,7 +91,7 @@ La regla propuesta de porcentaje de reseñas de 1 y 2 estrellas conserva sus val
 
 - Autoservicio: las funciones web usan la sesion corporativa y solo permiten operar sobre la fila propia.
 - Ejecucion programada: `runDailyRatingMonitor()` y `runNow()` se ejecutan como propietario, leen **todas** las filas activas de `ALERT_SUBSCRIPTIONS` y envian aunque ningun usuario tenga la aplicacion abierta.
-- Administrador: solo las cuentas incluidas en `CONTROL.ADMIN_EMAILS` ven la pestaña `Administracion`. Su endpoint vuelve a autorizar en servidor antes de devolver versiones, configuracion operativa, ejecuciones, incidencias, suscripciones y eventos. La interfaz agrupa ese unico contrato en las pestañas internas Salud, Ejecuciones, Captura, Suscripciones y Alertas, sin nuevas RPC. Ocultar la pestaña no se usa como control de seguridad.
+- Administrador: solo las cuentas incluidas en `CONTROL.ADMIN_EMAILS` ven la pestaña `Administracion`. Cada endpoint vuelve a autorizar en servidor. Desde `Suscripciones` se monitoriza toda la base de newsletter, se dan de alta cuentas `@bbva.com`, se pausan o reactivan y se modifican su ámbito y reglas de alerta. `Recuperar ratings ahora` lanza bajo demanda el proceso completo y deja su resultado en `RUN_LOG`, igual que una carga programada. Ocultar la pestaña no se usa como control de seguridad.
 - Los usuarios del Web App no reciben acceso directo al Sheet ni pueden consultar la configuracion de otra cuenta.
 
 `SEND_ALERT_EMAILS = TRUE` habilita el canal, pero `runNow()` solo envia si `ALERTS_CREATED > 0`. El resultado manual incluye `alerts`, `alertSubscribers` y `emailsSent`; use **Enviar prueba** para distinguir un problema de entrega de la ausencia legitima de eventos.
