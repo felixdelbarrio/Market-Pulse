@@ -82,6 +82,13 @@ test("admin client exposes subscriber maintenance and manual rating recovery", (
   assert.match(app, /function clearAdminSubscriberFilters/);
   assert.match(app, /selected\.some\(value=>\(values\|\|\[\]\)\.includes\(value\)\)/);
   assert.match(app, /const bindOptional=\(id,event,handler\)=>\$\(id\)\?\.addEventListener/);
+  assert.match(app, /function adminSubscriberFiltersMarkup/);
+  assert.match(app, /function adminSubscriberScopeMarkup/);
+  assert.match(app, /function ensureAdminSubscriberUi/);
+  assert.match(app, /function bindNavigation\(\)\{ensureAdminSubscriberUi\(\)/);
+  assert.match(app, /if\(list&&!\$\("admin-subscriber-search"\)\)/);
+  assert.match(app, /admin-subscriber-countries/);
+  assert.match(app, /fieldset\.innerHTML=adminSubscriberScopeMarkup\(\)/);
   [
     "admin-subscriber-search", "admin-subscriber-status", "admin-subscriber-filter-clear",
     "admin-filter-country-pills", "admin-filter-platform-pills"
