@@ -79,19 +79,44 @@ function sendMarketsNewsletterTestEmail() {
     throw new Error('El envío de newsletters está desactivado en CONTROL.');
   }
   const preferences = readMarketsAlertPreferences_(ss, email);
-  return sendMarketsNewsletterPreview_(ss, email, preferences, email);
+  return withMarketsNewsletterPreviewLock_(ss, email, preferences, email,
+    'NEWS-REQ-' + Utilities.getUuid());
 }
 
-function sendMarketsAdminNewsletterTestEmail(targetEmail) {
+function sendMarketsAdminNewsletterTestEmail(request) {
   const access = requireMarketsAdministrator_();
   requireMarketsNewsletterContracts_(access.ss);
-  const target = normalizeMarketsAlertEmail_(targetEmail);
+  const normalized = normalizeMarketsNewsletterPreviewRequest_(request);
+  const target = normalizeMarketsAlertEmail_(normalized.targetEmail);
   if (!marketsNewsletterDeliveryEnabled_(access.control)) {
     throw new Error('El envío de newsletters está desactivado en CONTROL.');
   }
   const preferences = readMarketsAlertPreferences_(access.ss, target);
   if (!preferences.persisted) throw new Error('El destinatario seleccionado no está dado de alta.');
-  return sendMarketsNewsletterPreview_(access.ss, access.email, preferences, target);
+  return withMarketsNewsletterPreviewLock_(
+    access.ss, access.email, preferences, target, normalized.requestId);
+}
+
+function normalizeMarketsNewsletterPreviewRequest_(request) {
+  const input = typeof request === 'string' ? { targetEmail: request } : (request || {});
+  const requestId = trimString_(input.requestId) ||
+    ('NEWS-REQ-' + Utilities.getUuid());
+  if (!/^[A-Za-z0-9_-]{8,96}$/.test(requestId)) {
+    throw new Error('El identificador de la prueba no es válido.');
+  }
+  return { targetEmail: input.targetEmail, requestId: requestId };
+}
+
+function withMarketsNewsletterPreviewLock_(ss, recipient, preferences, configuredFor, requestId) {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(MARKETS_CONFIG.lockTimeoutMs)) {
+    throw new Error('Otra comunicación sigue preparándose. Reintenta: la misma solicitud no se duplicará.');
+  }
+  try {
+    return sendMarketsNewsletterPreview_(ss, recipient, preferences, configuredFor, requestId);
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function requireMarketsNewsletterContracts_(ss) {
@@ -106,24 +131,31 @@ function requireMarketsNewsletterContracts_(ss) {
   });
 }
 
-function sendMarketsNewsletterPreview_(ss, recipient, preferences, configuredFor) {
+function sendMarketsNewsletterPreview_(ss, recipient, preferences, configuredFor, requestId) {
+  const deliveryId = 'NEWS-' + trimString_(requestId).replace(/^NEWS-REQ-/, '').slice(0, 72).toUpperCase();
+  const eventKey = 'NEWSLETTER_TEST|' + deliveryId + '|' + recipient;
+  if (readExistingAlertKeys_(ss)[eventKey]) {
+    return {
+      sent: true, accepted: true, alreadyAccepted: true, recipient: recipient,
+      configuredFor: configuredFor, deliveryId: deliveryId, realData: true,
+      auditLogged: true, codeVersion: MARKETS_CONFIG.codeVersion, webVersion: MARKETS_WEB.version
+    };
+  }
   const ratings = readRatingObjects_(ss);
   const catalog = readAppCatalog_(ss);
   const period = latestMarketsNewsletterPeriod_(ratings, preferences);
   if (!period) throw new Error('No hay cierres reales disponibles para el ámbito configurado.');
   const model = buildMarketsNewsletterModel_(ratings, catalog, preferences, period, {
-    isTest: true, configuredFor: recipient
+    isTest: true, configuredFor: configuredFor
   });
   const sender = requireMarketsAlertSender_(ss);
   const message = marketsNewsletterEmailMessage_(recipient, model, buildMarketsAlertInlineImages_(), sender);
   const accepted = Gmail.Users.Messages.send({ raw: message.raw }, 'me');
   if (!accepted || !trimString_(accepted.id)) throw new Error('Gmail no ha devuelto un identificador de mensaje.');
-  const deliveryId = 'NEWS-' + Utilities.formatDate(new Date(), MARKETS_CONFIG.timeZone, 'yyyyMMdd-HHmmss') +
-    '-' + Utilities.getUuid().slice(0, 8).toUpperCase();
   appendAlertEvents_(ss, [marketsNewsletterAuditEvent_(recipient, model,
-    'NEWSLETTER_TEST|' + deliveryId + '|' + recipient, 'NEWSLETTER_TEST')]);
+    eventKey, 'NEWSLETTER_TEST')]);
   return {
-    sent: true, accepted: true, recipient: recipient, configuredFor: configuredFor,
+    sent: true, accepted: true, alreadyAccepted: false, recipient: recipient, configuredFor: configuredFor,
     period: period, deliveryId: deliveryId, messageId: trimString_(accepted.id),
     threadId: trimString_(accepted.threadId), realData: true,
     scopeType: model.scope.type, auditLogged: true, senderName: sender.name,

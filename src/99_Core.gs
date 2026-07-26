@@ -5,10 +5,27 @@ function trimString_(value) {
 /** URL corporativa unica para web, correos y diagnostico. */
 function marketsWebAppUrl_() {
   const url = trimString_(MARKETS_CONFIG.webAppUrl);
-  if (!/^https:\/\/script\.google\.com\/a\/macros\/bbva\.com\/s\/[A-Za-z0-9_-]+\/exec$/.test(url)) {
-    throw new Error('MARKETS_CONFIG.webAppUrl debe contener la URL corporativa /exec completa.');
+  const type = marketsDeploymentUrlType_(url);
+  if (type !== 'WEB_APP') {
+    const detail = type === 'LIBRARY' ?
+      'La URL pertenece a una biblioteca de Apps Script, no a una aplicacion web.' :
+      'La URL debe ser la direccion corporativa /s/.../exec completa.';
+    throw new Error('MARKETS_CONFIG.webAppUrl no es una aplicacion web valida. ' + detail);
   }
   return url;
+}
+
+function marketsDeploymentUrlType_(value) {
+  const url = trimString_(value);
+  if (/^https:\/\/script\.google\.com\/macros\/library\/d\/[A-Za-z0-9_-]+\/\d+(?:[/?#]|$)/.test(url)) {
+    return 'LIBRARY';
+  }
+  if (/^https:\/\/script\.google\.com\/a\/macros\/bbva\.com\/s\/[A-Za-z0-9_-]+\/exec(?:[?#].*)?$/.test(url) ||
+      /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec(?:[?#].*)?$/.test(url)) {
+    return 'WEB_APP';
+  }
+  if (/\/dev(?:[?#].*)?$/.test(url)) return 'DEVELOPMENT';
+  return url ? 'UNKNOWN' : 'MISSING';
 }
 
 /** Fuerza la seleccion de la cuenta Workspace antes de entrar desde un correo. */

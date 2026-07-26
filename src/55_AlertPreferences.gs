@@ -317,7 +317,8 @@ function sendMarketsAlertTestEmail() {
   const preferences = readMarketsAlertPreferences_(ss, email);
   const ratings = readRatingObjects_(ss);
   const catalog = readAppCatalog_(ss);
-  const events = buildMarketsRealAlertPreviewEvents_(ratings, catalog, preferences, deliveryId);
+  const events = validateMarketsRealAlertPreviewEvents_(
+    buildMarketsRealAlertPreviewEvents_(ratings, catalog, preferences, deliveryId), preferences);
   const delivered = sendAlertEmails_(events, ss);
   if (delivered !== 1) throw new Error('Google no ha aceptado la prueba para el destinatario esperado.');
   let auditLogged = true;
@@ -347,6 +348,8 @@ function sendMarketsAlertTestEmail() {
     senderVerificationStatus: delivery.verificationStatus || '',
     messageId: delivery.messageId || '', threadId: delivery.threadId || '', auditLogged: auditLogged,
     realData: true, previewItems: events.length,
+    scopeCountries: preferences.countries.slice(), scopePlatforms: preferences.platforms.slice(),
+    previewCountries: uniqueStrings_(events.map(function (event) { return event.countryCode; })),
     codeVersion: MARKETS_CONFIG.codeVersion, webVersion: MARKETS_WEB.version
   };
 }

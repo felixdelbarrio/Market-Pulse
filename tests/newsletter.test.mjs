@@ -220,3 +220,32 @@ test("newsletter schedule targets the previous calendar month", () => {
   assert.equal(context.marketsPreviousMonthKey_(new Date(2026, 6, 1, 8)), "2026-06");
   assert.equal(context.marketsPreviousMonthKey_(new Date(2026, 0, 1, 8)), "2025-12");
 });
+
+test("an accepted admin newsletter retry is idempotent and does not rebuild or resend", () => {
+  const previous = {
+    readExisting: context.readExistingAlertKeys_,
+    readRatings: context.readRatingObjects_,
+    web: context.MARKETS_WEB
+  };
+  const recipient = "administrator@bbva.com";
+  const requestId = "NEWS-REQ-12345678";
+  const deliveryId = "NEWS-12345678";
+  context.MARKETS_CONFIG.codeVersion = "test-code";
+  context.MARKETS_WEB = { version: "test-web" };
+  context.readExistingAlertKeys_ = () => ({
+    [`NEWSLETTER_TEST|${deliveryId}|${recipient}`]: true
+  });
+  context.readRatingObjects_ = () => {
+    throw new Error("A completed retry must not read or send again.");
+  };
+  const result = context.sendMarketsNewsletterPreview_(
+    {}, recipient, pref(["MX"], ["Android"]), "director@bbva.com", requestId);
+  assert.equal(result.accepted, true);
+  assert.equal(result.alreadyAccepted, true);
+  assert.equal(result.deliveryId, deliveryId);
+  assert.equal(result.configuredFor, "director@bbva.com");
+
+  context.readExistingAlertKeys_ = previous.readExisting;
+  context.readRatingObjects_ = previous.readRatings;
+  context.MARKETS_WEB = previous.web;
+});

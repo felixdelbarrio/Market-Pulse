@@ -1,6 +1,6 @@
 /** Configuracion unica del monitor real de ratings Android, iOS y Huawei. */
 var MARKETS_CONFIG = Object.freeze({
-  codeVersion: '2026.07.26.28',
+  codeVersion: '2026.07.26.30',
   spreadsheetId: '1IkJgvM2imxm3r1x092q5dqpThrlnDoZ-5QvH8n2h2oQ',
   webAppUrl: 'https://script.google.com/a/macros/bbva.com/s/AKfycbzcrsLIXgG5vUM2jRilCO7-i5ZK6A_X0Yv-kPXqkBLFX5HOi5Soo6KF037RAgs9WxRk4g/exec',
   timeZone: 'Europe/Madrid', runHour: 7, runMinute: 5,
@@ -71,7 +71,7 @@ var MARKETS_CONFIG = Object.freeze({
     ])
   }),
   controlDefaults: Object.freeze([
-    ['CODE_VERSION', '2026.07.26.28', 'Version del contrato de datos y del Apps Script'],
+    ['CODE_VERSION', '2026.07.26.30', 'Version del contrato de datos y del Apps Script'],
     ['TIME_ZONE', 'Europe/Madrid', 'Zona horaria de ejecucion y fechas'],
     ['SEND_ALERT_EMAILS', false, 'Enviar emails; mantener FALSE durante la validacion inicial'],
     ['SEND_NEWSLETTER_EMAILS', false, 'Enviar la newsletter ejecutiva el dia 1 de cada mes'],

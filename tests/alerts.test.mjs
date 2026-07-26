@@ -162,6 +162,25 @@ test("a test email returns traceable acceptance diagnostics and is audited", () 
   context.MARKETS_WEB = original.MARKETS_WEB;
 });
 
+test("real alert previews reject Global, generic platforms and data outside the saved scope", () => {
+  const mexico = preferences({ countries: ["MX"], platforms: ["Android"] });
+  const event = {
+    referenceDate: new Date(2026, 6, 20), currentDate: new Date(2026, 6, 20),
+    platform: "Android", countryCode: "MX", country: "México",
+    type: "TEST_SNAPSHOT", appKey: "ANDROID|MX|BBVA", currentRating: 4.2
+  };
+  assert.equal(context.validateMarketsRealAlertPreviewEvents_([event], mexico)[0].countryCode, "MX");
+  assert.throws(() => context.validateMarketsRealAlertPreviewEvents_([
+    { ...event, countryCode: "GLOBAL", platform: "Todas" }
+  ], mexico), /geografía y plataforma reales/);
+  assert.throws(() => context.validateMarketsRealAlertPreviewEvents_([
+    { ...event, countryCode: "CO" }
+  ], mexico), /ámbito guardado/);
+  assert.throws(() => context.validateMarketsRealAlertPreviewEvents_([
+    { ...event, currentRating: null }
+  ], mexico), /rating real/);
+});
+
 test("daily, month-to-date and year-to-date drops are independent", () => {
   const rows = [
     rating(2, 4.8, { observedDate: new Date(2026, 0, 2, 12) }),

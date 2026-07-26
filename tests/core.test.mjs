@@ -47,3 +47,14 @@ test("Huawei is complementary while Android and iOS define operational coverage"
   assert.equal(context.isMarketsCriticalPlatform_("Huawei"), false);
   assert.deepEqual(Array.from(context.marketsCriticalItems_(items)).map(item => item.id), ["a", "i"]);
 });
+
+test("deployment URLs distinguish a Web App from a library version", () => {
+  assert.equal(context.marketsDeploymentUrlType_(
+    "https://script.google.com/a/macros/bbva.com/s/AKfy-example_1/exec"), "WEB_APP");
+  assert.equal(context.marketsDeploymentUrlType_(
+    "https://script.google.com/macros/s/AKfy-example_1/exec"), "WEB_APP");
+  assert.equal(context.marketsDeploymentUrlType_(
+    "https://script.google.com/macros/library/d/script-id/22"), "LIBRARY");
+  assert.equal(context.marketsDeploymentUrlType_(
+    "https://script.google.com/macros/s/AKfy-example_1/dev"), "DEVELOPMENT");
+});

@@ -195,6 +195,42 @@ function buildMarketsRealAlertPreviewEvents_(ratings, catalog, preferences, deli
   });
 }
 
+function validateMarketsRealAlertPreviewEvents_(events, preferences) {
+  if (!Array.isArray(events) || !events.length) {
+    throw new Error('No hay datos reales utilizables para preparar la prueba.');
+  }
+  const hasNumber = function (value) { return toFiniteNumber_(value) !== null; };
+  events.forEach(function (event) {
+    const countryCode = trimString_(event && event.countryCode).toUpperCase();
+    const platform = trimString_(event && event.platform);
+    if (!countryCode || countryCode === 'GLOBAL' || !platform || platform.toUpperCase() === 'TODAS') {
+      throw new Error('La prueba se ha cancelado: no existe una geografía y plataforma reales verificables.');
+    }
+    if (!marketsAlertScopeMatches_(preferences, { countryCode: countryCode, platform: platform })) {
+      throw new Error('La prueba se ha cancelado: los datos no pertenecen al ámbito guardado.');
+    }
+    if (!(event.referenceDate instanceof Date) || !isFinite(event.referenceDate.getTime()) ||
+        !trimString_(event.appKey)) {
+      throw new Error('La prueba se ha cancelado: falta trazabilidad del cierre real.');
+    }
+    if (event.type === 'COMPETITIVE_CROSSOVER') {
+      if (!hasNumber(event.bbvaRating) || !hasNumber(event.competitorRating)) {
+        throw new Error('La prueba se ha cancelado: el cruce no contiene ratings reales comparables.');
+      }
+      return;
+    }
+    if (!hasNumber(event.currentRating)) {
+      throw new Error('La prueba se ha cancelado: el cierre no contiene un rating real.');
+    }
+    if (event.type !== 'TEST_SNAPSHOT' &&
+        (!hasNumber(event.baselineRating) || !hasNumber(event.metricValue) ||
+         !hasNumber(event.threshold))) {
+      throw new Error('La prueba se ha cancelado: la señal no puede justificarse con sus datos reales.');
+    }
+  });
+  return events;
+}
+
 function ratingDropBaseline_(series, referenceKey, period) {
   const previous = (series || []).filter(function (item) { return dateKey_(item.observedDate) < referenceKey; });
   if (period === 'DAILY') return previous.slice().sort(function (a, b) { return b.observedDate - a.observedDate; })[0] || null;

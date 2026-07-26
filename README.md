@@ -36,16 +36,16 @@ El libro maestro contiene diez pestañas:
 2. Ejecute `setupProject()` una vez. La funcion solicita todos los permisos del manifiesto, valida el contrato vigente, aplica formato, completa las semillas necesarias, registra al ejecutor inicial en `CONTROL.ADMIN_EMAILS` e instala los triggers diario, de vigilancia y de newsletter mensual. Añada despues otros administradores `@bbva.com` separados por coma. Los encabezados existentes deben coincidir exactamente con esta version: no se amplian contratos antiguos de forma automatica.
 3. Ejecute `validateProject()` y revise el resultado.
 4. Ejecute `runNow()` con `SEND_ALERT_EMAILS = FALSE` y compruebe `RUN_LOG` y `FETCH_LOG`.
-5. Cree o actualice el despliegue **Aplicacion web**. El manifiesto fija `executeAs: USER_DEPLOYING` y `access: DOMAIN`: confirme en la interfaz **Ejecutar como: yo** y acceso para el dominio BBVA.
+5. Cree o actualice el despliegue seleccionando explícitamente **Aplicación web** en el selector de tipo. No seleccione **Biblioteca**: una URL `script.google.com/macros/library/d/...` identifica una versión para consumo desde otros scripts y nunca abre Market Pulse. El manifiesto fija `executeAs: USER_DEPLOYING` y `access: DOMAIN`: confirme en la interfaz **Ejecutar como: yo** y acceso para el dominio BBVA.
 6. Abra la pestaña `Alertas` con una cuenta `@bbva.com` y confirme que aparece su email. Si la identidad queda vacia, revise el acceso corporativo del despliegue antes de habilitar correos.
 7. Ejecute `authorizeAndInstallMarketsAutomation()` desde el editor, acepte expresamente `gmail.send`, `gmail.settings.basic` y `userinfo.email`, y compruebe que devuelve `verificationStatus: accepted`. Este paso es obligatorio al incorporar permisos nuevos: un trigger no puede mostrar el dialogo de autorización.
-8. Cambie `SEND_ALERT_EMAILS` y `SEND_NEWSLETTER_EMAILS` a `TRUE`, guarde `CONTROL` y use **Probar alertas** y **Probar newsletter** desde `Alertas` para validar ambos formatos con los últimos datos reales disponibles.
+8. Cambie `SEND_ALERT_EMAILS` y `SEND_NEWSLETTER_EMAILS` a `TRUE`, guarde `CONTROL`, pruebe las alertas desde `Alertas` y la newsletter exclusivamente desde `Administración` para validar ambos formatos con los últimos datos reales disponibles.
 9. Ejecute `sendMarketsMonitorHealthTestEmail()` y confirme que el aviso tecnico queda registrado en el grupo configurado.
 10. Ejecute `rebuildAllMetrics()` después de publicar esta version. La funcion sustituye el contrato materializado de `DASHBOARD_TRENDS`, incorpora `RATING_COUNT_EOM` y precalienta ambas capas de cache; no ejecute solo `warmMarketsDashboardCache()` antes de esta reconstruccion.
 
 Un `clasp push` no cambia una version ya desplegada. Use **Gestionar implementaciones > Editar > Nueva version**.
 
-Para compartir la aplicacion utilice exclusivamente la URL canónica completa que devuelve `validateProject().webAppUrl` o que aparece en `Administracion > Salud`. Debe terminar en `/exec` y conservar todos sus segmentos; un despliegue corporativo puede incluir `/a/macros/bbva.com/`. No comparta enlaces de Drive, del editor, URLs `/dev` ni direcciones recortadas o construidas manualmente. En iPhone, Chrome debe estar usando el perfil corporativo `@bbva.com`; una cuenta personal no cumple el acceso `DOMAIN` y Google puede mostrar una pagina generica de Drive antes de ejecutar `doGet()`.
+Para compartir la aplicacion utilice exclusivamente la URL canónica completa que devuelve `validateProject().webAppUrl`, el nuevo bloque `validateProject().deployment` o `Administracion > Salud`. También puede abrirla desde el menú del Sheet **Market Pulse > Mostrar URL de la aplicación**. Debe terminar en `/exec` y conservar todos sus segmentos; un despliegue corporativo puede incluir `/a/macros/bbva.com/`. No comparta enlaces `/macros/library/d/`, de Drive, del editor, URLs `/dev` ni direcciones recortadas o construidas manualmente. En iPhone, Chrome debe estar usando el perfil corporativo `@bbva.com`; una cuenta personal no cumple el acceso `DOMAIN` y Google puede mostrar una pagina generica de Drive antes de ejecutar `doGet()`.
 
 ## Operacion
 
@@ -61,7 +61,7 @@ Para compartir la aplicacion utilice exclusivamente la URL canónica completa qu
 - `sendMarketsMonitorHealthTestEmail()`: prueba el canal tecnico independiente dirigido a `MONITOR_ADMIN_EMAIL`.
 - `validateMarketsAlertSender()`: confirma que `voc-commercial.group@bbva.com` esta autorizado y verificado como identidad **Enviar como** para la cuenta ejecutora.
 - `sendMarketsAlertTestEmail()`: genera una previsualización trazable con las reglas guardadas y el último cierre real disponible; nunca inventa caídas, ratings ni volúmenes.
-- `sendMarketsNewsletterTestEmail()`: envía al usuario conectado una previsualización del último mes disponible con su ámbito vigente. El administrador también puede probar el formato exacto de cualquier suscripción desde `Administración`.
+- `sendMarketsNewsletterTestEmail()`: permite al propietario probar la newsletter desde el menú de la hoja. En la Web App la prueba solo está disponible en `Administración`, para el formato exacto de una suscripción.
 
 La cache tiene dos niveles: `CacheService` para acceso rapido y `PropertiesService` para persistencia compartida comprimida. Cada RUN reemplaza la generacion después de actualizar los datasets. La identidad de esta caché depende de su contrato serializado, no de la versión visual: publicar CSS, UX o wording no provoca una reconstrucción desde Sheets en la primera visita. La lectura persistente agrupa los fragmentos en una única operación y cualquier error de cuota se degrada de forma segura; la caché acelera, pero nunca impide servir datos ya calculados.
 

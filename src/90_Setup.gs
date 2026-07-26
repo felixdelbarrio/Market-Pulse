@@ -4,7 +4,10 @@ function setupProject() {
   initializeWorkbook_(ss);
   seedInitialMarketsAdministrator_(ss);
   installDailyTrigger_();
-  return validateProject();
+  const validation = validateProject();
+  console.log('Market Pulse preparado. Abra exclusivamente la Web App: ' + validation.webAppUrl);
+  console.log('Tipo requerido: Aplicacion web. Nunca use una URL /macros/library/d/.');
+  return validation;
 }
 
 function validateProject() {
@@ -28,6 +31,7 @@ function validateProject() {
     spreadsheetId: ss.getId(),
     codeVersion: MARKETS_CONFIG.codeVersion,
     webAppUrl: marketsWebAppUrl_(),
+    deployment: marketsWebDeploymentStatus_(),
     enabledApps: catalog.length,
     platforms: counts,
     geographies: geography,
@@ -53,6 +57,26 @@ function validateProject() {
       warning: trimString_(control.ALERT_CONFIG_WARNING)
     },
     sheets: Object.keys(MARKETS_CONFIG.sheets).map(function (key) { return MARKETS_CONFIG.sheets[key]; })
+  };
+}
+
+function marketsWebDeploymentStatus_() {
+  let serviceUrl = '';
+  try {
+    const service = ScriptApp.getService();
+    serviceUrl = service ? trimString_(service.getUrl()) : '';
+  } catch (ignored) {}
+  const configuredUrl = marketsWebAppUrl_();
+  const runtimeType = marketsDeploymentUrlType_(serviceUrl);
+  return {
+    requiredType: 'Aplicacion web',
+    configuredUrl: configuredUrl,
+    configuredType: marketsDeploymentUrlType_(configuredUrl),
+    runtimeUrl: serviceUrl,
+    runtimeType: runtimeType,
+    ready: runtimeType === 'WEB_APP',
+    expectedPattern: 'https://script.google.com/a/macros/bbva.com/s/.../exec',
+    forbiddenPattern: 'https://script.google.com/macros/library/d/...'
   };
 }
 
@@ -121,6 +145,7 @@ function authorizeAndInstallMarketsAutomation() {
 function onOpen() {
   SpreadsheetApp.getUi().createMenu('Market Pulse')
     .addItem('Validar proyecto', 'validateProject')
+    .addItem('Mostrar URL de la aplicacion', 'showMarketsWebAppLink')
     .addItem('Ejecutar ahora', 'runNow')
     .addItem('Recalcular metricas', 'rebuildAllMetrics')
     .addSeparator()
@@ -129,4 +154,18 @@ function onOpen() {
     .addItem('Probar aviso tecnico', 'sendMarketsMonitorHealthTestEmail')
     .addItem('Probar newsletter mensual', 'sendMarketsNewsletterTestEmail')
     .addToUi();
+}
+
+function showMarketsWebAppLink() {
+  const url = marketsWebAppUrl_();
+  const html = HtmlService.createHtmlOutput(
+    '<div style="font:14px Arial,sans-serif;padding:18px;color:#070E46;">' +
+    '<h2 style="margin:0 0 12px;">Market Pulse</h2>' +
+    '<p>Esta es la unica URL que debe abrirse y compartirse:</p>' +
+    '<p><a href="' + url + '" target="_blank" rel="noopener noreferrer" ' +
+    'style="color:#001391;font-weight:700;">Abrir aplicacion web</a></p>' +
+    '<p style="margin-top:16px;color:#46536D;font-size:12px;">La URL debe terminar en <strong>/exec</strong>. ' +
+    'No utilice enlaces que contengan <strong>/macros/library/</strong>.</p></div>'
+  ).setWidth(480).setHeight(220);
+  SpreadsheetApp.getUi().showModalDialog(html, 'URL oficial de Market Pulse');
 }

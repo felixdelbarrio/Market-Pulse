@@ -399,9 +399,11 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(index, /Toda la base activa/);
   assert.match(app, /draft\[period\+"DropEnabled"\]/);
   assert.match(index, /Probar alertas/);
-  assert.match(index, /id="newsletter-test-button"/);
+  assert.doesNotMatch(index, /id="newsletter-test-button"/);
   assert.match(index, /id="loader-retry"/);
-  assert.match(app, /sendMarketsNewsletterTestEmail/);
+  assert.doesNotMatch(app, /sendMarketsNewsletterTestEmail/);
+  assert.match(app, /admin:newsletter:test"\?120000/);
+  assert.match(app, /newsletterRequestId/);
   assert.match(app, /state\.userContext=data\.userContext/);
   assert.match(app, /Market Pulse no ha respondido a tiempo/);
   assert.doesNotMatch(app, /Promise\.all\\(\\[callServer\\("bootstrap"\\),callServer\\("user:context"\\)\\]\\)/);
