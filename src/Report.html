@@ -26,7 +26,7 @@
       const platforms=selection.platform==="ALL"?D.config.platforms.filter(platform=>D.isCriticalPlatform(platform)||bbva.some(row=>row.platform===platform&&finite(row.rating))):[selection.platform];
       const coverageRows=D.coverageRows(bbva,selection);
       const observed=coverageRows.filter(row=>finite(row.rating));
-      const competitive=D.selectionRows(snapshot,selection,view==="benchmark"?segment:"ALL",true).filter(row=>finite(row.rating));
+      const competitive=D.selectionRows(snapshot,selection,view==="benchmark"?segment:"BANK",true).filter(row=>finite(row.rating));
       const volume=D.volumeSummary(bbva);
       const leaders=D.countBbvaLeaders(competitive);
       const average=D.mean(observed.map(row=>row.rating));

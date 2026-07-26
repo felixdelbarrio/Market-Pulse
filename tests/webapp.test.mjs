@@ -502,9 +502,22 @@ test("client domain deduplicates shared Android volumes and excludes competitors
     { appKey: "BBVA", countryCode: "MX", platform: "Android", appName: "BBVA", isBbva: true, rating: 4.8, rankingComplete: false },
     { appKey: "PEER", countryCode: "MX", platform: "Android", appName: "Peer", isBbva: false, rating: 4.5, rankingComplete: false }
   ];
-  assert.deepEqual(JSON.parse(JSON.stringify(browser.MarketsDomain.countBbvaLeaders(incomplete))), { value: 0, comparable: 0 });
+  assert.deepEqual(JSON.parse(JSON.stringify(browser.MarketsDomain.countBbvaLeaders(incomplete))),
+    { value: 0, comparable: 0, sole: 0, shared: 0 });
   incomplete.forEach(row => { row.rankingComplete = true; });
-  assert.deepEqual(JSON.parse(JSON.stringify(browser.MarketsDomain.countBbvaLeaders(incomplete))), { value: 1, comparable: 1 });
+  assert.deepEqual(JSON.parse(JSON.stringify(browser.MarketsDomain.countBbvaLeaders(incomplete))),
+    { value: 1, comparable: 1, sole: 1, shared: 0 });
+  const transparent = incomplete.concat([
+    { appKey: "FINTECH", countryCode: "MX", platform: "Android", segment: "FINTECH",
+      appName: "Fintech", isBbva: false, rating: 5, rankingComplete: true },
+    { appKey: "BBVA-IOS", countryCode: "MX", platform: "iOS", segment: "BANK",
+      appName: "BBVA", isBbva: true, rating: 4.8, rankingComplete: true },
+    { appKey: "PEER-IOS", countryCode: "MX", platform: "iOS", segment: "BANK",
+      appName: "Peer", isBbva: false, rating: 4.8, rankingComplete: true }
+  ]);
+  assert.deepEqual(JSON.parse(JSON.stringify(browser.MarketsDomain.countBbvaLeaders(
+    transparent.filter(row => (row.segment || "BANK") === "BANK")))),
+    { value: 2, comparable: 2, sole: 1, shared: 1 });
 });
 
 test("monthly summary matrix respects filters and marks shared Android volume as unavailable", () => {

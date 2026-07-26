@@ -174,19 +174,22 @@ function buildMarketsRealAlertPreviewEvents_(ratings, catalog, preferences, deli
     }).sort(function (a, b) {
       return trimString_(a.countryCode).localeCompare(trimString_(b.countryCode)) ||
         trimString_(a.platform).localeCompare(trimString_(b.platform));
-    })[0];
-    if (!latest) throw new Error('No hay un cierre real utilizable para preparar la prueba.');
-    events = [{
-      timestamp: new Date(), referenceDate: referenceDate, currentDate: latest.observedDate,
-      platform: latest.platform, countryCode: latest.countryCode, country: latest.country,
-      type: 'TEST_SNAPSHOT', severity: 'POSITIVE', appKey: latest.appKey,
-      appName: latest.appName || 'BBVA Empresas', currentRating: latest.rating,
-      ratingCount: latest.ratingCount, metricValue: latest.rating, threshold: null,
-      detail: 'Ninguna regla configurada está activada en el último cierre disponible.',
-      direction: 'SNAPSHOT'
-    }];
+    });
+    if (!latest.length) throw new Error('No hay un cierre real utilizable para preparar la prueba.');
+    events = latest.map(function (item) {
+      return {
+        timestamp: new Date(), referenceDate: referenceDate, currentDate: item.observedDate,
+        platform: item.platform, countryCode: item.countryCode, country: item.country,
+        type: 'TEST_SNAPSHOT', severity: 'POSITIVE', appKey: item.appKey,
+        appName: item.appName || 'BBVA Empresas', currentRating: item.rating,
+        ratingCount: item.ratingCount, metricValue: item.rating, threshold: null,
+        detail: 'Ninguna regla activada ha superado los umbrales configurados en este cierre.',
+        direction: 'SNAPSHOT'
+      };
+    });
   }
-  return events.slice(0, 8).map(function (event) {
+  const previewLimit = events.every(function (event) { return event.type === 'TEST_SNAPSHOT'; }) ? 24 : 8;
+  return events.slice(0, previewLimit).map(function (event) {
     return Object.assign({}, event, {
       isTest: true, testId: deliveryId, recipients: preferences.email,
       userEmail: preferences.email, source: 'SELF_SERVICE_TEST_REAL_DATA',
@@ -417,6 +420,8 @@ function marketsAlertEmailMessage_(recipient, events, inlineImages, sender) {
     'Subject: ' + marketsAlertEncodedHeader_(subject),
     'Date: ' + new Date().toUTCString(),
     'Message-ID: <' + token + '@voc-commercial.bbva.com>',
+    'X-Market-Pulse-Code-Version: ' + MARKETS_CONFIG.codeVersion,
+    'X-Market-Pulse-Web-Version: ' + marketsAlertWebVersion_(),
     'MIME-Version: 1.0',
     'Content-Type: multipart/related; boundary="' + relatedBoundary + '"',
     '',
@@ -524,7 +529,8 @@ function validateMarketsAlertSender() {
 function marketsAlertEmailSubject_(events) {
   const tests = (events || []).filter(function (event) { return event.type === 'TEST' || event.isTest; });
   if (tests.length === (events || []).length && tests.length) {
-    return '[PRUEBA] Market Pulse · Datos reales · ' +
+    const result = marketsAlertPreviewHasNoSignals_(events) ? 'Sin alertas activas' : 'Datos reales';
+    return '[PRUEBA] Market Pulse · ' + result + ' · ' +
       trimString_(tests[0].testId || tests[0].ruleId || 'verificación');
   }
   return '[Market Pulse] Alertas personalizadas · ' + events.length + ' cambio' +
@@ -533,6 +539,7 @@ function marketsAlertEmailSubject_(events) {
 
 function renderMarketsAlertPlainText_(events, recipient) {
   const isTest = marketsAlertIsTest_(events);
+  const noSignals = marketsAlertPreviewHasNoSignals_(events);
   const appUrl = marketsWebAppUrl_();
   const loginUrl = marketsWebAppLoginUrl_(recipient);
   const lines = (events || []).map(function (event) {
@@ -550,14 +557,17 @@ function renderMarketsAlertPlainText_(events, recipient) {
       trimString_(event.detail) + '\nUmbral configurado: ' + marketsAlertNumberLabel_(event.threshold) + ' puntos\n' +
       'Recomendación: ' + marketsAlertRecommendation_(event);
   });
-  return 'MARKET PULSE\nBBVA Banca de Empresas e Instituciones\n\nAlerta por cambios en ratings\n' +
+  return 'MARKET PULSE\nBBVA Banca de Empresas e Instituciones\n\n' +
+    (noSignals ? 'Sin alertas activas en el ámbito seleccionado\n' : 'Alerta por cambios en ratings\n') +
     (isTest ? 'Vista previa construida exclusivamente con el último cierre real y la configuración vigente. No genera una alerta operativa.\n\n' : '\n') +
     lines.join('\n\n') + '\n\nDatos obtenidos: ' + marketsAlertDataDateLabel_(events) +
+    '\nVersión: backend ' + MARKETS_CONFIG.codeVersion + ' / web ' + marketsAlertWebVersion_() +
     '\nGestiona tus alertas desde Market Pulse.\nAbrir con la cuenta corporativa: ' + loginUrl + '\nURL directa: ' + appUrl;
 }
 
 function renderMarketsAlertEmail_(events, recipient) {
   const isTest = marketsAlertIsTest_(events);
+  const noSignals = marketsAlertPreviewHasNoSignals_(events);
   const critical = (events || []).filter(function (event) { return event.severity === 'CRITICAL'; }).length;
   const warning = (events || []).filter(function (event) { return event.severity === 'WARNING'; }).length;
   const positive = (events || []).filter(function (event) { return event.severity === 'POSITIVE'; }).length;
@@ -568,9 +578,10 @@ function renderMarketsAlertEmail_(events, recipient) {
   const safeLoginUrl = escapeMarketsAlertHtml_(loginUrl);
   const cta = '<table role="presentation" cellspacing="0" cellpadding="0"><tr><td bgcolor="#001391" style="border-radius:8px;"><a href="' + safeLoginUrl + '" target="_blank" style="display:block;padding:13px 22px;border-radius:8px;color:#FFFFFF;text-decoration:none;font-weight:700;">Ir a Market Pulse</a></td></tr></table>' +
     '<p style="margin:12px 0 0;color:#46536D;font-size:11px;line-height:17px;">Si el botón no se abre, utiliza este <a href="' + safeAppUrl + '" target="_blank" style="color:#001391;font-weight:700;">acceso directo a Market Pulse</a>.</p>';
-  const subtitle = isTest ? 'Vista previa con el último cierre real disponible y la configuración vigente. No genera una alerta operativa.' :
+  const subtitle = noSignals ? 'El último cierre real del ámbito seleccionado no ha superado ninguna de las condiciones configuradas.' :
+    isTest ? 'Vista previa con el último cierre real disponible y la configuración vigente. No genera una alerta operativa.' :
     events.length + ' cambio' + (events.length === 1 ? ' ha' : 's han') + ' superado las condiciones configuradas. Contexto ejecutivo para valorar la situación.';
-  const summary = isTest ? renderMarketsAlertTestSummary_() :
+  const summary = isTest ? renderMarketsAlertTestSummary_(events) :
     '<table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr>' +
     marketsAlertSummaryCell_('Críticas', critical, '#B92A45', '#F9E9ED') +
     marketsAlertSummaryCell_('Advertencias', warning, '#946200', '#FFF4CC') +
@@ -578,10 +589,10 @@ function renderMarketsAlertEmail_(events, recipient) {
   return '<!doctype html><html><body style="margin:0;background:#F7F8F8;font-family:\'BBVABentonSans\',\'Benton Sans BBVA\',Arial,Helvetica,sans-serif;color:#000519;">' +
     '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#F7F8F8;"><tr><td align="center" style="padding:28px 12px;">' +
     '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="width:100%;max-width:640px;background:#FFFFFF;border-radius:16px;overflow:hidden;">' +
-    '<tr><td width="100%" style="padding:24px 28px;background:#001391;"><img src="cid:bbvaLogo" width="156" alt="BBVA Banca de Empresas e Instituciones" style="display:block;width:156px;height:auto;"><div style="margin-top:22px;color:#8BE1E9;font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">MARKET PULSE · ' + (isTest ? 'PRUEBA DE CANAL' : 'ALERTAS DE RATINGS') + '</div><h1 style="margin:8px 0 0;color:#FFFFFF;font-size:28px;line-height:34px;">Alerta por cambios en ratings</h1><p style="margin:10px 0 0;color:#85C8FF;font-size:15px;line-height:22px;">' + escapeMarketsAlertHtml_(subtitle) + '</p></td></tr>' +
+    '<tr><td width="100%" style="padding:24px 28px;background:#001391;"><img src="cid:bbvaLogo" width="156" alt="BBVA Banca de Empresas e Instituciones" style="display:block;width:156px;height:auto;"><div style="margin-top:22px;color:#8BE1E9;font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">MARKET PULSE · ' + (isTest ? 'PRUEBA DE CANAL' : 'ALERTAS DE RATINGS') + '</div><h1 style="margin:8px 0 0;color:#FFFFFF;font-size:28px;line-height:34px;">' + (noSignals ? 'Sin alertas activas' : 'Alerta por cambios en ratings') + '</h1><p style="margin:10px 0 0;color:#85C8FF;font-size:15px;line-height:22px;">' + escapeMarketsAlertHtml_(subtitle) + '</p></td></tr>' +
     '<tr><td width="100%" style="padding:22px 28px 8px;">' + summary + '</td></tr>' +
     '<tr><td width="100%" style="padding:14px 28px 8px;">' + cards + '</td></tr>' +
-    '<tr><td width="100%" style="padding:18px 28px 30px;">' + cta + '<p style="margin:18px 0 0;color:#46536D;font-size:12px;line-height:18px;">Este correo es privado y contiene únicamente señales configuradas para tu cuenta. Las preferencias de otros usuarios nunca son visibles.</p><p style="margin:7px 0 0;color:#ADB8C2;font-size:10px;line-height:15px;">Datos obtenidos el ' + escapeMarketsAlertHtml_(marketsAlertDataDateLabel_(events)) + '.</p></td></tr>' +
+    '<tr><td width="100%" style="padding:18px 28px 30px;">' + cta + '<p style="margin:18px 0 0;color:#46536D;font-size:12px;line-height:18px;">Este correo es privado y contiene únicamente señales configuradas para tu cuenta. Las preferencias de otros usuarios nunca son visibles.</p><p style="margin:7px 0 0;color:#ADB8C2;font-size:10px;line-height:15px;">Datos obtenidos el ' + escapeMarketsAlertHtml_(marketsAlertDataDateLabel_(events)) + ' · backend ' + escapeMarketsAlertHtml_(MARKETS_CONFIG.codeVersion) + ' / web ' + escapeMarketsAlertHtml_(marketsAlertWebVersion_()) + '.</p></td></tr>' +
     '<tr><td width="100%" style="padding:16px 28px;background:#070E46;color:#85C8FF;font-size:11px;line-height:17px;"><strong style="color:#FFFFFF;">Market Pulse</strong><br>BBVA Banca de Empresas e Instituciones · Ratings y valoraciones públicas.</td></tr>' +
     '</table></td></tr></table></body></html>';
 }
@@ -592,7 +603,24 @@ function marketsAlertIsTest_(events) {
   });
 }
 
-function renderMarketsAlertTestSummary_() {
+function marketsAlertPreviewHasNoSignals_(events) {
+  return Boolean((events || []).length) && (events || []).every(function (event) {
+    return event.type === 'TEST_SNAPSHOT';
+  });
+}
+
+function marketsAlertWebVersion_() {
+  return typeof MARKETS_WEB !== 'undefined' && trimString_(MARKETS_WEB.version) ?
+    trimString_(MARKETS_WEB.version) : 'unknown';
+}
+
+function renderMarketsAlertTestSummary_(events) {
+  if (marketsAlertPreviewHasNoSignals_(events)) {
+    return '<div style="padding:16px 18px;border-radius:8px;background:#EAFBFA;color:#070E46;">' +
+      '<strong style="display:block;font-size:17px;line-height:23px;">Sin alertas en el último cierre</strong>' +
+      '<span style="display:block;margin-top:4px;color:#46536D;font-size:13px;line-height:19px;">Se han evaluado ' +
+      events.length + ' series reales del ámbito guardado y ninguna ha superado los umbrales configurados.</span></div>';
+  }
   return '<div style="padding:16px 18px;border-radius:8px;background:#EAFBFA;color:#070E46;">' +
     '<strong style="display:block;font-size:17px;line-height:23px;">Vista previa · datos reales</strong>' +
     '<span style="display:block;margin-top:4px;color:#46536D;font-size:13px;line-height:19px;">El contenido procede del último cierre disponible y aplica el ámbito y los umbrales guardados. Esta prueba no se registra como alerta operativa.</span></div>';
@@ -621,7 +649,7 @@ function renderMarketsAlertSnapshotCard_(event) {
   const count = event.ratingCount === null || event.ratingCount === undefined ? 'No disponible' :
     marketsAlertIntegerLabel_(event.ratingCount);
   return '<div style="width:100%;box-sizing:border-box;margin:0 0 12px;padding:18px;border-left:5px solid #001391;border-radius:8px;background:#EAFBFA;">' +
-    '<div style="color:#001391;font-size:11px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;">ÚLTIMO CIERRE REAL · SIN REGLAS ACTIVADAS</div>' +
+    '<div style="color:#001391;font-size:11px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;">ÚLTIMO CIERRE REAL · SIN UMBRALES SUPERADOS</div>' +
     '<div style="margin-top:7px;color:#070E46;font-size:18px;font-weight:700;line-height:24px;">' +
     escapeMarketsAlertHtml_(market) + '</div><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-top:13px;background:#FFFFFF;border-radius:8px;"><tr>' +
     marketsAlertMetricCell_('Rating actual', marketsAlertNumberLabel_(event.currentRating), marketsAlertDateLabel_(event.currentDate)) +

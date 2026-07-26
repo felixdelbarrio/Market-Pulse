@@ -37,9 +37,20 @@
       return sorted.map(row=>({...row,computedRank:1+sorted.filter(other=>other.rating>row.rating).length}));
     }
     function countBbvaLeaders(rows){
-      const groups=groupBy(rows,row=>`${row.countryCode}|${row.platform}`);let value=0,comparable=0;
-      Object.values(groups).forEach(group=>{const ranked=rankRows(group.filter(row=>finite(row.rating)));if(ranked.length<2||ranked.some(row=>!row.rankingComplete))return;const bbva=ranked.find(row=>row.isBbva);if(!bbva)return;comparable++;if(bbva.computedRank===1)value++});
-      return{value,comparable};
+      const groups=groupBy(rows||[],row=>`${row.countryCode}|${row.platform}`);
+      let value=0,comparable=0,sole=0,shared=0;
+      Object.values(groups).forEach(group=>{
+        const ranked=rankRows(group.filter(row=>finite(row.rating)));
+        if(ranked.length<2||ranked.some(row=>!row.rankingComplete))return;
+        const bbva=ranked.find(row=>row.isBbva);
+        if(!bbva)return;
+        comparable++;
+        if(bbva.computedRank!==1)return;
+        value++;
+        if(ranked.filter(row=>row.rating===bbva.rating).length===1)sole++;
+        else shared++;
+      });
+      return{value,comparable,sole,shared};
     }
     function availablePeriods(rows){return[...new Set((rows||[]).filter(row=>finite(row.ratingEom)).map(row=>row.month))].sort()}
     function periodModel(rows,preferredYear,preferredMonth){

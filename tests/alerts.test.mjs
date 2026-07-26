@@ -181,6 +181,32 @@ test("real alert previews reject Global, generic platforms and data outside the 
   ], mexico), /rating real/);
 });
 
+test("a no-signal preview reports every real series in the saved multi-country scope", () => {
+  const pref = preferences({ countries: ["MX", "CO"], platforms: ["ALL"] });
+  const rows = [
+    rating(20, 4.2, { countryCode: "MX", country: "México", platform: "Android",
+      appKey: "ANDROID|MX|BBVA", ratingCount: 56090 }),
+    rating(20, 4.82, { countryCode: "MX", country: "México", platform: "iOS",
+      appKey: "IOS|MX|BBVA", ratingCount: 76819 }),
+    rating(20, 4.9, { countryCode: "CO", country: "Colombia", platform: "Android",
+      appKey: "ANDROID|CO|BBVA", ratingCount: 1500 }),
+    rating(20, 4.88, { countryCode: "CO", country: "Colombia", platform: "iOS",
+      appKey: "IOS|CO|BBVA", ratingCount: 1200 })
+  ];
+  const events = context.buildMarketsRealAlertPreviewEvents_(rows, [], pref, "COM-NO-SIGNALS");
+  assert.equal(events.length, 4);
+  assert.deepEqual(plain([...new Set(events.map(event => event.countryCode))].sort()), ["CO", "MX"]);
+  assert.ok(events.every(event => event.type === "TEST_SNAPSHOT"));
+  assert.equal(context.marketsAlertEmailSubject_(events),
+    "[PRUEBA] Market Pulse · Sin alertas activas · COM-NO-SIGNALS");
+  const html = context.renderMarketsAlertEmail_(events, pref.email);
+  assert.match(html, /Sin alertas activas/);
+  assert.match(html, /Se han evaluado 4 series reales/);
+  assert.match(html, /México · Android/);
+  assert.match(html, /Colombia · iOS/);
+  assert.doesNotMatch(html, /BBVA GLOBAL|GLOBAL · Todas/);
+});
+
 test("daily, month-to-date and year-to-date drops are independent", () => {
   const rows = [
     rating(2, 4.8, { observedDate: new Date(2026, 0, 2, 12) }),
@@ -319,8 +345,11 @@ test("alert delivery uses the verified Google Group alias and preserves individu
     images: context.buildMarketsAlertInlineImages_, touch: context.touchMarketsAlertTimestamp_
   };
   const events = [{
-    severity: "POSITIVE", type: "TEST", platform: "Todas", countryCode: "GLOBAL",
-    recipients: "felix.delbarrio@bbva.com", ruleId: "COM-SENDER-CHECK"
+    severity: "POSITIVE", type: "TEST_SNAPSHOT", platform: "Android", countryCode: "MX",
+    country: "México", currentRating: 4.2, ratingCount: 56090,
+    currentDate: new Date(2026, 6, 20), referenceDate: new Date(2026, 6, 20),
+    appKey: "ANDROID|MX|BBVA", recipients: "felix.delbarrio@bbva.com",
+    isTest: true, testId: "COM-SENDER-CHECK"
   }];
   let sentPayload = null;
   context.Utilities = {

@@ -152,7 +152,6 @@ function onOpen() {
     .addItem('Autorizar e instalar automatizacion', 'authorizeAndInstallMarketsAutomation')
     .addItem('Comprobar salud ahora', 'checkDailyRatingMonitorHealth')
     .addItem('Probar aviso tecnico', 'sendMarketsMonitorHealthTestEmail')
-    .addItem('Probar newsletter mensual', 'sendMarketsNewsletterTestEmail')
     .addToUi();
 }
 

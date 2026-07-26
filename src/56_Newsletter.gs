@@ -70,19 +70,6 @@ function sendMarketsMonthlyNewsletter_(ss, period, isTest) {
   return result;
 }
 
-function sendMarketsNewsletterTestEmail() {
-  const email = currentMarketsUserEmail_();
-  const ss = openMarketsSpreadsheet_();
-  requireMarketsNewsletterContracts_(ss);
-  const control = readControl_(ss);
-  if (!marketsNewsletterDeliveryEnabled_(control)) {
-    throw new Error('El envío de newsletters está desactivado en CONTROL.');
-  }
-  const preferences = readMarketsAlertPreferences_(ss, email);
-  return withMarketsNewsletterPreviewLock_(ss, email, preferences, email,
-    'NEWS-REQ-' + Utilities.getUuid());
-}
-
 function sendMarketsAdminNewsletterTestEmail(request) {
   const access = requireMarketsAdministrator_();
   requireMarketsNewsletterContracts_(access.ss);
