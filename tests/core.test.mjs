@@ -48,6 +48,14 @@ test("Huawei is complementary while Android and iOS define operational coverage"
   assert.deepEqual(Array.from(context.marketsCriticalItems_(items)).map(item => item.id), ["a", "i"]);
 });
 
+test("platform order is always Android, iOS and Huawei", () => {
+  const strings = ["Huawei", "iOS", "Android"].sort(context.compareMarketsPlatforms_);
+  assert.deepEqual(Array.from(strings), ["Android", "iOS", "Huawei"]);
+  const objects = [{ platform: "iOS" }, { platform: "Huawei" }, { platform: "Android" }]
+    .sort(context.compareMarketsPlatforms_);
+  assert.deepEqual(Array.from(objects).map(item => item.platform), ["Android", "iOS", "Huawei"]);
+});
+
 test("deployment URLs distinguish a Web App from a library version", () => {
   assert.equal(context.marketsDeploymentUrlType_(
     "https://script.google.com/a/macros/bbva.com/s/AKfy-example_1/exec"), "WEB_APP");

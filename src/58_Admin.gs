@@ -93,8 +93,12 @@ function getMarketsAdminDashboard() {
       senderError: trimString_(sender.error)
     },
     summary: {
-      activeSubscribers: subscribers.filter(function (item) { return item.active; }).length,
-      pausedSubscribers: subscribers.filter(function (item) { return !item.active; }).length,
+      activeSubscribers: subscribers.filter(function (item) {
+        return item.active || item.newsletterEnabled;
+      }).length,
+      pausedSubscribers: subscribers.filter(function (item) {
+        return !item.active && !item.newsletterEnabled;
+      }).length,
       recentRuns: runs.length,
       recentIssues: issues.length,
       recentAlertEvents: alerts.length,

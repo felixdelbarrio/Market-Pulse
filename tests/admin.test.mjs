@@ -80,7 +80,12 @@ test("admin client exposes subscriber maintenance and manual rating recovery", (
   assert.match(app, /function adminSubscriberFilterRows/);
   assert.match(app, /function handleAdminSubscriberFilterScope/);
   assert.match(app, /function clearAdminSubscriberFilters/);
-  assert.match(app, /selected\.some\(value=>\(values\|\|\[\]\)\.includes\(value\)\)/);
+  assert.match(app, /if\(selected\.includes\("ALL"\)\)return configured\.includes\("ALL"\)/);
+  assert.match(app, /if\(selected\.includes\("ANY"\)\)return true/);
+  assert.match(app, /if\(configured\.includes\("ALL"\)\)return false/);
+  assert.match(app, /selected\.some\(value=>configured\.includes\(value\)\)/);
+  assert.match(app, /value:"ANY",label:"Sin filtrar"/);
+  assert.match(index, /id="admin-newsletter-enabled"/);
   assert.match(app, /const bindOptional=\(id,event,handler\)=>\$\(id\)\?\.addEventListener/);
   assert.match(app, /function adminSubscriberFiltersMarkup/);
   assert.match(app, /function adminSubscriberScopeMarkup/);

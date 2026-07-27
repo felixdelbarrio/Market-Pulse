@@ -62,8 +62,9 @@ function buildCompetitionRows_(ratings, catalog, execution) {
   const referenceKey = execution && execution.referenceDate instanceof Date ? dateKey_(execution.referenceDate) : '';
   return (ratings || []).filter(function (item) { return Boolean(catalogByKey[item.appKey]); })
     .slice().sort(function (a, b) {
-      return a.observedDate.getTime() - b.observedDate.getTime() || a.platform.localeCompare(b.platform) ||
-        a.countryCode.localeCompare(b.countryCode) || a.marketSegment.localeCompare(b.marketSegment) ||
+      return a.observedDate.getTime() - b.observedDate.getTime() ||
+        a.countryCode.localeCompare(b.countryCode) || compareMarketsPlatforms_(a, b) ||
+        a.marketSegment.localeCompare(b.marketSegment) ||
         (a.displayOrder || 0) - (b.displayOrder || 0);
     }).map(function (item) {
       const app = catalogByKey[item.appKey];

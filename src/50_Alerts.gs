@@ -48,33 +48,18 @@ function buildAndProcessAlerts_(ss, referenceDate, catalog, runId, control, rati
 
 function buildRatingDropAlerts_(ratings, referenceDate, preferences, existing) {
   if (!preferences.active) return [];
-  const definitions = [
-    { period: 'DAILY', enabled: preferences.dailyDropEnabled,
-      warning: preferences.dailyWarningDrop, critical: preferences.dailyCriticalDrop,
-      type: 'RATING_DROP_DAILY', ruleId: 'DAILY_DROP' },
-    { period: 'MTD', enabled: preferences.mtdDropEnabled,
-      warning: preferences.mtdWarningDrop, critical: preferences.mtdCriticalDrop,
-      type: 'RATING_DROP_MTD', ruleId: 'MTD_DROP' },
-    { period: 'YTD', enabled: preferences.ytdDropEnabled,
-      warning: preferences.ytdWarningDrop, critical: preferences.ytdCriticalDrop,
-      type: 'RATING_DROP_YTD', ruleId: 'YTD_DROP' }
-  ].filter(function (definition) { return definition.enabled; });
+  const definitions = marketsRatingDropDefinitions_(preferences);
   if (!definitions.length) return [];
-  const byApp = {};
-  (ratings || []).forEach(function (item) {
-    if (!item.isBbva || !(item.observedDate instanceof Date) || item.rating === null ||
-        !marketsAlertScopeMatches_(preferences, item)) return;
-    (byApp[item.appKey] || (byApp[item.appKey] = [])).push(item);
-  });
+  const byApp = marketsRatingSeriesByApp_(ratings, preferences);
   const referenceKey = dateKey_(referenceDate);
   return Object.keys(byApp).reduce(function (events, appKey) {
-    const series = byApp[appKey].slice().sort(function (a, b) { return a.observedDate - b.observedDate; });
-    const latest = series.find(function (item) { return dateKey_(item.observedDate) === referenceKey; });
-    if (!latest) return events;
+    const series = byApp[appKey];
     definitions.forEach(function (definition) {
-      const baseline = ratingDropBaseline_(series, referenceKey, definition.period);
-      if (!baseline) return;
-      const drop = round2_(baseline.rating - latest.rating);
+      const observation = marketsRatingDropObservation_(series, referenceKey, definition);
+      if (!observation) return;
+      const baseline = observation.baseline;
+      const latest = observation.latest;
+      const drop = observation.drop;
       let severity = '';
       let threshold = null;
       if (drop >= definition.critical) {
@@ -83,28 +68,72 @@ function buildRatingDropAlerts_(ratings, referenceDate, preferences, existing) {
         severity = 'WARNING'; threshold = definition.warning;
       }
       if (!severity) return;
-      const periodKey = definition.period === 'DAILY' ? referenceKey :
-        definition.period === 'MTD' ? referenceKey.slice(0, 7) : referenceKey.slice(0, 4);
-      const eventParts = [definition.type, periodKey, appKey, preferences.email, severity];
+      const eventParts = [definition.type, observation.periodKey, appKey, preferences.email, severity];
       if (preferences.repeatWhileBreached) eventParts.push(referenceKey);
       const eventKey = eventParts.join('|');
       if (existing[eventKey]) return;
       existing[eventKey] = true;
-      events.push({
-        timestamp: new Date(), eventKey: eventKey, referenceDate: referenceDate,
-        platform: latest.platform, countryCode: latest.countryCode, type: definition.type,
-        severity: severity,
-        detail: ratingDropDetail_(definition.period, baseline, latest, drop),
-        recipients: preferences.email, userEmail: preferences.email, ruleId: definition.ruleId,
-        metricValue: drop, threshold: threshold, appKey: appKey, direction: 'DOWN',
-        runId: '', source: 'SELF_SERVICE_ALERTS', period: definition.period,
-        appName: latest.appName || 'BBVA Empresas', country: latest.country || latest.countryCode,
-        baselineRating: baseline.rating, currentRating: latest.rating,
-        baselineDate: baseline.observedDate, currentDate: latest.observedDate
-      });
+      events.push(marketsRatingDropEvent_(definition, observation, preferences, referenceDate, eventKey));
     });
     return events;
   }, []);
+}
+
+function marketsRatingDropDefinitions_(preferences) {
+  return [
+    { period: 'DAILY', enabled: preferences.dailyDropEnabled,
+      warning: preferences.dailyWarningDrop, critical: preferences.dailyCriticalDrop,
+      type: 'RATING_DROP_DAILY', ruleId: 'DAILY_DROP' },
+    { period: 'MIDMONTH', enabled: preferences.mtdDropEnabled,
+      warning: preferences.mtdWarningDrop, critical: preferences.mtdCriticalDrop,
+      type: 'RATING_DROP_MTD', ruleId: 'MIDMONTH_DROP' },
+    { period: 'YTD', enabled: preferences.ytdDropEnabled,
+      warning: preferences.ytdWarningDrop, critical: preferences.ytdCriticalDrop,
+      type: 'RATING_DROP_YTD', ruleId: 'YTD_DROP' }
+  ].filter(function (definition) { return definition.enabled; });
+}
+
+function marketsRatingSeriesByApp_(ratings, preferences) {
+  const byApp = {};
+  (ratings || []).forEach(function (item) {
+    if (!item.isBbva || !(item.observedDate instanceof Date) || item.rating === null ||
+        !marketsAlertScopeMatches_(preferences, item)) return;
+    (byApp[item.appKey] || (byApp[item.appKey] = [])).push(item);
+  });
+  Object.keys(byApp).forEach(function (appKey) {
+    byApp[appKey].sort(function (a, b) { return a.observedDate - b.observedDate; });
+  });
+  return byApp;
+}
+
+function marketsRatingDropObservation_(series, referenceKey, definition) {
+  const latest = ratingDropCurrent_(series, referenceKey, definition.period);
+  if (!latest) return null;
+  const baseline = ratingDropBaseline_(series, referenceKey, definition.period);
+  if (!baseline || baseline.observedDate.getTime() >= latest.observedDate.getTime()) return null;
+  const drop = round2_(baseline.rating - latest.rating);
+  const periodKey = definition.period === 'DAILY' ? referenceKey :
+    definition.period === 'MIDMONTH' ? marketsMidmonthAnchorKey_(referenceKey) : referenceKey.slice(0, 4);
+  return { baseline: baseline, latest: latest, drop: drop, periodKey: periodKey };
+}
+
+function marketsRatingDropEvent_(definition, observation, preferences, referenceDate, eventKey) {
+  const latest = observation.latest;
+  return {
+    timestamp: new Date(), eventKey: eventKey, referenceDate: referenceDate,
+    platform: latest.platform, countryCode: latest.countryCode, type: definition.type,
+    severity: observation.drop >= definition.critical ? 'CRITICAL' : 'WARNING',
+    detail: ratingDropDetail_(definition.period, observation.baseline, latest, observation.drop),
+    recipients: preferences.email, userEmail: preferences.email, ruleId: definition.ruleId,
+    metricValue: observation.drop,
+    threshold: observation.drop >= definition.critical ? definition.critical : definition.warning,
+    warningThreshold: definition.warning, criticalThreshold: definition.critical,
+    appKey: latest.appKey, direction: 'DOWN',
+    runId: '', source: 'SELF_SERVICE_ALERTS', period: definition.period,
+    appName: latest.appName || 'BBVA Empresas', country: latest.country || latest.countryCode,
+    baselineRating: observation.baseline.rating, currentRating: latest.rating,
+    baselineDate: observation.baseline.observedDate, currentDate: latest.observedDate
+  };
 }
 
 /**
@@ -160,11 +189,18 @@ function buildMarketsRealAlertPreviewEvents_(ratings, catalog, preferences, deli
   const catalogByKey = (catalog || []).reduce(function (out, app) { out[app.appKey] = app; return out; }, {});
   let events = buildRatingDropAlerts_(ratings, referenceDate, previewPreferences, {});
   events = events.concat(buildCompetitiveCrossoverAlerts_(ratings, referenceDate, previewPreferences, catalogByKey, {}));
-  const severityOrder = { CRITICAL: 0, WARNING: 1, POSITIVE: 2 };
+  if (!events.length) {
+    events = buildMarketsBelowThresholdPreviewEvents_(ratings, referenceDate, previewPreferences);
+  }
+  const severityOrder = { CRITICAL: 0, WARNING: 1, PREVIEW: 2, POSITIVE: 3 };
   events.sort(function (a, b) {
-    return (severityOrder[a.severity] || 9) - (severityOrder[b.severity] || 9) ||
+    const aSeverity = Object.prototype.hasOwnProperty.call(severityOrder, a.severity) ?
+      severityOrder[a.severity] : 9;
+    const bSeverity = Object.prototype.hasOwnProperty.call(severityOrder, b.severity) ?
+      severityOrder[b.severity] : 9;
+    return aSeverity - bSeverity ||
       trimString_(a.countryCode).localeCompare(trimString_(b.countryCode)) ||
-      trimString_(a.platform).localeCompare(trimString_(b.platform));
+      compareMarketsPlatforms_(a, b);
   });
   if (!events.length) {
     const latest = (ratings || []).filter(function (item) {
@@ -173,7 +209,7 @@ function buildMarketsRealAlertPreviewEvents_(ratings, catalog, preferences, deli
         marketsAlertScopeMatches_(previewPreferences, item);
     }).sort(function (a, b) {
       return trimString_(a.countryCode).localeCompare(trimString_(b.countryCode)) ||
-        trimString_(a.platform).localeCompare(trimString_(b.platform));
+        compareMarketsPlatforms_(a, b);
     });
     if (!latest.length) throw new Error('No hay un cierre real utilizable para preparar la prueba.');
     events = latest.map(function (item) {
@@ -196,6 +232,39 @@ function buildMarketsRealAlertPreviewEvents_(ratings, catalog, preferences, deli
       eventKey: 'TEST_PREVIEW|' + deliveryId + '|' + trimString_(event.eventKey || event.appKey)
     });
   });
+}
+
+function buildMarketsBelowThresholdPreviewEvents_(ratings, referenceDate, preferences) {
+  const definitions = marketsRatingDropDefinitions_(preferences);
+  const byApp = marketsRatingSeriesByApp_(ratings, preferences);
+  const referenceKey = dateKey_(referenceDate);
+  return Object.keys(byApp).reduce(function (candidates, appKey) {
+    const observations = definitions.map(function (definition) {
+      const observation = marketsRatingDropObservation_(byApp[appKey], referenceKey, definition);
+      if (!observation || observation.drop <= 0 || observation.drop >= definition.warning) return null;
+      return {
+        definition: definition,
+        observation: observation
+      };
+    }).filter(Boolean).sort(function (a, b) {
+      return b.observation.drop - a.observation.drop;
+    });
+    if (!observations.length) return candidates;
+    const selected = observations[0];
+    const event = marketsRatingDropEvent_(
+      selected.definition, selected.observation, preferences, referenceDate,
+      ['TEST_BELOW_THRESHOLD', selected.observation.periodKey, appKey, selected.definition.ruleId].join('|'));
+    event.type = selected.definition.type;
+    event.severity = 'PREVIEW';
+    event.threshold = selected.definition.warning;
+    event.isBelowThresholdPreview = true;
+    event.source = 'SELF_SERVICE_TEST_REAL_DATA';
+    event.detail = ratingDropDetail_(
+      selected.definition.period, selected.observation.baseline,
+      selected.observation.latest, selected.observation.drop);
+    candidates.push(event);
+    return candidates;
+  }, []);
 }
 
 function validateMarketsRealAlertPreviewEvents_(events, preferences) {
@@ -235,15 +304,46 @@ function validateMarketsRealAlertPreviewEvents_(events, preferences) {
 }
 
 function ratingDropBaseline_(series, referenceKey, period) {
+  if (period === 'MIDMONTH') {
+    return marketsRatingAtDate_(series, marketsPreviousMidmonthAnchorKey_(referenceKey));
+  }
   const previous = (series || []).filter(function (item) { return dateKey_(item.observedDate) < referenceKey; });
   if (period === 'DAILY') return previous.slice().sort(function (a, b) { return b.observedDate - a.observedDate; })[0] || null;
-  const start = period === 'MTD' ? referenceKey.slice(0, 7) + '-01' : referenceKey.slice(0, 4) + '-01-01';
+  const start = referenceKey.slice(0, 4) + '-01-01';
   return previous.filter(function (item) { return dateKey_(item.observedDate) >= start; })[0] || null;
+}
+
+function ratingDropCurrent_(series, referenceKey, period) {
+  if (period === 'MIDMONTH') {
+    return marketsRatingAtDate_(series, marketsMidmonthAnchorKey_(referenceKey));
+  }
+  return (series || []).find(function (item) { return dateKey_(item.observedDate) === referenceKey; }) || null;
+}
+
+function marketsRatingAtDate_(series, targetKey) {
+  return (series || []).find(function (item) {
+    return dateKey_(item.observedDate) === targetKey;
+  }) || null;
+}
+
+function marketsMidmonthAnchorKey_(referenceKey) {
+  const parts = trimString_(referenceKey).split('-').map(Number);
+  const date = new Date(parts[0], parts[1] - 1, parts[2], 12);
+  if (parts[2] < 15) date.setMonth(date.getMonth() - 1);
+  date.setDate(15);
+  return dateKey_(date);
+}
+
+function marketsPreviousMidmonthAnchorKey_(referenceKey) {
+  const anchor = marketsMidmonthAnchorKey_(referenceKey).split('-').map(Number);
+  const date = new Date(anchor[0], anchor[1] - 1, 15, 12);
+  date.setMonth(date.getMonth() - 1);
+  return dateKey_(date);
 }
 
 function ratingDropDetail_(period, baseline, latest, drop) {
   const label = period === 'DAILY' ? 'desde la observacion anterior' :
-    period === 'MTD' ? 'desde inicio de mes' : 'desde inicio de ano';
+    period === 'MIDMONTH' ? 'en la ventana mensual del día 15 al día 15' : 'desde inicio de ano';
   return 'BBVA Empresas: ' + label + ' ' + baseline.rating.toFixed(2) + ' -> ' +
     latest.rating.toFixed(2) + ' (caida ' + drop.toFixed(2) + ')';
 }
@@ -529,7 +629,8 @@ function validateMarketsAlertSender() {
 function marketsAlertEmailSubject_(events) {
   const tests = (events || []).filter(function (event) { return event.type === 'TEST' || event.isTest; });
   if (tests.length === (events || []).length && tests.length) {
-    const result = marketsAlertPreviewHasNoSignals_(events) ? 'Sin alertas activas' : 'Datos reales';
+    const result = marketsAlertPreviewHasNoSignals_(events) ? 'Sin alertas activas' :
+      marketsAlertPreviewIsBelowThreshold_(events) ? 'Datos reales bajo umbral' : 'Datos reales';
     return '[PRUEBA] Market Pulse · ' + result + ' · ' +
       trimString_(tests[0].testId || tests[0].ruleId || 'verificación');
   }
@@ -551,6 +652,14 @@ function renderMarketsAlertPlainText_(events, recipient) {
           '\nValoraciones acumuladas: ' + Math.round(event.ratingCount)) +
         '\nLectura: ' + trimString_(event.detail);
     }
+    if (event.isBelowThresholdPreview) {
+      return '[PRUEBA · BAJO UMBRAL] ' + marketsAlertCardTitle_(event) +
+        '\nMercado y plataforma: ' +
+        [event.country || event.countryCode, event.platform].filter(Boolean).join(' · ') +
+        '\nMovimiento real: ' + trimString_(event.detail) +
+        '\nUmbral amarillo configurado: ' + marketsAlertNumberLabel_(event.threshold) + ' puntos' +
+        '\nEn producción: no se enviaría esta alerta; solo se enviará al alcanzar o superar ese límite.';
+    }
     return '[' + marketsAlertSeverityLabel_(event.severity).toUpperCase() + '] ' +
       marketsAlertCardTitle_(event) + '\nMercado y plataforma: ' +
       [event.country || event.countryCode, event.platform].filter(Boolean).join(' · ') + '\nQué ha cambiado: ' +
@@ -558,7 +667,9 @@ function renderMarketsAlertPlainText_(events, recipient) {
       'Recomendación: ' + marketsAlertRecommendation_(event);
   });
   return 'MARKET PULSE\nBBVA Banca de Empresas e Instituciones\n\n' +
-    (noSignals ? 'Sin alertas activas en el ámbito seleccionado\n' : 'Alerta por cambios en ratings\n') +
+    (noSignals ? 'Sin alertas activas en el ámbito seleccionado\n' :
+      marketsAlertPreviewIsBelowThreshold_(events) ? 'Prueba con movimientos reales bajo umbral\n' :
+        'Alerta por cambios en ratings\n') +
     (isTest ? 'Vista previa construida exclusivamente con el último cierre real y la configuración vigente. No genera una alerta operativa.\n\n' : '\n') +
     lines.join('\n\n') + '\n\nDatos obtenidos: ' + marketsAlertDataDateLabel_(events) +
     '\nVersión: backend ' + MARKETS_CONFIG.codeVersion + ' / web ' + marketsAlertWebVersion_() +
@@ -579,6 +690,8 @@ function renderMarketsAlertEmail_(events, recipient) {
   const cta = '<table role="presentation" cellspacing="0" cellpadding="0"><tr><td bgcolor="#001391" style="border-radius:8px;"><a href="' + safeLoginUrl + '" target="_blank" style="display:block;padding:13px 22px;border-radius:8px;color:#FFFFFF;text-decoration:none;font-weight:700;">Ir a Market Pulse</a></td></tr></table>' +
     '<p style="margin:12px 0 0;color:#46536D;font-size:11px;line-height:17px;">Si el botón no se abre, utiliza este <a href="' + safeAppUrl + '" target="_blank" style="color:#001391;font-weight:700;">acceso directo a Market Pulse</a>.</p>';
   const subtitle = noSignals ? 'El último cierre real del ámbito seleccionado no ha superado ninguna de las condiciones configuradas.' :
+    marketsAlertPreviewIsBelowThreshold_(events) ?
+      'Prueba construida con movimientos reales del ámbito guardado. En producción no se enviaría: ninguno alcanza el límite configurado.' :
     isTest ? 'Vista previa con el último cierre real disponible y la configuración vigente. No genera una alerta operativa.' :
     events.length + ' cambio' + (events.length === 1 ? ' ha' : 's han') + ' superado las condiciones configuradas. Contexto ejecutivo para valorar la situación.';
   const summary = isTest ? renderMarketsAlertTestSummary_(events) :
@@ -589,7 +702,7 @@ function renderMarketsAlertEmail_(events, recipient) {
   return '<!doctype html><html><body style="margin:0;background:#F7F8F8;font-family:\'BBVABentonSans\',\'Benton Sans BBVA\',Arial,Helvetica,sans-serif;color:#000519;">' +
     '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#F7F8F8;"><tr><td align="center" style="padding:28px 12px;">' +
     '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="width:100%;max-width:640px;background:#FFFFFF;border-radius:16px;overflow:hidden;">' +
-    '<tr><td width="100%" style="padding:24px 28px;background:#001391;"><img src="cid:bbvaLogo" width="156" alt="BBVA Banca de Empresas e Instituciones" style="display:block;width:156px;height:auto;"><div style="margin-top:22px;color:#8BE1E9;font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">MARKET PULSE · ' + (isTest ? 'PRUEBA DE CANAL' : 'ALERTAS DE RATINGS') + '</div><h1 style="margin:8px 0 0;color:#FFFFFF;font-size:28px;line-height:34px;">' + (noSignals ? 'Sin alertas activas' : 'Alerta por cambios en ratings') + '</h1><p style="margin:10px 0 0;color:#85C8FF;font-size:15px;line-height:22px;">' + escapeMarketsAlertHtml_(subtitle) + '</p></td></tr>' +
+    '<tr><td width="100%" style="padding:24px 28px;background:#001391;"><img src="cid:bbvaLogo" width="156" alt="BBVA Banca de Empresas e Instituciones" style="display:block;width:156px;height:auto;"><div style="margin-top:22px;color:#8BE1E9;font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">MARKET PULSE · ' + (isTest ? 'PRUEBA DE CANAL' : 'ALERTAS DE RATINGS') + '</div><h1 style="margin:8px 0 0;color:#FFFFFF;font-size:28px;line-height:34px;">' + (noSignals ? 'Sin alertas activas' : marketsAlertPreviewIsBelowThreshold_(events) ? 'Prueba con datos reales' : 'Alerta por cambios en ratings') + '</h1><p style="margin:10px 0 0;color:#85C8FF;font-size:15px;line-height:22px;">' + escapeMarketsAlertHtml_(subtitle) + '</p></td></tr>' +
     '<tr><td width="100%" style="padding:22px 28px 8px;">' + summary + '</td></tr>' +
     '<tr><td width="100%" style="padding:14px 28px 8px;">' + cards + '</td></tr>' +
     '<tr><td width="100%" style="padding:18px 28px 30px;">' + cta + '<p style="margin:18px 0 0;color:#46536D;font-size:12px;line-height:18px;">Este correo es privado y contiene únicamente señales configuradas para tu cuenta. Las preferencias de otros usuarios nunca son visibles.</p><p style="margin:7px 0 0;color:#ADB8C2;font-size:10px;line-height:15px;">Datos obtenidos el ' + escapeMarketsAlertHtml_(marketsAlertDataDateLabel_(events)) + ' · backend ' + escapeMarketsAlertHtml_(MARKETS_CONFIG.codeVersion) + ' / web ' + escapeMarketsAlertHtml_(marketsAlertWebVersion_()) + '.</p></td></tr>' +
@@ -609,6 +722,12 @@ function marketsAlertPreviewHasNoSignals_(events) {
   });
 }
 
+function marketsAlertPreviewIsBelowThreshold_(events) {
+  return Boolean((events || []).length) && (events || []).every(function (event) {
+    return Boolean(event.isBelowThresholdPreview);
+  });
+}
+
 function marketsAlertWebVersion_() {
   return typeof MARKETS_WEB !== 'undefined' && trimString_(MARKETS_WEB.version) ?
     trimString_(MARKETS_WEB.version) : 'unknown';
@@ -621,6 +740,11 @@ function renderMarketsAlertTestSummary_(events) {
       '<span style="display:block;margin-top:4px;color:#46536D;font-size:13px;line-height:19px;">Se han evaluado ' +
       events.length + ' series reales del ámbito guardado y ninguna ha superado los umbrales configurados.</span></div>';
   }
+  if (marketsAlertPreviewIsBelowThreshold_(events)) {
+    return '<div style="padding:16px 18px;border-radius:8px;background:#EAFBFA;color:#070E46;">' +
+      '<strong style="display:block;font-size:17px;line-height:23px;">Prueba real · todavía bajo el umbral</strong>' +
+      '<span style="display:block;margin-top:4px;color:#46536D;font-size:13px;line-height:19px;">Se muestran únicamente caídas observadas en los mercados y plataformas guardados. En una ejecución real no se enviaría ninguna hasta alcanzar el límite configurado.</span></div>';
+  }
   return '<div style="padding:16px 18px;border-radius:8px;background:#EAFBFA;color:#070E46;">' +
     '<strong style="display:block;font-size:17px;line-height:23px;">Vista previa · datos reales</strong>' +
     '<span style="display:block;margin-top:4px;color:#46536D;font-size:13px;line-height:19px;">El contenido procede del último cierre disponible y aplica el ámbito y los umbrales guardados. Esta prueba no se registra como alerta operativa.</span></div>';
@@ -632,6 +756,7 @@ function marketsAlertSummaryCell_(label, value, color, background) {
 
 function renderMarketsAlertEmailCard_(event) {
   if (event.type === 'TEST_SNAPSHOT') return renderMarketsAlertSnapshotCard_(event);
+  if (event.isBelowThresholdPreview) return renderMarketsBelowThresholdPreviewCard_(event);
   const palette = event.severity === 'CRITICAL' ? ['#B92A45', '#F9E9ED', 'Crítico'] :
     event.severity === 'WARNING' ? ['#946200', '#FFF4CC', 'Advertencia'] : ['#277A49', '#E6F4EA', 'Movimiento positivo'];
   const market = [event.country || event.countryCode, event.platform].filter(Boolean).join(' · ');
@@ -642,6 +767,21 @@ function renderMarketsAlertEmailCard_(event) {
     '<div style="margin-top:7px;color:#070E46;font-size:18px;font-weight:700;line-height:24px;">' + escapeMarketsAlertHtml_(title) + '</div>' +
     '<div style="margin-top:3px;color:#46536D;font-size:13px;line-height:19px;">' + escapeMarketsAlertHtml_(market) + '</div>' + metrics +
     '<div style="margin-top:12px;padding-top:11px;border-top:1px solid rgba(0,19,145,.12);color:#46536D;font-size:13px;line-height:19px;"><strong style="color:#070E46;">Qué significa:</strong> ' + escapeMarketsAlertHtml_(marketsAlertReason_(event)) + '<br><strong style="color:#070E46;">Siguiente paso:</strong> ' + escapeMarketsAlertHtml_(marketsAlertRecommendation_(event)) + '</div></div>';
+}
+
+function renderMarketsBelowThresholdPreviewCard_(event) {
+  const market = [event.country || event.countryCode, event.platform].filter(Boolean).join(' · ');
+  return '<div style="width:100%;box-sizing:border-box;margin:0 0 12px;padding:18px;border-left:5px solid #001391;border-radius:8px;background:#EAFBFA;">' +
+    '<div style="color:#001391;font-size:11px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;">PRUEBA · MOVIMIENTO REAL BAJO UMBRAL · ' +
+    escapeMarketsAlertHtml_(marketsAlertRuleLabel_(event.type)) + '</div>' +
+    '<div style="margin-top:7px;color:#070E46;font-size:18px;font-weight:700;line-height:24px;">' +
+    escapeMarketsAlertHtml_(marketsAlertCardTitle_(event)) + '</div>' +
+    '<div style="margin-top:3px;color:#46536D;font-size:13px;line-height:19px;">' +
+    escapeMarketsAlertHtml_(market) + '</div>' + marketsAlertMetricsHtml_(event, ['#001391', '#EAFBFA']) +
+    '<div style="margin-top:12px;padding-top:11px;border-top:1px solid rgba(0,19,145,.12);color:#46536D;font-size:13px;line-height:19px;"><strong style="color:#070E46;">Qué significa:</strong> La caída real es de ' +
+    escapeMarketsAlertHtml_(marketsAlertNumberLabel_(event.metricValue)) + ' puntos. El nivel amarillo está configurado en ' +
+    escapeMarketsAlertHtml_(marketsAlertNumberLabel_(event.threshold)) +
+    ' puntos.<br><strong style="color:#070E46;">En producción:</strong> este correo no se enviaría; la alerta solo se activa al alcanzar o superar el límite configurado.</div></div>';
 }
 
 function renderMarketsAlertSnapshotCard_(event) {
@@ -746,7 +886,7 @@ function marketsAlertDataDateLabel_(events) {
 
 function marketsAlertRuleLabel_(type) {
   return type === 'RATING_DROP_DAILY' ? 'Caída diaria del rating' :
-    type === 'RATING_DROP_MTD' ? 'Caída desde inicio de mes' :
+    type === 'RATING_DROP_MTD' ? 'Caída del día 15 al día 15' :
     type === 'RATING_DROP_YTD' ? 'Caída desde inicio de año' :
     type === 'COMPETITIVE_CROSSOVER' ? 'Cruce de posición competitiva' :
     type === 'TEST' ? 'Verificación del canal' : type;

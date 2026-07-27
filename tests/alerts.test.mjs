@@ -54,6 +54,17 @@ test("alert defaults and personalized thresholds are normalized", () => {
   assert.equal(defaults.ytdWarningDrop, 0.3);
   assert.equal(defaults.ytdCriticalDrop, 0.5);
   assert.equal(defaults.crossoverDirection, "BOTH");
+  assert.equal(defaults.newsletterEnabled, false);
+  const alertsOnly = preferences({ newsletterEnabled: false });
+  assert.equal(alertsOnly.newsletterEnabled, false);
+  assert.equal(alertsOnly.deliveryMode, "ALERTS_ONLY");
+  const legacy = preferences({ newsletterEnabled: undefined, deliveryMode: "DAILY_DIGEST" });
+  assert.equal(legacy.newsletterEnabled, true);
+  const legacyPaused = context.normalizeMarketsAlertPreferences_({
+    ...defaults, active: false, newsletterEnabled: undefined,
+    deliveryMode: "DAILY_DIGEST", configVersion: "3"
+  }, defaults.email);
+  assert.equal(legacyPaused.newsletterEnabled, false);
   const custom = preferences({ countries: ["CO", "MX"], platforms: ["iOS"], dailyDropEnabled: true, dailyWarningDrop: "0,25", dailyCriticalDrop: 0.45 });
   assert.deepEqual(plain(custom.countries), ["CO", "MX"]);
   assert.deepEqual(plain(custom.platforms), ["iOS"]);
@@ -246,17 +257,49 @@ test("a no-signal preview reports every real series in the saved multi-country s
   assert.doesNotMatch(html, /BBVA GLOBAL|GLOBAL · Todas/);
 });
 
-test("daily, month-to-date and year-to-date drops are independent", () => {
+test("daily, day-15-to-day-15 and year-to-date drops are independent", () => {
   const rows = [
     rating(2, 4.8, { observedDate: new Date(2026, 0, 2, 12) }),
-    rating(1, 4.6), rating(13, 4.5), rating(14, 4.1)
+    rating(15, 4.6, { observedDate: new Date(2026, 5, 15, 12) }),
+    rating(14, 4.5), rating(15, 4.1)
   ];
-  const events = context.buildRatingDropAlerts_(rows, new Date(2026, 6, 14, 12), preferences({
+  const events = context.buildRatingDropAlerts_(rows, new Date(2026, 6, 15, 12), preferences({
     dailyDropEnabled: true, mtdDropEnabled: true, ytdDropEnabled: true
   }), {});
   assert.deepEqual(plain(events.map(event => event.type)), ["RATING_DROP_DAILY", "RATING_DROP_MTD", "RATING_DROP_YTD"]);
   assert.deepEqual(plain(events.map(event => event.metricValue)), [0.4, 0.5, 0.7]);
   assert.deepEqual(plain(events.map(event => event.severity)), ["CRITICAL", "CRITICAL", "CRITICAL"]);
+  assert.equal(events[1].period, "MIDMONTH");
+  assert.equal(context.marketsMidmonthAnchorKey_("2026-07-14"), "2026-06-15");
+  assert.equal(context.marketsMidmonthAnchorKey_("2026-07-15"), "2026-07-15");
+  assert.equal(context.marketsPreviousMidmonthAnchorKey_("2026-07-15"), "2026-06-15");
+  assert.equal(context.marketsMidmonthAnchorKey_("2026-01-10"), "2025-12-15");
+  assert.equal(context.marketsPreviousMidmonthAnchorKey_("2026-01-10"), "2025-11-15");
+  assert.equal(context.marketsPreviousMidmonthAnchorKey_("2026-01-15"), "2025-12-15");
+});
+
+test("test alert uses a real below-threshold fall and explains the production limit", () => {
+  const pref = preferences({
+    countries: ["CO"], platforms: ["iOS"], dailyWarningDrop: 0.3,
+    dailyCriticalDrop: 0.5, mtdDropEnabled: false, ytdDropEnabled: false,
+    crossoverEnabled: false
+  });
+  const events = context.buildMarketsRealAlertPreviewEvents_([
+    rating(19, 4.5), rating(20, 4.4)
+  ], [], pref, "COM-BELOW");
+  assert.equal(events.length, 1);
+  assert.equal(events[0].isBelowThresholdPreview, true);
+  assert.equal(events[0].metricValue, 0.1);
+  assert.equal(events[0].threshold, 0.3);
+  assert.equal(events[0].countryCode, "CO");
+  assert.equal(events[0].platform, "iOS");
+  assert.equal(context.marketsAlertEmailSubject_(events),
+    "[PRUEBA] Market Pulse · Datos reales bajo umbral · COM-BELOW");
+  const html = context.renderMarketsAlertEmail_(events, pref.email);
+  assert.match(html, /este correo no se enviaría/i);
+  assert.match(html, /0,10 puntos/);
+  assert.match(html, /0,30 puntos/);
+  assert.doesNotMatch(html, /GLOBAL|Todas/);
 });
 
 test("default drop windows do not repeat unless requested", () => {

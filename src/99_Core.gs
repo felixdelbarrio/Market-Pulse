@@ -165,6 +165,19 @@ function isMarketsCriticalPlatform_(platform) {
   return ['Android', 'iOS'].indexOf(trimString_(platform)) >= 0;
 }
 
+function marketsPlatformRank_(value) {
+  const platform = trimString_(value && typeof value === 'object' ? value.platform : value);
+  const index = ['Android', 'iOS', 'Huawei'].indexOf(platform);
+  return index < 0 ? 3 : index;
+}
+
+function compareMarketsPlatforms_(a, b) {
+  const first = trimString_(a && typeof a === 'object' ? a.platform : a);
+  const second = trimString_(b && typeof b === 'object' ? b.platform : b);
+  return marketsPlatformRank_(first) - marketsPlatformRank_(second) ||
+    first.localeCompare(second);
+}
+
 function marketsCriticalItems_(items) {
   return (items || []).filter(function (item) {
     const source = item && item.app ? item.app : item;

@@ -88,10 +88,11 @@ La interfaz no utiliza logotipos ni símbolos visuales de Android, iOS o Huawei.
 La pestaña `Alertas` obtiene la identidad con `Session.getActiveUser()` y no acepta un email enviado por el navegador. Cada usuario solo lee, guarda, restaura y prueba su propia configuracion. Al entrar por primera vez queda registrado, incluso si mantiene las alertas pausadas.
 
 - Caida diaria: ultimo rating frente a la observacion anterior.
-- Caida desde inicio de mes: ultimo rating frente a la primera observacion del mes.
+- Caida en ventana mensual 15→15: cierre real del día 15 frente al cierre real del día 15 anterior.
 - Caida desde inicio de año: ultimo rating frente a la primera observacion del año.
-- Las tres ventanas están activas por defecto y son independientes: diaria `0,10/0,15`, desde inicio de mes `0,30/0,50` y desde inicio de año `0,30/0,50`.
-- Los avisos MTD/YTD no se repiten durante el mismo periodo y severidad. Una escalada amarilla a roja si avisa; el usuario puede habilitar recordatorios diarios mientras persista la caida.
+- Las tres ventanas están activas por defecto y son independientes: diaria `0,10/0,15`, 15→15 `0,30/0,50` y desde inicio de año `0,30/0,50`.
+- Los avisos 15→15/YTD no se repiten durante el mismo periodo y severidad. Una escalada amarilla a roja si avisa; el usuario puede habilitar recordatorios diarios mientras persista la caida.
+- La newsletter mensual se puede activar o desactivar de forma independiente a las alertas.
 - Al dar de alta desde Administración a una cuenta no administradora, cualquier alerta YTD amarilla o roja ya vigente queda reconocida en `ALERT_LOG` sin correo. Así no se reenvía un hecho pasado; si se activaron recordatorios, la siguiente comprobación diaria sí podrá avisar si la caída continúa.
 - Cruce competitivo: avisa cuando un competidor supera a BBVA Empresas o BBVA recupera la posicion.
 - Ambito multiseleccion por mercado y plataforma (`Todos`, uno o varios), pausa global y restauracion de valores recomendados.

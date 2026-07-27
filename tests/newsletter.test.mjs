@@ -3,8 +3,10 @@ import fs from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
 
-const source = ["../src/99_Core.gs", "../src/50_Alerts.gs", "../src/56_Newsletter.gs"]
+const newsletterSource = fs.readFileSync(new URL("../src/56_Newsletter.gs", import.meta.url), "utf8");
+const source = ["../src/99_Core.gs", "../src/50_Alerts.gs"]
   .map(file => fs.readFileSync(new URL(file, import.meta.url), "utf8"))
+  .concat(newsletterSource)
   .join("\n");
 const context = {
   console, Date, Math, Number, String, Boolean, Array, Object, JSON, RegExp, isFinite, isNaN,
@@ -16,6 +18,13 @@ const context = {
 vm.createContext(context);
 vm.runInContext(source, context);
 const plain = value => JSON.parse(JSON.stringify(value));
+
+test("monthly newsletter delivery is independent from alert activation", () => {
+  const deliveryBody = newsletterSource.match(
+    /function sendMarketsMonthlyNewsletter_[\s\S]*?function sendMarketsAdminNewsletterTestEmail/)[0];
+  assert.match(deliveryBody, /return item\.newsletterEnabled/);
+  assert.doesNotMatch(deliveryBody, /return item\.active/);
+});
 
 function pref(countries = ["ALL"], platforms = ["ALL"]) {
   return {
@@ -204,6 +213,44 @@ test("missing Huawei is omitted silently and does not reduce newsletter coverage
   assert.equal(model.coverage.observed, 1);
   assert.equal(model.coverage.expected, 1);
   assert.doesNotMatch(context.renderMarketsNewsletterHtml_(model), /Cobertura de cierre:/);
+});
+
+test("every geography renders Android, iOS and then Huawei only when data exists", () => {
+  const item = platform => ({
+    country: "España", countryCode: "ES", platform,
+    yearStartRating: 4.4, monthStartRating: 4.5, endRating: 4.6,
+    yearDelta: 0.2, monthDelta: 0.1, newReviews: 10, volumeAvailable: true,
+    position: { available: false }
+  });
+  const complete = context.marketsNewsletterGroups_([
+    item("Huawei"), item("iOS"), item("Android")
+  ])[0];
+  assert.deepEqual(plain(complete.items.map(entry => entry.platform)), ["Android", "iOS", "Huawei"]);
+  const essential = context.marketsNewsletterGroups_([
+    item("iOS"), item("Android")
+  ])[0];
+  assert.deepEqual(plain(essential.items.map(entry => entry.platform)), ["Android", "iOS"]);
+
+  const model = {
+    isTest: true, configuredFor: "director@bbva.com", periodLabel: "julio 2026",
+    scope: { type: "SINGLE", countryLabel: "España", platformLabel: "Todas las plataformas" },
+    items: [item("Huawei"), item("iOS"), item("Android")],
+    totals: {
+      series: 3, improving: 3, declining: 0, stable: 0, newReviews: 30,
+      reviewsByPlatform: { Huawei: 10, iOS: 10, Android: 10 }
+    },
+    coverage: { complete: true },
+    strongest: item("Android"), weakest: item("Huawei")
+  };
+  const html = context.renderMarketsNewsletterHtml_(model);
+  const volumeStart = html.indexOf("Valoraciones por plataforma");
+  const groupStart = html.indexOf(">España</td>", volumeStart);
+  const volumes = html.slice(volumeStart, groupStart);
+  assert.ok(volumes.indexOf("<strong>Android</strong>") < volumes.indexOf("<strong>iOS</strong>"));
+  assert.ok(volumes.indexOf("<strong>iOS</strong>") < volumes.indexOf("<strong>Huawei</strong>"));
+  const geography = html.slice(groupStart);
+  assert.ok(geography.indexOf(">Android</strong>") < geography.indexOf(">iOS</strong>"));
+  assert.ok(geography.indexOf(">iOS</strong>") < geography.indexOf(">Huawei</strong>"));
 });
 
 test("competitive position remains hidden when an expected bank is missing", () => {

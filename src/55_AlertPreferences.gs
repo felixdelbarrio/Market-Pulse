@@ -18,8 +18,9 @@ var MARKETS_ALERT_DEFAULTS = Object.freeze({
   repeatWhileBreached: false,
   crossoverEnabled: true,
   crossoverDirection: 'BOTH',
-  deliveryMode: 'DAILY_DIGEST',
-  configVersion: '3'
+  deliveryMode: 'ALERTS_ONLY',
+  newsletterEnabled: false,
+  configVersion: '4'
 });
 
 function defaultMarketsAlertPreferences_(email) {
@@ -44,6 +45,7 @@ function defaultMarketsAlertPreferences_(email) {
     crossoverEnabled: MARKETS_ALERT_DEFAULTS.crossoverEnabled,
     crossoverDirection: MARKETS_ALERT_DEFAULTS.crossoverDirection,
     deliveryMode: MARKETS_ALERT_DEFAULTS.deliveryMode,
+    newsletterEnabled: MARKETS_ALERT_DEFAULTS.newsletterEnabled,
     configVersion: MARKETS_ALERT_DEFAULTS.configVersion,
     updatedAt: '', updatedBy: '', registeredAt: '', lastSeenAt: '', lastTestAt: '',
     lastDeliveryAt: '', status: 'NOT_CONFIGURED', persisted: false
@@ -69,6 +71,12 @@ function normalizeMarketsAlertPreferences_(source, email) {
   validateMarketsAlertThresholds_('anual', ytdWarning, ytdCritical);
   const direction = trimString_(input.crossoverDirection || defaults.crossoverDirection).toUpperCase();
   if (['BOTH', 'LOST', 'GAINED'].indexOf(direction) < 0) throw new Error('Direccion de cruce competitivo no valida.');
+  const storedDeliveryMode = trimString_(input.deliveryMode || defaults.deliveryMode).toUpperCase();
+  const storedConfigVersion = trimString_(input.configVersion);
+  const newsletterEnabled = input.newsletterEnabled === undefined ?
+    (storedConfigVersion && Number(storedConfigVersion) < 4 ?
+      parseBoolean_(input.active, false) : storedDeliveryMode !== 'ALERTS_ONLY') :
+    parseBoolean_(input.newsletterEnabled, defaults.newsletterEnabled);
   const normalized = {
     email: defaults.email,
     active: parseBoolean_(input.active, defaults.active),
@@ -89,7 +97,8 @@ function normalizeMarketsAlertPreferences_(source, email) {
     repeatWhileBreached: parseBoolean_(input.repeatWhileBreached, defaults.repeatWhileBreached),
     crossoverEnabled: parseBoolean_(input.crossoverEnabled, defaults.crossoverEnabled),
     crossoverDirection: direction,
-    deliveryMode: 'DAILY_DIGEST',
+    newsletterEnabled: newsletterEnabled,
+    deliveryMode: newsletterEnabled ? 'DAILY_DIGEST' : 'ALERTS_ONLY',
     configVersion: MARKETS_ALERT_DEFAULTS.configVersion,
     updatedAt: input.updatedAt || '',
     updatedBy: trimString_(input.updatedBy),
@@ -99,8 +108,9 @@ function normalizeMarketsAlertPreferences_(source, email) {
     lastDeliveryAt: input.lastDeliveryAt || '',
     persisted: Boolean(input.persisted)
   };
-  normalized.status = normalized.active ?
-    (normalized.reviewShareEnabled ? 'ACTIVE_WITH_PENDING_REVIEW_SOURCE' : 'ACTIVE') : 'PAUSED';
+  normalized.status = normalized.active && normalized.newsletterEnabled ? 'ACTIVE' :
+    normalized.active ? 'ALERTS_ONLY' :
+      normalized.newsletterEnabled ? 'NEWSLETTER_ONLY' : 'PAUSED';
   return normalized;
 }
 
@@ -178,7 +188,8 @@ function alertPreferencesFromRow_(row, indexes) {
     deliveryMode: row[indexes.delivery_mode], updatedAt: row[indexes.updated_at],
     updatedBy: row[indexes.updated_by], registeredAt: row[indexes.registered_at],
     lastSeenAt: row[indexes.last_seen_at], lastTestAt: row[indexes.last_test_at],
-    lastDeliveryAt: row[indexes.last_delivery_at], persisted: true
+    lastDeliveryAt: row[indexes.last_delivery_at], configVersion: row[indexes.config_version],
+    persisted: true
   }, row[indexes.user_email]);
 }
 

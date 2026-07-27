@@ -103,6 +103,18 @@ test("compact competition source preserves its quality flag", () => {
   assert.equal(row[15], "https://play.google.com/store/apps/details?id=com.bbva.empresas&hl=es&gl=VE");
 });
 
+test("competition rows group each geography as Android, iOS and Huawei", () => {
+  const platforms = [
+    app("HUAWEI|VE|BBVA", "Huawei", "VE", 0),
+    app("IOS|VE|BBVA", "iOS", "VE", 0),
+    app("ANDROID|VE|BBVA", "Android", "VE", 0)
+  ];
+  const rows = context.buildCompetitionRows_(platforms.map(item =>
+    rating(item.appKey, item.platform, item.countryCode, 4.5, 0)
+  ), platforms);
+  assert.deepEqual(Array.from(rows).map(row => row[1]), ["Android", "iOS", "Huawei"]);
+});
+
 test("store links are canonical HTTPS pages with an explicit geography", () => {
   assert.equal(context.buildStoreWebUrl_(app("IOS|VE|BBVA", "iOS", "VE", 0)), "https://apps.apple.com/ve/app/id1590189082");
   assert.equal(context.buildStoreWebUrl_(app("HUAWEI|VE|BBVA", "Huawei", "VE", 0)), "https://appgallery.huawei.com/app/C1751602113005231488?locale=es_VE");

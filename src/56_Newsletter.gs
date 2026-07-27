@@ -30,7 +30,9 @@ function runMarketsMonthlyNewsletter() {
 }
 
 function sendMarketsMonthlyNewsletter_(ss, period, isTest) {
-  const subscribers = readAllMarketsAlertPreferences_(ss).filter(function (item) { return item.active; });
+  const subscribers = readAllMarketsAlertPreferences_(ss).filter(function (item) {
+    return item.newsletterEnabled;
+  });
   const ratings = readRatingObjects_(ss);
   const catalog = readAppCatalog_(ss);
   const existing = readExistingAlertKeys_(ss);
@@ -433,7 +435,8 @@ function renderMarketsNewsletterHtml_(model) {
       '<tr><td colspan="2" style="padding:13px 16px;background:#070E46;color:#FFFFFF;font-size:15px;font-weight:700;">' +
       escapeMarketsAlertHtml_(group.country) + '</td></tr>' + rows + '</table></td></tr>';
   }).join('');
-  const platformVolumes = Object.keys(model.totals.reviewsByPlatform || {}).sort().map(function (platform) {
+  const platformVolumes = Object.keys(model.totals.reviewsByPlatform || {})
+    .sort(compareMarketsPlatforms_).map(function (platform) {
     return '<span style="display:inline-block;margin:0 6px 6px 0;padding:7px 10px;border-radius:999px;background:#EAFBFA;color:#070E46;font-size:11px;"><strong>' +
       escapeMarketsAlertHtml_(platform) + '</strong> · ' +
       escapeMarketsAlertHtml_(marketsAlertIntegerLabel_(model.totals.reviewsByPlatform[platform])) +
@@ -488,7 +491,7 @@ function marketsNewsletterGroups_(items) {
     group.items.push(item);
   });
   return Object.keys(groups).sort().map(function (key) {
-    groups[key].items.sort(function (a, b) { return a.platform.localeCompare(b.platform); });
+    groups[key].items.sort(compareMarketsPlatforms_);
     return groups[key];
   });
 }
