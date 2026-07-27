@@ -85,7 +85,7 @@ test("single-country newsletter uses real closes, reliable review effect and com
   const brief = context.marketsNewsletterExecutiveBrief_(model);
   assert.equal(brief.headline, "iOS cierra el mes al alza en España.");
   assert.match(brief.summary,
-    /La voz nueva se sitúa por encima del rating previo y refuerza el cierre/);
+    /Las nuevas valoraciones se sitúan por encima del rating previo y refuerzan el cierre/);
   assert.doesNotMatch(brief.summary, /4,11|4,21|4,81|20 nuevas valoraciones/);
   const html = context.renderMarketsNewsletterHtml_(model);
   assert.match(html, /España · Todas las plataformas|España · iOS/);
@@ -162,8 +162,7 @@ test("single-market pressure produces a concise executive narrative without zero
   };
   const brief = context.marketsNewsletterExecutiveBrief_(model);
   assert.equal(brief.headline, "México cierra el mes con presión en todas las plataformas.");
-  assert.match(brief.summary, /^Las dos plataformas analizadas retroceden\./);
-  assert.match(brief.summary, /Android concentra el ajuste más relevante \(-0,04\)/);
+  assert.match(brief.summary, /^El principal foco de atención está en Android \(-0,04\)/);
   assert.doesNotMatch(brief.headline + brief.summary, /0 series|México · Android/);
   assert.match(context.marketsNewsletterVolumeContext_(model),
     /Android registra 442 nuevas valoraciones y iOS registra 327 nuevas valoraciones/);
@@ -184,14 +183,53 @@ test("voice-new executive summary uses platforms for one geography and listings 
     scope: { type: "SINGLE" }, reviewEffects: effects
   });
   assert.match(single,
-    /1 impulsa y 1 presiona entre 2 plataformas calculables/);
-  assert.match(single, /está en Android \(-0,04\)/);
+    /La voz del cliente presenta señales mixtas en las dos plataformas donde puede medirse/);
+  assert.match(single, /corresponde a Android \(-0,04\)/);
   assert.doesNotMatch(single, /México · Android/);
   const multi = context.marketsNewsletterVoiceContext_({
     scope: { type: "MULTI" }, reviewEffects: effects
   });
-  assert.match(multi, /entre 2 fichas calculables/);
+  assert.match(multi, /en los dos casos donde es posible medir su efecto/);
   assert.match(multi, /México · Android \(-0,04\)/);
+});
+
+test("global opening translates counts into an executive business reading", () => {
+  const weakest = {
+    country: "España", platform: "Android", monthDelta: -0.13, yearDelta: 0,
+    position: { available: false }
+  };
+  const strongest = {
+    country: "Colombia", platform: "iOS", monthDelta: 0.11, yearDelta: 0,
+    position: { available: false }
+  };
+  const effect = (country, platform, change) => ({
+    country, platform, shared: false,
+    effect: { newReviewRating: 4.7, gapToPreviousRating: 0.2,
+      accumulatedRatingChange: change }
+  });
+  const model = {
+    scope: { type: "ALL" },
+    items: [weakest, strongest],
+    totals: { series: 15, improving: 5, declining: 4, stable: 6,
+      reviewsByPlatform: {} },
+    strongest,
+    weakest,
+    reviewEffects: [
+      effect("Argentina", "iOS", 0.09),
+      effect("Colombia", "iOS", 0.02),
+      effect("España", "iOS", 0.01),
+      effect("México", "iOS", 0.01)
+    ]
+  };
+  const brief = context.marketsNewsletterExecutiveBrief_(model);
+  assert.equal(brief.headline,
+    "La estabilidad marca el tono del mes, con un ligero sesgo positivo.");
+  assert.equal(brief.summary,
+    "El principal foco de atención está en España · Android (-0,13). " +
+    "Las nuevas valoraciones aportan una señal favorable en los cuatro casos donde es posible medir su efecto. " +
+    "El mayor efecto en el cierre corresponde a Argentina · iOS (+0,09).");
+  assert.doesNotMatch(brief.headline + brief.summary,
+    /\bseries\b|4 impulsan|fichas calculables|concentra el ajuste|mayor reflejo/);
 });
 
 test("executive narrative adapts to generalized, stable and mixed closes", () => {
@@ -204,19 +242,19 @@ test("executive narrative adapts to generalized, stable and mixed closes", () =>
       model: { scope: { type: "MULTI" }, items: [item("España", "iOS", 0.1), item("México", "Android", 0.05)],
         totals: { series: 2, improving: 2, declining: 0, stable: 0, reviewsByPlatform: {} },
         strongest: item("España", "iOS", 0.1), weakest: item("México", "Android", 0.05) },
-      expected: /avances generalizados/
+      expected: /avances en todo el perímetro/
     },
     {
       model: { scope: { type: "ALL" }, items: [item("España", "iOS", 0), item("México", "Android", 0)],
         totals: { series: 2, improving: 0, declining: 0, stable: 2, reviewsByPlatform: {} },
         strongest: item("España", "iOS", 0), weakest: item("México", "Android", 0) },
-      expected: /sin cambios/
+      expected: /sin movimientos/
     },
     {
       model: { scope: { type: "ALL" }, items: [item("España", "iOS", 0.1), item("México", "Android", -0.04)],
         totals: { series: 2, improving: 1, declining: 1, stable: 0, reviewsByPlatform: {} },
         strongest: item("España", "iOS", 0.1), weakest: item("México", "Android", -0.04) },
-      expected: /cierre mixto/
+      expected: /balance equilibrado/
     }
   ];
   cases.forEach(({ model, expected }) => {
@@ -240,7 +278,7 @@ test("multi-market newsletter has a distinct executive scope and hides shared An
   assert.match(html, /No atribuible/);
   assert.match(html, /ficha compartida/);
   assert.match(context.marketsNewsletterExecutiveBrief_(model).summary,
-    /En España · iOS, la voz nueva/);
+    /En España · iOS, las nuevas valoraciones/);
   assert.doesNotMatch(context.marketsNewsletterExecutiveBrief_(model).summary,
     /Voz nueva en iOS:/);
 });
@@ -254,9 +292,9 @@ test("global newsletter is deduplicated and only exposes defensible effects", ()
     observed: 2, expected: 3, complete: false,
     missing: [{ appKey: "ANDROID|CO|BBVA", country: "Colombia", countryCode: "CO", platform: "Android" }]
   });
-  assert.match(context.marketsNewsletterExecutiveNarrative_(model), /visión global/i);
+  assert.match(context.marketsNewsletterExecutiveNarrative_(model), /balance equilibrado/i);
   assert.match(context.marketsNewsletterExecutiveBrief_(model).summary,
-    /En España · iOS, la voz nueva/);
+    /En España · iOS, las nuevas valoraciones/);
   assert.match(context.renderMarketsNewsletterHtml_(model), /Cobertura de cierre: 2 de 3/);
 });
 

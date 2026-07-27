@@ -675,7 +675,6 @@ function marketsNewsletterExecutiveNarrative_(model) {
 function marketsNewsletterExecutiveBrief_(model) {
   const totals = model.totals;
   const single = model.scope.type === 'SINGLE';
-  const unit = single ? 'plataforma' : 'serie';
   const subject = single ? model.scope.countryLabel :
     model.scope.type === 'MULTI' ? 'El perímetro seleccionado' : 'La visión global de BBVA Empresas';
   if (!totals.series) {
@@ -692,21 +691,28 @@ function marketsNewsletterExecutiveBrief_(model) {
       only.country + '.';
   } else if (totals.declining === totals.series && totals.series > 0) {
     headline = single ? subject + ' cierra el mes con presión en todas las plataformas.' :
-      subject + ' cierra el mes con presión generalizada.';
+      'El mes cierra con presión en todo el perímetro analizado.';
   } else if (totals.improving === totals.series && totals.series > 0) {
     headline = single ? subject + ' avanza en todas las plataformas analizadas.' :
-      subject + ' cierra el mes con avances generalizados.';
+      'El mes cierra con avances en todo el perímetro analizado.';
   } else if (totals.stable === totals.series && totals.series > 0) {
     headline = single ? subject + ' cierra sin movimientos en sus ratings.' :
-      subject + ' mantiene sus ratings sin cambios.';
+      'El mes cierra estable, sin movimientos en los ratings analizados.';
+  } else if (totals.stable >= totals.improving && totals.stable >= totals.declining) {
+    headline = totals.improving > totals.declining ?
+      'La estabilidad marca el tono del mes, con un ligero sesgo positivo.' :
+      totals.declining > totals.improving ?
+        'La estabilidad marca el tono del mes, aunque aparecen señales de presión.' :
+        'La estabilidad marca el tono de un mes equilibrado.';
   } else if (totals.declining > totals.improving) {
     headline = single ? subject + ' cierra con un balance de cautela.' :
-      subject + ' cierra con un balance de cautela.';
+      'El balance mensual exige atención, aunque la presión no es generalizada.';
   } else if (totals.improving > totals.declining) {
     headline = single ? subject + ' cierra con un balance favorable.' :
-      subject + ' cierra con un balance favorable.';
+      'El balance mensual es favorable, aunque no homogéneo.';
   } else {
-    headline = single ? subject + ' presenta un cierre mixto.' : subject + ' presenta un cierre mixto.';
+    headline = single ? subject + ' presenta un cierre mixto.' :
+      'El mes deja un balance equilibrado, con movimientos en ambas direcciones.';
   }
 
   const facts = [];
@@ -714,35 +720,14 @@ function marketsNewsletterExecutiveBrief_(model) {
     // El titular ya resume la dirección; el detalle numérico vive una sola vez
     // en la secuencia Cierre anterior → Voz nueva → Cierre.
   } else {
-    if (totals.improving === totals.series) {
-      facts.push('Las ' + marketsNewsletterCountLabel_(totals.series) + ' ' + unit +
-        's analizadas avanzan.');
-    } else if (totals.declining === totals.series) {
-      facts.push('Las ' + marketsNewsletterCountLabel_(totals.series) + ' ' + unit +
-        's analizadas retroceden.');
-    } else if (totals.stable === totals.series) {
-      facts.push('Las ' + marketsNewsletterCountLabel_(totals.series) + ' ' + unit +
-        's analizadas permanecen estables.');
-    } else {
-      const movementParts = [];
-      if (totals.improving) movementParts.push(marketsNewsletterCountPhrase_(
-        totals.improving, unit, totals.improving === 1 ? 'avanza' : 'avanzan'));
-      if (totals.declining) movementParts.push(marketsNewsletterCountPhrase_(
-        totals.declining, unit, totals.declining === 1 ? 'retrocede' : 'retroceden'));
-      if (totals.stable) movementParts.push(marketsNewsletterCountPhrase_(
-        totals.stable, unit, totals.stable === 1 ? 'permanece estable' : 'permanecen estables'));
-      if (movementParts.length) facts.push(marketsNewsletterJoinFacts_(movementParts) + '.');
-    }
     const strongest = model.strongest && model.strongest.monthDelta > 0 ? model.strongest : null;
     const weakest = model.weakest && model.weakest.monthDelta < 0 ? model.weakest : null;
-    const principal = !strongest ? weakest : !weakest ? strongest :
-      Math.abs(weakest.monthDelta) >= Math.abs(strongest.monthDelta) ? weakest : strongest;
-    if (principal) {
-      facts.push(marketsNewsletterItemLabel_(principal, model) +
-        (principal.monthDelta < 0 ? ' concentra el ajuste más relevante (' :
-          ' marca el avance más relevante (') +
-        marketsNewsletterSigned_(principal.monthDelta) + ').');
-    }
+    if (weakest) facts.push('El principal foco de atención está en ' +
+      marketsNewsletterItemLabel_(weakest, model) + ' (' +
+      marketsNewsletterSigned_(weakest.monthDelta) + ').');
+    else if (strongest) facts.push('El avance más destacado se registra en ' +
+      marketsNewsletterItemLabel_(strongest, model) + ' (' +
+      marketsNewsletterSigned_(strongest.monthDelta) + ').');
   }
 
   const voiceContext = marketsNewsletterVoiceContext_(model);
@@ -753,15 +738,11 @@ function marketsNewsletterExecutiveBrief_(model) {
   if (positionContext) facts.push(positionContext);
   const volumeContext = marketsNewsletterVolumeContext_(model);
   if (!single && volumeContext) facts.push(volumeContext);
-  return { headline: headline, summary: facts.slice(0, 3).join(' ') };
+  return { headline: headline, summary: facts.slice(0, single ? 3 : 2).join(' ') };
 }
 
 function marketsNewsletterItemLabel_(item, model) {
   return model.scope.type === 'SINGLE' ? item.platform : item.country + ' · ' + item.platform;
-}
-
-function marketsNewsletterCountPhrase_(count, noun, verb) {
-  return (count === 1 ? 'Una' : String(count)) + ' ' + noun + (count === 1 ? '' : 's') + ' ' + verb;
 }
 
 function marketsNewsletterCountLabel_(count) {
@@ -838,14 +819,14 @@ function marketsNewsletterVoiceContext_(model) {
       item.platform : item.country + ' · ' + item.platform;
     const gap = item.effect.gapToPreviousRating;
     const change = item.effect.accumulatedRatingChange;
-    const quality = gap > 0.005 ? 'se sitúa por encima del rating previo' :
-      gap < -0.005 ? 'queda por debajo del rating previo' :
-        'se mantiene alineada con el rating previo';
-    const consequence = change > 0.005 ? 'refuerza el cierre' :
-      change < -0.005 ? 'presiona el cierre' :
-        'no altera de forma visible el acumulado';
-    return (model.scope.type === 'SINGLE' ? 'La voz nueva ' :
-      'En ' + label + ', la voz nueva ') + quality + ' y ' + consequence + '.';
+    const quality = gap > 0.005 ? 'se sitúan por encima del rating previo' :
+      gap < -0.005 ? 'quedan por debajo del rating previo' :
+        'se mantienen alineadas con el rating previo';
+    const consequence = change > 0.005 ? 'refuerzan el cierre' :
+      change < -0.005 ? 'presionan el cierre' :
+        'no alteran de forma visible el acumulado';
+    return (model.scope.type === 'SINGLE' ? 'Las nuevas valoraciones ' :
+      'En ' + label + ', las nuevas valoraciones ') + quality + ' y ' + consequence + '.';
   }
   const positive = effects.filter(function (item) {
     return item.effect.gapToPreviousRating > 0.005;
@@ -853,26 +834,42 @@ function marketsNewsletterVoiceContext_(model) {
   const negative = effects.filter(function (item) {
     return item.effect.gapToPreviousRating < -0.005;
   }).length;
+  const stable = effects.length - positive - negative;
   const notable = effects.slice().sort(function (a, b) {
     return Math.abs(b.effect.accumulatedRatingChange) -
       Math.abs(a.effect.accumulatedRatingChange);
   })[0];
-  const positivePhrase = positive + (positive === 1 ? ' impulsa' : ' impulsan');
-  const negativePhrase = negative + (negative === 1 ? ' presiona' : ' presionan');
-  const balance = positive && negative ?
-    positivePhrase + ' y ' + negativePhrase :
-    positive ? positivePhrase + ' el rating' :
-      negative ? negativePhrase + ' el rating' :
-        'sin diferencias relevantes frente al rating previo';
-  const unit = model.scope.type === 'SINGLE' ? 'plataforma' : 'ficha';
   const notableLabel = model.scope.type === 'SINGLE' && !notable.shared ?
     notable.platform : notable.shared ? notable.country :
       notable.country + ' · ' + notable.platform;
-  return 'Voz nueva: ' + balance + ' entre ' + effects.length +
-    ' ' + unit + (effects.length === 1 ? '' : 's') +
-    ' calculables. El mayor reflejo en el acumulado está en ' +
-    notableLabel +
-    ' (' + marketsNewsletterSigned_(notable.effect.accumulatedRatingChange) + ').';
+  const count = marketsNewsletterCountLabel_(effects.length);
+  const measurableScope = model.scope.type === 'SINGLE' ?
+    'las ' + count + ' plataformas donde puede medirse' :
+    'los ' + count + ' casos donde es posible medir su efecto';
+  let reading = '';
+  if (positive === effects.length) {
+    reading = 'Las nuevas valoraciones aportan una señal favorable en ' +
+      measurableScope + '.';
+  } else if (negative === effects.length) {
+    reading = 'Las nuevas valoraciones añaden presión en ' +
+      measurableScope + '.';
+  } else if (positive > negative) {
+    reading = 'La voz del cliente ofrece un balance favorable en ' +
+      measurableScope + '.';
+  } else if (negative > positive) {
+    reading = 'La voz del cliente aconseja cautela en ' +
+      measurableScope + '.';
+  } else if (stable === effects.length) {
+    reading = 'Las nuevas valoraciones se mantienen alineadas con los ratings previos.';
+  } else {
+    reading = 'La voz del cliente presenta señales mixtas en ' +
+      measurableScope + '.';
+  }
+  const change = notable.effect.accumulatedRatingChange;
+  return reading + (Math.abs(change) < 0.005 ?
+    ' No se observa un efecto relevante en los ratings acumulados.' :
+    ' El mayor efecto en el cierre corresponde a ' + notableLabel +
+      ' (' + marketsNewsletterSigned_(change) + ').');
 }
 
 function marketsNewsletterPositionLabel_(position) {
