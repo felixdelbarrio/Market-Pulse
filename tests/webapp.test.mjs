@@ -584,19 +584,20 @@ test("new-review impact reproduces the GEMA month-rating calculation and protect
   ];
   const model = browser.MarketsDomain.monthlyNewReviewImpact(trends, snapshot, { country: "ALL", platform: "ALL" }, "2026-06");
   const spain = model.rows.find(row => row.countryCode === "ES");
-  const argentina = model.rows.find(row => row.countryCode === "AR");
+  const argentina = model.rows.find(row => row.platform === "Android");
   assert.equal(spain.newReviews, 151);
   assert.ok(Math.abs(spain.rating - 4.674172185430463) < 1e-10);
   assert.ok(Math.abs(spain.impact - (4.674172185430463 - 3.9)) < 1e-10);
   assert.equal(argentina.rating, null);
-  assert.deepEqual(Array.from(argentina.reasons), ["SHARED_LISTING"]);
-  assert.equal(model.summary.newReviews, 151);
-  assert.equal(model.summary.availableApps, 1);
-  assert.equal(model.summary.totalApps, 2);
+  assert.equal(argentina.country, "Ficha compartida multipaís");
+  assert.deepEqual(Array.from(argentina.reasons), ["ROUNDING"]);
+  assert.equal(model.summary.platforms.find(item => item.platform === "iOS").newReviews, 151);
+  assert.equal(model.summary.availableSeries, 1);
+  assert.equal(model.summary.totalSeries, 2);
   assert.equal(model.rows.some(row => row.countryCode === "VE"), false);
   const ios = browser.MarketsDomain.monthlyNewReviewImpact(trends, snapshot, { country: "ES", platform: "iOS" }, "2026-06");
   assert.equal(ios.rows.length, 1);
-  assert.ok(Math.abs(ios.summary.rating - 4.674172185430463) < 1e-10);
+  assert.ok(Math.abs(ios.summary.platforms[0].rating - 4.674172185430463) < 1e-10);
 });
 
 test("new-review impact rejects the real rounded Mexico and Turkey closes but accepts preserved source precision", () => {
@@ -623,14 +624,12 @@ test("new-review impact rejects the real rounded Mexico and Turkey closes but ac
     { appKey: "IOS|TR|BBVA", platform: "iOS", countryCode: "TR", country: "Turquía", isBbva: true, month: "2026-07", ratingEom: 4.68, ratingCountEom: 2124232 }
   ];
   const model = browser.MarketsDomain.monthlyNewReviewImpact(trends, snapshot, { country: "ALL", platform: "ALL" }, "2026-07");
-  for (const countryCode of ["MX", "TR"]) {
-    const row = model.rows.find(item => item.countryCode === countryCode);
+  for (const row of model.rows) {
     assert.equal(row.rating, null);
     assert.deepEqual(Array.from(row.reasons), ["ROUNDING"]);
-    assert.equal(row.usableNewReviews, 0);
   }
-  assert.equal(model.rows.find(item => item.countryCode === "MX").newReviews, 732);
-  assert.equal(model.rows.find(item => item.countryCode === "TR").newReviews, 54109);
+  assert.deepEqual(Array.from(model.rows.filter(item => item.countryCode === "MX").map(item => item.newReviews)), [414, 318]);
+  assert.deepEqual(Array.from(model.rows.filter(item => item.countryCode === "TR").map(item => item.newReviews)), [21271, 32838]);
   assert.equal(browser.MarketsDomain.ratingRoundingHalfStep(4.2, "Android"), 0.05);
   assert.equal(browser.MarketsDomain.ratingRoundingHalfStep(4.82, "iOS"), 0.005);
 
@@ -644,8 +643,45 @@ test("new-review impact rejects the real rounded Mexico and Turkey closes but ac
     { appKey: "IOS|TR|BBVA", platform: "iOS", countryCode: "TR", country: "Turquía", isBbva: true, month: "2026-06", ratingEom: previousRating, ratingCountEom: previousCount },
     { appKey: "IOS|TR|BBVA", platform: "iOS", countryCode: "TR", country: "Turquía", isBbva: true, month: "2026-07", ratingEom: currentRating, ratingCountEom: currentCount }
   ], [{ appKey: "IOS|TR|BBVA", isBbva: true, volumeScope: "MARKET" }], { country: "TR", platform: "iOS" }, "2026-07");
-  assert.ok(Math.abs(precise.summary.rating - expectedNewRating) < 0.001);
-  assert.equal(precise.summary.availableApps, 1);
+  assert.ok(Math.abs(precise.summary.platforms[0].rating - expectedNewRating) < 0.001);
+  assert.equal(precise.summary.availableSeries, 1);
+});
+
+test("new-review impact never blends Android, iOS or Huawei and deduplicates a shared Android listing", () => {
+  const html = fs.readFileSync(new URL("../src/Domain.html", import.meta.url), "utf8");
+  const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+  const browser = {};
+  browser.window = browser;
+  vm.createContext(browser);
+  vm.runInContext(script, browser);
+  const snapshot = [
+    { appKey: "ANDROID|ES|BBVA", isBbva: true, volumeScope: "SHARED_LISTING", volumeKey: "ANDROID|shared" },
+    { appKey: "ANDROID|CO|BBVA", isBbva: true, volumeScope: "SHARED_LISTING", volumeKey: "ANDROID|shared" },
+    { appKey: "IOS|ES|BBVA", isBbva: true, volumeScope: "MARKET", volumeKey: "IOS|ES|1" }
+  ];
+  const pair = (appKey, platform, countryCode, country, previousRating, currentRating, previousCount, currentCount) => [
+    { appKey, platform, countryCode, country, isBbva: true, month: "2026-06", ratingEom: previousRating, ratingCountEom: previousCount },
+    { appKey, platform, countryCode, country, isBbva: true, month: "2026-07", ratingEom: currentRating, ratingCountEom: currentCount }
+  ];
+  const trends = [
+    ...pair("ANDROID|ES|BBVA", "Android", "ES", "España", 4.2, 4.25, 100, 120),
+    ...pair("ANDROID|CO|BBVA", "Android", "CO", "Colombia", 4.2, 4.25, 100, 120),
+    ...pair("IOS|ES|BBVA", "iOS", "ES", "España", 3.8, 4.0, 100, 120)
+  ];
+  const global = browser.MarketsDomain.monthlyNewReviewImpact(
+    trends, snapshot, { country: "ALL", platform: "ALL" }, "2026-07");
+  assert.equal(global.rows.length, 2);
+  assert.deepEqual(Array.from(global.rows.map(row => row.platform).sort()), ["Android", "iOS"]);
+  assert.equal(global.rows.find(row => row.platform === "Android").country, "Ficha compartida multipaís");
+  assert.equal(global.rows.find(row => row.platform === "Android").newReviews, 20);
+  assert.equal(global.summary.platforms.find(item => item.platform === "Android").newReviews, 20);
+  assert.equal(global.summary.platforms.find(item => item.platform === "iOS").newReviews, 20);
+  assert.notEqual(global.summary.platforms.find(item => item.platform === "Android").rating,
+    global.summary.platforms.find(item => item.platform === "iOS").rating);
+  const spain = browser.MarketsDomain.monthlyNewReviewImpact(
+    trends, snapshot, { country: "ES", platform: "ALL" }, "2026-07");
+  assert.equal(spain.rows.find(row => row.platform === "Android").available, false);
+  assert.deepEqual(Array.from(spain.rows.find(row => row.platform === "Android").reasons), ["SHARED_LISTING"]);
 });
 
 test("all-markets evolution is BBVA-only and individual markets show the whole market", () => {

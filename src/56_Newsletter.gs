@@ -165,6 +165,15 @@ function marketsPreviousMonthKey_(date) {
   return dateKey_(local).slice(0, 7);
 }
 
+function marketsPeriodBefore_(period) {
+  const parts = String(period || '').split('-');
+  const year = Number(parts[0]);
+  const month = Number(parts[1]);
+  if (!Number.isInteger(year) || month < 1 || month > 12) return '';
+  return month === 1 ? (year - 1) + '-12' :
+    year + '-' + String(month - 1).padStart(2, '0');
+}
+
 function latestMarketsNewsletterPeriod_(ratings, preferences) {
   return (ratings || []).filter(function (item) {
     return item.isBbva && item.observedDate instanceof Date && item.rating !== null &&
@@ -182,6 +191,7 @@ function buildMarketsNewsletterModel_(ratings, catalog, preferences, period, opt
   });
   const volumeMetadata = marketsNewsletterVolumeMetadata_(catalog);
   const year = period.slice(0, 4);
+  const previousPeriod = marketsPeriodBefore_(period);
   const scopedRatings = (ratings || []).filter(function (item) {
     return item.observedDate instanceof Date && item.rating !== null &&
       marketsAlertScopeMatches_(preferences, item) &&
@@ -199,7 +209,10 @@ function buildMarketsNewsletterModel_(ratings, catalog, preferences, period, opt
       return dateKey_(item.observedDate).slice(0, 7) === period;
     });
     if (!monthRows.length) return null;
-    const monthStart = monthRows[0];
+    const previousRows = series.filter(function (item) {
+      return dateKey_(item.observedDate).slice(0, 7) === previousPeriod;
+    });
+    const monthStart = previousRows.length ? previousRows[previousRows.length - 1] : null;
     const end = monthRows[monthRows.length - 1];
     const yearRows = series.filter(function (item) {
       const key = dateKey_(item.observedDate);
@@ -208,20 +221,20 @@ function buildMarketsNewsletterModel_(ratings, catalog, preferences, period, opt
     const yearStart = yearRows[0] || null;
     const metadata = volumeMetadata[app.appKey] || { key: app.appKey, shared: false, markets: 1 };
     const position = marketsNewsletterPosition_(scopedRatings, catalog, app, period);
-    const newReviews = marketsNewsletterCountDelta_(monthStart, end);
+    const newReviews = monthStart ? marketsNewsletterCountDelta_(monthStart, end) : null;
     const volumeAvailable = !metadata.shared;
     return {
       appKey: app.appKey, countryCode: app.countryCode, country: app.country,
-      platform: app.platform, monthStartRating: monthStart.rating, endRating: end.rating,
+      platform: app.platform, monthStartRating: monthStart ? monthStart.rating : null, endRating: end.rating,
       yearStartRating: yearStart ? yearStart.rating : null,
-      monthDelta: round2_(end.rating - monthStart.rating),
+      monthDelta: monthStart ? round2_(end.rating - monthStart.rating) : null,
       yearDelta: yearStart ? round2_(end.rating - yearStart.rating) : null,
       newReviews: volumeAvailable ? newReviews : null,
       volumeAvailable: volumeAvailable, volumeKey: metadata.key,
-      sharedMarkets: metadata.markets, startCount: monthStart.ratingCount,
-      endCount: end.ratingCount, startDate: monthStart.observedDate,
+      sharedMarkets: metadata.markets, startCount: monthStart ? monthStart.ratingCount : null,
+      endCount: end.ratingCount, startDate: monthStart ? monthStart.observedDate : null,
       endDate: end.observedDate, position: position,
-      effect: volumeAvailable ? marketsNewsletterReviewEffect_(monthStart, end) : null
+      effect: volumeAvailable && monthStart ? marketsNewsletterReviewEffect_(monthStart, end) : null
     };
   }).filter(Boolean);
   if (!items.length) throw new Error('No hay cierres BBVA reales para ' + period + ' en el ámbito configurado.');
@@ -234,7 +247,9 @@ function buildMarketsNewsletterModel_(ratings, catalog, preferences, period, opt
   const countries = uniqueStrings_(items.map(function (item) { return item.countryCode; }));
   const allCountries = preferences.countries.indexOf('ALL') >= 0;
   const scopeType = allCountries ? 'ALL' : preferences.countries.length === 1 ? 'SINGLE' : 'MULTI';
+  const reviewEffects = marketsNewsletterReviewEffects_(items, scopeType);
   const totals = marketsNewsletterTotals_(items, scopeType);
+  totals.effects = reviewEffects.length;
   const movements = items.filter(function (item) { return item.monthDelta !== null; })
     .sort(function (a, b) { return b.monthDelta - a.monthDelta; });
   return {
@@ -247,7 +262,7 @@ function buildMarketsNewsletterModel_(ratings, catalog, preferences, period, opt
       platformLabel: preferences.platforms.indexOf('ALL') >= 0 ?
         'Todas las plataformas' : preferences.platforms.join(', ')
     },
-    items: items, totals: totals,
+    items: items, reviewEffects: reviewEffects, totals: totals,
     coverage: {
       observed: criticalCatalog.filter(function (app) { return observedKeys[app.appKey]; }).length,
       expected: criticalCatalog.length,
@@ -322,8 +337,12 @@ function marketsNewsletterReviewEffect_(start, end) {
   const uncertainty = (endCount * marketsNewsletterRatingHalfStep_(endRating) +
     startCount * marketsNewsletterRatingHalfStep_(startRating)) / newReviews;
   if (rating < 1 || rating > 5 || uncertainty > 0.5) return null;
-  return { newReviewRating: Math.round(rating * 100) / 100,
-    ratingImpact: round2_(endRating - startRating), uncertainty: Math.round(uncertainty * 100) / 100 };
+  return {
+    newReviewRating: Math.round(rating * 100) / 100,
+    gapToPreviousRating: round2_(rating - startRating),
+    accumulatedRatingChange: round2_(endRating - startRating),
+    uncertainty: Math.round(uncertainty * 100) / 100
+  };
 }
 
 function marketsNewsletterRatingHalfStep_(rating) {
@@ -331,12 +350,28 @@ function marketsNewsletterRatingHalfStep_(rating) {
 }
 
 function marketsNewsletterTotals_(items, scopeType) {
+  const comparable = (items || []).filter(function (item) {
+    return toFiniteNumber_(item.monthDelta) !== null;
+  });
+  const sharedGroups = (items || []).filter(function (item) {
+    return !item.volumeAvailable;
+  }).reduce(function (out, item) {
+    (out[item.volumeKey] || (out[item.volumeKey] = [])).push(item);
+    return out;
+  }, {});
   const uniqueVolumes = {};
   (items || []).forEach(function (item) {
     let reviews = item.newReviews;
-    if (!item.volumeAvailable && scopeType === 'ALL') {
-      reviews = marketsNewsletterRawCountDelta_(item.startCount, item.endCount);
+    if (!item.volumeAvailable) {
+      const group = sharedGroups[item.volumeKey] || [];
+      const expectedMarkets = group.reduce(function (maximum, candidate) {
+        return Math.max(maximum, Number(candidate.sharedMarkets) || 1);
+      }, 1);
+      if (scopeType === 'ALL' || group.length >= expectedMarkets) {
+        reviews = marketsNewsletterRawCountDelta_(item.startCount, item.endCount);
+      }
     }
+    reviews = toFiniteNumber_(reviews);
     if (reviews === null) return;
     const current = uniqueVolumes[item.volumeKey];
     if (!current || reviews > current.value) {
@@ -349,16 +384,53 @@ function marketsNewsletterTotals_(items, scopeType) {
     return out;
   }, {});
   return {
-    series: items.length,
-    improving: items.filter(function (item) { return item.monthDelta > 0; }).length,
-    declining: items.filter(function (item) { return item.monthDelta < 0; }).length,
-    stable: items.filter(function (item) { return item.monthDelta === 0; }).length,
-    newReviews: Object.keys(uniqueVolumes).length ?
-      Object.keys(uniqueVolumes).reduce(function (sum, key) { return sum + uniqueVolumes[key].value; }, 0) : null,
-    reviewsByPlatform: byPlatform,
-    effects: items.filter(function (item) { return Boolean(item.effect); }).length,
-    scopeType: scopeType
+    series: comparable.length,
+    improving: comparable.filter(function (item) { return item.monthDelta > 0; }).length,
+    declining: comparable.filter(function (item) { return item.monthDelta < 0; }).length,
+    stable: comparable.filter(function (item) { return item.monthDelta === 0; }).length,
+    reviewsByPlatform: byPlatform
   };
+}
+
+function marketsNewsletterReviewEffects_(items, scopeType) {
+  const effects = (items || []).filter(function (item) {
+    return item.volumeAvailable && Boolean(item.effect);
+  }).map(function (item) {
+    return {
+      appKey: item.appKey, country: item.country, platform: item.platform,
+      volumeKey: item.volumeKey, effect: item.effect, shared: false
+    };
+  });
+  const shared = (items || []).filter(function (item) {
+    return !item.volumeAvailable && item.platform === 'Android';
+  }).reduce(function (out, item) {
+    (out[item.volumeKey] || (out[item.volumeKey] = [])).push(item);
+    return out;
+  }, {});
+  Object.keys(shared).forEach(function (volumeKey) {
+    const group = shared[volumeKey];
+    const expectedMarkets = group.reduce(function (maximum, item) {
+      return Math.max(maximum, Number(item.sharedMarkets) || 1);
+    }, 1);
+    if (scopeType !== 'ALL' && group.length < expectedMarkets) return;
+    const signatures = uniqueStrings_(group.map(function (item) {
+      return [item.monthStartRating, item.startCount, item.endRating, item.endCount].join('|');
+    }));
+    if (signatures.length !== 1) return;
+    const first = group[0];
+    const effect = marketsNewsletterReviewEffect_(
+      { rating: first.monthStartRating, ratingCount: first.startCount },
+      { rating: first.endRating, ratingCount: first.endCount });
+    if (!effect) return;
+    effects.push({
+      appKey: volumeKey, country: 'Ficha Android compartida',
+      platform: 'Android', volumeKey: volumeKey, effect: effect, shared: true,
+      markets: uniqueStrings_(group.map(function (item) { return item.country; })).sort()
+    });
+  });
+  return effects.sort(function (a, b) {
+    return compareMarketsPlatforms_(a, b) || trimString_(a.country).localeCompare(trimString_(b.country));
+  });
 }
 
 function marketsNewsletterRawCountDelta_(startCount, endCount) {
@@ -412,6 +484,15 @@ function renderMarketsNewsletterPlainText_(model) {
       (item.newReviews === null ? 'valoraciones N/D' : marketsAlertIntegerLabel_(item.newReviews) + ' valoraciones') +
       ' · ' + marketsNewsletterPositionLabel_(item.position);
   });
+  const effects = (model.reviewEffects || []).map(function (item) {
+    return item.country + ' · ' + item.platform + ': ' +
+      marketsNewsletterRatingLabel_(item.effect.newReviewRating) +
+      '/5 en las nuevas valoraciones · ' +
+      marketsNewsletterSigned_(item.effect.gapToPreviousRating) +
+      ' frente al rating acumulado anterior · el acumulado se mueve ' +
+      marketsNewsletterSigned_(item.effect.accumulatedRatingChange) + ' puntos' +
+      (item.shared ? ' sobre la ficha completa, sin atribución geográfica' : '');
+  });
   return 'MARKET PULSE\nBBVA Banca de Empresas e Instituciones\n\n' +
     (model.isTest ? 'VISTA PREVIA CON DATOS REALES — NO ES UN ENVÍO MENSUAL\n' : '') +
     'Cierre ejecutivo · ' + model.periodLabel + '\n' + marketsNewsletterScopeTitle_(model) + '\n\n' +
@@ -420,6 +501,8 @@ function renderMarketsNewsletterPlainText_(model) {
       model.coverage.observed + ' de ' + model.coverage.expected +
       ' series; se omiten las series sin dato real.' : '') +
     '\n\n' + lines.join('\n') +
+    (effects.length ? '\n\nVOZ NUEVA DEL MES · POR FICHA Y PLATAFORMA\n' +
+      effects.join('\n') : '') +
     '\n\n' + marketsWebAppUrl_();
 }
 
@@ -432,8 +515,11 @@ function renderMarketsNewsletterHtml_(model) {
   const groupHtml = groups.map(function (group) {
     const rows = group.items.map(marketsNewsletterRowHtml_).join('');
     return '<tr><td style="padding:8px 26px 20px;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border:1px solid #CAD1D8;border-radius:10px;overflow:hidden;">' +
-      '<tr><td colspan="2" style="padding:13px 16px;background:#070E46;color:#FFFFFF;font-size:15px;font-weight:700;">' +
-      escapeMarketsAlertHtml_(group.country) + '</td></tr>' + rows + '</table></td></tr>';
+      '<tr><td colspan="2" style="padding:13px 16px;background:#070E46;color:#FFFFFF;">' +
+      '<strong style="display:block;font-size:15px;">' + escapeMarketsAlertHtml_(group.country) +
+      '</strong><span style="display:block;margin-top:4px;color:#85C8FF;font-size:10px;line-height:14px;">' +
+      escapeMarketsAlertHtml_(marketsNewsletterGeographyBrief_(group.items)) +
+      '</span></td></tr>' + rows + '</table></td></tr>';
   }).join('');
   const platformVolumes = Object.keys(model.totals.reviewsByPlatform || {})
     .sort(compareMarketsPlatforms_).map(function (platform) {
@@ -446,14 +532,17 @@ function renderMarketsNewsletterHtml_(model) {
     '<tr><td style="padding:0 26px 18px;"><div style="padding:12px 14px;border-radius:8px;background:#FFF4CC;color:#6B4F00;font-size:12px;line-height:18px;"><strong>Cobertura de cierre: ' +
     escapeMarketsAlertHtml_(model.coverage.observed + ' de ' + model.coverage.expected) +
     ' series.</strong> Las series sin dato real se han omitido; no se han estimado.</div></td></tr>' : '';
-  const effectItems = model.items.filter(function (item) { return Boolean(item.effect); });
+  const effectItems = (model.reviewEffects || []).filter(function (item) { return item.shared; });
   const effects = effectItems.length ? '<tr><td style="padding:4px 26px 22px;"><div style="padding:18px;border-radius:10px;background:#EAFBFA;">' +
-    '<div style="color:#001391;font-size:11px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;">EFECTO ESTIMADO DE LAS NUEVAS VALORACIONES</div>' +
+    '<div style="color:#001391;font-size:11px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;">FICHA ANDROID COMPARTIDA · SIN ATRIBUCIÓN GEOGRÁFICA</div>' +
     effectItems.slice(0, 5).map(function (item) {
       return '<div style="padding-top:11px;color:#46536D;font-size:13px;line-height:19px;"><strong style="color:#070E46;">' +
         escapeMarketsAlertHtml_(item.country + ' · ' + item.platform) + ':</strong> ' +
-        marketsNewsletterRatingLabel_(item.effect.newReviewRating) + '/5 en las nuevas valoraciones · impacto ' +
-        escapeMarketsAlertHtml_(marketsNewsletterSigned_(item.effect.ratingImpact)) + ' puntos.</div>';
+        marketsNewsletterRatingLabel_(item.effect.newReviewRating) + '/5 en las nuevas valoraciones · ' +
+        escapeMarketsAlertHtml_(marketsNewsletterSigned_(item.effect.gapToPreviousRating)) +
+        ' frente al rating acumulado anterior · el acumulado se mueve ' +
+        escapeMarketsAlertHtml_(marketsNewsletterSigned_(item.effect.accumulatedRatingChange)) + ' puntos' +
+        (item.shared ? ' sobre la ficha compartida completa, sin atribución geográfica.' : '.') + '</div>';
     }).join('') + '</div></td></tr>' : '';
   const appUrl = escapeMarketsAlertHtml_(marketsWebAppLoginUrl_(model.configuredFor || ''));
   return '<!doctype html><html><body style="margin:0;background:#F7F8F8;font-family:\'BBVABentonSans\',\'Benton Sans BBVA\',Arial,Helvetica,sans-serif;color:#000519;">' +
@@ -472,14 +561,13 @@ function renderMarketsNewsletterHtml_(model) {
     '<tr><td style="padding:10px 26px 22px;"><table role="presentation" width="100%" cellspacing="8" cellpadding="0"><tr>' +
     marketsNewsletterKpiHtml_('Mejoran', model.totals.improving, 'de ' + model.totals.series + ' series') +
     marketsNewsletterKpiHtml_('Retroceden', model.totals.declining, model.totals.stable + ' estables') +
-    marketsNewsletterKpiHtml_('Valoraciones', model.totals.newReviews === null ? 'N/D' :
-      marketsAlertIntegerLabel_(model.totals.newReviews),
-      model.scope.type === 'ALL' ? 'volumen consolidado' : 'volumen atribuible') +
+    marketsNewsletterKpiHtml_('Voz nueva', model.totals.effects,
+      'fichas con lectura') +
     '</tr></table>' + (platformVolumes ? '<div style="padding:4px 8px 0;color:#46536D;font-size:10px;text-transform:uppercase;">Valoraciones por plataforma</div><div style="padding:8px 8px 0;">' +
       platformVolumes + '</div>' : '') + '</td></tr>' + coverage + groupHtml + effects +
     '<tr><td style="padding:4px 30px 28px;"><table role="presentation" cellspacing="0" cellpadding="0"><tr><td bgcolor="#001391" style="border-radius:8px;"><a href="' +
     appUrl + '" style="display:block;padding:13px 22px;color:#FFFFFF;text-decoration:none;font-weight:700;">Abrir Market Pulse</a></td></tr></table>' +
-    '<p style="margin:16px 0 0;color:#ADB8C2;font-size:10px;line-height:15px;">La lectura ejecutiva se genera exclusivamente a partir de las cifras mostradas. Solo se publican posiciones con cobertura competitiva completa; los volúmenes no atribuibles y los efectos no fiables se presentan como N/D o se omiten.</p></td></tr>' +
+    '<p style="margin:16px 0 0;color:#ADB8C2;font-size:10px;line-height:15px;">La lectura ejecutiva se genera exclusivamente a partir de las cifras mostradas. Ratings y volúmenes de Android, iOS y Huawei nunca se combinan. Solo se publican posiciones con cobertura competitiva completa; los volúmenes no atribuibles y los efectos no fiables se presentan como N/D o se omiten.</p></td></tr>' +
     '<tr><td style="padding:16px 30px;background:#070E46;color:#85C8FF;font-size:11px;line-height:17px;"><strong style="color:#FFFFFF;">Market Pulse</strong><br>BBVA Banca de Empresas e Instituciones · Uso interno.</td></tr>' +
     '</table></td></tr></table></body></html>';
 }
@@ -496,25 +584,74 @@ function marketsNewsletterGroups_(items) {
   });
 }
 
+function marketsNewsletterGeographyBrief_(items) {
+  const comparable = (items || []).filter(function (item) {
+    return toFiniteNumber_(item.monthDelta) !== null;
+  });
+  if (!comparable.length) return 'Sin cierre anterior comparable';
+  if (comparable.length === 1) {
+    return comparable[0].platform + ' · ' +
+      marketsNewsletterSigned_(comparable[0].monthDelta) + ' en el mes';
+  }
+  const improving = comparable.filter(function (item) { return item.monthDelta > 0; }).length;
+  const declining = comparable.filter(function (item) { return item.monthDelta < 0; }).length;
+  const stable = comparable.length - improving - declining;
+  const parts = [];
+  if (improving) parts.push(improving + (improving === 1 ? ' mejora' : ' mejoran'));
+  if (declining) parts.push(declining + (declining === 1 ? ' retrocede' : ' retroceden'));
+  if (stable) parts.push(stable + (stable === 1 ? ' estable' : ' estables'));
+  return marketsNewsletterJoinFacts_(parts) + ' · ' + comparable.length + ' plataformas';
+}
+
 function marketsNewsletterRowHtml_(item) {
   const movementColor = item.monthDelta > 0 ? '#277A3E' : item.monthDelta < 0 ? '#B92A45' : '#46536D';
   const yearColor = item.yearDelta > 0 ? '#277A3E' : item.yearDelta < 0 ? '#B92A45' : '#46536D';
   const volume = item.newReviews === null ? (item.volumeAvailable ? 'N/D' : 'No atribuible') :
     marketsAlertIntegerLabel_(item.newReviews);
-  return '<tr><td style="width:28%;padding:16px;border-top:1px solid #E2E6EA;vertical-align:top;"><strong style="display:block;color:#070E46;font-size:15px;">' +
+  const row = '<tr><td style="width:28%;padding:16px;border-top:1px solid #E2E6EA;vertical-align:top;"><strong style="display:block;color:#070E46;font-size:15px;">' +
     escapeMarketsAlertHtml_(item.platform) + '</strong><span style="display:block;margin-top:10px;color:#46536D;font-size:9px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;">Posición competitiva</span>' +
     '<span style="display:block;margin-top:3px;color:#070E46;font-size:12px;line-height:17px;">' +
     escapeMarketsAlertHtml_(marketsNewsletterPositionLabel_(item.position)) + '</span></td>' +
     '<td style="padding:16px;border-top:1px solid #E2E6EA;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr>' +
     marketsNewsletterMiniCell_('Inicio de año', marketsNewsletterRatingLabel_(item.yearStartRating), '', '#46536D') +
-    marketsNewsletterMiniCell_('Inicio de mes', marketsNewsletterRatingLabel_(item.monthStartRating), '', '#46536D') +
+    marketsNewsletterMiniCell_('Cierre anterior', marketsNewsletterRatingLabel_(item.monthStartRating), '', '#46536D') +
     marketsNewsletterMiniCell_('Cierre', marketsNewsletterRatingLabel_(item.endRating), '', movementColor) +
     '</tr></table><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-top:12px;border-radius:8px;background:#F7F8F8;"><tr>' +
-    marketsNewsletterContextCell_('Variación mensual', marketsNewsletterSigned_(item.monthDelta), 'vs. inicio de mes', movementColor) +
+    marketsNewsletterContextCell_('Variación mensual', marketsNewsletterSigned_(item.monthDelta), 'vs. cierre anterior', movementColor) +
     marketsNewsletterContextCell_('Variación anual', marketsNewsletterSigned_(item.yearDelta), 'vs. inicio de año', yearColor) +
     marketsNewsletterContextCell_('Nuevas valoraciones', volume,
       item.volumeAvailable ? 'recibidas en el mes' : 'ficha compartida', '#001391') +
     '</tr></table></td></tr>';
+  return row + marketsNewsletterVoiceRowHtml_(item);
+}
+
+function marketsNewsletterVoiceRowHtml_(item) {
+  if (!item.effect) return '';
+  const tone = item.effect.gapToPreviousRating > 0.005 ? '#277A3E' :
+    item.effect.gapToPreviousRating < -0.005 ? '#B92A45' : '#46536D';
+  return '<tr><td colspan="2" style="padding:0 16px 16px;border-top:0;">' +
+    '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-left:4px solid #2DCCCD;border-radius:8px;background:#EAFBFA;">' +
+    '<tr><td colspan="3" style="padding:10px 12px 4px;color:#001391;font-size:9px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;">VOZ NUEVA DEL MES · MISMA FICHA Y PLATAFORMA</td></tr><tr>' +
+    marketsNewsletterVoiceCell_('Punto de partida',
+      marketsNewsletterRatingLabel_(item.monthStartRating), 'rating acumulado anterior', '#070E46') +
+    marketsNewsletterVoiceCell_('Qué ha pasado',
+      marketsNewsletterRatingLabel_(item.effect.newReviewRating) + '/5',
+      marketsAlertIntegerLabel_(item.newReviews) + ' nuevas valoraciones', tone) +
+    marketsNewsletterVoiceCell_('Reflejo en el market',
+      marketsNewsletterRatingLabel_(item.endRating),
+      marketsNewsletterSigned_(item.effect.accumulatedRatingChange) + ' en el acumulado', tone) +
+    '</tr><tr><td colspan="3" style="padding:3px 12px 10px;color:#46536D;font-size:9px;line-height:13px;">La voz nueva se sitúa <strong style="color:' +
+    tone + ';">' + escapeMarketsAlertHtml_(marketsNewsletterSigned_(item.effect.gapToPreviousRating)) +
+    '</strong> frente al rating acumulado anterior.</td></tr></table></td></tr>';
+}
+
+function marketsNewsletterVoiceCell_(label, value, note, color) {
+  return '<td style="width:33.33%;padding:6px 12px 8px;vertical-align:top;">' +
+    '<span style="display:block;color:#46536D;font-size:8px;text-transform:uppercase;">' +
+    escapeMarketsAlertHtml_(label) + '</span><strong style="display:block;margin-top:3px;color:' +
+    color + ';font-size:15px;">' + escapeMarketsAlertHtml_(value) +
+    '</strong><small style="display:block;margin-top:2px;color:#6B7280;font-size:8px;line-height:11px;">' +
+    escapeMarketsAlertHtml_(note) + '</small></td>';
 }
 
 function marketsNewsletterMiniCell_(label, value, note, color) {
@@ -556,6 +693,12 @@ function marketsNewsletterExecutiveBrief_(model) {
   const unit = single ? 'plataforma' : 'serie';
   const subject = single ? model.scope.countryLabel :
     model.scope.type === 'MULTI' ? 'El perímetro seleccionado' : 'La visión global de BBVA Empresas';
+  if (!totals.series) {
+    return {
+      headline: subject + ' no dispone de un cierre anterior comparable.',
+      summary: 'El cierre actual se muestra con datos reales, pero no se calculan variaciones ni la nota de las nuevas valoraciones sin dos cierres mensuales consecutivos.'
+    };
+  }
   let headline = '';
   if (totals.series === 1 && model.items.length === 1) {
     const only = model.items[0];
@@ -609,16 +752,20 @@ function marketsNewsletterExecutiveBrief_(model) {
         totals.stable, unit, totals.stable === 1 ? 'permanece estable' : 'permanecen estables'));
       if (movementParts.length) facts.push(marketsNewsletterJoinFacts_(movementParts) + '.');
     }
-    if (model.strongest && model.strongest.monthDelta > 0 && totals.improving) {
-      facts.push(marketsNewsletterItemLabel_(model.strongest, model) +
-        ' marca el mejor comportamiento (' + marketsNewsletterSigned_(model.strongest.monthDelta) + ').');
-    }
-    if (model.weakest && model.weakest.monthDelta < 0 && totals.declining) {
-      facts.push(marketsNewsletterItemLabel_(model.weakest, model) +
-        ' concentra el ajuste más relevante (' + marketsNewsletterSigned_(model.weakest.monthDelta) + ').');
+    const strongest = model.strongest && model.strongest.monthDelta > 0 ? model.strongest : null;
+    const weakest = model.weakest && model.weakest.monthDelta < 0 ? model.weakest : null;
+    const principal = !strongest ? weakest : !weakest ? strongest :
+      Math.abs(weakest.monthDelta) >= Math.abs(strongest.monthDelta) ? weakest : strongest;
+    if (principal) {
+      facts.push(marketsNewsletterItemLabel_(principal, model) +
+        (principal.monthDelta < 0 ? ' concentra el ajuste más relevante (' :
+          ' marca el avance más relevante (') +
+        marketsNewsletterSigned_(principal.monthDelta) + ').');
     }
   }
 
+  const voiceContext = marketsNewsletterVoiceContext_(model);
+  if (voiceContext) facts.push(voiceContext);
   const yearContext = marketsNewsletterYearContext_(model);
   if (yearContext) facts.push(yearContext);
   const positionContext = marketsNewsletterPositionContext_(model);
@@ -684,18 +831,62 @@ function marketsNewsletterPositionContext_(model) {
 }
 
 function marketsNewsletterVolumeContext_(model) {
-  const total = toFiniteNumber_(model.totals && model.totals.newReviews);
-  if (total === null || total <= 0) return '';
-  const byPlatform = model.totals.reviewsByPlatform || {};
+  const byPlatform = model.totals && model.totals.reviewsByPlatform || {};
   const platforms = Object.keys(byPlatform).filter(function (platform) {
     return toFiniteNumber_(byPlatform[platform]) !== null && byPlatform[platform] > 0;
-  }).sort(function (a, b) { return byPlatform[b] - byPlatform[a]; });
-  let text = 'El mes suma ' + marketsAlertIntegerLabel_(total) + ' nuevas valoraciones';
-  if (platforms.length > 1 && byPlatform[platforms[0]] / total >= 0.5) {
-    text += ', concentradas principalmente en ' + platforms[0] + ' (' +
-      Math.round(byPlatform[platforms[0]] / total * 100) + '%)';
+  }).sort(compareMarketsPlatforms_);
+  if (!platforms.length) return '';
+  const facts = platforms.map(function (platform) {
+    return platform + ' registra ' + marketsAlertIntegerLabel_(byPlatform[platform]) +
+      ' nuevas valoraciones';
+  });
+  const joined = facts.length < 2 ? facts[0] :
+    facts.length === 2 ? facts[0] + ' y ' + facts[1] :
+      facts.slice(0, -1).join(', ') + ' y ' + facts[facts.length - 1];
+  return 'Volumen separado por plataforma: ' + joined + '.';
+}
+
+function marketsNewsletterVoiceContext_(model) {
+  const effects = (model.reviewEffects || []).filter(function (item) {
+    return item.effect && toFiniteNumber_(item.effect.newReviewRating) !== null;
+  });
+  if (!effects.length) return '';
+  if (effects.length === 1) {
+    const item = effects[0];
+    const label = model.scope.type === 'SINGLE' && !item.shared ?
+      item.platform : item.country + ' · ' + item.platform;
+    return 'Voz nueva en ' + label + ': ' +
+      marketsNewsletterRatingLabel_(item.effect.newReviewRating) + '/5, ' +
+      marketsNewsletterSigned_(item.effect.gapToPreviousRating) +
+      ' frente al rating previo; el acumulado se mueve ' +
+      marketsNewsletterSigned_(item.effect.accumulatedRatingChange) + '.';
   }
-  return text + '.';
+  const positive = effects.filter(function (item) {
+    return item.effect.gapToPreviousRating > 0.005;
+  }).length;
+  const negative = effects.filter(function (item) {
+    return item.effect.gapToPreviousRating < -0.005;
+  }).length;
+  const notable = effects.slice().sort(function (a, b) {
+    return Math.abs(b.effect.accumulatedRatingChange) -
+      Math.abs(a.effect.accumulatedRatingChange);
+  })[0];
+  const positivePhrase = positive + (positive === 1 ? ' impulsa' : ' impulsan');
+  const negativePhrase = negative + (negative === 1 ? ' presiona' : ' presionan');
+  const balance = positive && negative ?
+    positivePhrase + ' y ' + negativePhrase :
+    positive ? positivePhrase + ' el rating' :
+      negative ? negativePhrase + ' el rating' :
+        'sin diferencias relevantes frente al rating previo';
+  const unit = model.scope.type === 'SINGLE' ? 'plataforma' : 'ficha';
+  const notableLabel = model.scope.type === 'SINGLE' && !notable.shared ?
+    notable.platform : notable.shared ? notable.country :
+      notable.country + ' · ' + notable.platform;
+  return 'Voz nueva: ' + balance + ' entre ' + effects.length +
+    ' ' + unit + (effects.length === 1 ? '' : 's') +
+    ' calculables. El mayor reflejo en el acumulado está en ' +
+    notableLabel +
+    ' (' + marketsNewsletterSigned_(notable.effect.accumulatedRatingChange) + ').';
 }
 
 function marketsNewsletterPositionLabel_(position) {

@@ -128,29 +128,39 @@
     function monthlyNewReviewImpact(trends,snapshot,selection,period){
       const previousPeriod=previousCalendarMonth(period),metadata=new Map((snapshot||[]).filter(row=>row.isBbva).map(row=>[row.appKey,row]));
       const scoped=(trends||[]).filter(row=>row.isBbva&&(selection.country==="ALL"||row.countryCode===selection.country)&&(selection.platform==="ALL"||row.platform===selection.platform));
-      const byApp=groupBy(scoped,row=>row.appKey),items=[];
+      const byApp=groupBy(scoped,row=>row.appKey),rawItems=[];
       Object.values(byApp).forEach(appRows=>{
         const current=appRows.find(row=>row.month===period),previous=appRows.find(row=>row.month===previousPeriod);
         if(!current)return;
-        const meta=metadata.get(current.appKey)||{},base={countryCode:current.countryCode,country:config.countries[current.countryCode]||current.country||current.countryCode,platform:current.platform,previousRating:previous?.ratingEom};
-        if(meta.volumeScope==="SHARED_LISTING"){items.push({...base,available:false,reason:"SHARED_LISTING"});return}
-        if(!previous||![current.ratingEom,current.ratingCountEom,previous.ratingEom,previous.ratingCountEom].every(finite)){items.push({...base,available:false,reason:"MISSING_BASE"});return}
+        const meta=metadata.get(current.appKey)||{},base={appKey:current.appKey,volumeKey:meta.volumeKey||current.appKey,volumeScope:meta.volumeScope||"MARKET",countryCode:current.countryCode,country:config.countries[current.countryCode]||current.country||current.countryCode,platform:current.platform,previousRating:previous?.ratingEom,currentRating:current.ratingEom,rating:null,newReviews:null,impact:null,confidence:"NONE"};
+        if(meta.volumeScope==="SHARED_LISTING"&&selection.country!=="ALL"){rawItems.push({...base,available:false,reason:"SHARED_LISTING"});return}
+        if(!previous||![current.ratingEom,current.ratingCountEom,previous.ratingEom,previous.ratingCountEom].every(finite)){rawItems.push({...base,available:false,reason:"MISSING_BASE"});return}
         const newReviews=current.ratingCountEom-previous.ratingCountEom;
-        if(!(newReviews>0)){items.push({...base,available:false,reason:"NO_NEW_REVIEWS"});return}
+        const inputSignature=[previous.ratingEom,previous.ratingCountEom,current.ratingEom,current.ratingCountEom].join("|");
+        if(!(newReviews>0)){rawItems.push({...base,inputSignature,available:false,reason:"NO_NEW_REVIEWS"});return}
         const rating=(current.ratingCountEom*current.ratingEom-previous.ratingCountEom*previous.ratingEom)/newReviews;
         const currentHalfStep=ratingRoundingHalfStep(current.ratingEom,current.platform),previousHalfStep=ratingRoundingHalfStep(previous.ratingEom,previous.platform);
         const roundingUncertainty=(current.ratingCountEom*currentHalfStep+previous.ratingCountEom*previousHalfStep)/newReviews;
-        if(!finite(rating)||rating<1||rating>5||roundingUncertainty>.5){items.push({...base,newReviews,available:false,reason:"ROUNDING"});return}
-        items.push({...base,newReviews,rating,available:true,confidence:roundingUncertainty<=.1?"HIGH":roundingUncertainty<=.25?"MEDIUM":"INDICATIVE"});
+        if(!finite(rating)||rating<1||rating>5||roundingUncertainty>.5){rawItems.push({...base,inputSignature,newReviews,available:false,reason:"ROUNDING"});return}
+        rawItems.push({...base,inputSignature,newReviews,rating,impact:rating-previous.ratingEom,available:true,confidence:roundingUncertainty<=.1?"HIGH":roundingUncertainty<=.25?"MEDIUM":"INDICATIVE"});
       });
-      const effectiveItems=items.filter(item=>isCriticalPlatform(item.platform)||item.available);
-      const countries=Object.values(groupBy(effectiveItems,item=>item.countryCode)).map(countryItems=>{
-        const valid=countryItems.filter(item=>item.available),usableNewReviews=sum(valid.map(item=>item.newReviews)),observedNewReviews=sum(countryItems.filter(item=>finite(item.newReviews)&&item.newReviews>0).map(item=>item.newReviews)),rating=usableNewReviews?sum(valid.map(item=>item.rating*item.newReviews))/usableNewReviews:null,referenceRating=usableNewReviews?sum(valid.map(item=>item.previousRating*item.newReviews))/usableNewReviews:null;
-        const reasons=[...new Set(countryItems.filter(item=>!item.available).map(item=>item.reason))];
-        return{countryCode:countryItems[0].countryCode,country:countryItems[0].country,platforms:[...new Set(valid.map(item=>item.platform))],rating,newReviews:observedNewReviews,usableNewReviews,impact:finite(rating)&&finite(referenceRating)?rating-referenceRating:null,reasons,confidence:valid.some(item=>item.confidence==="INDICATIVE")?"INDICATIVE":valid.some(item=>item.confidence==="MEDIUM")?"MEDIUM":valid.length?"HIGH":"NONE"};
-      }).sort((a,b)=>Number(finite(b.rating))-Number(finite(a.rating))||(a.impact??0)-(b.impact??0)||b.newReviews-a.newReviews||a.country.localeCompare(b.country,"es"));
-      const validItems=effectiveItems.filter(item=>item.available),newReviews=sum(validItems.map(item=>item.newReviews)),rating=newReviews?sum(validItems.map(item=>item.rating*item.newReviews))/newReviews:null,referenceRating=newReviews?sum(validItems.map(item=>item.previousRating*item.newReviews))/newReviews:null;
-      return{period,previousPeriod,rows:countries,summary:{rating,newReviews,impact:finite(rating)&&finite(referenceRating)?rating-referenceRating:null,improving:countries.filter(row=>finite(row.impact)&&row.impact>.005).length,pressuring:countries.filter(row=>finite(row.impact)&&row.impact<-.005).length,availableApps:validItems.length,totalApps:effectiveItems.length}};
+      let items=rawItems;
+      if(selection.country==="ALL"){
+        const independent=rawItems.filter(item=>item.volumeScope!=="SHARED_LISTING"),shared=groupBy(rawItems.filter(item=>item.volumeScope==="SHARED_LISTING"),item=>item.volumeKey);
+        items=independent.concat(Object.values(shared).map(group=>{
+          const first=group[0],countries=[...new Set(group.map(item=>item.country))].sort((a,b)=>a.localeCompare(b,"es")),consistent=new Set(group.map(item=>item.inputSignature)).size===1;
+          return{...first,appKey:first.volumeKey,countryCode:"SHARED",country:"Ficha compartida multipaís",scopeLabel:countries.join(" · "),sharedMarkets:countries,available:consistent&&first.available,reason:consistent?first.reason:"SHARED_CONFLICT"};
+        }));
+      }
+      const rows=items.filter(item=>isCriticalPlatform(item.platform)||item.available).map(item=>({...item,reasons:item.available?[]:[item.reason]})).sort((a,b)=>{
+        const countryOrder=a.country.localeCompare(b.country,"es");return countryOrder||config.platforms.indexOf(a.platform)-config.platforms.indexOf(b.platform)||a.appKey.localeCompare(b.appKey);
+      });
+      const platformSummaries=config.platforms.map(platform=>{
+        const platformRows=rows.filter(item=>item.platform===platform),valid=platformRows.filter(item=>item.available),newReviews=sum(valid.map(item=>item.newReviews)),rating=newReviews?sum(valid.map(item=>item.rating*item.newReviews))/newReviews:null,referenceRating=newReviews?sum(valid.map(item=>item.previousRating*item.newReviews))/newReviews:null;
+        return{platform,rating,newReviews,impact:finite(rating)&&finite(referenceRating)?rating-referenceRating:null,availableSeries:valid.length,totalSeries:platformRows.length};
+      }).filter(item=>item.totalSeries);
+      const validItems=rows.filter(item=>item.available);
+      return{period,previousPeriod,rows,summary:{platforms:platformSummaries,improvingSeries:validItems.filter(row=>row.impact>.005).length,pressuringSeries:validItems.filter(row=>row.impact<-.005).length,stableSeries:validItems.filter(row=>Math.abs(row.impact)<=.005).length,availableSeries:validItems.length,totalSeries:rows.length}};
     }
     function exclusiveScopeSelection(values,changedValue,checked){
       const selected=[...new Set((values||[]).filter(Boolean))];
