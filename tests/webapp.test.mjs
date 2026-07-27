@@ -383,6 +383,9 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(charts, /<\/span><b aria-label="Rating/);
   assert.match(charts, /function monthlyMatrix/);
   assert.match(charts, /function newReviewImpact/);
+  assert.match(charts, /validPlatforms=platformModels\.filter\(item=>finite\(item\.rating\)\)/);
+  assert.match(charts, /platformCards=validPlatforms\.map/);
+  assert.match(charts, /class="new-review-unavailable"/);
   assert.doesNotMatch(charts, /platformBadge/);
   assert.match(app, /const mobileViewport=window\.matchMedia\("\(max-width:780px\)"\)/);
   assert.match(app, /monthlyRatingMatrix\(state\.trends,state\.snapshot,selection\(\),period,mobileViewport\.matches\?3:6\)/);

@@ -84,15 +84,15 @@ test("single-country newsletter uses real closes, reliable review effect and com
   assert.equal(model.items[0].effect.accumulatedRatingChange, 0.1);
   const brief = context.marketsNewsletterExecutiveBrief_(model);
   assert.equal(brief.headline, "iOS cierra el mes al alza en España.");
-  assert.match(brief.summary, /iOS avanza de 4,11 a 4,21 \(\+0,10\)/);
   assert.match(brief.summary,
-    /Voz nueva en iOS: 4,81\/5, \+0,70 frente al rating previo; el acumulado se mueve \+0,10/);
+    /La voz nueva se sitúa por encima del rating previo y refuerza el cierre/);
+  assert.doesNotMatch(brief.summary, /4,11|4,21|4,81|20 nuevas valoraciones/);
   const html = context.renderMarketsNewsletterHtml_(model);
   assert.match(html, /España · Todas las plataformas|España · iOS/);
-  assert.match(html, /VOZ NUEVA DEL MES · MISMA FICHA Y PLATAFORMA/);
-  assert.match(html, /Punto de partida[\s\S]*4,11[\s\S]*Qué ha pasado[\s\S]*4,81\/5/);
-  assert.match(html, /Reflejo en el market[\s\S]*4,21[\s\S]*\+0,10 en el acumulado/);
-  assert.match(html, /\+0,70[\s\S]*frente al rating acumulado anterior/);
+  assert.match(html, /Cierre anterior[\s\S]*4,11[\s\S]*Voz nueva[\s\S]*4,81\/5/);
+  assert.match(html, /Cierre[\s\S]*4,21[\s\S]*\+0,10 en el mes/);
+  assert.match(html, /La voz nueva queda \+0,70 frente al rating acumulado anterior/);
+  assert.doesNotMatch(html, /Valoraciones por plataforma/);
   assert.match(html, /Ratings y volúmenes de Android, iOS y Huawei nunca se combinan/);
   assert.match(html, /2\.ª posición entre 2 bancos/);
   assert.doesNotMatch(html, /mock|simulad/i);
@@ -138,10 +138,9 @@ test("competitive position and rating changes use explicit director-friendly lab
   });
   assert.match(html, /Posición competitiva/);
   assert.match(html, /2\.ª posición entre 5 bancos/);
-  assert.match(html, /Inicio de año[\s\S]*4,54[\s\S]*Cierre anterior[\s\S]*4,24[\s\S]*Cierre[\s\S]*4,20/);
-  assert.match(html, /Variación mensual[\s\S]*-0,04[\s\S]*vs\. cierre anterior/);
-  assert.match(html, /Variación anual[\s\S]*-0,34[\s\S]*vs\. inicio de año/);
-  assert.match(html, /Nuevas valoraciones[\s\S]*397[\s\S]*recibidas en el mes/);
+  assert.match(html, /Cierre anterior[\s\S]*4,24[\s\S]*Actividad del mes[\s\S]*397[\s\S]*Cierre[\s\S]*4,20/);
+  assert.match(html, /-0,04 en el mes/);
+  assert.match(html, /Desde inicio de año: -0,34 \(partía de 4,54\)/);
   assert.doesNotMatch(html, /frente a banca/);
 });
 
@@ -241,7 +240,7 @@ test("multi-market newsletter has a distinct executive scope and hides shared An
   assert.match(html, /No atribuible/);
   assert.match(html, /ficha compartida/);
   assert.match(context.marketsNewsletterExecutiveBrief_(model).summary,
-    /Voz nueva en España · iOS/);
+    /En España · iOS, la voz nueva/);
   assert.doesNotMatch(context.marketsNewsletterExecutiveBrief_(model).summary,
     /Voz nueva en iOS:/);
 });
@@ -257,7 +256,7 @@ test("global newsletter is deduplicated and only exposes defensible effects", ()
   });
   assert.match(context.marketsNewsletterExecutiveNarrative_(model), /visión global/i);
   assert.match(context.marketsNewsletterExecutiveBrief_(model).summary,
-    /Voz nueva en España · iOS/);
+    /En España · iOS, la voz nueva/);
   assert.match(context.renderMarketsNewsletterHtml_(model), /Cobertura de cierre: 2 de 3/);
 });
 
@@ -320,7 +319,7 @@ test("every geography renders Android, iOS and then Huawei only when data exists
 
   const model = {
     isTest: true, configuredFor: "director@bbva.com", periodLabel: "julio 2026",
-    scope: { type: "SINGLE", countryLabel: "España", platformLabel: "Todas las plataformas" },
+    scope: { type: "ALL", countries: ["ES"], countryLabel: "", platformLabel: "Todas las plataformas" },
     items: [item("Huawei"), item("iOS"), item("Android")],
     totals: {
       series: 3, improving: 3, declining: 0, stable: 0, effects: 0,

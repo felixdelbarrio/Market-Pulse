@@ -476,15 +476,23 @@ function marketsNewsletterEmailMessage_(recipient, model, inlineImages, sender) 
 function renderMarketsNewsletterPlainText_(model) {
   const brief = marketsNewsletterExecutiveBrief_(model);
   const lines = model.items.map(function (item) {
-    return [item.country, item.platform].join(' · ') + ': ' +
-      marketsNewsletterRatingLabel_(item.monthStartRating) + ' → ' +
+    const volume = item.newReviews === null ? 'actividad N/D' :
+      marketsAlertIntegerLabel_(item.newReviews) + ' nuevas valoraciones';
+    const story = item.effect ?
+      marketsNewsletterRatingLabel_(item.monthStartRating) + ' → voz nueva ' +
+      marketsNewsletterRatingLabel_(item.effect.newReviewRating) + '/5 (' + volume +
+      ') → cierre ' + marketsNewsletterRatingLabel_(item.endRating) + ' (' +
+      marketsNewsletterSigned_(item.monthDelta) + ')' :
+      marketsNewsletterRatingLabel_(item.monthStartRating) + ' → cierre ' +
       marketsNewsletterRatingLabel_(item.endRating) + ' (' +
-      marketsNewsletterSigned_(item.monthDelta) + ' mes; ' +
-      marketsNewsletterSigned_(item.yearDelta) + ' año) · ' +
-      (item.newReviews === null ? 'valoraciones N/D' : marketsAlertIntegerLabel_(item.newReviews) + ' valoraciones') +
+      marketsNewsletterSigned_(item.monthDelta) + ') · ' + volume;
+    return [item.country, item.platform].join(' · ') + ': ' + story +
+      ' · año ' + marketsNewsletterSigned_(item.yearDelta) +
       ' · ' + marketsNewsletterPositionLabel_(item.position);
   });
-  const effects = (model.reviewEffects || []).map(function (item) {
+  const effects = (model.reviewEffects || []).filter(function (item) {
+    return item.shared;
+  }).map(function (item) {
     return item.country + ' · ' + item.platform + ': ' +
       marketsNewsletterRatingLabel_(item.effect.newReviewRating) +
       '/5 en las nuevas valoraciones · ' +
@@ -514,12 +522,13 @@ function renderMarketsNewsletterHtml_(model) {
     '<tr><td style="padding:12px 24px;background:#FFE761;color:#070E46;font-size:12px;font-weight:700;text-align:center;">VISTA PREVIA · DATOS REALES · NO ES UN ENVÍO MENSUAL</td></tr>' : '';
   const groupHtml = groups.map(function (group) {
     const rows = group.items.map(marketsNewsletterRowHtml_).join('');
+    const geographyBrief = model.scope.type === 'SINGLE' ? '' :
+      '<span style="display:block;margin-top:4px;color:#85C8FF;font-size:10px;line-height:14px;">' +
+      escapeMarketsAlertHtml_(marketsNewsletterGeographyBrief_(group.items)) + '</span>';
     return '<tr><td style="padding:8px 26px 20px;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border:1px solid #CAD1D8;border-radius:10px;overflow:hidden;">' +
       '<tr><td colspan="2" style="padding:13px 16px;background:#070E46;color:#FFFFFF;">' +
       '<strong style="display:block;font-size:15px;">' + escapeMarketsAlertHtml_(group.country) +
-      '</strong><span style="display:block;margin-top:4px;color:#85C8FF;font-size:10px;line-height:14px;">' +
-      escapeMarketsAlertHtml_(marketsNewsletterGeographyBrief_(group.items)) +
-      '</span></td></tr>' + rows + '</table></td></tr>';
+      '</strong>' + geographyBrief + '</td></tr>' + rows + '</table></td></tr>';
   }).join('');
   const platformVolumes = Object.keys(model.totals.reviewsByPlatform || {})
     .sort(compareMarketsPlatforms_).map(function (platform) {
@@ -563,7 +572,7 @@ function renderMarketsNewsletterHtml_(model) {
     marketsNewsletterKpiHtml_('Retroceden', model.totals.declining, model.totals.stable + ' estables') +
     marketsNewsletterKpiHtml_('Voz nueva', model.totals.effects,
       'fichas con lectura') +
-    '</tr></table>' + (platformVolumes ? '<div style="padding:4px 8px 0;color:#46536D;font-size:10px;text-transform:uppercase;">Valoraciones por plataforma</div><div style="padding:8px 8px 0;">' +
+    '</tr></table>' + (model.scope.type !== 'SINGLE' && platformVolumes ? '<div style="padding:4px 8px 0;color:#46536D;font-size:10px;text-transform:uppercase;">Valoraciones por plataforma</div><div style="padding:8px 8px 0;">' +
       platformVolumes + '</div>' : '') + '</td></tr>' + coverage + groupHtml + effects +
     '<tr><td style="padding:4px 30px 28px;"><table role="presentation" cellspacing="0" cellpadding="0"><tr><td bgcolor="#001391" style="border-radius:8px;"><a href="' +
     appUrl + '" style="display:block;padding:13px 22px;color:#FFFFFF;text-decoration:none;font-weight:700;">Abrir Market Pulse</a></td></tr></table>' +
@@ -605,66 +614,42 @@ function marketsNewsletterGeographyBrief_(items) {
 
 function marketsNewsletterRowHtml_(item) {
   const movementColor = item.monthDelta > 0 ? '#277A3E' : item.monthDelta < 0 ? '#B92A45' : '#46536D';
-  const yearColor = item.yearDelta > 0 ? '#277A3E' : item.yearDelta < 0 ? '#B92A45' : '#46536D';
   const volume = item.newReviews === null ? (item.volumeAvailable ? 'N/D' : 'No atribuible') :
     marketsAlertIntegerLabel_(item.newReviews);
-  const row = '<tr><td style="width:28%;padding:16px;border-top:1px solid #E2E6EA;vertical-align:top;"><strong style="display:block;color:#070E46;font-size:15px;">' +
+  const voice = item.effect || null;
+  const voiceColor = !voice ? '#001391' : voice.gapToPreviousRating > 0.005 ?
+    '#277A3E' : voice.gapToPreviousRating < -0.005 ? '#B92A45' : '#46536D';
+  const middleLabel = voice ? 'Voz nueva' : 'Actividad del mes';
+  const middleValue = voice ? marketsNewsletterRatingLabel_(voice.newReviewRating) + '/5' : volume;
+  const middleNote = voice ? volume + ' nuevas valoraciones' :
+    item.volumeAvailable ? 'nuevas valoraciones' : 'ficha compartida';
+  const annual = item.yearStartRating === null || item.yearDelta === null ? '' :
+    'Desde inicio de año: ' + marketsNewsletterSigned_(item.yearDelta) +
+    ' (partía de ' + marketsNewsletterRatingLabel_(item.yearStartRating) + ').';
+  const voiceGap = voice ? ' La voz nueva queda ' +
+    marketsNewsletterSigned_(voice.gapToPreviousRating) +
+    ' frente al rating acumulado anterior.' : '';
+  return '<tr><td style="width:27%;padding:16px;border-top:1px solid #E2E6EA;vertical-align:top;"><strong style="display:block;color:#070E46;font-size:15px;">' +
     escapeMarketsAlertHtml_(item.platform) + '</strong><span style="display:block;margin-top:10px;color:#46536D;font-size:9px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;">Posición competitiva</span>' +
     '<span style="display:block;margin-top:3px;color:#070E46;font-size:12px;line-height:17px;">' +
     escapeMarketsAlertHtml_(marketsNewsletterPositionLabel_(item.position)) + '</span></td>' +
-    '<td style="padding:16px;border-top:1px solid #E2E6EA;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr>' +
-    marketsNewsletterMiniCell_('Inicio de año', marketsNewsletterRatingLabel_(item.yearStartRating), '', '#46536D') +
-    marketsNewsletterMiniCell_('Cierre anterior', marketsNewsletterRatingLabel_(item.monthStartRating), '', '#46536D') +
-    marketsNewsletterMiniCell_('Cierre', marketsNewsletterRatingLabel_(item.endRating), '', movementColor) +
-    '</tr></table><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-top:12px;border-radius:8px;background:#F7F8F8;"><tr>' +
-    marketsNewsletterContextCell_('Variación mensual', marketsNewsletterSigned_(item.monthDelta), 'vs. cierre anterior', movementColor) +
-    marketsNewsletterContextCell_('Variación anual', marketsNewsletterSigned_(item.yearDelta), 'vs. inicio de año', yearColor) +
-    marketsNewsletterContextCell_('Nuevas valoraciones', volume,
-      item.volumeAvailable ? 'recibidas en el mes' : 'ficha compartida', '#001391') +
-    '</tr></table></td></tr>';
-  return row + marketsNewsletterVoiceRowHtml_(item);
-}
-
-function marketsNewsletterVoiceRowHtml_(item) {
-  if (!item.effect) return '';
-  const tone = item.effect.gapToPreviousRating > 0.005 ? '#277A3E' :
-    item.effect.gapToPreviousRating < -0.005 ? '#B92A45' : '#46536D';
-  return '<tr><td colspan="2" style="padding:0 16px 16px;border-top:0;">' +
-    '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-left:4px solid #2DCCCD;border-radius:8px;background:#EAFBFA;">' +
-    '<tr><td colspan="3" style="padding:10px 12px 4px;color:#001391;font-size:9px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;">VOZ NUEVA DEL MES · MISMA FICHA Y PLATAFORMA</td></tr><tr>' +
-    marketsNewsletterVoiceCell_('Punto de partida',
-      marketsNewsletterRatingLabel_(item.monthStartRating), 'rating acumulado anterior', '#070E46') +
-    marketsNewsletterVoiceCell_('Qué ha pasado',
-      marketsNewsletterRatingLabel_(item.effect.newReviewRating) + '/5',
-      marketsAlertIntegerLabel_(item.newReviews) + ' nuevas valoraciones', tone) +
-    marketsNewsletterVoiceCell_('Reflejo en el market',
+    '<td style="padding:16px;border-top:1px solid #E2E6EA;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-radius:8px;background:#F7F8F8;"><tr>' +
+    marketsNewsletterStoryCell_('Cierre anterior',
+      marketsNewsletterRatingLabel_(item.monthStartRating), 'punto de partida', '#46536D') +
+    marketsNewsletterStoryCell_(middleLabel, middleValue, middleNote, voiceColor) +
+    marketsNewsletterStoryCell_('Cierre',
       marketsNewsletterRatingLabel_(item.endRating),
-      marketsNewsletterSigned_(item.effect.accumulatedRatingChange) + ' en el acumulado', tone) +
-    '</tr><tr><td colspan="3" style="padding:3px 12px 10px;color:#46536D;font-size:9px;line-height:13px;">La voz nueva se sitúa <strong style="color:' +
-    tone + ';">' + escapeMarketsAlertHtml_(marketsNewsletterSigned_(item.effect.gapToPreviousRating)) +
-    '</strong> frente al rating acumulado anterior.</td></tr></table></td></tr>';
+      marketsNewsletterSigned_(item.monthDelta) + ' en el mes', movementColor) +
+    '</tr></table><div style="padding:8px 4px 0;color:#46536D;font-size:9px;line-height:14px;">' +
+    escapeMarketsAlertHtml_(annual + voiceGap) + '</div></td></tr>';
 }
 
-function marketsNewsletterVoiceCell_(label, value, note, color) {
-  return '<td style="width:33.33%;padding:6px 12px 8px;vertical-align:top;">' +
-    '<span style="display:block;color:#46536D;font-size:8px;text-transform:uppercase;">' +
-    escapeMarketsAlertHtml_(label) + '</span><strong style="display:block;margin-top:3px;color:' +
-    color + ';font-size:15px;">' + escapeMarketsAlertHtml_(value) +
+function marketsNewsletterStoryCell_(label, value, note, color) {
+  return '<td style="width:33.33%;padding:11px 10px;vertical-align:top;">' +
+    '<span style="display:block;color:#46536D;font-size:8px;font-weight:700;letter-spacing:.25px;text-transform:uppercase;">' +
+    escapeMarketsAlertHtml_(label) + '</span><strong style="display:block;margin-top:4px;color:' +
+    color + ';font-size:16px;">' + escapeMarketsAlertHtml_(value) +
     '</strong><small style="display:block;margin-top:2px;color:#6B7280;font-size:8px;line-height:11px;">' +
-    escapeMarketsAlertHtml_(note) + '</small></td>';
-}
-
-function marketsNewsletterMiniCell_(label, value, note, color) {
-  return '<td style="width:33.33%;padding:0 7px;vertical-align:top;"><span style="display:block;color:#46536D;font-size:9px;text-transform:uppercase;">' +
-    escapeMarketsAlertHtml_(label) + '</span><strong style="display:block;margin-top:4px;color:' + color + ';font-size:15px;">' +
-    escapeMarketsAlertHtml_(value) + '</strong>' + (note ? '<small style="display:block;margin-top:2px;color:' + color + ';font-size:10px;">' +
-    escapeMarketsAlertHtml_(note) + '</small>' : '') + '</td>';
-}
-
-function marketsNewsletterContextCell_(label, value, note, color) {
-  return '<td style="width:33.33%;padding:10px 8px;vertical-align:top;"><span style="display:block;color:#46536D;font-size:8px;font-weight:700;letter-spacing:.25px;text-transform:uppercase;">' +
-    escapeMarketsAlertHtml_(label) + '</span><strong style="display:block;margin-top:3px;color:' + color + ';font-size:14px;">' +
-    escapeMarketsAlertHtml_(value) + '</strong><small style="display:block;margin-top:1px;color:#6B7280;font-size:8px;line-height:11px;">' +
     escapeMarketsAlertHtml_(note) + '</small></td>';
 }
 
@@ -726,12 +711,8 @@ function marketsNewsletterExecutiveBrief_(model) {
 
   const facts = [];
   if (totals.series === 1 && model.items.length === 1) {
-    const item = model.items[0];
-    const direction = item.monthDelta > 0 ? 'avanza' : item.monthDelta < 0 ? 'retrocede' : 'se mantiene';
-    facts.push((single ? item.platform : marketsNewsletterItemLabel_(item, model)) + ' ' + direction +
-      ' de ' + marketsNewsletterRatingLabel_(item.monthStartRating) + ' a ' +
-      marketsNewsletterRatingLabel_(item.endRating) + ' (' +
-      marketsNewsletterSigned_(item.monthDelta) + ').');
+    // El titular ya resume la dirección; el detalle numérico vive una sola vez
+    // en la secuencia Cierre anterior → Voz nueva → Cierre.
   } else {
     if (totals.improving === totals.series) {
       facts.push('Las ' + marketsNewsletterCountLabel_(totals.series) + ' ' + unit +
@@ -771,7 +752,7 @@ function marketsNewsletterExecutiveBrief_(model) {
   const positionContext = marketsNewsletterPositionContext_(model);
   if (positionContext) facts.push(positionContext);
   const volumeContext = marketsNewsletterVolumeContext_(model);
-  if (volumeContext) facts.push(volumeContext);
+  if (!single && volumeContext) facts.push(volumeContext);
   return { headline: headline, summary: facts.slice(0, 3).join(' ') };
 }
 
@@ -855,11 +836,16 @@ function marketsNewsletterVoiceContext_(model) {
     const item = effects[0];
     const label = model.scope.type === 'SINGLE' && !item.shared ?
       item.platform : item.country + ' · ' + item.platform;
-    return 'Voz nueva en ' + label + ': ' +
-      marketsNewsletterRatingLabel_(item.effect.newReviewRating) + '/5, ' +
-      marketsNewsletterSigned_(item.effect.gapToPreviousRating) +
-      ' frente al rating previo; el acumulado se mueve ' +
-      marketsNewsletterSigned_(item.effect.accumulatedRatingChange) + '.';
+    const gap = item.effect.gapToPreviousRating;
+    const change = item.effect.accumulatedRatingChange;
+    const quality = gap > 0.005 ? 'se sitúa por encima del rating previo' :
+      gap < -0.005 ? 'queda por debajo del rating previo' :
+        'se mantiene alineada con el rating previo';
+    const consequence = change > 0.005 ? 'refuerza el cierre' :
+      change < -0.005 ? 'presiona el cierre' :
+        'no altera de forma visible el acumulado';
+    return (model.scope.type === 'SINGLE' ? 'La voz nueva ' :
+      'En ' + label + ', la voz nueva ') + quality + ' y ' + consequence + '.';
   }
   const positive = effects.filter(function (item) {
     return item.effect.gapToPreviousRating > 0.005;
