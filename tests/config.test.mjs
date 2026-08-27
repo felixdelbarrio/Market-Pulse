@@ -20,6 +20,16 @@ test("geographic seeds match the catalog contract and have unique keys", () => {
     Object.fromEntries(["Android", "iOS", "Huawei"].map(platform => [platform, seeds.filter(row => row[1] === platform && row[3] === "VE").length])),
     { Android: 5, iOS: 5, Huawei: 5 }
   );
+  const bbvaVe = Object.fromEntries(seeds.filter(row => row[3] === "VE" && row[8] === true).map(row => [row[1], row]));
+  assert.equal(bbvaVe.Android[5], "BBVA Provinet Empresas Móvil");
+  assert.equal(bbvaVe.Android[6], "com.bbva.empresas");
+  assert.equal(bbvaVe.Android[9], true);
+  assert.equal(bbvaVe.iOS[5], "BBVA Provinet Empresas Móvil");
+  assert.equal(bbvaVe.iOS[6], "1229642361");
+  assert.equal(bbvaVe.iOS[9], false);
+  assert.equal(bbvaVe.Huawei[5], "BBVA Provinet Empresas Móvil");
+  assert.equal(bbvaVe.Huawei[6], "C1751602113005231488");
+  assert.equal(bbvaVe.Huawei[9], false);
   assert.equal(seeds.filter(row => ["IT", "DE"].includes(row[3])).length, 0);
   for (const country of ["MX", "ES", "CO"]) for (const platform of ["Android", "iOS"])
     assert.equal(seeds.filter(row => row[1] === platform && row[3] === country && row[19] === "FINTECH").length, 4);

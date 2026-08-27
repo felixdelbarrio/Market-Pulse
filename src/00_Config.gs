@@ -1,6 +1,6 @@
 /** Configuracion unica del monitor real de ratings Android, iOS y Huawei. */
 var MARKETS_CONFIG = Object.freeze({
-  codeVersion: '2026.07.27.37',
+  codeVersion: '2026.08.27.38',
   spreadsheetId: '1IkJgvM2imxm3r1x092q5dqpThrlnDoZ-5QvH8n2h2oQ',
   webAppUrl: 'https://script.google.com/a/macros/bbva.com/s/AKfycbzcrsLIXgG5vUM2jRilCO7-i5ZK6A_X0Yv-kPXqkBLFX5HOi5Soo6KF037RAgs9WxRk4g/exec',
   timeZone: 'Europe/Madrid', runHour: 7, runMinute: 5,
@@ -71,7 +71,7 @@ var MARKETS_CONFIG = Object.freeze({
     ])
   }),
   controlDefaults: Object.freeze([
-    ['CODE_VERSION', '2026.07.27.37', 'Version del contrato de datos y del Apps Script'],
+    ['CODE_VERSION', '2026.08.27.38', 'Version del contrato de datos y del Apps Script'],
     ['TIME_ZONE', 'Europe/Madrid', 'Zona horaria de ejecucion y fechas'],
     ['SEND_ALERT_EMAILS', false, 'Enviar emails; mantener FALSE durante la validacion inicial'],
     ['SEND_NEWSLETTER_EMAILS', false, 'Enviar la newsletter ejecutiva el dia 1 de cada mes'],
@@ -83,9 +83,9 @@ var MARKETS_CONFIG = Object.freeze({
   ])
 });
 
-function catalogSeed_(key, platform, countryCode, country, appName, appId, packageName, isBbva, order, segment, section, scope) {
+function catalogSeed_(key, platform, countryCode, country, appName, appId, packageName, isBbva, order, segment, section, scope, enabled) {
   return [key, platform, platform === 'Android' ? 'Google Play' : platform === 'iOS' ? 'App Store' : 'Huawei AppGallery',
-    countryCode, country, appName, appId || '', packageName || '', Boolean(isBbva), true,
+    countryCode, country, appName, appId || '', packageName || '', Boolean(isBbva), enabled !== false,
     platform === 'Huawei' ? 'es_' + countryCode : 'es', '', 0.30, 0.50, 5, true, '', '', order,
     segment || 'BANK', section || 'COUNTRY_BANKS', '2026Q3', scope || 'BUSINESS', '', '',
     true, '', '', ''];
@@ -99,17 +99,17 @@ function commercialSeed_(key, platform, countryCode, country, appName, appId, pa
 }
 
 var MARKETS_CATALOG_SEEDS = Object.freeze([
-  catalogSeed_('ANDROID|VE|BBVA', 'Android', 'VE', 'Venezuela', 'BBVA', 'com.bbva.empresas', 'com.bbva.empresas', true, 0),
+  catalogSeed_('ANDROID|VE|BBVA', 'Android', 'VE', 'Venezuela', 'BBVA Provinet Empresas Móvil', 'com.bbva.empresas', 'com.bbva.empresas', true, 0),
   catalogSeed_('ANDROID|VE|MERCANTIL_EMPRESAS', 'Android', 'VE', 'Venezuela', 'Mercantil Empresas', 'com.mercantilbanco.mme.mercantilmovil', 'com.mercantilbanco.mme.mercantilmovil', false, 1),
   catalogSeed_('ANDROID|VE|BANESCO_VE', 'Android', 'VE', 'Venezuela', 'Banesco VE', 'com.banesco.samfbancamovilunificada', 'com.banesco.samfbancamovilunificada', false, 2),
   catalogSeed_('ANDROID|VE|BANCARIBE_EMPRESAS', 'Android', 'VE', 'Venezuela', 'Bancaribe Empresas', 'bancaribeMobileBankingCash.v1', 'bancaribeMobileBankingCash.v1', false, 3),
   catalogSeed_('ANDROID|VE|BNC', 'Android', 'VE', 'Venezuela', 'BNC', 'bnc.bncnet.mobile2', 'bnc.bncnet.mobile2', false, 4),
-  catalogSeed_('IOS|VE|BBVA', 'iOS', 'VE', 'Venezuela', 'BBVA', '1590189082', '', true, 0),
+  catalogSeed_('IOS|VE|BBVA', 'iOS', 'VE', 'Venezuela', 'BBVA Provinet Empresas Móvil', '1229642361', '', true, 0, undefined, undefined, undefined, false),
   catalogSeed_('IOS|VE|MERCANTIL_EMPRESAS', 'iOS', 'VE', 'Venezuela', 'Mercantil Empresas', '1548017515', '', false, 1),
   catalogSeed_('IOS|VE|BANESCO_VE', 'iOS', 'VE', 'Venezuela', 'Banesco VE', '1497546462', '', false, 2),
   catalogSeed_('IOS|VE|BANCARIBE_EMPRESAS', 'iOS', 'VE', 'Venezuela', 'Bancaribe Empresas', '1542090352', '', false, 3),
   catalogSeed_('IOS|VE|BNC', 'iOS', 'VE', 'Venezuela', 'BNC', '1635259975', '', false, 4),
-  catalogSeed_('HUAWEI|VE|BBVA', 'Huawei', 'VE', 'Venezuela', 'BBVA', 'C1751602113005231488', 'com.bbva.empresas', true, 0),
+  catalogSeed_('HUAWEI|VE|BBVA', 'Huawei', 'VE', 'Venezuela', 'BBVA Provinet Empresas Móvil', 'C1751602113005231488', 'com.bbva.empresas', true, 0, undefined, undefined, undefined, false),
   catalogSeed_('HUAWEI|VE|MERCANTIL_EMPRESAS', 'Huawei', 'VE', 'Venezuela', 'Mercantil Empresas', 'C1746451170823523136', 'com.mercantilbanco.mme.mercantilmovil', false, 1),
   catalogSeed_('HUAWEI|VE|BANESCO_VE', 'Huawei', 'VE', 'Venezuela', 'Banesco VE', 'C1801620142921151424', 'com.banesco.samfbancamovilunificada', false, 2),
   catalogSeed_('HUAWEI|VE|BANCARIBE_EMPRESAS', 'Huawei', 'VE', 'Venezuela', 'Bancaribe Empresas', 'C1765377894340655808', 'bancaribeMobileBankingCash.v1', false, 3),

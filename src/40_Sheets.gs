@@ -24,6 +24,37 @@ function ensureWorkbookSchema_(ss) {
       ensureCurrentSheetContract_(sheet, definition[1]);
     }
   });
+  enforceCatalogPolicies_(ss.getSheetByName(MARKETS_CONFIG.sheets.catalog));
+}
+
+/**
+ * Mantiene decisiones de negocio que deben prevalecer sobre filas ya existentes.
+ * El historico de RATINGS se conserva para auditoria; ENABLED controla el
+ * perimetro vigente de captura, calculo y visualizacion.
+ */
+function enforceCatalogPolicies_(sheet) {
+  if (!sheet || sheet.getLastRow() <= 1) return;
+  const policyKeys = {
+    'ANDROID|VE|BBVA': true,
+    'IOS|VE|BBVA': true,
+    'HUAWEI|VE|BBVA': true
+  };
+  const seedByKey = MARKETS_CATALOG_SEEDS.reduce(function (out, row) {
+    if (policyKeys[row[0]]) out[row[0]] = row;
+    return out;
+  }, {});
+  const width = MARKETS_CONFIG.headers.catalog.length;
+  const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, width).getValues();
+  rows.forEach(function (row, index) {
+    const seed = seedByKey[trimString_(row[0])];
+    if (!seed) return;
+    const expected = seed.slice(5, 10);
+    const current = row.slice(5, 10);
+    const changed = expected.some(function (value, column) {
+      return String(current[column]) !== String(value);
+    });
+    if (changed) sheet.getRange(index + 2, 6, 1, 5).setValues([expected]);
+  });
 }
 
 function initializeWorkbook_(ss) {
