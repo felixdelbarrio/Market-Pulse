@@ -19,7 +19,7 @@
     const isCriticalPlatform=platform=>config.criticalPlatforms.includes(platform);
     const selectionRows=(snapshot,selection,segment="BANK",includeBbva=false)=>(snapshot||[]).filter(row=>(selection.country==="ALL"||row.countryCode===selection.country)&&(selection.platform==="ALL"||row.platform===selection.platform)&&(segment==="ALL"||row.segment===segment||(includeBbva&&segment==="FINTECH"&&row.isBbva)));
     const coverageRows=(rows,selection)=>(selection?.platform||"ALL")==="ALL"?(rows||[]).filter(row=>isCriticalPlatform(row.platform)):(rows||[]);
-    const trendRows=(trends,selection)=>(trends||[]).filter(row=>(selection.country==="ALL"||row.countryCode===selection.country)&&(selection.platform==="ALL"||row.platform===selection.platform)&&(selection.country!=="ALL"||row.isBbva));
+    const trendRows=(trends,selection)=>(trends||[]).filter(row=>(selection.country==="ALL"||row.countryCode===selection.country)&&(selection.platform==="ALL"||row.platform===selection.platform)&&(selection.country!=="ALL"||row.isBbva)&&(!selection.bbvaOnly||row.isBbva));
     function uniqueStoreRows(rows){
       const byKey=new Map();
       (rows||[]).forEach(row=>{const key=row.volumeKey||row.appKey;const current=byKey.get(key);if(!current||quality(row)>quality(current)||(quality(row)===quality(current)&&finite(row.ratingCount)&&(!finite(current.ratingCount)||row.ratingCount>current.ratingCount)))byKey.set(key,row)});

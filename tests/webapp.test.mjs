@@ -316,7 +316,7 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(index, /id="print-report" class="print-report"/);
   assert.match(app, /MarketsReport\.render/);
   assert.match(app, /const request=trendRequest\(\)/);
-  assert.match(app, /view:state\.view,selection:selection\(\),periodYear:state\.periodYear,periodMonth:state\.periodMonth/);
+  assert.match(app, /view:state\.view,selection:\{\.\.\.selection\(\),bbvaOnly:state\.view==="evolution"&&state\.evolutionBbvaOnly\},periodYear:state\.periodYear,periodMonth:state\.periodMonth/);
   assert.match(app, /report-button"\)\.classList\.toggle\("hidden",privateView\)/);
   const report = fs.readFileSync(new URL("../src/Report.html", import.meta.url), "utf8");
   const reportStyles = fs.readFileSync(new URL("../src/ReportStyles.html", import.meta.url), "utf8");
@@ -707,12 +707,13 @@ test("all-markets evolution is BBVA-only and individual markets show the whole m
   ];
   assert.deepEqual(Array.from(browser.MarketsDomain.trendRows(trends, { country: "ALL", platform: "ALL" }), row => row.appKey), ["BBVA", "BBVA-CO"]);
   assert.deepEqual(Array.from(browser.MarketsDomain.trendRows(trends, { country: "MX", platform: "ALL" }), row => row.appKey), ["BBVA", "BANK", "MP"]);
+  assert.deepEqual(Array.from(browser.MarketsDomain.trendRows(trends, { country: "MX", platform: "ALL", bbvaOnly: true }), row => row.appKey), ["BBVA"]);
   const labels = Array.from(browser.MarketsDomain.prepareSeries(browser.MarketsDomain.trendRows(trends, { country: "ALL", platform: "ALL" }), { country: "ALL", platform: "ALL" }), series => series.label).sort();
   assert.deepEqual(labels, ["BBVA Empresas Colombia", "BBVA Empresas México"]);
   assert.deepEqual(Array.from(browser.MarketsDomain.selectionRows(snapshot, { country: "MX", platform: "ALL" }, "FINTECH", true), row => row.appKey), ["BBVA", "MP"]);
   const app = fs.readFileSync(new URL("../src/App.html", import.meta.url), "utf8");
   assert.match(app, /function trendRequest\(\)\{return\{[^}]*segment:"ALL"/);
-  assert.match(app, /function activeTrendRows\(\)\{return D\.trendRows\(state\.trends,selection\(\)\)\}/);
+  assert.match(app, /function activeTrendRows\(\)\{return D\.trendRows\(state\.trends,\{\.\.\.selection\(\),bbvaOnly:state\.evolutionBbvaOnly\}\)\}/);
   assert.doesNotMatch(app, /activeTrendRows\(\).*benchmarkSegment/);
 });
 

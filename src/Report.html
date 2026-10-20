@@ -21,7 +21,7 @@
       const meta=input.meta||{},snapshot=input.snapshot||[],trends=input.trends||[],segment=input.benchmarkSegment||"BANK",generatedAt=input.generatedAt||new Date();
       if(!["overview","benchmark","evolution"].includes(input.view))throw new Error("La vista actual no admite descarga de informe.");
       const view=input.view;
-      const selection={country:input.selection?.country||"ALL",platform:input.selection?.platform||"ALL"};
+      const selection={country:input.selection?.country||"ALL",platform:input.selection?.platform||"ALL",bbvaOnly:view==="evolution"&&input.selection?.bbvaOnly===true};
       const bbva=D.selectionRows(snapshot,selection,"BANK").filter(row=>row.isBbva);
       const platforms=selection.platform==="ALL"?D.config.platforms.filter(platform=>D.isCriticalPlatform(platform)||bbva.some(row=>row.platform===platform&&finite(row.rating))):[selection.platform];
       const coverageRows=D.coverageRows(bbva,selection);
