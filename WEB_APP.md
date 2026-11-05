@@ -23,7 +23,7 @@ El backend evita enviar las 32k observaciones completas:
 - Los rankings permiten abrir la ficha oficial de cualquier participante —BBVA, banco, fintech o neobanco— haciendo clic en toda la fila.
 - Cada volumen Android se identifica por `packageName`. Si el package aparece en varios paises, el bootstrap lo marca como ficha compartida para contabilizarlo una sola vez en los KPI y no atribuirlo a una tarjeta geografica. Los packages exclusivos de un pais, iOS y Huawei mantienen alcance de mercado.
 - El snapshot incluye placeholders ligeros para apps activas sin observacion en la fecha publicada; asi la cobertura usa como denominador el catalogo esperado y no solo las respuestas correctas.
-- Android e iOS constituyen la cobertura esencial. Huawei es una fuente complementaria: se captura y muestra cuando está disponible, pero su ausencia no degrada la ejecución, no genera incidencias, no bloquea consolidados y no reduce la cobertura publicada.
+- Android e iOS constituyen la cobertura esencial. Huawei es una fuente complementaria: se captura y muestra cuando está disponible, pero su ausencia no degrada la ejecución, no genera incidencias, no bloquea consolidados y no reduce la cobertura esencial publicada. Si tiene peso configurado, su ausencia sí reduce la cobertura de pesos.
 - `Primeras posiciones BBVA` compara únicamente con bancos dentro de cada geografía/plataforma. Exige ranking completo y al menos dos participantes; muestra por separado las primeras posiciones en solitario y las compartidas por empate.
 - El selector historico y su API se eliminaron: la aplicacion siempre representa la revision materializada mas reciente.
 
@@ -85,7 +85,7 @@ Active temporalmente los canales y pruebe la alerta desde `Alertas` y la newslet
 - Los totales acumulados y del periodo usan `RATING_COUNT` y su variacion real a 30 dias, deduplicados por la identidad territorial o compartida de cada ficha.
 - La matriz mensual usa `RATING_EOM` y `RATING_COUNT_EOM` de la misma ultima observacion real de cada mes. Un package Android compartido aparece como `N/D`, nunca como una estimacion geografica.
 - **Descargar informe** construye un documento editorial independiente del dashboard y conserva la vista, el mercado, la plataforma, el benchmark y el periodo aplicables. `Resumen` usa el cierre vigente; `Benchmark` incluye el ranking completo visible; `Evolucion` respeta el corte elegido y añade el Pulso mensual. `Alertas` y `Administracion` no ofrecen descarga analitica, y cualquier vista no soportada falla explícitamente. No se incluye una seccion de confianza o metodologia. La exportacion espera la tipografia corporativa y pagina en A4 horizontal sin cabeceras del navegador, recortes laterales ni vistas ocultas duplicadas.
-- El rating consolidado solo aparece cuando existen pesos documentados y cobertura suficiente; en su defecto se etiqueta explicitamente una media observada.
+- El rating consolidado incluye las tres plataformas y usa pesos positivos del catálogo con cobertura parcial; sin pesos disponibles, pondera por volumen y deduplica las fichas compartidas en el agregado global. El cliente recurre a media simple solo cuando tampoco existe volumen. Las tendencias utilizan los pesos actuales del catálogo.
 - El layout se adapta a desktop, tablet y movil sin librerias externas.
 
 ## Operacion

@@ -44,7 +44,7 @@ test("weighted metrics preserve country and group calculations", () => {
   assert.deepEqual(JSON.parse(JSON.stringify(context.weightedMetric_(catalog, items, "rating", "groupUserWeight"))), { value: 4.25, coverage: 1 });
 });
 
-test("weighted score remains blank when a configured platform is missing", () => {
+test("weighted score uses available catalog weights when a platform is missing", () => {
   const catalog = [
     app("ANDROID|VE|BBVA", "Android", "VE", 0.6),
     app("IOS|VE|BBVA", "iOS", "VE", 0.4)
@@ -52,7 +52,7 @@ test("weighted score remains blank when a configured platform is missing", () =>
   const result = context.weightedMetric_(catalog, {
     "ANDROID|VE|BBVA": rating("ANDROID|VE|BBVA", "Android", "VE", 4, 0.2)
   }, "rating", "countryPlatformWeight");
-  assert.equal(result.value, "");
+  assert.equal(result.value, 4);
   assert.equal(result.coverage, 0.6);
 });
 
@@ -67,7 +67,7 @@ test("missing Huawei never blocks a weighted Android and iOS score", () => {
     "IOS|VE|BBVA": rating("IOS|VE|BBVA", "iOS", "VE", 5, 0.1)
   }, "rating", "countryPlatformWeight");
   assert.equal(result.value, 4.4);
-  assert.equal(result.coverage, 1);
+  assert.equal(result.coverage, 0.83);
 });
 
 test("monthly trend keeps only the end-of-month observation required by the web chart", () => {
@@ -120,3 +120,12 @@ test("store links are canonical HTTPS pages with an explicit geography", () => {
   assert.equal(context.buildStoreWebUrl_(app("HUAWEI|VE|BBVA", "Huawei", "VE", 0)), "https://appgallery.huawei.com/app/C1751602113005231488?locale=es_VE");
   assert.ok(!/^(market|itms-apps|appmarket):/.test(context.buildStoreWebUrl_(app("ANDROID|VE|BBVA", "Android", "VE", 0))));
 });
+
+ test("Huawei contributes and volume fallback deduplicates shared global listings", () => {
+  const catalog = [app("a", "Android", "CO", 0), app("b", "Android", "PE", 0), app("h", "Huawei", "CO", 0)];
+  const items = {a:{rating:4,ratingCount:900,volumeKey:"shared",volumeScope:"SHARED_LISTING"},b:{rating:4,ratingCount:900,volumeKey:"shared",volumeScope:"SHARED_LISTING"},h:{rating:2,ratingCount:100}};
+  assert.equal(context.weightedMetric_(catalog,items,"rating","groupUserWeight").value,3.8);
+  catalog[2].groupUserWeight=1;
+  assert.equal(context.weightedMetric_(catalog,items,"rating","groupUserWeight").value,2);
+  assert.equal(context.weightedMetric_(catalog,{},"rating","groupUserWeight").value,"");
+ });

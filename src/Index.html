@@ -18,7 +18,7 @@
   <div id="app" class="app-shell">
     <header class="topbar">
       <div class="brand"><div class="brand-mark"><span class="bbva-logo" role="img" aria-label="BBVA Banca de Empresas e Instituciones"></span></div><div class="brand-divider"></div><div class="brand-product">Market Pulse</div></div>
-      <nav class="main-nav" aria-label="Secciones"><button class="nav-button active" data-view="overview" type="button">Resumen</button><button class="nav-button" data-view="benchmark" type="button">Benchmark</button><button class="nav-button" data-view="evolution" type="button">Evolución</button><button class="nav-button" data-view="alerts" type="button">Alertas</button><button id="admin-nav" class="nav-button hidden" data-view="admin" type="button">Administración</button></nav>
+      <nav class="main-nav" aria-label="Secciones"><button class="nav-button active" data-view="overview" type="button">Resumen</button><button class="nav-button" data-view="benchmark" type="button">Benchmark</button><button class="nav-button" data-view="evolution" type="button">Evolución</button><button class="nav-button" data-view="alerts" type="button">Alertas</button><button id="reviews-nav" class="nav-button hidden" data-view="reviews" type="button">Comentarios</button><button id="admin-nav" class="nav-button hidden" data-view="admin" type="button">Administración</button></nav>
       <button id="report-button" class="button button-secondary" type="button" title="Descargar informe completo" aria-label="Descargar informe completo"><span aria-hidden="true">↓</span><span>Descargar informe</span></button>
     </header>
 
@@ -47,12 +47,12 @@
 
       <section id="view-benchmark" class="view hidden">
         <div class="section-head"><div><span class="section-kicker">Posición competitiva</span><h2>Benchmark por mercado</h2><p>BBVA Empresas queda identificado frente a los competidores del mercado y benchmark seleccionados.</p></div><span id="benchmark-context" class="tag"></span></div>
-        <div id="benchmark-grid" class="benchmark-grid"></div>
+        <label id="benchmark-weighted-control" class="evolution-scope-toggle"><span>Media ponderada</span><span class="mini-switch"><input id="benchmark-weighted" type="checkbox" role="switch"><i aria-hidden="true"></i></span></label><div id="benchmark-grid" class="benchmark-grid"></div>
       </section>
 
       <section id="view-evolution" class="view hidden">
         <div class="section-head"><div><span class="section-kicker">Tendencia</span><h2>Evolución de ratings</h2><p id="evolution-subtitle">La evolución hereda mercado y plataforma; en un mercado individual compara todas las aplicaciones.</p></div><span id="chart-context-chip" class="tag"></span></div>
-        <section class="period-toolbar" aria-label="Periodo específico de Evolución"><div class="filter-hierarchy"><strong>Periodo Evolución</strong><span id="filter-hierarchy-copy">Mercado → Plataforma → Periodo</span></div><div class="period-controls"><label class="evolution-scope-toggle" for="evolution-bbva-only"><span>Solo BBVA<small id="evolution-scope-label">Todo el mercado</small></span><span class="mini-switch"><input id="evolution-bbva-only" type="checkbox" role="switch" aria-describedby="evolution-scope-label"><i aria-hidden="true"></i></span></label><div class="control"><label for="year-filter">Año</label><select id="year-filter" class="select-control"></select></div><div class="control"><label for="month-filter">Mes</label><select id="month-filter" class="select-control"></select></div></div></section>
+        <section class="period-toolbar" aria-label="Periodo específico de Evolución"><div class="filter-hierarchy"><strong>Periodo Evolución</strong><span id="filter-hierarchy-copy">Mercado → Plataforma → Periodo</span></div><div class="period-controls"><div class="control"><label for="evolution-app">Aplicación</label><select id="evolution-app" class="select-control"></select></div><div class="control"><label for="year-filter">Año</label><select id="year-filter" class="select-control"></select></div><div class="control"><label for="month-filter">Mes</label><select id="month-filter" class="select-control"></select></div></div></section>
         <div id="evolution-kpis" class="section kpi-grid evolution-kpis"></div>
         <div class="section evolution-layout"><section class="panel"><div class="panel-head"><div><h3>Rating al cierre de mes</h3><span id="chart-context">Mercados seleccionados</span></div><span class="panel-meta">Escala 1–5</span></div><div id="evolution-chart" class="chart-wrap"></div><div id="evolution-legend" class="chart-legend"></div></section><aside class="panel series-panel"><div class="panel-head"><div><h3>Último movimiento</h3><span id="movement-period">Variación mensual visible</span></div></div><div id="series-summary" class="series-summary"></div></aside></div>
         <section class="section panel monthly-pulse-panel"><div class="panel-head"><div><h3>Pulso mensual de BBVA Empresas</h3><span>Histórico hasta el cierre seleccionado · rating y opiniones por plataforma</span></div><span id="monthly-matrix-meta" class="panel-meta">Últimos cierres</span></div><div id="monthly-matrix" class="monthly-matrix-wrap"></div><div class="monthly-matrix-note"><span><b>Lectura:</b> la variación solo aparece cuando existe movimiento real.</span><span id="monthly-shared-note" class="hidden"><b>N/D:</b> listing Android compartido sin desglose fiable por geografía.</span></div></section>
@@ -123,6 +123,14 @@
         </div>
       </section>
 
+      <section id="view-reviews" class="view hidden">
+        <div class="section-head"><div><h2>Comentarios</h2><p>Reseñas de App Store y Google Play. Hasta 100 resultados recientes.</p></div></div>
+        <section class="period-toolbar"><div class="period-controls">
+          <div class="control"><label for="review-app">Aplicación</label><select id="review-app" class="select-control"></select></div>
+          <div class="control"><label for="review-period">Mes</label><input id="review-period" class="select-control" type="month"></div>
+        </div></section>
+        <div id="review-results" class="admin-list" aria-live="polite"></div>
+      </section>
       <section id="view-admin" class="view hidden">
         <div class="section-head"><div><span class="section-kicker">Acceso restringido</span><h2>Salud y operación</h2><p>Información privada para administrar la carga, las entregas y las suscripciones.</p></div><span class="privacy-badge">Solo administradores</span></div>
         <div id="admin-loading" class="panel alert-loading">Validando permisos y preparando el diagnóstico…</div>

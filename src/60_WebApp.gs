@@ -3,7 +3,7 @@ var MARKETS_WEB = Object.freeze({
   version: '2026.07.27.50',
   // Solo debe cambiar si cambia el formato serializado. Un cambio visual no
   // puede obligar al primer usuario a reconstruir la cache desde Sheets.
-  cacheSchemaVersion: '2026.07.26.40',
+  cacheSchemaVersion: '2026.10.21.41',
   cacheSeconds: 21600,
   maxCacheCharacters: 95000,
   defaultTrendMonths: 18,
@@ -144,6 +144,8 @@ function buildStoreMetadataByAppKeyForWeb_(catalog) {
       storeUrl: sanitizeStoreWebUrl_(buildStoreWebUrl_(app), app.platform),
       volumeKey: volumeKey,
       volumeScope: app.platform === 'Android' && volumeMarkets > 1 ? 'SHARED_LISTING' : 'MARKET',
+      countryPlatformWeight: nonNegativeNumberOrZero_(app.countryPlatformWeight),
+      groupUserWeight: nonNegativeNumberOrZero_(app.groupUserWeight),
       volumeMarkets: Math.max(1, volumeMarkets)
     };
     return out;
@@ -187,6 +189,8 @@ function completeCompetitionSnapshotForWeb_(snapshot, catalog, storeMetadataByAp
       storeUrl: metadata.storeUrl || '',
       volumeKey: metadata.volumeKey || app.appKey,
       volumeScope: metadata.volumeScope || 'MARKET',
+      countryPlatformWeight: webNumber_(metadata.countryPlatformWeight) || 0,
+      groupUserWeight: webNumber_(metadata.groupUserWeight) || 0,
       volumeMarkets: metadata.volumeMarkets || 1
     };
   });
@@ -256,7 +260,9 @@ function mapCompetitionRowForWeb_(row, indexes, catalogStoreMetadata) {
     storeUrl: sanitizeStoreWebUrl_(metadata.storeUrl || materializedStoreUrl, platform),
     volumeKey: trimString_(metadata.volumeKey) || appKey,
     volumeScope: metadata.volumeScope === 'SHARED_LISTING' ? 'SHARED_LISTING' : 'MARKET',
-    volumeMarkets: Math.max(1, toNonNegativeInteger_(metadata.volumeMarkets) || 1)
+    countryPlatformWeight: webNumber_(metadata.countryPlatformWeight) || 0,
+      groupUserWeight: webNumber_(metadata.groupUserWeight) || 0,
+      volumeMarkets: Math.max(1, toNonNegativeInteger_(metadata.volumeMarkets) || 1)
   };
 }
 
@@ -282,10 +288,11 @@ function buildAllDashboardTrendsForWeb_(ss, months) {
   const monthKeys = uniqueStrings_(rows.map(function (row) { return webMonthKey_(row[indexes.period_month]); }))
     .sort();
   const cutoff = monthKeys[Math.max(0, monthKeys.length - months)] || '';
+  const storeMetadata = buildStoreMetadataByAppKeyForWeb_(readAppCatalog_(ss));
   return rows.filter(function (row) {
     const month = webMonthKey_(row[indexes.period_month]);
     return month && month >= cutoff && trimString_(row[indexes.app_key]);
-  }).map(function (row) { return mapTrendRowForWeb_(row, indexes); });
+  }).map(function (row) { return mapTrendRowForWeb_(row, indexes, storeMetadata[trimString_(row[indexes.app_key])]); });
 }
 
 function filterDashboardTrendsForWeb_(allTrends, normalized) {
@@ -304,7 +311,9 @@ function matchesMarketsSegment_(row, segment) {
   return segment === 'ALL' || row.segment === segment || (segment === 'FINTECH' && row.isBbva);
 }
 
-function mapTrendRowForWeb_(row, indexes) {
+function mapTrendRowForWeb_(row, indexes, catalogStoreMetadata) {
+  const metadata = catalogStoreMetadata || {};
+  const appKey = trimString_(row[indexes.app_key]);
   return {
     month: webMonthKey_(row[indexes.period_month]),
     platform: trimString_(row[indexes.platform]),
@@ -315,7 +324,11 @@ function mapTrendRowForWeb_(row, indexes) {
     isBbva: parseBoolean_(row[indexes.is_bbva], false),
     ratingEom: webNumber_(row[indexes.rating_eom]),
     segment: trimString_(row[indexes.market_segment]) || 'BANK',
-    ratingCountEom: webNumber_(row[indexes.rating_count_eom])
+    ratingCountEom: webNumber_(row[indexes.rating_count_eom]),
+    volumeKey: trimString_(metadata.volumeKey) || appKey,
+    volumeScope: metadata.volumeScope === 'SHARED_LISTING' ? 'SHARED_LISTING' : 'MARKET',
+    countryPlatformWeight: webNumber_(metadata.countryPlatformWeight) || 0,
+    groupUserWeight: webNumber_(metadata.groupUserWeight) || 0
   };
 }
 
@@ -648,4 +661,9 @@ function webDateTime_(value) {
     return Utilities.formatDate(value, MARKETS_CONFIG.timeZone, "yyyy-MM-dd'T'HH:mm:ssXXX");
   }
   return trimString_(value);
+}
+
+/** Reseñas verificadas para el panel privado de Comentarios. */
+function getMarketsReviews(filters) {
+  return readMarketsReviewsForWeb_(filters);
 }
