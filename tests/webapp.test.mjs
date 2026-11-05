@@ -48,8 +48,8 @@ test("bootstrap carries the initial chart without a second RPC", () => {
 });
 
 test("web cache identity advances when bootstrap semantics change", () => {
-  assert.equal(context.marketsBootstrapCacheKey_(), "markets-web:bootstrap:2026.07.26.40");
-  assert.match(context.marketsTrendCacheKey_({ segment: "BANK" }), /2026\.07\.26\.40/);
+  assert.equal(context.marketsBootstrapCacheKey_(), "markets-web:bootstrap:2026.10.21.41");
+  assert.match(context.marketsTrendCacheKey_({ segment: "BANK" }), /2026\.10\.21\.41/);
 });
 
 test("persistent cache failures never block serving calculated data", () => {
@@ -316,8 +316,8 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(index, /id="print-report" class="print-report"/);
   assert.match(app, /MarketsReport\.render/);
   assert.match(app, /const request=trendRequest\(\)/);
-  assert.match(app, /view:state\.view,selection:\{\.\.\.selection\(\),bbvaOnly:state\.view==="evolution"&&state\.evolutionBbvaOnly\},periodYear:state\.periodYear,periodMonth:state\.periodMonth/);
-  assert.match(app, /report-button"\)\.classList\.toggle\("hidden",privateView\)/);
+  assert.match(app, /view:state\.view,selection:\{\.\.\.selection\(\),app:state\.view==="evolution"\?state\.evolutionApp:""\},periodYear:state\.periodYear,periodMonth:state\.periodMonth/);
+  assert.match(app, /report-button"\)\.classList\.toggle\("hidden",privateView\|\|state\.view==="reviews"\)/);
   const report = fs.readFileSync(new URL("../src/Report.html", import.meta.url), "utf8");
   const reportStyles = fs.readFileSync(new URL("../src/ReportStyles.html", import.meta.url), "utf8");
   assert.match(report, /La voz del mercado/);
@@ -364,7 +364,7 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.doesNotMatch(app, /function adminScopeValue/);
   assert.match(app, /function activateAdminTab/);
   assert.match(app, /function handleAdminTabKeydown/);
-  assert.match(app, /if\(view==="admin"&&!state\.userContext\?\.isAdmin\)return/);
+  assert.match(app, /if\(\(view==="admin"\|\|view==="reviews"\)&&!state\.userContext\?\.isAdmin\)return/);
   assert.match(app, /getMarketsAdminDashboard\(\)/);
   assert.match(app, /localStorage\.setItem\(preferenceKey\(\)/);
   assert.match(app, /localStorage\.getItem\(preferenceKey\(\)/);
@@ -551,8 +551,8 @@ test("monthly summary matrix respects filters and marks shared Android volume as
   assert.deepEqual(Array.from(matrix.periods), ["2026-06", "2026-07"]);
   assert.deepEqual(Array.from(matrix.platforms), ["Android", "iOS"]);
   assert.equal(matrix.rows.length, 1);
-  assert.ok(Math.abs(matrix.rows[0].cells[1].rating - 4.7) < 1e-10);
-  assert.ok(Math.abs(matrix.rows[0].cells[1].delta - 0.1) < 1e-10);
+  assert.ok(Math.abs(matrix.rows[0].cells[1].rating - (4.6*1100+4.8*640)/1740) < 1e-10);
+  assert.ok(Math.abs(matrix.rows[0].cells[1].delta - ((4.6*1100+4.8*640)/1740-(4.5*1000+4.7*500)/1500)) < 1e-10);
   assert.equal(matrix.rows[0].cells[1].platforms[0].unavailable, true);
   assert.equal(matrix.rows[0].cells[1].platforms[0].value, null);
   assert.equal(matrix.rows[0].cells[1].platforms[1].value, 640);
@@ -563,7 +563,7 @@ test("monthly summary matrix respects filters and marks shared Android volume as
   assert.equal(ios.rows[0].cells[1].platforms[0].value, 640);
   const june = browser.MarketsDomain.monthlyRatingMatrix(trends, snapshot, { country: "ALL", platform: "ALL" }, "2026-06", 8);
   assert.deepEqual(Array.from(june.periods), ["2026-06"]);
-  assert.equal(june.rows[0].cells[0].rating, 4.6);
+  assert.ok(Math.abs(june.rows[0].cells[0].rating - (4.5*1000+4.7*500)/1500) < 1e-10);
 });
 
 test("new-review impact reproduces the GEMA month-rating calculation and protects unreliable scopes", () => {
@@ -687,7 +687,7 @@ test("new-review impact never blends Android, iOS or Huawei and deduplicates a s
   assert.deepEqual(Array.from(spain.rows.find(row => row.platform === "Android").reasons), ["SHARED_LISTING"]);
 });
 
-test("all-markets evolution is BBVA-only and individual markets show the whole market", () => {
+test("evolution includes all apps by default and supports filtering by app", () => {
   const html = fs.readFileSync(new URL("../src/Domain.html", import.meta.url), "utf8");
   const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
   const browser = {};
@@ -705,15 +705,15 @@ test("all-markets evolution is BBVA-only and individual markets show the whole m
     { appKey: "MP", appName: "Fintech Uno", platform: "Android", countryCode: "MX", segment: "FINTECH", isBbva: false, month: "2026-07", ratingEom: 4.4 },
     { appKey: "BBVA-CO", platform: "Android", countryCode: "CO", segment: "BANK", isBbva: true, month: "2026-07", ratingEom: 4.7 }
   ];
-  assert.deepEqual(Array.from(browser.MarketsDomain.trendRows(trends, { country: "ALL", platform: "ALL" }), row => row.appKey), ["BBVA", "BBVA-CO"]);
+  assert.deepEqual(Array.from(browser.MarketsDomain.trendRows(trends, { country: "ALL", platform: "ALL" }), row => row.appKey), ["BBVA", "BANK", "MP", "BBVA-CO"]);
   assert.deepEqual(Array.from(browser.MarketsDomain.trendRows(trends, { country: "MX", platform: "ALL" }), row => row.appKey), ["BBVA", "BANK", "MP"]);
-  assert.deepEqual(Array.from(browser.MarketsDomain.trendRows(trends, { country: "MX", platform: "ALL", bbvaOnly: true }), row => row.appKey), ["BBVA"]);
+  assert.deepEqual(Array.from(browser.MarketsDomain.trendRows(trends, { country: "MX", platform: "ALL", app: "Banco Uno" }), row => row.appKey), ["BANK"]);
   const labels = Array.from(browser.MarketsDomain.prepareSeries(browser.MarketsDomain.trendRows(trends, { country: "ALL", platform: "ALL" }), { country: "ALL", platform: "ALL" }), series => series.label).sort();
-  assert.deepEqual(labels, ["BBVA Empresas Colombia", "BBVA Empresas México"]);
+  assert.deepEqual(labels, ["BBVA Empresas Colombia", "BBVA Empresas México", "Banco Uno México", "Fintech Uno México"]);
   assert.deepEqual(Array.from(browser.MarketsDomain.selectionRows(snapshot, { country: "MX", platform: "ALL" }, "FINTECH", true), row => row.appKey), ["BBVA", "MP"]);
   const app = fs.readFileSync(new URL("../src/App.html", import.meta.url), "utf8");
   assert.match(app, /function trendRequest\(\)\{return\{[^}]*segment:"ALL"/);
-  assert.match(app, /function activeTrendRows\(\)\{return D\.trendRows\(state\.trends,\{\.\.\.selection\(\),bbvaOnly:state\.evolutionBbvaOnly\}\)\}/);
+  assert.match(app, /function activeTrendRows\(\)\{return D\.trendRows\(state\.trends,\{\.\.\.selection\(\),app:state\.evolutionApp\}\)\}/);
   assert.doesNotMatch(app, /activeTrendRows\(\).*benchmarkSegment/);
 });
 
@@ -780,3 +780,18 @@ test("evolution KPIs use BBVA closes for the selected period", () => {
   assert.equal(result.observed, 1);
   assert.equal(result.expected, 2);
 });
+
+ test("weighted domain aggregation prioritizes catalog, includes Huawei and deduplicates shared volume", () => {
+  const browser={};browser.window=browser;vm.createContext(browser);
+  vm.runInContext(fs.readFileSync(new URL("../src/Domain.html",import.meta.url),"utf8").match(/<script>([\s\S]*?)<\/script>/)[1],browser);
+  const D=browser.MarketsDomain;
+  const rows=[{appKey:"a",volumeKey:"shared",volumeScope:"SHARED_LISTING",rating:4,ratingCount:900},{appKey:"b",volumeKey:"shared",volumeScope:"SHARED_LISTING",rating:4,ratingCount:900},{appKey:"h",platform:"Huawei",rating:2,ratingCount:100}];
+  assert.equal(D.weightedMean(rows,r=>r.rating,true),3.8);
+  rows[2].groupUserWeight=1;
+  assert.equal(D.weightedMean(rows,r=>r.rating,true),2);
+  assert.equal(D.weightedMean([{rating:3},{rating:5}]),4);
+  assert.equal(D.weightedMean([{rating:null}]),null);
+  const trends=rows.map(row=>({...row,isBbva:true,countryCode:"CO",month:"2026-10",ratingEom:row.rating,ratingCountEom:row.ratingCount,rating:undefined,ratingCount:undefined}));
+  assert.equal(D.prepareSeries(trends,{country:"ALL",platform:"ALL"})[0].points[0].value,2);
+  assert.equal(D.evolutionKpis(trends,[],{country:"ALL",platform:"ALL"},"2026-10").current,2);
+ });

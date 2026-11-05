@@ -19,7 +19,23 @@
     const isCriticalPlatform=platform=>config.criticalPlatforms.includes(platform);
     const selectionRows=(snapshot,selection,segment="BANK",includeBbva=false)=>(snapshot||[]).filter(row=>(selection.country==="ALL"||row.countryCode===selection.country)&&(selection.platform==="ALL"||row.platform===selection.platform)&&(segment==="ALL"||row.segment===segment||(includeBbva&&segment==="FINTECH"&&row.isBbva)));
     const coverageRows=(rows,selection)=>(selection?.platform||"ALL")==="ALL"?(rows||[]).filter(row=>isCriticalPlatform(row.platform)):(rows||[]);
-    const trendRows=(trends,selection)=>(trends||[]).filter(row=>(selection.country==="ALL"||row.countryCode===selection.country)&&(selection.platform==="ALL"||row.platform===selection.platform)&&(selection.country!=="ALL"||row.isBbva)&&(!selection.bbvaOnly||row.isBbva));
+    const trendRows=(trends,selection)=>(trends||[]).filter(row=>(selection.country==="ALL"||row.countryCode===selection.country)&&(selection.platform==="ALL"||row.platform===selection.platform)&&(!selection.app||appName(row)===selection.app));
+    function browserMarket(language,timeZone,countries){
+      let region;
+      try{region=new Intl.Locale(language).region}catch(ignored){}
+      if(countries.includes(region))return region;
+      const marketsByZone={"Europe/Istanbul":"TR","Europe/Madrid":"ES","Atlantic/Canary":"ES","America/Mexico_City":"MX","America/Bogota":"CO","America/Lima":"PE","America/Montevideo":"UY","America/Caracas":"VE"};
+      const market=timeZone?.startsWith("America/Argentina/")?"AR":marketsByZone[timeZone];
+      return countries.includes(market)?market:"ALL";
+    }
+    function benchmarkWeightedRows(rows){
+      return Object.values(groupBy(rows,appName)).map(group=>({
+        ...group[0],platform:"Media ponderada",storeUrl:"",
+        rating:weightedMean(group),delta30d:weightedMean(group,row=>row.delta30d),
+        ratingCount:sumOrNull(group.map(row=>row.ratingCount)),fresh:group.every(row=>row.fresh),
+        rankingComplete:group.every(row=>row.rankingComplete)
+      }));
+    }
     function uniqueStoreRows(rows){
       const byKey=new Map();
       (rows||[]).forEach(row=>{const key=row.volumeKey||row.appKey;const current=byKey.get(key);if(!current||quality(row)>quality(current)||(quality(row)===quality(current)&&finite(row.ratingCount)&&(!finite(current.ratingCount)||row.ratingCount>current.ratingCount)))byKey.set(key,row)});
@@ -61,23 +77,49 @@
       const month=months.includes(String(preferredMonth).padStart(2,"0"))?String(preferredMonth).padStart(2,"0"):(months[0]||"");
       return{period:year&&month?`${year}-${month}`:"",year,month,years,months,periods};
     }
-    function ratingAt(rows,period){const values=(rows||[]).filter(row=>row.month===period&&row.isBbva&&finite(row.ratingEom)).map(row=>row.ratingEom);return mean(values)}
+    function weightedMean(rows, valueGetter = r => r.rating, isGlobalScope = false) {
+     const valid = (rows || []).filter(r => finite(valueGetter(r)));
+     if (!valid.length) return null;
+
+     // 1. Priorizar pesos explícitos del catálogo si están disponibles
+     const weightField = isGlobalScope ? "groupUserWeight" : "countryPlatformWeight";
+     const withCatalogWeight = valid.filter(r => finite(r[weightField]) && r[weightField] > 0);
+     if (withCatalogWeight.length > 0) {
+       const totalW = sum(withCatalogWeight.map(r => r[weightField]));
+       if (totalW > 0) return sum(withCatalogWeight.map(r => valueGetter(r) * r[weightField])) / totalW;
+     }
+
+     // 2. Fallback: Ponderar por volumen de valoraciones (ratingCount o ratingCountEom)
+     const countGetter = r => finite(r.ratingCount) ? r.ratingCount : (finite(r.ratingCountEom) ? r.ratingCountEom : null);
+     const volumeRows = isGlobalScope ? uniqueStoreRows(valid) : valid;
+     const withVolume = volumeRows.filter(r => finite(countGetter(r)) && countGetter(r) > 0);
+     if (withVolume.length > 0) {
+       const totalV = sum(withVolume.map(countGetter));
+       if (totalV > 0) return sum(withVolume.map(r => valueGetter(r) * countGetter(r))) / totalV;
+     }
+
+     // 3. Fallback final: media aritmética simple si no hay pesos ni volumen
+     return mean(valid.map(valueGetter));
+   }
+
+    function ratingAt(rows,period,isGlobalScope=false){return weightedMean((rows||[]).filter(row=>row.month===period),row=>row.ratingEom,isGlobalScope)}
     function previousAvailable(periods,target){return[...(periods||[])].filter(period=>period<target).sort().at(-1)||""}
     function previousYearClose(periods,period){const priorYear=String(Number(period.slice(0,4))-1);return[...(periods||[])].filter(item=>item<=`${priorYear}-12`).sort().at(-1)||""}
     function evolutionKpis(rows,snapshot,selection,period){
-      const bbva=(rows||[]).filter(row=>row.isBbva&&row.month<=period);const periods=availablePeriods(bbva);const currentPeriod=periods.includes(period)?period:previousAvailable(periods,`${period}-z`);
+      const matchesApp=row=>selection.app?appName(row)===selection.app:row.isBbva;
+      const selected=(rows||[]).filter(row=>matchesApp(row)&&row.month<=period);const periods=availablePeriods(selected);const currentPeriod=periods.includes(period)?period:previousAvailable(periods,`${period}-z`);
       const monthPeriod=previousAvailable(periods,currentPeriod);const yearPeriod=previousYearClose(periods,currentPeriod);
-      const current=ratingAt(bbva,currentPeriod),monthClose=ratingAt(bbva,monthPeriod),yearClose=ratingAt(bbva,yearPeriod);
-      const expectedRows=coverageRows(selectionRows(snapshot,selection,"BANK").filter(row=>row.isBbva),selection);
-      const observedRows=coverageRows(bbva,selection);
+      const current=ratingAt(selected,currentPeriod,selection.country==="ALL"),monthClose=ratingAt(selected,monthPeriod,selection.country==="ALL"),yearClose=ratingAt(selected,yearPeriod,selection.country==="ALL");
+      const expectedRows=coverageRows(selectionRows(snapshot,selection,"ALL").filter(matchesApp),selection);
+      const observedRows=coverageRows(selected,selection);
       const expected=new Set(expectedRows.map(row=>row.appKey)).size;
       const observed=new Set(observedRows.filter(row=>row.month===currentPeriod&&finite(row.ratingEom)).map(row=>row.appKey)).size;
       return{currentPeriod,yearPeriod,monthPeriod,current,yearClose,monthClose,annual:finite(current)&&finite(yearClose)?current-yearClose:null,monthly:finite(current)&&finite(monthClose)?current-monthClose:null,coverage:expected?observed/expected:null,observed,expected};
     }
     function prepareSeries(rows,selection){
       const buckets=new Map();
-      (rows||[]).forEach(row=>{let key,label;if(selection.country==="ALL"){key=row.countryCode;label=`BBVA Empresas ${config.countries[row.countryCode]||row.country||row.countryCode}`}else if(selection.platform==="ALL"){key=appName(row);label=appName(row)}else{key=row.appKey;label=appName(row)}const bucketKey=`${key}|${row.month}`;const bucket=buckets.get(bucketKey)||{key,label,month:row.month,values:[],isBbva:row.isBbva};bucket.values.push(row.ratingEom);bucket.isBbva=bucket.isBbva||row.isBbva;buckets.set(bucketKey,bucket)});
-      const grouped=new Map();buckets.forEach(bucket=>{const item=grouped.get(bucket.key)||{key:bucket.key,label:bucket.label,isBbva:bucket.isBbva,points:[]};item.points.push({month:bucket.month,value:mean(bucket.values)});item.isBbva=item.isBbva||bucket.isBbva;grouped.set(bucket.key,item)});
+      (rows||[]).forEach(row=>{let key,label;if(selection.country==="ALL"){key=`${row.countryCode}|${appName(row)}`;label=`${appName(row)} ${config.countries[row.countryCode]||row.country||row.countryCode}`}else if(selection.platform==="ALL"){key=appName(row);label=appName(row)}else{key=row.appKey;label=appName(row)}const bucketKey=`${key}|${row.month}`;const bucket=buckets.get(bucketKey)||{key,label,month:row.month,rows:[],isBbva:row.isBbva};bucket.rows.push(row);bucket.isBbva=bucket.isBbva||row.isBbva;buckets.set(bucketKey,bucket)});
+      const grouped=new Map();buckets.forEach(bucket=>{const item=grouped.get(bucket.key)||{key:bucket.key,label:bucket.label,isBbva:bucket.isBbva,points:[]};item.points.push({month:bucket.month,value:weightedMean(bucket.rows,row=>row.ratingEom,selection.country==="ALL")});item.isBbva=item.isBbva||bucket.isBbva;grouped.set(bucket.key,item)});
       return[...grouped.values()].sort((a,b)=>Number(b.isBbva)-Number(a.isBbva)||latestValue(b)-latestValue(a)||a.label.localeCompare(b.label));
     }
     const latestValue=series=>[...(series.points||[])].sort((a,b)=>a.month.localeCompare(b.month)).at(-1)?.value||0;
@@ -102,7 +144,7 @@
             const unavailable=platform==="Android"&&matches.some(row=>metadata.get(row.appKey)?.volumeScope==="SHARED_LISTING");
             return{platform,rating:mean(matches.map(row=>row.ratingEom)),value:unavailable?null:sumOrNull(matches.map(row=>row.ratingCountEom)),unavailable};
           });
-          return{month,rating:mean(platformVolumes.map(item=>item.rating)),platforms:platformVolumes};
+          return{month,rating:weightedMean(rows.filter(row=>row.countryCode===countryCode&&row.month===month),row=>row.ratingEom,false),platforms:platformVolumes};
         });
         cells.forEach((cell,index)=>{const previous=index?cells[index-1].rating:null;cell.delta=finite(cell.rating)&&finite(previous)?cell.rating-previous:null});
         const countryRow=rows.find(row=>row.countryCode===countryCode);
@@ -168,6 +210,6 @@
       const specific=selected.filter(value=>value!=="ALL");
       return specific.length?specific:["ALL"];
     }
-    window.MarketsDomain=Object.freeze({config,finite,sum,sumOrNull,mean,groupBy,appName,isCriticalPlatform,selectionRows,coverageRows,trendRows,uniqueStoreRows,volumeSummary,rankRows,countBbvaLeaders,availablePeriods,periodModel,evolutionKpis,prepareSeries,latestValue,ratingComparison,monthlyRatingMatrix,ratingRoundingHalfStep,monthlyNewReviewImpact,exclusiveScopeSelection});
+    window.MarketsDomain=Object.freeze({config,browserMarket,benchmarkWeightedRows,finite,sum,sumOrNull,mean,weightedMean,groupBy,appName,isCriticalPlatform,selectionRows,coverageRows,trendRows,uniqueStoreRows,volumeSummary,rankRows,countBbvaLeaders,availablePeriods,periodModel,evolutionKpis,prepareSeries,latestValue,ratingComparison,monthlyRatingMatrix,ratingRoundingHalfStep,monthlyNewReviewImpact,exclusiveScopeSelection});
   })();
 </script>
