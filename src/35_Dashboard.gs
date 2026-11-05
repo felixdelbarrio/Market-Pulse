@@ -21,28 +21,57 @@ function buildExecutionStatus_(execution) {
   return out;
 }
 
-/** Solo publica consolidados con pesos positivos, documentados y completos. */
+/** Pondera observaciones disponibles por catálogo o volumen de tienda. */
 function weightedMetric_(configs, itemsByAppKey, field, weightField) {
-  const criticalConfigs = marketsCriticalItems_(configs);
-  const weightedConfigs = criticalConfigs.filter(function (app) {
-    return nonNegativeNumberOrZero_(app[weightField]) > 0 && trimString_(app.weightSource) && app.weightEffectiveDate;
-  });
-  const totalWeight = weightedConfigs.reduce(function (sum, app) {
-    return sum + nonNegativeNumberOrZero_(app[weightField]);
-  }, 0);
-  if (!totalWeight || weightedConfigs.length !== criticalConfigs.length) return { value: '', coverage: 0 };
-  let availableWeight = 0;
-  let weightedValue = 0;
-  weightedConfigs.forEach(function (app) {
+  const allConfigs = configs || [];
+  if (!allConfigs.length) return { value: '', coverage: 0 };
+
+  let totalCatalogWeight = 0;
+  let availableCatalogWeight = 0;
+  let catalogWeightedSum = 0;
+
+  let availableVolumeWeight = 0;
+  let volumeWeightedSum = 0;
+  let observedCount = 0;
+  const seenVolumeKeys = {};
+
+  allConfigs.forEach(function (app) {
+    const cWeight = nonNegativeNumberOrZero_(app[weightField]);
+    if (cWeight > 0) totalCatalogWeight += cWeight;
+
     const item = itemsByAppKey[app.appKey];
     const value = item ? toFiniteNumber_(item[field]) : null;
     if (value === null) return;
-    const weight = nonNegativeNumberOrZero_(app[weightField]);
-    availableWeight += weight;
-    weightedValue += value * weight;
+
+    observedCount += 1;
+    if (cWeight > 0) {
+      availableCatalogWeight += cWeight;
+      catalogWeightedSum += value * cWeight;
+    }
+
+    const vKey = (item && item.volumeKey) || app.appKey;
+    const vCount = item ? toNonNegativeInteger_(item.ratingCount) : null;
+    const isSharedMultiCountry = weightField === 'groupUserWeight' && item && item.volumeScope === 'SHARED_LISTING';
+    if (vCount !== null && vCount > 0 && (!isSharedMultiCountry || !seenVolumeKeys[vKey])) {
+      seenVolumeKeys[vKey] = true;
+      availableVolumeWeight += vCount;
+      volumeWeightedSum += value * vCount;
+    }
   });
-  const coverage = round2_(availableWeight / totalWeight);
-  return { value: Math.abs(availableWeight - totalWeight) < 0.0000001 ? round2_(weightedValue / totalWeight) : '', coverage: coverage };
+
+  if (availableCatalogWeight > 0) {
+    return {
+      value: round2_(catalogWeightedSum / availableCatalogWeight),
+      coverage: totalCatalogWeight > 0 ? round2_(availableCatalogWeight / totalCatalogWeight) : round2_(observedCount / allConfigs.length)
+    };
+  }
+  if (availableVolumeWeight > 0) {
+    return {
+      value: round2_(volumeWeightedSum / availableVolumeWeight),
+      coverage: round2_(observedCount / allConfigs.length)
+    };
+  }
+  return { value: '', coverage: 0 };
 }
 
 function validateWeightConfiguration_(catalog) {

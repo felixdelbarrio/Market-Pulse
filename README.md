@@ -128,7 +128,7 @@ Cada correo de alerta muestra discretamente la fecha efectiva de los datos e inc
 - Ranking: solo se publica con cobertura completa del conjunto esperado.
 - Reejecucion diaria: actualiza por clave determinista y no duplica observaciones.
 - Fallos de store: conservan el historico y quedan trazados en `FETCH_LOG`.
-- Consolidados: requieren pesos positivos, fuente, fecha efectiva y cobertura completa.
+- Consolidados: incluyen Android, iOS y Huawei; priorizan pesos positivos del catálogo sobre las observaciones disponibles y, en su ausencia, ponderan por volumen. El volumen de fichas compartidas se cuenta una sola vez en el agregado global. La cobertura de pesos puede ser parcial. El cliente usa media simple solo si tampoco existe volumen.
 - Cobertura: compara las observaciones Android e iOS publicadas con sus apps activas esperadas en `APP_CATALOG`; Huawei queda fuera del denominador y se añade únicamente cuando existe un dato válido.
 - Distribucion de reseñas por estrellas: pendiente de una fuente autorizada y geograficamente comparable; nunca se infiere desde el rating agregado.
 

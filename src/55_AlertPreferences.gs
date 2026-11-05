@@ -138,7 +138,7 @@ function marketsAlertNumber_(value, fallback, minimum, maximum) {
 
 function normalizeMarketsAlertEmail_(email) {
   const normalized = trimString_(email).toLowerCase();
-  if (!/^[^\s@]+@bbva\.com$/.test(normalized)) throw new Error('Las alertas requieren una cuenta corporativa @bbva.com.');
+  if (!/^[^\s@]+@(?:bbva\.com|garantibbva\.com\.tr)$/.test(normalized)) throw new Error('Las alertas requieren una cuenta corporativa @bbva.com o @garantibbva.com.tr.');
   return normalized;
 }
 
