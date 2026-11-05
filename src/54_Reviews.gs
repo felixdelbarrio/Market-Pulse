@@ -5,7 +5,7 @@ var MARKETS_REVIEW_HEADERS = Object.freeze([
 ]);
 
 function setupMarketsReviews() {
-  const access = requireMarketsAdministrator_();
+  const access = requireMarketsReviewOwner_();
   if (!access.ss.getSheetByName('MARKET_REVIEWS')) {
     const sheet = access.ss.insertSheet('MARKET_REVIEWS');
     sheet.getRange(1, 1, 1, MARKETS_REVIEW_HEADERS.length).setValues([MARKETS_REVIEW_HEADERS]);
@@ -18,6 +18,26 @@ function setupMarketsReviews() {
         .inTimezone('Europe/Madrid').create();
     }
   });
+}
+
+function requireMarketsReviewOwner_() {
+  const access = requireMarketsAdministrator_();
+  if (access.email !== normalizeEmailForComparison_(Session.getEffectiveUser().getEmail())) {
+    throw new Error('Esta operación está reservada al propietario de los activadores.');
+  }
+  return access;
+}
+
+function runMarketsReviewBackfill() {
+  requireMarketsReviewOwner_();
+  return collectMarketsReviews_();
+}
+
+function runMarketsReviewTranslation() {
+  requireMarketsReviewOwner_();
+  const result = translateMarketsReviews_();
+  console.log(JSON.stringify(result));
+  return result;
 }
 
 function marketsReviewSheet_(ss) {
