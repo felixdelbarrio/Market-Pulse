@@ -662,3 +662,8 @@ function webDateTime_(value) {
   }
   return trimString_(value);
 }
+
+/** Reseñas verificadas para el panel privado de Comentarios. */
+function getMarketsReviews(filters) {
+  return readMarketsReviewsForWeb_(filters);
+}

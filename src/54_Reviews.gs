@@ -59,7 +59,8 @@ function parseMarketsReviewFeed_(app, page, payload) {
   if (!links.some(link => link.rel === 'self' && link.href === marketsReviewFeedUrl_(app, page))) {
     throw new Error('El escaparate devuelto no coincide con el solicitado.');
   }
-  const rows = (feed.entry || []).flatMap(entry => {
+  const entries = Array.isArray(feed.entry) ? feed.entry : feed.entry ? [feed.entry] : [];
+  const rows = entries.flatMap(entry => {
     const id = trimString_(entry.id?.label), original = trimString_(entry.content?.label);
     const rating = Number(entry['im:rating']?.label), updatedAt = trimString_(entry.updated?.label);
     if (!/^\d+$/.test(id) || !original || !Number.isInteger(rating) || rating < 1 || rating > 5 ||
@@ -166,7 +167,7 @@ function translateMarketsReviews_() {
   }
 }
 
-function getMarketsReviews(filters) {
+function readMarketsReviewsForWeb_(filters) {
   const access = requireMarketsAdministrator_();
   filters = filters || {};
   const catalog = new Map(readAppCatalog_(access.ss).map(app => [app.appKey, app]));
