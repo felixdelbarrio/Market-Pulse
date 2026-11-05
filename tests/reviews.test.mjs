@@ -60,3 +60,28 @@ test("an edited review updates its existing row and requeues translation", () =>
   assert.deepEqual(Array.from(writes[0].values[0].slice(-4)), ["Edited", "", "", ""]);
   assert.equal(properties.get("MARKETS_REVIEWS_TRANSLATION_ROW"), "2");
 });
+
+test("Google Play pagination preserves provenance and deduplicates across storefronts", () => {
+  vm.runInContext(fs.readFileSync(new URL("../src/53_PlayReviews.gs", import.meta.url), "utf8"), api);
+  const item = ["review-123", null, 4, null, "Review", [1760000000, 1000000]];
+  const frame = [["wrb.fr", "oCPfdb", JSON.stringify([[item], [null, "continuation"]])]];
+  const page = api.parsePlayReviewPage_(")]}'\n\n" + JSON.stringify(frame));
+  assert.equal(page.next, "continuation");
+  assert.equal(page.rows[0].date, "2025-10-09T08:53:20.001Z");
+  assert.throws(() => api.parsePlayReviewPage_("<html>"), /inesperada/);
+  const writes = [];
+  const sheet = {
+    getLastRow: () => writes.length ? 2 : 1,
+    getRange: (row, column, height, width) => ({ setValues: rows => writes.push({ row, rows }) })
+  };
+  Object.assign(api, { ensureSheetCapacity_: () => {}, SpreadsheetApp: { flush() {} } });
+  const properties = { getProperty: () => null, setProperty() {} };
+  const known = new Map(), summary = { added: 0, updated: 0 };
+  const listing = { packageName: "com.example.app", appKey: "ANDROID|ES|APP", countryCode: "ES" };
+  api.storePlayReviews_(sheet, properties, known, listing, page.rows, summary);
+  api.storePlayReviews_(sheet, properties, known, { ...listing, countryCode: "TR" }, page.rows, summary);
+  assert.equal(summary.added, 1);
+  assert.equal(summary.updated, 1);
+  assert.equal(writes[1].row, 2);
+  assert.equal(writes[1].rows[0][2], "ES,TR");
+});

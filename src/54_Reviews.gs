@@ -11,10 +11,13 @@ function setupMarketsReviews() {
     sheet.getRange(1, 1, 1, MARKETS_REVIEW_HEADERS.length).setValues([MARKETS_REVIEW_HEADERS]);
     sheet.setFrozenRows(1);
   }
+  const sheet = marketsReviewSheet_(access.ss);
+  ensureSheetCapacity_(sheet, 2, 15);
+  sheet.getRange(1, 15).setValue('captured_at');
   const existing = ScriptApp.getProjectTriggers().map(trigger => trigger.getHandlerFunction());
-  [['collectMarketsReviews_', 8], ['translateMarketsReviews_', 9]].forEach(([handler, hour]) => {
+  [['collectMarketsReviews_', 8], ['collectMarketsPlayReviews_', 8], ['translateMarketsReviews_', 9]].forEach(([handler, hour]) => {
     if (!existing.includes(handler)) {
-      ScriptApp.newTrigger(handler).timeBased().everyDays(1).atHour(hour).nearMinute(5)
+      ScriptApp.newTrigger(handler).timeBased().everyDays(1).atHour(hour).nearMinute(handler === 'collectMarketsPlayReviews_' ? 35 : 5)
         .inTimezone('Europe/Madrid').create();
     }
   });
@@ -202,19 +205,25 @@ function readMarketsReviewsForWeb_(filters) {
   if (!sheet || sheet.getLastRow() < 2) return [];
   marketsReviewSheet_(access.ss);
   const languageColumn = { es: 11, en: 12, tr: 13 }[filters.language] || 11;
-  return sheet.getRange(2, 1, sheet.getLastRow() - 1, MARKETS_REVIEW_HEADERS.length).getValues()
-    .filter(row => {
-      const app = catalog.get(row[1]);
-      return app && row[2] === app.countryCode && row[3] === app.platform && String(row[4]) === app.appId &&
-        (filters.country === 'ALL' || row[2] === filters.country) &&
-        (filters.platform === 'ALL' || row[3] === filters.platform) &&
-        (!filters.app || (app.isBbva ? 'BBVA Empresas' : app.appName) === filters.app) &&
-        (!filters.period || String(row[6]).startsWith(filters.period));
+  const androidListings = new Map([...catalog.values()].filter(app => app.platform === 'Android')
+    .map(app => [app.packageName + '|' + app.countryCode, app]));
+  return sheet.getRange(2, 1, sheet.getLastRow() - 1, 15).getValues()
+    .flatMap(row => {
+      const android = row[3] === 'Android';
+      if (filters.platform !== 'ALL' && row[3] !== filters.platform) return [];
+      if (filters.period && !String(row[6]).startsWith(filters.period)) return [];
+      const countries = String(row[2]).split(',').filter(country => filters.country === 'ALL' || country === filters.country);
+      const apps = countries.map(country => android ? androidListings.get(row[4] + '|' + country) : catalog.get(row[1]))
+        .filter(app => app && (android || (app.countryCode === row[2] && app.platform === row[3] &&
+          String(row[4]) === app.appId)) && (!filters.app || (app.isBbva ? 'BBVA Empresas' : app.appName) === filters.app));
+      if (!apps.length) return [];
+      const url = android ? 'https://play.google.com/store/apps/details?id=' + encodeURIComponent(row[4]) +
+        '&reviewId=' + encodeURIComponent(row[5]) : '';
+      return [{ app: apps[0].appName, countries: [...new Set(apps.map(app => app.countryCode))],
+        platform: row[3], date: String(row[6]).slice(0, 10), rating: row[7], version: String(row[8]),
+        title: row[9], original: row[10], text: row[languageColumn] || row[10], url,
+        capturedAt: row[14] ? String(row[14]).slice(0, 10) : '',
+        translated: Boolean(row[languageColumn] && row[languageColumn] !== row[10]) }];
     })
-    .sort((a, b) => Date.parse(b[6]) - Date.parse(a[6])).slice(0, 100)
-    .map(row => ({
-      app: catalog.get(row[1]).appName, country: row[2], platform: row[3], date: String(row[6]).slice(0, 10),
-      rating: row[7], version: String(row[8]), title: row[9], original: row[10],
-      text: row[languageColumn] || row[10], translated: Boolean(row[languageColumn] && row[languageColumn] !== row[10])
-    }));
+    .sort((a, b) => b.date.localeCompare(a.date)).slice(0, 100);
 }

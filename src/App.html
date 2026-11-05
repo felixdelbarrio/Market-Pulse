@@ -107,11 +107,11 @@
     let reviewsRequest=0;
     async function loadReviews(){
       const token=++reviewsRequest, results=$("review-results"), filter=$("review-app");
-      const apps=[...new Set(D.selectionRows(state.snapshot,selection(),"ALL").filter(row=>row.platform==="iOS").map(D.appName))].sort((a,b)=>a.localeCompare(b));
+      const apps=[...new Set(D.selectionRows(state.snapshot,selection(),"ALL").filter(row=>row.platform!=="Huawei").map(D.appName))].sort((a,b)=>a.localeCompare(b));
       const app=apps.includes(filter.value)?filter.value:"";
       filter.innerHTML=U.option("","Todas",!app)+apps.map(name=>U.option(name,name,name===app)).join("");
-      if(state.platform!=="ALL"&&state.platform!=="iOS"){
-        results.innerHTML=U.empty("Fuente sin cobertura","Las reseñas verificadas por escaparate están disponibles para iOS.");
+      if(state.platform==="Huawei"){
+        results.innerHTML=U.empty("Fuente sin cobertura","Las reseñas están disponibles para iOS y Android.");
         return;
       }
       results.innerHTML=U.loading();
@@ -119,7 +119,7 @@
         const language=["es","en","tr"].includes(navigator.language.split("-")[0])?navigator.language.split("-")[0]:"es";
         const rows=await callServer("reviews",{...selection(),app,period:$("review-period").value,language});
         if(token!==reviewsRequest)return;
-        results.innerHTML=rows.map(row=>`<article class="incident"><strong>${U.esc(row.app)} · ${U.esc(countryLabel(row.country))} · ${U.esc(row.platform)} · ${fmt(row.rating,0)}/5</strong><time>${U.esc(dateLabel(row.date))}</time><p><strong>${U.esc(row.title)}</strong></p><p>${U.esc(row.text)}</p>${row.translated?`<details><summary>Ver original</summary><p>${U.esc(row.original)}</p></details>`:""}</article>`).join("")||U.empty("Sin comentarios","No hay reseñas verificadas para esta selección.");
+        results.innerHTML=rows.map(row=>`<article class="incident"><strong>${U.esc(row.app)} · ${U.esc(row.platform)} · ${fmt(row.rating,0)}/5</strong><time>${U.esc(dateLabel(row.date))}</time><p>${row.url?`<a href="${U.esc(row.url)}" target="_blank" rel="noopener noreferrer">Google Play · scraping web</a> · Mercado consultado: ${U.esc(row.countries.map(countryLabel).join(", "))} · País de la reseña: sin verificar${row.capturedAt?` · Captura: ${U.esc(dateLabel(row.capturedAt))}`:""}`:`App Store · ${U.esc(row.countries.map(countryLabel).join(", "))}`}</p>${row.title?`<p><strong>${U.esc(row.title)}</strong></p>`:""}<p>${U.esc(row.text)}</p>${row.translated?`<details><summary>Ver original</summary><p>${U.esc(row.original)}</p></details>`:""}</article>`).join("")||U.empty("Sin comentarios","No hay reseñas para esta selección.");
       }catch(error){if(token===reviewsRequest)results.textContent=error.message}
     }
     function activeTrendRows(){return D.trendRows(state.trends,{...selection(),app:state.evolutionApp})}
