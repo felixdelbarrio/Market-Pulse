@@ -119,7 +119,7 @@
     function prepareSeries(rows,selection){
       const buckets=new Map();
       (rows||[]).forEach(row=>{let key,label;if(selection.country==="ALL"){key=`${row.countryCode}|${appName(row)}`;label=`${appName(row)} ${config.countries[row.countryCode]||row.country||row.countryCode}`}else if(selection.platform==="ALL"){key=appName(row);label=appName(row)}else{key=row.appKey;label=appName(row)}const bucketKey=`${key}|${row.month}`;const bucket=buckets.get(bucketKey)||{key,label,month:row.month,rows:[],isBbva:row.isBbva};bucket.rows.push(row);bucket.isBbva=bucket.isBbva||row.isBbva;buckets.set(bucketKey,bucket)});
-      const grouped=new Map();buckets.forEach(bucket=>{const item=grouped.get(bucket.key)||{key:bucket.key,label:bucket.label,isBbva:bucket.isBbva,points:[]};item.points.push({month:bucket.month,value:weightedMean(bucket.rows,row=>row.ratingEom,selection.country==="ALL")});item.isBbva=item.isBbva||bucket.isBbva;grouped.set(bucket.key,item)});
+      const grouped=new Map();buckets.forEach(bucket=>{const item=grouped.get(bucket.key)||{key:bucket.key,label:bucket.label,isBbva:bucket.isBbva,points:[]};item.points.push({month:bucket.month,value:weightedMean(bucket.rows,row=>row.ratingEom)});item.isBbva=item.isBbva||bucket.isBbva;grouped.set(bucket.key,item)});
       return[...grouped.values()].sort((a,b)=>Number(b.isBbva)-Number(a.isBbva)||latestValue(b)-latestValue(a)||a.label.localeCompare(b.label));
     }
     const latestValue=series=>[...(series.points||[])].sort((a,b)=>a.month.localeCompare(b.month)).at(-1)?.value||0;

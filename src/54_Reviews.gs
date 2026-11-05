@@ -92,35 +92,62 @@ function collectMarketsReviews_() {
     const apps = [...listings.values()].filter(group => group.length === 1).map(group => group[0])
       .sort((a, b) => a.appKey.localeCompare(b.appKey));
     const lastRow = sheet.getLastRow();
-    const known = new Set(lastRow > 1 ? sheet.getRange(2, 1, lastRow - 1, 1).getValues().flat() : []);
+    const stored = lastRow > 1 ? sheet.getRange(2, 1, lastRow - 1, 11).getValues() : [];
+    const known = new Map(stored.map((row, index) => [row[0], {
+      index: index + 2, updated: row[6], original: row[10]
+    }]));
+    const translationKey = 'MARKETS_REVIEWS_TRANSLATION_ROW';
     const properties = PropertiesService.getScriptProperties(), cursorKey = 'MARKETS_REVIEWS_CURSOR';
     const [cursor, cursorPage] = JSON.parse(properties.getProperty(cursorKey) || '["",1]');
     const start = Math.max(0, apps.findIndex(app => app.appKey === cursor));
     const deadline = Date.now() + 240000;
-    let added = 0, failures = 0, processed = 0;
+    let added = 0, updated = 0, failures = 0, processed = 0;
     while (processed < apps.length && Date.now() < deadline) {
       const app = apps[(start + processed) % apps.length];
       try {
         for (let page = app.appKey === cursor ? cursorPage : 1; page <= 10; page++) {
           if (Date.now() >= deadline) {
             properties.setProperty(cursorKey, JSON.stringify([app.appKey, page]));
-            return { added, failures, processed, eligible: apps.length, deferred: true };
+            const summary = { added, updated, failures, processed, eligible: apps.length, deferred: true };
+            console.log(JSON.stringify(summary));
+            return summary;
           }
           const response = UrlFetchApp.fetch(marketsReviewFeedUrl_(app, page), {
             muteHttpExceptions: true, followRedirects: false
           });
           if (response.getResponseCode() !== 200) throw new Error('HTTP ' + response.getResponseCode());
           const result = parseMarketsReviewFeed_(app, page, response.getContentText());
-          const pending = new Map(result.rows.filter(row => !known.has(row[0])).map(row => [row[0], row]));
+          const pending = new Map();
+          const previousUpdates = updated;
+          for (const row of result.rows) {
+            const previous = known.get(row[0]);
+            if (!previous) {
+              if (!pending.has(row[0]) || Date.parse(row[6]) > Date.parse(pending.get(row[0])[6])) {
+                pending.set(row[0], row);
+              }
+              continue;
+            }
+            if (Date.parse(row[6]) <= Date.parse(previous.updated)) continue;
+            const textChanged = row[10] !== previous.original;
+            if (textChanged) {
+              const nextTranslation = Number(properties.getProperty(translationKey)) || 2;
+              properties.setProperty(translationKey, String(Math.min(nextTranslation, previous.index)));
+            }
+            const update = row.slice(6, textChanged ? MARKETS_REVIEW_HEADERS.length : 11);
+            sheet.getRange(previous.index, 7, 1, update.length).setValues([update.map(marketsReviewLiteral_)]);
+            known.set(row[0], { index: previous.index, updated: row[6], original: row[10] });
+            updated++;
+          }
           if (pending.size) {
             const nextRow = sheet.getLastRow() + 1;
-            ensureSheetCapacity_(sheet, nextRow + pending.size - 1, MARKETS_REVIEW_HEADERS.length);
-            sheet.getRange(nextRow, 1, pending.size, MARKETS_REVIEW_HEADERS.length)
-              .setValues([...pending.values()].map(row => row.map(marketsReviewLiteral_)));
-            SpreadsheetApp.flush();
-            pending.forEach((row, key) => known.add(key));
-            added += pending.size;
+            const rows = [...pending.values()];
+            ensureSheetCapacity_(sheet, nextRow + rows.length - 1, MARKETS_REVIEW_HEADERS.length);
+            sheet.getRange(nextRow, 1, rows.length, MARKETS_REVIEW_HEADERS.length)
+              .setValues(rows.map(row => row.map(marketsReviewLiteral_)));
+            rows.forEach((row, i) => known.set(row[0], { index: nextRow + i, updated: row[6], original: row[10] }));
+            added += rows.length;
           }
+          if (pending.size || updated > previousUpdates) SpreadsheetApp.flush();
           if (!result.more) break;
         }
       } catch (error) {
@@ -130,7 +157,7 @@ function collectMarketsReviews_() {
       processed++;
       properties.setProperty(cursorKey, JSON.stringify([apps[(start + processed) % apps.length].appKey, 1]));
     }
-    const summary = { added, failures, processed, eligible: apps.length };
+    const summary = { added, updated, failures, processed, eligible: apps.length };
     console.log(JSON.stringify(summary));
     return summary;
   } finally {

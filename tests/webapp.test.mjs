@@ -792,6 +792,6 @@ test("evolution KPIs use BBVA closes for the selected period", () => {
   assert.equal(D.weightedMean([{rating:3},{rating:5}]),4);
   assert.equal(D.weightedMean([{rating:null}]),null);
   const trends=rows.map(row=>({...row,isBbva:true,countryCode:"CO",month:"2026-10",ratingEom:row.rating,ratingCountEom:row.ratingCount,rating:undefined,ratingCount:undefined}));
-  assert.equal(D.prepareSeries(trends,{country:"ALL",platform:"ALL"})[0].points[0].value,2);
+  assert.equal(D.prepareSeries(trends,{country:"ALL",platform:"ALL"})[0].points[0].value,D.prepareSeries(trends,{country:"CO",platform:"ALL"})[0].points[0].value);
   assert.equal(D.evolutionKpis(trends,[],{country:"ALL",platform:"ALL"},"2026-10").current,2);
  });
