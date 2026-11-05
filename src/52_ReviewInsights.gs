@@ -246,14 +246,16 @@ function getMarketsReviewHeatmap(filters) {
   const revision = properties.getProperty('MARKETS_FUNCTIONAL_REVISION');
   const bucket = Math.floor(Date.now() / 300000);
   const key = Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,
-    JSON.stringify(['v1', revision, sheet.getLastRow(), bucket, period, country, platform, appName])));
+    JSON.stringify(['v2', revision, sheet.getLastRow(), bucket, period, country, platform, appName])));
   return readMarketsWebCache_('review-heatmap:' + key, () => {
     const taxonomy = catalog.getRange(2, 1, catalog.getLastRow() - 1, 4).getDisplayValues();
     const rules = compileReviewRules_(taxonomy);
-    const counts = new Map(taxonomy.map(([id, block, name]) => [id, { id, block, name, bbva: 0, peers: 0 }]));
-    for (const [id, block] of taxonomy) {
-      const key = id.slice(0, 2) + '.xx';
-      if (!counts.has(key)) counts.set(key, { id: key, block, name: 'Sin suboperativa identificada', bbva: 0, peers: 0 });
+    const topics = {};
+    const groups = { entities: new Map(), markets: new Map() };
+    for (const [id, block, name] of taxonomy) {
+      topics[id] = name;
+      topics[id.slice(0, 2)] = block;
+      topics[id.slice(0, 2) + '.xx'] = block + ' · Sin suboperativa identificada';
     }
     const apps = readAppCatalog_(ss);
     const byKey = new Map(apps.map(app => [app.appKey, app]));
@@ -271,16 +273,36 @@ function getMarketsReviewHeatmap(filters) {
         const candidates = source === 'Android'
           ? selectedMarkets.map(code => byMarketPackage.get(code + '|' + listing)).filter(Boolean)
           : [byKey.get(key)].filter(Boolean);
-        const app = candidates.find(item => !appName || (item.isBbva ? 'BBVA Empresas' : item.appName) === appName);
-        if (!app) continue;
+        const nameOf = app => app.isBbva ? 'BBVA Empresas' : app.appName;
+        const matched = candidates.filter(app => !appName || nameOf(app) === appName);
+        if (!matched.length) continue;
         complaints++;
-        const ids = classifyReviewEvidence_([title, original].join(' '), rules);
+        const ids = classifyReviewEvidence_([title, original].join(' '), rules).filter(id => topics[id]);
         if (ids.length) classified++;
-        for (const id of ids) if (counts.has(id)) counts.get(id)[app.isBbva ? 'bbva' : 'peers']++;
+        const categories = new Set(ids.flatMap(id => [id, id.slice(0, 2)]));
+        for (const [axis, labels] of [
+          ['entities', new Set(matched.map(nameOf))],
+          ['markets', new Set(matched.map(app => app.countryCode))]
+        ]) {
+          for (const label of labels) {
+            const group = groups[axis].get(label) || { label, total: 0, counts: {} };
+            group.total++;
+            for (const id of categories) group.counts[id] = (group.counts[id] || 0) + 1;
+            groups[axis].set(label, group);
+          }
+        }
       }
     }
-    return { configured: true, complaints, classified, syncedAt: properties.getProperty('MARKETS_FUNCTIONAL_SYNCED'),
-      functions: [...counts.values()].filter(row => row.bbva || row.peers)
-        .sort((a, b) => b.bbva + b.peers - a.bbva - a.peers) };
+    return { configured: true, complaints, classified, topics,
+      groups: Object.fromEntries(Object.entries(groups).map(([axis, values]) => [axis, [...values.values()]
+        .sort((a, b) => Number(b.label === 'BBVA Empresas') - Number(a.label === 'BBVA Empresas') ||
+          b.total - a.total || a.label.localeCompare(b.label))])) };
   });
+}
+
+function reviewTopicRules_(ss) {
+  const catalog = ss.getSheetByName('FUNCTIONAL_CATALOG');
+  return catalog && catalog.getLastRow() > 1
+    ? compileReviewRules_(catalog.getRange(2, 1, catalog.getLastRow() - 1, 3).getDisplayValues())
+    : new Map();
 }

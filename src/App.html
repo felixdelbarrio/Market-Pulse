@@ -140,10 +140,65 @@
         const data=await callServer("review:insights",filters);
         if(token!==reviewsRequest)return;
         if(!data.configured){target.innerHTML=U.empty("Catálogo pendiente","Sincroniza el catálogo desde Administración.");return}
-        const max=Math.max(1,...data.functions.flatMap(row=>[row.bbva,row.peers]));
-        const cell=value=>`<td class="review-heat-cell" style="--heat:${Math.round(75*value/max)}%">${integer(value)}</td>`;
-        target.innerHTML=`<p>${integer(data.classified)} de ${integer(data.complaints)} reseñas de 1 a 3 estrellas clasificadas. Una reseña puede mencionar varias funcionalidades.</p><div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Funcionalidad</th><th>BBVA</th><th>Competidores</th></tr></thead><tbody>${data.functions.map(row=>`<tr><th scope="row">${U.esc(row.id+" · "+row.block+" · "+row.name)}</th>${cell(row.bbva)}${cell(row.peers)}</tr>`).join("")}</tbody></table></div>`;
+        renderReviewMatrix(target,data,filters,token);
       }catch(error){if(token===reviewsRequest)target.textContent=error.message}
+    }
+    function renderReviewMatrix(target,data,filters,token){
+      target.innerHTML=`<p>${integer(data.classified)} de ${integer(data.complaints)} reseñas de 1 a 3 estrellas clasificadas.</p>
+        <div class="period-controls">
+          <label>Eje <select class="select-control" data-axis><option value="entities">Entidad</option><option value="markets">Mercado consultado</option></select></label>
+          <label>Nivel <select class="select-control" data-level><option value="block">Bloque funcional</option><option value="feature">Funcionalidad / Suboperativa</option></select></label>
+          <label>Medida <select class="select-control" data-measure><option value="count">Volumen</option><option value="share">% del grupo</option></select></label>
+        </div><div class="admin-table-wrap" data-matrix></div><div class="period-controls" data-pages></div>
+        <section data-detail aria-live="polite"></section>`;
+      const axis=target.querySelector("[data-axis]"), level=target.querySelector("[data-level]"),
+        measure=target.querySelector("[data-measure]"), table=target.querySelector("[data-matrix]"),
+        pages=target.querySelector("[data-pages]"), detail=target.querySelector("[data-detail]");
+      let rowPage=0, columnPage=0, detailRequest=0;
+      function render(){
+        const groups=data.groups[axis.value], totals=new Map();
+        for(const group of groups)for(const [id,count] of Object.entries(group.counts)){
+          if((id.length===2)===(level.value==="block"))totals.set(id,(totals.get(id)||0)+count);
+        }
+        const ids=[...totals.keys()].sort((a,b)=>totals.get(b)-totals.get(a)||a.localeCompare(b));
+        const rows=groups.slice(rowPage*8,rowPage*8+8), columns=ids.slice(columnPage*5,columnPage*5+5);
+        const label=group=>axis.value==="markets"?countryLabel(group.label):group.label;
+        const value=(group,id)=>measure.value==="share"?100*(group.counts[id]||0)/group.total:group.counts[id]||0;
+        let max=1;
+        for(const group of groups)for(const id of ids)max=Math.max(max,value(group,id));
+        table.innerHTML=columns.length?`<table class="admin-table review-matrix"><caption>Quejas por ${axis.value==="markets"?"mercado consultado":"entidad"}. Selecciona una celda para ver las reseñas.</caption>
+          <thead><tr><th scope="col">${axis.value==="markets"?"Mercado":"Entidad"}</th>${columns.map(id=>`<th scope="col">${U.esc(data.topics[id])}</th>`).join("")}</tr></thead>
+          <tbody>${rows.map((group,row)=>`<tr><th scope="row">${U.esc(label(group))}<small> · ${integer(group.total)} reseñas</small></th>${columns.map(id=>{
+            const count=group.counts[id]||0, shown=measure.value==="share"?fmt(value(group,id),1)+" %":integer(count);
+            return `<td class="review-heat-cell" style="--heat:${Math.round(75*value(group,id)/max)}%">${count?`<button type="button" data-cell="${row}|${id}" aria-label="${U.esc(label(group)+" · "+data.topics[id]+" · "+count+" reseñas")}">${shown}</button>`:shown}</td>`;
+          }).join("")}</tr>`).join("")}</tbody></table>`:U.empty("Sin coincidencias","No hay quejas clasificadas para este nivel.");
+        pages.innerHTML=[["Grupos",rowPage,groups.length,8,"row"],["Categorías",columnPage,ids.length,5,"column"]].map(([label,index,total,size,key])=>
+          `<span>${label} ${total?index+1:0}/${Math.ceil(total/size)}</span><button type="button" class="alert-button secondary" data-page="${key}|-1" aria-label="${label}: anterior" ${index===0?"disabled":""}>‹</button><button type="button" class="alert-button secondary" data-page="${key}|1" aria-label="${label}: siguiente" ${(index+1)*size>=total?"disabled":""}>›</button>`).join("");
+        table.onclick=async event=>{
+          const button=event.target.closest("[data-cell]");
+          if(!button)return;
+          const [row,id]=button.dataset.cell.split("|"), group=rows[Number(row)], request=++detailRequest;
+          const scope=axis.value==="markets"?{country:group.label}:{app:group.label};
+          const title=label(group)+" · "+data.topics[id];
+          detail.innerHTML=U.loading("Cargando reseñas de la celda");
+          try{
+            const items=await callServer("reviews",{...filters,...scope,topic:id,language:navigator.language.split("-")[0]});
+            if(request!==detailRequest||token!==reviewsRequest)return;
+            detail.innerHTML=`<h4>${U.esc(title)}</h4><p>${integer(items.length)} reseñas recientes</p>${items.map(item=>`<article class="incident"><strong>${U.esc(item.app)} · ${integer(item.rating)}/5</strong><time>${U.esc(dateLabel(item.date))}</time><p>${U.esc(item.text)}</p>${item.url?`<a href="${U.esc(item.url)}" target="_blank" rel="noopener noreferrer">Google Play · scraping web</a>`:""}</article>`).join("")}`;
+          }catch(error){if(request===detailRequest&&token===reviewsRequest)detail.textContent=error.message}
+        };
+      }
+      pages.onclick=event=>{
+        const button=event.target.closest("[data-page]");
+        if(!button)return;
+        const [key,step]=button.dataset.page.split("|");
+        if(key==="row")rowPage+=Number(step);else columnPage+=Number(step);
+        render();
+      };
+      [axis,level,measure].forEach(control=>control.addEventListener("change",()=>{
+        rowPage=columnPage=0;detailRequest++;detail.innerHTML="";render();
+      }));
+      render();
     }
     async function syncReviewCatalog(event){
       const button=event.currentTarget, status=$("review-catalog-status");
