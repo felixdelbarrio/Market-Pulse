@@ -427,3 +427,14 @@ test("an accepted admin newsletter retry is idempotent and does not rebuild or r
   context.readRatingObjects_ = previous.readRatings;
   context.MARKETS_WEB = previous.web;
 });
+
+test("localized newsletter renders subject, plain text and HTML in the chosen language", () => {
+  const model = { period: "2026-10", items: [{ countryCode: "TR", platform: "iOS", endRating: 4.2 }] };
+  for (const [language, title] of [["en", "Monthly review"], ["tr", "Aylık değerlendirme"]]) {
+    const rendered = context.localizedMarketsNewsletter_({ ...model, language });
+    assert.match(rendered.subject, new RegExp(title));
+    assert.match(rendered.plain, new RegExp(title));
+    assert.match(rendered.html, new RegExp('<html lang="' + language + '">'));
+    assert.match(rendered.html, /iOS/);
+  }
+});

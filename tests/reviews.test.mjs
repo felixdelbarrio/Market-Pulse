@@ -85,3 +85,13 @@ test("Google Play pagination preserves provenance and deduplicates across storef
   assert.equal(writes[1].row, 2);
   assert.equal(writes[1].rows[0][2], "ES,TR");
 });
+
+test("functional review evidence uses catalog IDs, context and exclusions", () => {
+  vm.runInContext(fs.readFileSync(new URL("../src/52_ReviewInsights.gs", import.meta.url), "utf8"), api);
+  const rules = api.compileReviewRules_([["01.01", "Home", "Posición global"]]);
+  const classify = value => Array.from(api.classifyReviewEvidence_(value, rules));
+  assert.deepEqual(classify("No se actualiza la posición global"), ["01.01"]);
+  assert.deepEqual(classify("The workforce dashboard crashed"), []);
+  assert.deepEqual(classify("No puedo iniciar sesión"), ["16.xx"]);
+  assert.deepEqual(classify("No funciona"), []);
+});

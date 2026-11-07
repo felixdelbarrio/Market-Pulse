@@ -108,6 +108,7 @@ function getMarketsAdminDashboard() {
     fetchIssues: issues,
     subscribers: subscribers.map(function (item) {
       const client = alertPreferencesForClient_(item);
+      client.newsletterLanguage = marketsNewsletterLanguageFor_(item.email);
       client.lastSeenAt = adminDateTime_(item.lastSeenAt);
       client.lastTestAt = adminDateTime_(item.lastTestAt);
       client.lastDeliveryAt = adminDateTime_(item.lastDeliveryAt);
@@ -139,6 +140,10 @@ function saveMarketsAdminSubscriber(email, payload) {
     ].forEach(function (definition) {
       requireCurrentSheetContract_(access.ss, definition[0], definition[1]);
     });
+    const language = payload?.newsletterLanguage;
+    if (language !== undefined && !['es', 'en', 'tr'].includes(language)) {
+      throw new Error('Idioma de newsletter no válido.');
+    }
     const previous = readMarketsAlertPreferences_(access.ss, targetEmail);
     const source = Object.assign({}, payload || {}, {
       email: targetEmail,
@@ -159,7 +164,11 @@ function saveMarketsAdminSubscriber(email, payload) {
         appendAlertEvents_(access.ss, acknowledgements);
       }
     }
+    if (language !== undefined) {
+      PropertiesService.getScriptProperties().setProperty(marketsNewsletterLanguageKey_(targetEmail), language);
+    }
     const client = alertPreferencesForClient_(saved);
+    client.newsletterLanguage = marketsNewsletterLanguageFor_(targetEmail);
     client.enrollmentYtdAcknowledged = acknowledgements.length;
     return client;
   } finally {

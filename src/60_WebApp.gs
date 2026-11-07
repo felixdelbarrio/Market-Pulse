@@ -667,3 +667,35 @@ function webDateTime_(value) {
 function getMarketsReviews(filters) {
   return readMarketsReviewsForWeb_(filters);
 }
+
+function getMarketsReviewInsights(filters) {
+  return getMarketsReviewHeatmap(filters);
+}
+
+function configureMarketsReviewInsights() {
+  return setupMarketsReviewInsights();
+}
+
+function getMarketsPerformance() {
+  const { ss } = requireMarketsAdministrator_();
+  const sheet = ss.getSheetByName(MARKETS_CONFIG.sheets.usage);
+  const size = Math.min(3000, Math.max(0, (sheet?.getLastRow() || 1) - 1));
+  if (!size) return [];
+  const samples = new Map();
+  const rows = sheet.getRange(sheet.getLastRow() - size + 1, 4, size, 4).getValues();
+  for (const [type, , operation, detail] of rows) {
+    if (type !== 'PERFORMANCE') continue;
+    const match = /^(RPC|CACHE) (\d{1,6}) (OK|ERROR)$/.exec(detail);
+    if (!match) continue;
+    if (!samples.has(operation)) samples.set(operation, { rpc: [], hits: 0, errors: 0 });
+    const sample = samples.get(operation);
+    if (match[3] === 'ERROR') sample.errors++;
+    else if (match[1] === 'CACHE') sample.hits++;
+    else sample.rpc.push(Number(match[2]));
+  }
+  return [...samples].map(([operation, data]) => {
+    const values = data.rpc.sort((a, b) => a - b);
+    return { operation, calls: values.length, hits: data.hits, errors: data.errors,
+      p95: values.length ? values[Math.ceil(values.length * .95) - 1] : null };
+  });
+}
