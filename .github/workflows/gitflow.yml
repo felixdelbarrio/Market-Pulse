@@ -1,0 +1,29 @@
+name: GitFlow
+
+on:
+  pull_request:
+    branches: [develop, master]
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+
+jobs:
+  branches:
+    name: Branch policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      BASE: ${{ github.base_ref }}
+      HEAD: ${{ github.head_ref }}
+      BASE_REPO: ${{ github.event.pull_request.base.repo.full_name }}
+      HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+    steps:
+      - name: Validate branches
+        run: |
+          case "$BASE:$HEAD" in
+            master:develop) test "$HEAD_REPO" = "$BASE_REPO" ;;
+            develop:develop|develop:master) exit 1 ;;
+            develop:*) test -n "$HEAD" ;;
+            *) exit 1 ;;
+          esac
