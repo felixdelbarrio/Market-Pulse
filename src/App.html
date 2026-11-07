@@ -6,24 +6,95 @@
     const state={meta:null,userContext:null,snapshot:[],trends:[],consolidated:null,country:"ALL",platform:"ALL",benchmarkSegment:"BANK",evolutionApp:"",benchmarkWeighted:false,view:"overview",periodYear:"",periodMonth:"",trendsLoading:true,trendToken:0,trendTimer:0,trendCache:new Map(),trendPromise:null,bootstrapLoading:false,alertCenter:null,alertDraft:null,alertsLoading:false,alertsLoaded:false,adminCenter:null,adminLoading:false,adminLoaded:false,adminTab:"health",adminEditingEmail:"",adminSubscriberFilters:{query:"",countries:["ANY"],platforms:["ANY"],status:"ALL"},usageQueue:[],usageTimer:0,usageStarted:false};
     const $=id=>document.getElementById(id);
     const bindOptional=(id,event,handler)=>$(id)?.addEventListener(event,handler);
-    const fmt=(value,digits=1)=>D.finite(value)?value.toLocaleString("es-ES",{minimumFractionDigits:digits,maximumFractionDigits:digits}):"—";
-    const integer=value=>D.finite(value)?Math.round(value).toLocaleString("es-ES"):"—";
+    const interfaceCopy={
+      "Resumen":["Overview","Özet"],"Benchmark":["Benchmark","Karşılaştırma"],"Evolución":["Trends","Trendler"],
+      "Alertas":["Alerts","Uyarılar"],"Comentarios":["Reviews","Yorumlar"],"Administración":["Administration","Yönetim"],
+      "Idioma":["Language","Dil"],"Idioma de la aplicación":["Application language","Uygulama dili"],
+      "Idioma de la interfaz":["Interface language","Arayüz dili"],
+      "La selección se aplica a esta pestaña.":["The selection applies to this tab.","Seçim bu sekme için geçerlidir."],
+      "Idioma de la newsletter":["Newsletter language","Bülten dili"],"Salud":["Health","Sistem durumu"],
+      "Rendimiento":["Performance","Performans"],"Adopción":["Adoption","Kullanım"],"Ejecuciones":["Runs","Çalıştırmalar"],
+      "Captura":["Collection","Veri toplama"],"Suscripciones":["Subscriptions","Abonelikler"],
+      "Salud y operación":["Health and operations","Sistem durumu ve operasyonlar"],
+      "Acceso restringido":["Restricted access","Kısıtlı erişim"],
+      "Información privada para administrar la carga, las entregas y las suscripciones.":["Private workspace for managing data collection, delivery and subscriptions.","Veri toplama, gönderim ve abonelikleri yönetmek için özel alan."],
+      "Correo corporativo":["Corporate email","Kurumsal e-posta"],"Dar de alta usuario":["Add user","Kullanıcı ekle"],
+      "Añadir suscriptor":["Add subscriber","Abone ekle"],"Nueva suscripción":["New subscription","Yeni abonelik"],
+      "Guardar cambios":["Save changes","Değişiklikleri kaydet"],"Guardar suscripción":["Save subscription","Aboneliği kaydet"],
+      "Cancelar":["Cancel","İptal"],"Configuración operativa":["Operational settings","Operasyon ayarları"],
+      "Actualizar datos":["Refresh data","Verileri yenile"],"Recuperar ratings ahora":["Recover ratings now","Puanları şimdi kurtar"],
+      "Mercado":["Market","Pazar"],"Mercados":["Markets","Pazarlar"],"Plataforma":["Platform","Platform"],
+      "Plataformas":["Platforms","Platformlar"],"Todos los mercados":["All markets","Tüm pazarlar"],
+      "Todas":["All","Tümü"],"Todos":["All","Tümü"],"Aplicación":["Application","Uygulama"],"Mes":["Month","Ay"],
+      "Aplicar filtros":["Apply filters","Filtreleri uygula"],"Limpiar filtros":["Clear filters","Filtreleri temizle"],
+      "Mapa de calor de quejas":["Complaint heatmap","Şikâyet ısı haritası"],"Descargar informe":["Download report","Raporu indir"],
+      "Última ejecución":["Last run","Son çalıştırma"],"Pulso del mercado":["Market pulse","Pazar görünümü"],
+      "Resumen ejecutivo":["Executive summary","Yönetici özeti"],"Visión del VoC por geografías":["Voice of the customer by market","Pazara göre müşteri sesi"],
+      "Posición competitiva":["Competitive position","Rekabet konumu"],"Benchmark por mercado":["Benchmark by market","Pazara göre karşılaştırma"],
+      "Rendimiento de la aplicación":["Application performance","Uygulama performansı"],
+      "Sincronizar catálogo":["Sync catalog","Kataloğu eşitle"],"Catálogo global de funcionalidades":["Global functionality catalog","Küresel işlev kataloğu"],
+      "Eventos de alertas":["Alert events","Uyarı olayları"],"Ámbito de la suscripción":["Subscription scope","Abonelik kapsamı"],
+      "Newsletter mensual":["Monthly newsletter","Aylık bülten"],"Guardar":["Save","Kaydet"],"Editar":["Edit","Düzenle"]
+    };
+    const supportedLanguage=value=>["es","en","tr"].includes(value)?value:"es";
+    let appLanguage=supportedLanguage(navigator.language.split("-")[0]);
+    try{appLanguage=supportedLanguage(sessionStorage.getItem("market-pulse-language")||appLanguage)}catch(ignored){}
+    const locale=()=>({es:"es-ES",en:"en-GB",tr:"tr-TR"}[appLanguage]);
+    const originalCopy=new WeakMap();
+    function translateInterface(root){
+      if(!root)return;
+      const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
+      for(let node=walker.nextNode();node;node=walker.nextNode()){
+        if(node.parentElement.closest("script,style,textarea,#review-results,[data-detail]"))continue;
+        const previous=originalCopy.get(node);
+        const original=previous?.rendered===node.data?previous.original:node.data;
+        const word=original.trim(), variants=Object.hasOwn(interfaceCopy,word)?interfaceCopy[word]:null;
+        if(!variants)continue;
+        const rendered=appLanguage==="es"?original:original.replace(word,variants[appLanguage==="en"?0:1]);
+        originalCopy.set(node,{original,rendered});
+        if(node.data!==rendered)node.data=rendered;
+      }
+    }
+    function initializeLanguage(){
+      document.documentElement.lang=appLanguage;
+      const selector=$("admin-app-language");
+      selector.value=appLanguage;
+      selector.addEventListener("change",()=>{
+        appLanguage=supportedLanguage(selector.value);
+        try{sessionStorage.setItem("market-pulse-language",appLanguage)}catch(ignored){}
+        document.documentElement.lang=appLanguage;
+        if(state.meta){renderHero();renderDashboard();renderAdmin()}
+        translateInterface(document.body);
+      });
+      translateInterface(document.body);
+      new MutationObserver(records=>{
+        for(const record of records){
+          if(record.type==="characterData")translateInterface(record.target.parentElement);
+          else for(const node of record.addedNodes){
+            if(node.nodeType===Node.ELEMENT_NODE)translateInterface(node);
+            else if(node.nodeType===Node.TEXT_NODE)translateInterface(node.parentElement);
+          }
+        }
+      }).observe(document.body,{childList:true,characterData:true,subtree:true});
+    }
+    const fmt=(value,digits=1)=>D.finite(value)?value.toLocaleString(locale(),{minimumFractionDigits:digits,maximumFractionDigits:digits}):"—";
+    const integer=value=>D.finite(value)?Math.round(value).toLocaleString(locale()):"—";
     const compactInteger=value=>{if(!D.finite(value))return"—";const absolute=Math.abs(value);if(absolute<1000)return integer(value);if(absolute<1000000)return`${fmt(value/1000,absolute<10000?1:0)} mil`;return`${fmt(value/1000000,absolute<10000000?1:0)} M`};
     const signed=value=>{if(!D.finite(value))return"—";const normalized=Math.abs(value)<.005?0:value;return`${normalized>0?"+":""}${fmt(normalized,2)}`};
     const initials=value=>String(value||"?").split(/\s+/).slice(0,2).map(part=>part[0]).join("").toUpperCase();
-    const dateLabel=value=>value?new Intl.DateTimeFormat("es-ES",{day:"2-digit",month:"short",year:"numeric"}).format(new Date(`${value}T12:00:00`)):"—";
-    const dateTimeLabel=value=>value?new Intl.DateTimeFormat("es-ES",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit",second:"2-digit"}).format(new Date(value)):"—";
-    const monthLabel=value=>value?new Intl.DateTimeFormat("es-ES",{month:"short",year:"2-digit"}).format(new Date(`${value}-15T12:00:00`)):"—";
-    const monthName=value=>value?new Intl.DateTimeFormat("es-ES",{month:"long"}).format(new Date(`2024-${String(value).padStart(2,"0")}-15T12:00:00`)):"—";
+    const dateLabel=value=>value?new Intl.DateTimeFormat(locale(),{day:"2-digit",month:"short",year:"numeric"}).format(new Date(`${value}T12:00:00`)):"—";
+    const dateTimeLabel=value=>value?new Intl.DateTimeFormat(locale(),{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit",second:"2-digit"}).format(new Date(value)):"—";
+    const monthLabel=value=>value?new Intl.DateTimeFormat(locale(),{month:"short",year:"2-digit"}).format(new Date(`${value}-15T12:00:00`)):"—";
+    const monthName=value=>value?new Intl.DateTimeFormat(locale(),{month:"long"}).format(new Date(`2024-${String(value).padStart(2,"0")}-15T12:00:00`)):"—";
     const countryLabel=code=>D.config.countries[code]||state.meta?.countries.find(item=>item.code===code)?.name||code;
     const selection=()=>({country:state.country,platform:state.platform});
 
     document.addEventListener("DOMContentLoaded",initializeApp);
 
-    function initializeApp(){try{window.addEventListener("error",event=>trackUsage("ERROR",state.view,"RUNTIME_ERROR",event.message));window.addEventListener("unhandledrejection",event=>trackUsage("ERROR",state.view,"PROMISE_REJECTION",event.reason?.message||event.reason));bindNavigation();bindFilters();bindInteractions();document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="hidden")flushUsage()});const viewportChanged=()=>{if(state.meta&&state.view==="evolution")renderEvolution()};if(typeof mobileViewport.addEventListener==="function")mobileViewport.addEventListener("change",viewportChanged);else if(typeof mobileViewport.addListener==="function")mobileViewport.addListener(viewportChanged);$("dialog-close").innerHTML=U.icon("close");$("admin-subscriber-close").innerHTML=U.icon("close");$("loader-retry").addEventListener("click",loadBootstrap);loadBootstrap()}catch(error){showStartupFailure(error)}}
+    function initializeApp(){try{initializeLanguage();window.addEventListener("error",event=>trackUsage("ERROR",state.view,"RUNTIME_ERROR",event.message));window.addEventListener("unhandledrejection",event=>trackUsage("ERROR",state.view,"PROMISE_REJECTION",event.reason?.message||event.reason));bindNavigation();bindFilters();bindInteractions();document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="hidden")flushUsage()});const viewportChanged=()=>{if(state.meta&&state.view==="evolution")renderEvolution()};if(typeof mobileViewport.addEventListener==="function")mobileViewport.addEventListener("change",viewportChanged);else if(typeof mobileViewport.addListener==="function")mobileViewport.addListener(viewportChanged);$("dialog-close").innerHTML=U.icon("close");$("admin-subscriber-close").innerHTML=U.icon("close");$("loader-retry").addEventListener("click",loadBootstrap);loadBootstrap()}catch(error){showStartupFailure(error)}}
 
     function serverTimeoutMs(method){return method==="admin:ratings:recover"?360000:method==="admin:newsletter:test"?120000:method==="bootstrap"?20000:method==="admin:get"?30000:20000}
-    function callServer(method,argument){return new Promise((resolve,reject)=>{if(!window.google?.script?.run)return reject(new Error("El dashboard debe abrirse desde el despliegue de Apps Script."));let settled=false;const finish=callback=>value=>{if(settled)return;settled=true;window.clearTimeout(timer);callback(value)};const timer=window.setTimeout(()=>finish(reject)(new Error("Market Pulse no ha respondido a tiempo. Reintenta la carga.")),serverTimeoutMs(method));const runner=google.script.run.withSuccessHandler(finish(resolve)).withFailureHandler(finish(error=>reject(new Error(error?.message||error))));if(method==="bootstrap")runner.getMarketsDashboardBootstrap();else if(method==="user:context")runner.getMarketsUserContext();else if(method==="admin:get")runner.getMarketsAdminDashboard();else if(method==="admin:subscriber:save")runner.saveMarketsAdminSubscriber(argument.email,argument.preferences);else if(method==="admin:newsletter:test")runner.sendMarketsAdminNewsletterTestEmail(argument);else if(method==="admin:ratings:recover")runner.requestMarketsAdminRatingRecovery();else if(method==="reviews:segments")runner.getMarketsReviewSegments();else if(method==="reviews")runner.getMarketsReviews(argument);else if(method==="trends")runner.getMarketsDashboardTrends(argument);else if(method==="alerts:get")runner.getMarketsAlertPreferences();else if(method==="alerts:save")runner.saveMarketsAlertPreferences(argument);else if(method==="alerts:reset")runner.resetMarketsAlertPreferences();else if(method==="alerts:test")runner.sendMarketsAlertTestEmail();else finish(reject)(new Error("Operacion no soportada: "+method))})}
+    function callServer(method,argument){const started=performance.now();return new Promise((resolve,reject)=>{if(!window.google?.script?.run)return reject(new Error("El dashboard debe abrirse desde el despliegue de Apps Script."));let settled=false;const finish=callback=>value=>{if(settled)return;settled=true;window.clearTimeout(timer);trackUsage("PERFORMANCE",state.view,method,`RPC ${Math.round(performance.now()-started)} ${callback===resolve?"OK":"ERROR"}`);callback(value)};const timer=window.setTimeout(()=>finish(reject)(new Error("Market Pulse no ha respondido a tiempo. Reintenta la carga.")),serverTimeoutMs(method));const runner=google.script.run.withSuccessHandler(finish(resolve)).withFailureHandler(finish(error=>reject(new Error(error?.message||error))));if(method==="bootstrap")runner.getMarketsDashboardBootstrap();else if(method==="user:context")runner.getMarketsUserContext();else if(method==="admin:get")runner.getMarketsAdminDashboard();else if(method==="admin:subscriber:save")runner.saveMarketsAdminSubscriber(argument.email,argument.preferences);else if(method==="admin:newsletter:test")runner.sendMarketsAdminNewsletterTestEmail(argument);else if(method==="admin:ratings:recover")runner.requestMarketsAdminRatingRecovery();else if(method==="reviews:segments")runner.getMarketsReviewSegments();else if(method==="reviews")runner.getMarketsReviews(argument);else if(method==="review:insights")runner.getMarketsReviewInsights(argument);else if(method==="review:configure")runner.configureMarketsReviewInsights();else if(method==="performance")runner.getMarketsPerformance();else if(method==="trends")runner.getMarketsDashboardTrends(argument);else if(method==="alerts:get")runner.getMarketsAlertPreferences();else if(method==="alerts:save")runner.saveMarketsAlertPreferences(argument);else if(method==="alerts:reset")runner.resetMarketsAlertPreferences();else if(method==="alerts:test")runner.sendMarketsAlertTestEmail();else finish(reject)(new Error("Operacion no soportada: "+method))})}
     function validateBootstrap(data){if(!data||!data.meta||!Array.isArray(data.snapshot)||!Array.isArray(data.trends))throw new Error("El servidor ha devuelto una respuesta incompleta. Actualiza el despliegue de Market Pulse.");return data}
     async function loadBootstrap(){if(state.bootstrapLoading)return;state.bootstrapLoading=true;const loader=$("loader");loader.classList.remove("done","failed");$("loader-title").textContent="Preparando Market Pulse…";$("loader-detail").classList.add("hidden");$("loader-retry").classList.add("hidden");try{const data=validateBootstrap(await callServer("bootstrap"));state.meta=data.meta;state.userContext=data.userContext||{email:"",isAdmin:false};state.snapshot=data.snapshot;state.trends=data.trends;state.consolidated=data.consolidated||null;state.trendsLoading=false;state.trendCache.set("ALL|ALL|ALL|BBVA|18",state.trends);state.country=browserMarket();restoreUserPreferences();buildControls();configureAdminNavigation();renderHero();renderDashboard();startUsageTracking();if(state.country!=="ALL"||state.platform!=="ALL")scheduleTrends(0);$("footer-version").textContent=`Contrato ${data.meta.codeVersion} · Web ${data.meta.webVersion||"1"}`;loader.classList.add("done")}catch(error){showStartupFailure(error)}finally{state.bootstrapLoading=false}}
     function showStartupFailure(error){const loader=$("loader");if(!loader)return;loader.classList.remove("done");loader.classList.add("failed");$("loader-title").textContent="No hemos podido iniciar Market Pulse";$("loader-detail").textContent=error?.message||String(error);$("loader-detail").classList.remove("hidden");$("loader-retry").classList.remove("hidden")}
@@ -41,7 +112,10 @@
     function activateView(view){if((view==="admin"||view==="reviews")&&!state.userContext?.isAdmin)return;const changed=state.view!==view;state.view=view;document.querySelectorAll(".nav-button").forEach(item=>item.classList.toggle("active",item.dataset.view===view));document.querySelectorAll(".view").forEach(item=>item.classList.toggle("hidden",item.id!==`view-${view}`));syncViewControls();if(changed)trackUsage("VIEW",view,"OPEN_VIEW");if(view==="overview")renderOverview();if(view==="benchmark")renderBenchmark();if(view==="evolution"||changed&&view==="overview"){state.trendsLoading=true;renderDashboard();scheduleTrends(0)}if(view==="alerts")loadAlerts();if(view==="admin")loadAdmin();if(view==="reviews")loadReviews();renderPrintContext()}
     function syncViewControls(){const benchmark=state.view==="benchmark",privateView=state.view==="alerts"||state.view==="admin";$("benchmark-control").classList.toggle("hidden",!benchmark);$("filter-bar").classList.toggle("benchmark-mode",benchmark);$("filter-bar").setAttribute("aria-label",benchmark?"Filtros de benchmark":"Filtros globales");$("filter-wrap").classList.toggle("hidden",privateView);$("report-button").classList.toggle("hidden",privateView||state.view==="reviews")}
     function bindFilters(){
-      ["review-app","review-period","review-segment"].forEach(id=>$(id).addEventListener("change",loadReviews));
+      bindOptional("review-catalog-sync","click",syncReviewCatalog);
+      ["review-app","review-period","review-segment"].forEach(id=>bindOptional(id,"change",loadReviews));
+      bindOptional("review-filters","submit",event=>{event.preventDefault();loadReviews()});
+      bindOptional("review-filters","reset",()=>queueMicrotask(loadReviews));
       $("evolution-app").addEventListener("change",event=>{state.evolutionApp=event.target.value;trackUsage("FILTER",state.view,"EVOLUTION_APP",state.evolutionApp);renderEvolution();renderPrintContext()});
       $("benchmark-weighted").addEventListener("change",event=>{state.benchmarkWeighted=event.target.checked;renderBenchmark();renderPrintContext()});
       $("country-filter").addEventListener("change",event=>{state.country=event.target.value;syncGlobalControlState();filtersChanged()});
@@ -67,11 +141,12 @@
     function preferenceKey(){return`markets-voc-preferences:${String(state.userContext?.email||"session").toLowerCase()}`}
     function restoreUserPreferences(){try{const saved=JSON.parse(localStorage.getItem(preferenceKey())||"{}");const countries=new Set(["ALL",...(state.meta?.countries||[]).map(item=>item.code)]);const platforms=new Set(["ALL",...D.config.platforms]);const segments=new Set(Object.keys(D.config.segmentLabels));if(countries.has(saved.country))state.country=saved.country;if(platforms.has(saved.platform))state.platform=saved.platform;if(segments.has(saved.benchmarkSegment))state.benchmarkSegment=saved.benchmarkSegment;if(/^\d{4}$/.test(saved.periodYear||""))state.periodYear=saved.periodYear;if(/^\d{2}$/.test(saved.periodMonth||""))state.periodMonth=saved.periodMonth}catch(ignored){}}
     function persistUserPreferences(){if(!state.meta)return;try{localStorage.setItem(preferenceKey(),JSON.stringify({country:state.country,platform:state.platform,benchmarkSegment:state.benchmarkSegment,periodYear:state.periodYear,periodMonth:state.periodMonth}))}catch(ignored){}}
-    function filtersChanged(){if(state.view==="reviews"){persistUserPreferences();loadReviews();return}state.periodYear="";state.periodMonth="";state.trendsLoading=true;persistUserPreferences();trackUsage("FILTER",state.view,"GLOBAL_SCOPE",`${state.country}|${state.platform}`);renderDashboard();scheduleTrends(120)}
+    function filtersChanged(){if(state.view==="reviews"){persistUserPreferences();syncReviewAppOptions();return}state.periodYear="";state.periodMonth="";state.trendsLoading=true;persistUserPreferences();trackUsage("FILTER",state.view,"GLOBAL_SCOPE",`${state.country}|${state.platform}`);renderDashboard();scheduleTrends(120)}
     function scheduleTrends(delay){window.clearTimeout(state.trendTimer);state.trendTimer=window.setTimeout(loadTrends,delay)}
     function trendRequest(){return{countryCode:state.country==="ALL"?"":state.country,platform:state.platform==="ALL"?"":state.platform,segment:"ALL",months:18,bbvaOnly:state.country==="ALL"&&state.view!=="evolution"}}
     function trendKey(request){return[request.countryCode||"ALL",request.platform||"ALL",request.segment,request.bbvaOnly?"BBVA":"ALL",request.months].join("|")}
-    async function loadTrends(){const request=trendRequest(),key=trendKey(request),token=++state.trendToken;if(state.trendCache.has(key)){state.trends=state.trendCache.get(key);state.trendsLoading=false;renderDashboard();return}state.trendsLoading=true;renderChartsLoading();state.trendPromise=callServer("trends",request);try{const trends=await state.trendPromise;if(token!==state.trendToken)return;state.trends=trends||[];state.trendCache.set(key,state.trends)}catch(error){if(token===state.trendToken){state.trends=[];showError(error)}}finally{if(token===state.trendToken){state.trendsLoading=false;state.trendPromise=null;renderDashboard()}}}
+    const trendRequests=new Map();
+    async function loadTrends(){const request=trendRequest(),key=trendKey(request),token=++state.trendToken;if(state.trendCache.has(key)){trackUsage("PERFORMANCE",state.view,"trends","CACHE 0 OK");state.trends=state.trendCache.get(key);state.trendsLoading=false;renderDashboard();return}state.trendsLoading=true;renderChartsLoading();if(!trendRequests.has(key)){const pending=callServer("trends",request);trendRequests.set(key,pending);const clear=()=>trendRequests.delete(key);pending.then(clear,clear)}state.trendPromise=trendRequests.get(key);try{const trends=await state.trendPromise;if(token!==state.trendToken)return;state.trends=trends||[];state.trendCache.set(key,state.trends);if(state.trendCache.size>12)state.trendCache.delete(state.trendCache.keys().next().value)}catch(error){if(token===state.trendToken){state.trends=[];showError(error)}}finally{if(token===state.trendToken){state.trendsLoading=false;state.trendPromise=null;renderDashboard()}}}
 
     function renderDashboard(){if(state.view==="overview")renderOverview();else if(state.view==="benchmark")renderBenchmark();else if(state.view==="evolution")renderEvolution();renderPrintContext()}
     function renderHero(){const run=state.meta.latestRun||{},status=run.status||"SIN RUN",incidents=run.incidents||[];$("run-status").textContent=status==="OK"?"Datos actualizados":status==="PARTIAL"?"Actualización parcial":status;$("run-dot").className=`status-dot ${status==="OK"?"":status==="PARTIAL"?"warn":"bad"}`;$("run-date").textContent=`${dateTimeLabel(run.startedAt)} · ${run.appsOk??0}/${run.appsTotal??0} apps con rating`;$("incident-button").textContent=incidents.length?`${incidents.length} incidencia${incidents.length===1?"":"s"}`:"Sin incidencias";$("incident-button").disabled=!incidents.length;$("incident-list").innerHTML=incidents.map(item=>`<article class="incident"><strong>${U.esc(`${D.config.flags[item.countryCode]||"🌐"} ${countryLabel(item.countryCode)} · ${item.platform} · ${item.status}`)}</strong><span>${U.esc(`${appNameFromKey(item.appKey)} · ${item.detail}`)}</span></article>`).join("")||U.empty("Sin incidencias","La última actualización terminó correctamente.")}
@@ -105,28 +180,116 @@
     function appLogo(row){const url=state.meta.logos?.[row.appKey];return`<span class="app-logo">${url?`<img src="${U.esc(url)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">`:""}<b>${U.esc(initials(D.appName(row)))}</b></span>`}
 
     let reviewsRequest=0;
-    async function loadReviews(){
-      const token=++reviewsRequest, results=$("review-results"), filter=$("review-app");
+    function syncReviewAppOptions(){
+      const filter=$("review-app");
       const apps=[...new Set(D.selectionRows(state.snapshot,selection(),"ALL").filter(row=>row.platform!=="Huawei").map(D.appName))].sort((a,b)=>a.localeCompare(b));
       const app=apps.includes(filter.value)?filter.value:"";
       filter.innerHTML=U.option("","Todas",!app)+apps.map(name=>U.option(name,name,name===app)).join("");
+      return app;
+    }
+    async function loadReviews(){
+      const token=++reviewsRequest, results=$("review-results"), app=syncReviewAppOptions();
+      $("review-filter-status").textContent=[state.country==="ALL"?"Todos los mercados":countryLabel(state.country),
+        state.platform==="ALL"?"Todas las plataformas":state.platform,app,$("review-period").value].filter(Boolean).join(" · ");
+      $("review-heatmap").innerHTML="";
       if(state.platform==="Huawei"){
         results.innerHTML=U.empty("Fuente sin cobertura","Las reseñas están disponibles para iOS y Android.");
         return;
       }
       results.innerHTML=U.loading();
+      loadReviewHeatmap({...selection(),app,period:$("review-period").value},token);
       try{
-        const language=["es","en","tr"].includes(navigator.language.split("-")[0])?navigator.language.split("-")[0]:"es";
+        const language=appLanguage;
         const segmentFilter=$("review-segment");
-        if(!segmentFilter.options.length){
+        if(segmentFilter&&!segmentFilter.options.length){
           const segments=await callServer("reviews:segments");
           if(token!==reviewsRequest||state.view!=="reviews")return;
           segmentFilter.innerHTML=segments.map(group=>U.option(group.id,group.label,group.id==="DETRACTOR")).join("");
         }
-        const rows=await callServer("reviews",{...selection(),app,period:$("review-period").value,language,segment:segmentFilter.value});
-        if(token!==reviewsRequest||state.view!=="reviews")return;
+        const rows=await callServer("reviews",{...selection(),app,period:$("review-period").value,language,...(segmentFilter?{segment:segmentFilter.value}:{})});
+        if(token!==reviewsRequest)return;
         results.innerHTML=rows.map(row=>`<article class="incident"><strong>${U.esc(row.app)} · ${U.esc(row.platform)} · ${fmt(row.rating,0)}/5</strong><time>${U.esc(dateLabel(row.date))}</time><p>${row.url?`<a href="${U.esc(row.url)}" target="_blank" rel="noopener noreferrer">Google Play · scraping web</a> · Mercado consultado: ${U.esc(row.countries.map(countryLabel).join(", "))} · País de la reseña: sin verificar${row.capturedAt?` · Captura: ${U.esc(dateLabel(row.capturedAt))}`:""}`:`App Store · ${U.esc(row.countries.map(countryLabel).join(", "))}`}</p>${row.title?`<p><strong>${U.esc(row.title)}</strong></p>`:""}<p>${U.esc(row.text)}</p>${row.translated?`<details><summary>Ver original</summary><p>${U.esc(row.original)}</p></details>`:""}</article>`).join("")||U.empty("Sin comentarios","No hay reseñas para esta selección.");
       }catch(error){if(token===reviewsRequest)results.textContent=error.message}
+    }
+    async function loadReviewHeatmap(filters,token){
+      const target=$("review-heatmap");
+      target.innerHTML=U.loading("Calculando quejas por funcionalidad");
+      try{
+        const data=await callServer("review:insights",filters);
+        if(token!==reviewsRequest)return;
+        if(!data.configured){target.innerHTML=U.empty("Catálogo pendiente","Sincroniza el catálogo desde Administración.");return}
+        renderReviewMatrix(target,data,filters,token);
+      }catch(error){if(token===reviewsRequest)target.textContent=error.message}
+    }
+    function renderReviewMatrix(target,data,filters,token){
+      target.innerHTML=`<p>${integer(data.classified)} de ${integer(data.complaints)} reseñas de 1 a 3 estrellas clasificadas.</p>
+        <div class="period-controls">
+          <label>Eje <select class="select-control" data-axis><option value="entities">Entidad</option><option value="markets">Mercado consultado</option></select></label>
+          <label>Nivel <select class="select-control" data-level><option value="block">Bloque funcional</option><option value="feature">Funcionalidad / Suboperativa</option></select></label>
+          <label>Medida <select class="select-control" data-measure><option value="count">Volumen</option><option value="share">% del grupo</option></select></label>
+        </div><div class="admin-table-wrap" data-matrix></div><div class="period-controls" data-pages></div>
+        <section data-detail aria-live="polite"></section>`;
+      const axis=target.querySelector("[data-axis]"), level=target.querySelector("[data-level]"),
+        measure=target.querySelector("[data-measure]"), table=target.querySelector("[data-matrix]"),
+        pages=target.querySelector("[data-pages]"), detail=target.querySelector("[data-detail]");
+      let rowPage=0, columnPage=0, detailRequest=0;
+      function render(){
+        const groups=data.groups[axis.value], totals=new Map();
+        for(const group of groups)for(const [id,count] of Object.entries(group.counts)){
+          if((id.length===2)===(level.value==="block"))totals.set(id,(totals.get(id)||0)+count);
+        }
+        const ids=[...totals.keys()].sort((a,b)=>totals.get(b)-totals.get(a)||a.localeCompare(b));
+        const rows=groups.slice(rowPage*8,rowPage*8+8), columns=ids.slice(columnPage*5,columnPage*5+5);
+        const label=group=>axis.value==="markets"?countryLabel(group.label):group.label;
+        const value=(group,id)=>measure.value==="share"?100*(group.counts[id]||0)/group.total:group.counts[id]||0;
+        let max=1;
+        for(const group of groups)for(const id of ids)max=Math.max(max,value(group,id));
+        table.innerHTML=columns.length?`<table class="admin-table review-matrix"><caption>Quejas por ${axis.value==="markets"?"mercado consultado":"entidad"}. Selecciona una celda para ver las reseñas.</caption>
+          <thead><tr><th scope="col">${axis.value==="markets"?"Mercado":"Entidad"}</th>${columns.map(id=>`<th scope="col">${U.esc(data.topics[id])}</th>`).join("")}</tr></thead>
+          <tbody>${rows.map((group,row)=>`<tr><th scope="row">${U.esc(label(group))}<small> · ${integer(group.total)} reseñas</small></th>${columns.map(id=>{
+            const count=group.counts[id]||0, shown=measure.value==="share"?fmt(value(group,id),1)+" %":integer(count);
+            return `<td class="review-heat-cell" style="--heat:${Math.round(75*value(group,id)/max)}%">${count?`<button type="button" data-cell="${row}|${id}" aria-label="${U.esc(label(group)+" · "+data.topics[id]+" · "+count+" reseñas")}">${shown}</button>`:shown}</td>`;
+          }).join("")}</tr>`).join("")}</tbody></table>`:U.empty("Sin coincidencias","No hay quejas clasificadas para este nivel.");
+        pages.innerHTML=[["Grupos",rowPage,groups.length,8,"row"],["Categorías",columnPage,ids.length,5,"column"]].map(([label,index,total,size,key])=>
+          `<span>${label} ${total?index+1:0}/${Math.ceil(total/size)}</span><button type="button" class="alert-button secondary" data-page="${key}|-1" aria-label="${label}: anterior" ${index===0?"disabled":""}>‹</button><button type="button" class="alert-button secondary" data-page="${key}|1" aria-label="${label}: siguiente" ${(index+1)*size>=total?"disabled":""}>›</button>`).join("");
+        table.onclick=async event=>{
+          const button=event.target.closest("[data-cell]");
+          if(!button)return;
+          const [row,id]=button.dataset.cell.split("|"), group=rows[Number(row)], request=++detailRequest;
+          const scope=axis.value==="markets"?{country:group.label}:{app:group.label};
+          const title=label(group)+" · "+data.topics[id];
+          detail.innerHTML=U.loading("Cargando reseñas de la celda");
+          try{
+            const items=await callServer("reviews",{...filters,...scope,topic:id,language:appLanguage});
+            if(request!==detailRequest||token!==reviewsRequest)return;
+            detail.innerHTML=`<h4>${U.esc(title)}</h4><p>${integer(items.length)} reseñas recientes</p>${items.map(item=>`<article class="incident"><strong>${U.esc(item.app)} · ${integer(item.rating)}/5</strong><time>${U.esc(dateLabel(item.date))}</time><p>${U.esc(item.text)}</p>${item.url?`<a href="${U.esc(item.url)}" target="_blank" rel="noopener noreferrer">Google Play · scraping web</a>`:""}</article>`).join("")}`;
+          }catch(error){if(request===detailRequest&&token===reviewsRequest)detail.textContent=error.message}
+        };
+      }
+      pages.onclick=event=>{
+        const button=event.target.closest("[data-page]");
+        if(!button)return;
+        const [key,step]=button.dataset.page.split("|");
+        if(key==="row")rowPage+=Number(step);else columnPage+=Number(step);
+        render();
+      };
+      [axis,level,measure].forEach(control=>control.addEventListener("change",()=>{
+        rowPage=columnPage=0;detailRequest++;detail.innerHTML="";render();
+      }));
+      render();
+    }
+    async function syncReviewCatalog(event){
+      const button=event.currentTarget, status=$("review-catalog-status");
+      button.disabled=true;
+      try{const result=await callServer("review:configure");status.textContent=result.deferred?"Sincronización ocupada. Vuelve a intentarlo.":`${result.functions} funcionalidades · ${result.changed?"catálogo actualizado":"sin cambios"}`}
+      catch(error){status.textContent=error.message}
+      finally{button.disabled=false}
+    }
+    async function loadPerformance(){
+      const target=$("admin-performance");
+      target.innerHTML=U.loading();
+      try{const rows=await callServer("performance");target.innerHTML=rows.length?`<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Operación</th><th>RPC correctas</th><th>P95 RPC</th><th>Caché local</th><th>Errores</th></tr></thead><tbody>${rows.map(row=>`<tr><th scope="row">${U.esc(row.operation)}</th><td>${integer(row.calls)}</td><td>${row.p95===null?"—":integer(row.p95)+" ms"}</td><td>${integer(row.hits)}</td><td>${integer(row.errors)}</td></tr>`).join("")}</tbody></table></div>`:U.empty("Sin muestras de rendimiento","Los tiempos aparecen al usar la aplicación.")}
+      catch(error){target.textContent=error.message}
     }
     function activeTrendRows(){return D.trendRows(state.trends,{...selection(),app:state.evolutionApp})}
     function renderChartsLoading(){const loading=U.loading();$("monthly-matrix-meta").textContent="Actualizando cierres";$("monthly-matrix").innerHTML=U.loading("Preparando el pulso mensual","La serie se servirá desde la caché compartida.");$("new-review-meta").textContent="Actualizando cierres";$("new-review-impact").innerHTML=U.loading("Calculando la voz nueva del mes","Se validan volumen, continuidad y precisión antes de publicar el resultado.");$("evolution-chart").innerHTML=loading;$("evolution-legend").innerHTML="";$("series-summary").innerHTML=U.loading("Cargando movimientos","Se reutiliza la caché de tendencias.");$("evolution-kpis").innerHTML=U.metrics(Array.from({length:6},()=>({label:"Cargando",value:"—",foot:"Datos en caché"})))}
@@ -162,7 +325,7 @@
     function alertActivityLabel(type){return type==="RATING_DROP_DAILY"?"Caída diaria":type==="RATING_DROP_MTD"?"Caída del día 15 al día 15":type==="RATING_DROP_YTD"?"Caída desde inicio de año":type==="NEWSLETTER_MONTHLY"?"Newsletter mensual":type==="NEWSLETTER_TEST"?"Prueba de newsletter":type==="TEST"?"Prueba de entrega":"Cruce competitivo"}
     function renderAlertActivity(events){if(!events.length){$("alert-activity").innerHTML=U.empty("Todavía no hay alertas para ti","Cuando una regla se active, aparecerá aquí y recibirás el resumen por email.");return}$("alert-activity").innerHTML=events.map(event=>`<article class="alert-event"><i class="alert-event-dot ${event.severity==="CRITICAL"?"critical":event.severity==="POSITIVE"?"positive":""}"></i><div><strong>${U.esc(alertActivityLabel(event.type))}</strong><span>${U.esc(`${event.countryCode} · ${event.platform} · ${event.detail}`)}</span></div><time>${U.esc(dateTimeLabel(event.timestamp))}</time></article>`).join("")}
 
-    function activateAdminTab(name,focus=false){const tabs=[...document.querySelectorAll(".admin-tab")],selected=tabs.find(tab=>tab.dataset.adminTab===name)||tabs[0];if(!selected)return;state.adminTab=selected.dataset.adminTab;tabs.forEach(tab=>{const active=tab===selected;tab.classList.toggle("active",active);tab.setAttribute("aria-selected",String(active));tab.tabIndex=active?0:-1});document.querySelectorAll(".admin-tab-panel").forEach(panel=>panel.classList.toggle("hidden",panel.dataset.adminPanel!==state.adminTab));if(focus){trackUsage("ACTION","admin","ADMIN_TAB",state.adminTab);selected.focus()}}
+    function activateAdminTab(name,focus=false){const tabs=[...document.querySelectorAll(".admin-tab")],selected=tabs.find(tab=>tab.dataset.adminTab===name)||tabs[0];if(!selected)return;state.adminTab=selected.dataset.adminTab;tabs.forEach(tab=>{const active=tab===selected;tab.classList.toggle("active",active);tab.setAttribute("aria-selected",String(active));tab.tabIndex=active?0:-1});document.querySelectorAll(".admin-tab-panel").forEach(panel=>panel.classList.toggle("hidden",panel.dataset.adminPanel!==state.adminTab));if(focus&&state.adminTab==="performance")loadPerformance();if(focus){trackUsage("ACTION","admin","ADMIN_TAB",state.adminTab);selected.focus()}}
     function handleAdminTabKeydown(event){if(!["ArrowLeft","ArrowRight","Home","End"].includes(event.key))return;const tabs=[...document.querySelectorAll(".admin-tab")],current=Math.max(0,tabs.indexOf(document.activeElement));let next=event.key==="Home"?0:event.key==="End"?tabs.length-1:event.key==="ArrowRight"?(current+1)%tabs.length:(current-1+tabs.length)%tabs.length;event.preventDefault();activateAdminTab(tabs[next].dataset.adminTab,true)}
     async function loadAdmin(force=false){if(!state.userContext?.isAdmin)return;if(state.adminLoading||state.adminLoaded&&!force){if(state.adminLoaded)renderAdmin();return}state.adminLoading=true;$("admin-loading").classList.remove("hidden");$("admin-content").classList.add("hidden");try{state.adminCenter=await callServer("admin:get");state.adminLoaded=true;renderAdmin()}catch(error){$("admin-loading").textContent=error?.message||String(error);showError(error)}finally{state.adminLoading=false}}
     function statusBadge(value){const text=String(value||"—"),tone=/^(OK|ACTIVE|VERIFIED|SENT)$/i.test(text)?"ok":/PARTIAL|WARN|PENDING/i.test(text)?"warn":/ERROR|FAIL|DENIED|DISABLED/i.test(text)?"bad":"";return`<span class="admin-status ${tone}">${U.esc(text)}</span>`}
@@ -172,7 +335,7 @@
     function usageActionLabel(value){return({GLOBAL_SCOPE:"Cambio de mercado/plataforma",BENCHMARK_SEGMENT:"Cambio de segmento",PERIOD_YEAR:"Filtro de año",PERIOD_MONTH:"Filtro de mes",OPEN_VIEW:"Apertura de sección",ADMIN_TAB:"Navegación de administración",ALERTS_SAVE:"Guardar alertas",ALERTS_RESET:"Restaurar alertas",ALERTS_TEST:"Probar alertas",SUBSCRIBER_SAVE:"Gestionar suscripción",RATING_RECOVERY:"Recuperación manual",REPORT_DOWNLOAD:"Descarga de informe",CLIENT_ERROR:"Error de interfaz",RUNTIME_ERROR:"Error de ejecución",PROMISE_REJECTION:"Operación interrumpida",SUBSCRIBER_ERROR:"Error al gestionar suscripción"})[value]||String(value||"").replaceAll("_"," ").toLowerCase()}
     function usageDelta(value){if(!D.finite(value))return{value:"Nuevo",tone:"delta-up"};return{value:`${value>0?"+":""}${fmt(value,1)}%`,tone:value>0?"delta-up":value<0?"delta-down":""}}
     function renderAdminUsage(usage){const k=usage.kpis||{},wow=usage.weekOverWeek||{},topView=(usage.topViews||[])[0],usersDelta=usageDelta(wow.usersChangePct),sessionsDelta=usageDelta(wow.sessionsChangePct);$("admin-usage-kpis").innerHTML=U.metrics([{label:"Usuarios hoy",value:integer(k.usersToday),foot:`${integer(k.sessionsToday)} sesiones`,accent:true},{label:"Usuarios este mes",value:integer(k.usersMonth),foot:`${integer(k.sessionsMonth)} sesiones`},{label:"Usuarios este año",value:integer(k.usersYear),foot:`${integer(k.sessionsYear)} sesiones`},{label:"Interacciones hoy",value:integer(k.eventsToday),foot:"Vistas, filtros y acciones"},{label:"Incidencias este mes",value:integer(k.errorsMonth),foot:"Errores de experiencia",valueClass:k.errorsMonth?"delta-down":"delta-up"}]);$("usage-wow-users").textContent=usersDelta.value;$("usage-wow-users").className=usersDelta.tone;$("usage-wow-users-copy").textContent=`${integer(wow.users)} esta semana vs. ${integer(wow.previousUsers)} en el mismo tramo anterior`;$("usage-wow-sessions").textContent=sessionsDelta.value;$("usage-wow-sessions").className=sessionsDelta.tone;$("usage-wow-sessions-copy").textContent=`${integer(wow.sessions)} sesiones vs. ${integer(wow.previousSessions)}`;$("usage-favorite-view").textContent=topView?usageViewLabel(topView.key):"Sin datos";$("usage-favorite-view-copy").textContent=topView?`${integer(topView.count)} visitas registradas este año`:"La medición comienza con esta versión";renderUsageTrend(usage.dailyTrend||[]);renderUsageRanking("admin-usage-views",usage.topViews||[],usageViewLabel);renderUsageRanking("admin-usage-actions",usage.topActions||[],usageActionLabel);renderUsageRanking("admin-usage-devices",usage.devices||[],value=>({DESKTOP:"Ordenador",MOBILE:"Móvil",TABLET:"Tablet",UNKNOWN:"Sin identificar"})[value]||value);renderUsagePeople("admin-most-active",usage.mostActive||[]);renderUsagePeople("admin-least-active",usage.leastActive||[]);renderUsageIncidents(usage.recentIncidents||[]);const tracking=usage.tracking||{},start=tracking.coverageStart?dateTimeLabel(tracking.coverageStart):"sin actividad";$("usage-coverage").textContent=`Desde ${start} · ${integer(tracking.rowsAnalyzed||0)} eventos${tracking.truncated?" · lectura limitada":""}`}
-    function renderUsageTrend(rows){if(!rows.length){$("admin-usage-trend").innerHTML=U.empty("Sin telemetría","La actividad aparecerá tras los primeros accesos.");return}const max=Math.max(1,...rows.map(row=>Math.max(row.users||0,row.sessions||0)));$("admin-usage-trend").innerHTML=`<div class="usage-trend-legend"><span><i class="users"></i>Usuarios</span><span><i class="sessions"></i>Sesiones</span></div><div class="usage-trend-bars">${rows.map(row=>`<article class="usage-trend-day" title="${U.esc(`${row.date}: ${row.users} usuarios, ${row.sessions} sesiones, ${row.events} interacciones`)}"><div><i class="users" style="height:${Math.max(row.users?8:0,(row.users||0)/max*100)}%"></i><i class="sessions" style="height:${Math.max(row.sessions?8:0,(row.sessions||0)/max*100)}%"></i></div><strong>${integer(row.users)}</strong><span>${U.esc(new Intl.DateTimeFormat("es-ES",{day:"2-digit",month:"short"}).format(new Date(`${row.date}T12:00:00`)))}</span></article>`).join("")}</div>`}
+    function renderUsageTrend(rows){if(!rows.length){$("admin-usage-trend").innerHTML=U.empty("Sin telemetría","La actividad aparecerá tras los primeros accesos.");return}const max=Math.max(1,...rows.map(row=>Math.max(row.users||0,row.sessions||0)));$("admin-usage-trend").innerHTML=`<div class="usage-trend-legend"><span><i class="users"></i>Usuarios</span><span><i class="sessions"></i>Sesiones</span></div><div class="usage-trend-bars">${rows.map(row=>`<article class="usage-trend-day" title="${U.esc(`${row.date}: ${row.users} usuarios, ${row.sessions} sesiones, ${row.events} interacciones`)}"><div><i class="users" style="height:${Math.max(row.users?8:0,(row.users||0)/max*100)}%"></i><i class="sessions" style="height:${Math.max(row.sessions?8:0,(row.sessions||0)/max*100)}%"></i></div><strong>${integer(row.users)}</strong><span>${U.esc(new Intl.DateTimeFormat(locale(),{day:"2-digit",month:"short"}).format(new Date(`${row.date}T12:00:00`)))}</span></article>`).join("")}</div>`}
     function renderUsageRanking(id,rows,labeler){if(!rows.length){$(id).innerHTML=U.empty("Sin actividad","Aún no hay eventos suficientes para ordenar.");return}const max=Math.max(...rows.map(row=>row.count),1),total=rows.reduce((sum,row)=>sum+row.count,0);$(id).innerHTML=rows.slice(0,8).map((row,index)=>`<article class="usage-rank-row"><span>${index+1}</span><div><strong>${U.esc(labeler(row.key))}</strong><i><b style="width:${row.count/max*100}%"></b></i></div><em>${integer(row.count)}<small>${total?` · ${fmt(row.count/total*100,0)}%`:""}</small></em></article>`).join("")}
     function renderUsagePeople(id,rows){if(!rows.length){$(id).innerHTML=U.empty("Sin usuarios medidos","La clasificación aparecerá con los primeros accesos.");return}$(id).innerHTML=`<table class="admin-table"><thead><tr><th>Usuario</th><th>Días</th><th>Sesiones</th><th>Vistas</th><th>Último uso</th></tr></thead><tbody>${rows.map(row=>`<tr><td>${U.esc(row.email)}</td><td>${integer(row.activeDays)}</td><td>${integer(row.sessions)}</td><td>${integer(row.views)}</td><td>${U.esc(dateTimeLabel(row.lastSeenAt))}${row.errors?`<small class="delta-down">${integer(row.errors)} incidencias</small>`:""}</td></tr>`).join("")}</tbody></table>`}
     function renderUsageIncidents(rows){if(!rows.length){$("admin-usage-incidents").innerHTML=U.empty("Sin incidencias de experiencia","No se han registrado errores en la interfaz.");return}$("admin-usage-incidents").innerHTML=rows.map(row=>`<article class="admin-list-item usage-incident"><div><strong>${U.esc(row.email)}</strong><span>${U.esc(`${usageViewLabel(row.view)} · ${usageActionLabel(row.action)}`)}</span><span>${U.esc(row.detail||"Sin detalle")}</span></div><div>${statusBadge("ERROR")}<time>${U.esc(dateTimeLabel(row.timestamp))}</time></div></article>`).join("")}
@@ -197,9 +360,9 @@
     function adminScopeSummary(kind,values){if(values.includes("ALL"))return kind==="country"?"Todos los mercados":"Todas las plataformas";const labels=values.map(value=>kind==="country"?D.config.countries[value]||value:value);return `${values.length} ${kind==="country"?(values.length===1?"mercado":"mercados"):(values.length===1?"plataforma":"plataformas")} · ${labels.join(", ")}`}
     function renderAdminScope(kind,values){const selected=normalizeAdminScope(kind,values),container=$(`admin-${kind}-pills`);container.innerHTML=adminScopeOptions(kind).map(item=>`<button class="admin-scope-pill${item.value==="ALL"?" all":""}" type="button" data-admin-scope-kind="${kind}" data-admin-scope-value="${U.esc(item.value)}" aria-pressed="${selected.includes(item.value)}"><i aria-hidden="true"></i><span>${U.esc(item.label)}</span>${item.meta?`<small>${U.esc(item.meta)}</small>`:""}</button>`).join("");$(`admin-${kind}-scope-summary`).textContent=adminScopeSummary(kind,selected)}
     function handleAdminScopeClick(event){const button=event.target.closest("[data-admin-scope-kind][data-admin-scope-value]");if(!button)return;renderAdminScope(button.dataset.adminScopeKind,nextAdminScopeSelection(adminScopeSelection(button.dataset.adminScopeKind),button.dataset.adminScopeValue))}
-    function openAdminSubscriber(email=""){const row=(state.adminCenter?.subscribers||[]).find(item=>item.email===email),draft=Object.assign(adminSubscriberDefault(),row||{});state.adminEditingEmail=row?.email||"";$("admin-subscriber-title").textContent=row?`Editar ${row.email}`:"Dar de alta usuario";$("admin-subscriber-email").value=row?.email||"";$("admin-subscriber-email").disabled=Boolean(row);$("admin-subscriber-active").checked=Boolean(draft.active);$("admin-newsletter-enabled").checked=Boolean(draft.newsletterEnabled);renderAdminScope("country",draft.countries);renderAdminScope("platform",draft.platforms);[["daily",draft.dailyDropEnabled,draft.dailyWarningDrop,draft.dailyCriticalDrop],["mtd",draft.mtdDropEnabled,draft.mtdWarningDrop,draft.mtdCriticalDrop],["ytd",draft.ytdDropEnabled,draft.ytdWarningDrop,draft.ytdCriticalDrop]].forEach(item=>{$(`admin-${item[0]}-enabled`).checked=Boolean(item[1]);$(`admin-${item[0]}-warning`).value=item[2];$(`admin-${item[0]}-critical`).value=item[3]});$("admin-crossover-enabled").checked=Boolean(draft.crossoverEnabled);$("admin-crossover-direction").value=draft.crossoverDirection||"BOTH";$("admin-repeat-enabled").checked=Boolean(draft.repeatWhileBreached);$("admin-subscriber-error").classList.add("hidden");$("admin-subscriber-dialog").showModal()}
+    function openAdminSubscriber(email=""){const row=(state.adminCenter?.subscribers||[]).find(item=>item.email===email),draft=Object.assign(adminSubscriberDefault(),row||{});state.adminEditingEmail=row?.email||"";$("admin-subscriber-title").textContent=row?`Editar ${row.email}`:"Dar de alta usuario";$("admin-subscriber-email").value=row?.email||"";$("admin-subscriber-email").disabled=Boolean(row);$("admin-newsletter-language").value=row?.newsletterLanguage||appLanguage;$("admin-subscriber-active").checked=Boolean(draft.active);$("admin-newsletter-enabled").checked=Boolean(draft.newsletterEnabled);renderAdminScope("country",draft.countries);renderAdminScope("platform",draft.platforms);[["daily",draft.dailyDropEnabled,draft.dailyWarningDrop,draft.dailyCriticalDrop],["mtd",draft.mtdDropEnabled,draft.mtdWarningDrop,draft.mtdCriticalDrop],["ytd",draft.ytdDropEnabled,draft.ytdWarningDrop,draft.ytdCriticalDrop]].forEach(item=>{$(`admin-${item[0]}-enabled`).checked=Boolean(item[1]);$(`admin-${item[0]}-warning`).value=item[2];$(`admin-${item[0]}-critical`).value=item[3]});$("admin-crossover-enabled").checked=Boolean(draft.crossoverEnabled);$("admin-crossover-direction").value=draft.crossoverDirection||"BOTH";$("admin-repeat-enabled").checked=Boolean(draft.repeatWhileBreached);$("admin-subscriber-error").classList.add("hidden");$("admin-subscriber-dialog").showModal()}
     function closeAdminSubscriber(){$("admin-subscriber-dialog").close();state.adminEditingEmail=""}
-    function adminSubscriberPayload(){const existing=(state.adminCenter?.subscribers||[]).find(item=>item.email===state.adminEditingEmail)||adminSubscriberDefault(),payload=Object.assign({},existing,{active:$("admin-subscriber-active").checked,newsletterEnabled:$("admin-newsletter-enabled").checked,countries:normalizeAdminScope("country",adminScopeSelection("country")),platforms:normalizeAdminScope("platform",adminScopeSelection("platform")),dailyDropEnabled:$("admin-daily-enabled").checked,dailyWarningDrop:Number($("admin-daily-warning").value),dailyCriticalDrop:Number($("admin-daily-critical").value),mtdDropEnabled:$("admin-mtd-enabled").checked,mtdWarningDrop:Number($("admin-mtd-warning").value),mtdCriticalDrop:Number($("admin-mtd-critical").value),ytdDropEnabled:$("admin-ytd-enabled").checked,ytdWarningDrop:Number($("admin-ytd-warning").value),ytdCriticalDrop:Number($("admin-ytd-critical").value),repeatWhileBreached:$("admin-repeat-enabled").checked,crossoverEnabled:$("admin-crossover-enabled").checked,crossoverDirection:$("admin-crossover-direction").value});return{email:state.adminEditingEmail||$("admin-subscriber-email").value.trim().toLowerCase(),preferences:payload}}
+    function adminSubscriberPayload(){const existing=(state.adminCenter?.subscribers||[]).find(item=>item.email===state.adminEditingEmail)||adminSubscriberDefault(),payload=Object.assign({},existing,{newsletterLanguage:$("admin-newsletter-language").value,active:$("admin-subscriber-active").checked,newsletterEnabled:$("admin-newsletter-enabled").checked,countries:normalizeAdminScope("country",adminScopeSelection("country")),platforms:normalizeAdminScope("platform",adminScopeSelection("platform")),dailyDropEnabled:$("admin-daily-enabled").checked,dailyWarningDrop:Number($("admin-daily-warning").value),dailyCriticalDrop:Number($("admin-daily-critical").value),mtdDropEnabled:$("admin-mtd-enabled").checked,mtdWarningDrop:Number($("admin-mtd-warning").value),mtdCriticalDrop:Number($("admin-mtd-critical").value),ytdDropEnabled:$("admin-ytd-enabled").checked,ytdWarningDrop:Number($("admin-ytd-warning").value),ytdCriticalDrop:Number($("admin-ytd-critical").value),repeatWhileBreached:$("admin-repeat-enabled").checked,crossoverEnabled:$("admin-crossover-enabled").checked,crossoverDirection:$("admin-crossover-direction").value});return{email:state.adminEditingEmail||$("admin-subscriber-email").value.trim().toLowerCase(),preferences:payload}}
     async function saveAdminSubscriber(event){event.preventDefault();const button=$("admin-subscriber-save"),errorPanel=$("admin-subscriber-error"),previous=button.textContent;button.disabled=true;button.textContent="Guardando…";errorPanel.classList.add("hidden");try{const saved=await callServer("admin:subscriber:save",adminSubscriberPayload());const rows=state.adminCenter.subscribers||[],index=rows.findIndex(row=>row.email===saved.email);if(index<0)rows.push(saved);else rows[index]=saved;trackUsage("ACTION","admin","SUBSCRIBER_SAVE");closeAdminSubscriber();await loadAdmin(true);showToast(`${saved.email}: alertas ${saved.active?"activas":"pausadas"} y newsletter ${saved.newsletterEnabled?"activa":"desactivada"}.${saved.enrollmentYtdAcknowledged?` ${saved.enrollmentYtdAcknowledged} señales YTD previas reconocidas sin envío.`:""}`,true)}catch(error){trackUsage("ERROR","admin","SUBSCRIBER_ERROR",error?.message||error);errorPanel.textContent=error?.message||String(error);errorPanel.classList.remove("hidden")}finally{button.disabled=false;button.textContent=previous}}
     async function requestAdminRatingRecovery(){if(!window.confirm("Se recuperarán ahora todos los ratings y se registrará una nueva ejecución. ¿Continuar?"))return;const button=$("admin-recovery"),previous=button.textContent;button.disabled=true;button.textContent="Recuperando ratings…";try{const result=await callServer("admin:ratings:recover");trackUsage("ACTION","admin","RATING_RECOVERY");await loadAdmin(true);showToast(`Recuperación ${result.runId} completada: ${result.rowsUpserted} filas actualizadas.`,true)}catch(error){showError(error)}finally{button.disabled=false;button.textContent=previous}}
     function adminNewsletterRequestId(button){if(button.dataset.newsletterRequestId)return button.dataset.newsletterRequestId;const token=window.crypto?.randomUUID?window.crypto.randomUUID():`${Date.now()}-${Math.random().toString(16).slice(2)}`;return button.dataset.newsletterRequestId=`NEWS-REQ-${token}`}
