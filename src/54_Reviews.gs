@@ -197,9 +197,22 @@ function translateMarketsReviews_() {
   }
 }
 
+const MARKETS_DEFAULT_REVIEW_SEGMENTS = [
+  { id: 'DETRACTOR', label: 'Detractores', stars: [0, 1, 2] },
+  { id: 'NEUTRAL', label: 'Neutros', stars: [3] },
+  { id: 'PROMOTER', label: 'Promotores', stars: [4, 5] }
+];
+
+function getMarketsReviewSegments() {
+  requireMarketsAdministrator_();
+  return MARKETS_DEFAULT_REVIEW_SEGMENTS;
+}
+
 function readMarketsReviewsForWeb_(filters) {
   const access = requireMarketsAdministrator_();
   filters = filters || {};
+  const segment = MARKETS_DEFAULT_REVIEW_SEGMENTS.find(group => group.id === filters.segment);
+  if (filters.segment && !segment) throw new Error('Segmento de comentarios desconocido.');
   const catalog = new Map(readAppCatalog_(access.ss).map(app => [app.appKey, app]));
   const sheet = access.ss.getSheetByName('MARKET_REVIEWS');
   if (!sheet || sheet.getLastRow() < 2) return [];
@@ -209,6 +222,7 @@ function readMarketsReviewsForWeb_(filters) {
     .map(app => [app.packageName + '|' + app.countryCode, app]));
   return sheet.getRange(2, 1, sheet.getLastRow() - 1, 15).getValues()
     .flatMap(row => {
+      if (segment && (typeof row[7] !== 'number' || !segment.stars.includes(row[7]))) return [];
       const android = row[3] === 'Android';
       if (filters.platform !== 'ALL' && row[3] !== filters.platform) return [];
       if (filters.period && !String(row[6]).startsWith(filters.period)) return [];
