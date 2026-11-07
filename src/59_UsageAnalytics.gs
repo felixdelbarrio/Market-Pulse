@@ -2,8 +2,8 @@
 var MARKETS_USAGE = Object.freeze({
   maxEventsPerBatch: 25,
   maxAnalyticsRows: 200000,
-  views: Object.freeze(['overview', 'benchmark', 'evolution', 'alerts', 'admin']),
-  eventTypes: Object.freeze(['SESSION_START', 'VIEW', 'FILTER', 'ACTION', 'ERROR']),
+  views: Object.freeze(['overview', 'benchmark', 'evolution', 'alerts', 'reviews', 'admin']),
+  eventTypes: Object.freeze(['SESSION_START', 'VIEW', 'FILTER', 'ACTION', 'ERROR', 'PERFORMANCE']),
   devices: Object.freeze(['DESKTOP', 'MOBILE', 'TABLET', 'UNKNOWN'])
 });
 

@@ -49,7 +49,7 @@ function sendMarketsMonthlyNewsletter_(ss, period, isTest) {
     }
     try {
       const model = buildMarketsNewsletterModel_(ratings, catalog, preferences, period, {
-        isTest: Boolean(isTest)
+        isTest: Boolean(isTest), language: marketsNewsletterLanguageFor_(preferences.email)
       });
       const message = marketsNewsletterEmailMessage_(preferences.email, model, images, sender);
       const accepted = Gmail.Users.Messages.send({ raw: message.raw }, 'me');
@@ -135,7 +135,7 @@ function sendMarketsNewsletterPreview_(ss, recipient, preferences, configuredFor
   const period = latestMarketsNewsletterPeriod_(ratings, preferences);
   if (!period) throw new Error('No hay cierres reales disponibles para el ámbito configurado.');
   const model = buildMarketsNewsletterModel_(ratings, catalog, preferences, period, {
-    isTest: true, configuredFor: configuredFor
+    isTest: true, configuredFor: configuredFor, language: marketsNewsletterLanguageFor_(configuredFor)
   });
   const sender = requireMarketsAlertSender_(ss);
   const message = marketsNewsletterEmailMessage_(recipient, model, buildMarketsAlertInlineImages_(), sender);
@@ -254,6 +254,7 @@ function buildMarketsNewsletterModel_(ratings, catalog, preferences, period, opt
     .sort(function (a, b) { return b.monthDelta - a.monthDelta; });
   return {
     period: period, periodLabel: marketsNewsletterPeriodLabel_(period),
+    language: options?.language || "es",
     generatedAt: new Date(), isTest: Boolean(options && options.isTest),
     configuredFor: trimString_(options && options.configuredFor) || preferences.email,
     scope: {
@@ -440,10 +441,11 @@ function marketsNewsletterRawCountDelta_(startCount, endCount) {
 }
 
 function marketsNewsletterEmailMessage_(recipient, model, inlineImages, sender) {
-  const subject = (model.isTest ? '[PRUEBA] ' : '') + 'Market Pulse · Cierre ' +
+  const localized = model.language && model.language !== "es" ? localizedMarketsNewsletter_(model) : null;
+  const subject = localized?.subject || (model.isTest ? '[PRUEBA] ' : '') + 'Market Pulse · Cierre ' +
     model.periodLabel + ' · ' + marketsNewsletterScopeTitle_(model);
-  const plain = renderMarketsNewsletterPlainText_(model);
-  const html = renderMarketsNewsletterHtml_(model);
+  const plain = localized?.plain || renderMarketsNewsletterPlainText_(model);
+  const html = localized?.html || renderMarketsNewsletterHtml_(model);
   const image = inlineImages && inlineImages.bbvaLogo;
   if (!image || typeof image.getBytes !== 'function') throw new Error('No se ha podido incorporar el logotipo oficial.');
   const token = Utilities.getUuid().replace(/-/g, '');
@@ -910,4 +912,57 @@ function marketsNewsletterAuditEvent_(recipient, model, eventKey, source) {
     source: source, userEmail: recipient, ruleId: 'MONTHLY_NEWSLETTER',
     metricValue: model.totals.series, threshold: '', appKey: '', direction: 'SUMMARY'
   };
+}
+
+function marketsNewsletterLanguageKey_(email) {
+  return 'MARKETS_NEWSLETTER_LANGUAGE:' + String(email).trim().toLowerCase();
+}
+
+function marketsNewsletterLanguageFor_(email) {
+  const language = typeof PropertiesService === 'undefined' ? '' :
+    PropertiesService.getScriptProperties().getProperty(marketsNewsletterLanguageKey_(email));
+  return language === 'en' || language === 'tr' ? language : 'es';
+}
+
+function localizedMarketsNewsletter_(model) {
+  const language = model.language;
+  const copy = {
+    en: { title: 'Monthly review', preview: 'PREVIEW · REAL DATA', country: 'Market', platform: 'Platform',
+      rating: 'Closing rating', monthly: 'Monthly change', annual: 'Year to date', volume: 'New ratings',
+      position: 'Position', coverage: 'Coverage', link: 'Open Market Pulse' },
+    tr: { title: 'Aylık değerlendirme', preview: 'ÖN İZLEME · GERÇEK VERİLER', country: 'Pazar', platform: 'Platform',
+      rating: 'Kapanış puanı', monthly: 'Aylık değişim', annual: 'Yılbaşından bu yana', volume: 'Yeni puanlamalar',
+      position: 'Sıralama', coverage: 'Kapsam', link: 'Market Pulse’u aç' }
+  }[language];
+  if (!copy) return null;
+  const months = language === 'tr'
+    ? ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık']
+    : ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const [year, month] = model.period.split('-');
+  const period = months[Number(month) - 1] + ' ' + year;
+  const names = language === 'tr'
+    ? { AR:'Arjantin', CO:'Kolombiya', ES:'İspanya', MX:'Meksika', PE:'Peru', TR:'Türkiye', UY:'Uruguay', VE:'Venezuela' }
+    : { AR:'Argentina', CO:'Colombia', ES:'Spain', MX:'Mexico', PE:'Peru', TR:'Türkiye', UY:'Uruguay', VE:'Venezuela' };
+  const number = (value, digits = 0) => {
+    if (typeof value !== 'number' || !Number.isFinite(value)) return '—';
+    const formatted = value.toFixed(digits);
+    return language === 'tr' ? formatted.replace('.', ',') : formatted;
+  };
+  const headers = [copy.country, copy.platform, copy.rating, copy.monthly, copy.annual, copy.volume, copy.position];
+  const rows = model.items.map(item => [
+    names[item.countryCode] || item.country, item.platform, number(item.endRating, 2),
+    number(item.monthDelta, 2), number(item.yearDelta, 2), number(item.newReviews),
+    item.position?.rank ? item.position.rank + ' / ' + (item.position.apps || item.position.total || '—') : '—'
+  ]);
+  const subject = (model.isTest ? '[' + copy.preview + '] ' : '') + 'Market Pulse · ' + copy.title + ' · ' + period;
+  const coverage = model.coverage ? copy.coverage + ' ' + model.coverage.observed + '/' + model.coverage.expected : '';
+  const url = marketsWebAppUrl_(), esc = escapeMarketsAlertHtml_;
+  const plain = [subject, coverage, headers.join(' | '), ...rows.map(row => row.join(' | ')), url].filter(Boolean).join('\n');
+  const html = '<!doctype html><html lang="' + language + '"><body style="font-family:Arial,sans-serif;color:#070e46">' +
+    '<header style="background:#070e46;padding:20px;color:#fff"><img src="cid:bbvaLogo" alt="BBVA" width="112"><h1>' +
+    esc(subject) + '</h1></header><p>' + esc(coverage) + '</p><table cellpadding="8"><thead><tr>' +
+    headers.map(value => '<th scope="col">' + esc(value) + '</th>').join('') + '</tr></thead><tbody>' +
+    rows.map(row => '<tr>' + row.map(value => '<td>' + esc(value) + '</td>').join('') + '</tr>').join('') +
+    '</tbody></table><p><a href="' + esc(url) + '">' + esc(copy.link) + '</a></p></body></html>';
+  return { subject, plain, html };
 }

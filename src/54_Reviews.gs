@@ -217,6 +217,8 @@ function readMarketsReviewsForWeb_(filters) {
   const sheet = access.ss.getSheetByName('MARKET_REVIEWS');
   if (!sheet || sheet.getLastRow() < 2) return [];
   marketsReviewSheet_(access.ss);
+  const topic = /^(?:\d{2})(?:\.(?:\d{2}|xx))?$/.test(filters.topic) ? filters.topic : "";
+  const rules = topic ? reviewTopicRules_(access.ss) : null;
   const languageColumn = { es: 11, en: 12, tr: 13 }[filters.language] || 11;
   const androidListings = new Map([...catalog.values()].filter(app => app.platform === 'Android')
     .map(app => [app.packageName + '|' + app.countryCode, app]));
@@ -231,6 +233,9 @@ function readMarketsReviewsForWeb_(filters) {
         .filter(app => app && (android || (app.countryCode === row[2] && app.platform === row[3] &&
           String(row[4]) === app.appId)) && (!filters.app || (app.isBbva ? 'BBVA Empresas' : app.appName) === filters.app));
       if (!apps.length) return [];
+      if (rules && (!(row[7] >= 1 && row[7] <= 3) ||
+          !classifyReviewEvidence_([row[9], row[10]].join(' '), rules)
+            .some(id => id === topic || id.slice(0, 2) === topic))) return [];
       const url = android ? 'https://play.google.com/store/apps/details?id=' + encodeURIComponent(row[4]) +
         '&reviewId=' + encodeURIComponent(row[5]) : '';
       return [{ app: apps[0].appName, countries: [...new Set(apps.map(app => app.countryCode))],
