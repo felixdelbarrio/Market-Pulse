@@ -12,6 +12,9 @@
   <?!= includeMarketsWebPartial_('BrandIdentity'); ?>
   <?!= includeMarketsWebPartial_('DesignSystem'); ?>
   <?!= includeMarketsWebPartial_('ReportStyles'); ?>
+  <?!= includeMarketsWebPartial_('RadarFilterStyles'); ?>
+  <?!= includeMarketsWebPartial_('RadarFilterAssets'); ?>
+  <link rel="icon" type="image/png" sizes="32x32" href="<?!= includeMarketsWebPartial_('RadarFavicon').trim(); ?>">
 </head>
 <body>
   <div id="loader" class="loader" aria-live="polite"><div class="loader-inner"><div class="loader-mark"><span class="bbva-logo" role="img" aria-label="BBVA Banca de Empresas e Instituciones"></span></div><div class="loader-bar"></div><strong id="loader-title">Preparando Market Pulse…</strong><small id="loader-detail" class="hidden"></small><button id="loader-retry" class="loader-retry hidden" type="button">Reintentar</button></div></div>
@@ -124,43 +127,45 @@
       </section>
 
       <section id="view-analytics" class="view mp-next hidden">
-        <div class="section-head"><div><h2>Analítica</h2><p>Reseñas de los últimos 365 días por mercado consultado.</p></div></div>
-        <div class="period-controls">
-          <label>Sentimiento <select id="analytics-segment" class="select-control"></select></label>
-          <label>Mes <input id="analytics-period" type="month" class="select-control"></label>
+        <div class="section-head"><div><h2><img class="radar-view-icon" src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTE5LjEwMDIgNy4xOTk5NUMxOS4xMDAyIDYuNzAyOTUgMTkuNTAzMiA2LjI5OTk1IDIwLjAwMDIgNi4yOTk5NUMyMC40OTcyIDYuMjk5OTUgMjAuOTAwMiA2LjcwMjk1IDIwLjkwMDIgNy4xOTk5NUMyMC45MDAyIDcuNjk2OTUgMjAuNDk3MiA4LjA5OTk1IDIwLjAwMDIgOC4wOTk5NUMxOS41MDMyIDguMDk5OTUgMTkuMTAwMiA3LjY5Njk1IDE5LjEwMDIgNy4xOTk5NVpNMy4yMDAyIDkuNTk5OTVIOC4wMDAyVjIxLjZIMy4yMDAyVjkuNTk5OTVaTTQuODAwMiAyMEg2LjQwMDJWMTEuMkg0LjgwMDJWMjBaTTkuNjAwMiAzLjE5OTk1SDE0LjQwMDJWMjEuNkg5LjYwMDJWMy4xOTk5NVpNMTEuMjAwMiAyMEgxMi44MDAyVjQuNzk5OTVIMTEuMjAwMlYyMFpNMTkuMjAwMiAyMEgxNy42MDAyVjYuMzk5OTVIMTYuMDAwMlYyMS42SDIwLjgwMDJWOS42OTk5NUgxOS4yMDAyVjIwWiIvPgo8L3N2Zz4K" alt="">Analítica</h2><p>Reseñas de los últimos 365 días por mercado consultado.</p></div></div>
+        <div id="analytics-filters" class="radar-filters">
+          <form class="filter-panel" hidden>
+            <div class="filter-field"><label for="analytics-segment">Sentimiento</label><select id="analytics-segment" name="segment"></select></div>
+            <label>Mes<input id="analytics-period" name="period" type="month"></label>
+            <div class="filter-field"><label for="analytics-entity">Entidad en deltas y ejemplos</label><select id="analytics-entity" name="entity"><option value="">Todas</option></select></div>
+            <div class="filter-field"><label for="analytics-balance-entity">Entidad en saldo mensual</label><select id="analytics-balance-entity" name="balanceEntity"><option value="">Todas</option></select></div>
+          </form>
         </div>
         <section class="panel"><div class="panel-head"><h3>Mapa de calor por bloque</h3></div><div id="review-heatmap" class="panel-body" aria-live="polite"></div></section>
         <section class="panel"><div class="panel-head"><h3>Saldo mensual de promotores y detractores</h3></div><div id="review-balance" class="panel-body"></div></section>
-        <section class="panel"><div class="panel-head"><h3>Deltas acumulados por bloque</h3><label>Entidad <select id="analytics-entity" class="select-control"></select></label></div><div id="review-deltas" class="panel-body"></div></section>
+        <section class="panel"><div class="panel-head"><h3>Deltas acumulados por bloque</h3></div><div id="review-deltas" class="panel-body"></div></section>
         <section class="panel"><div class="panel-head"><h3>Ejemplos de los últimos 30 días</h3></div><div id="review-examples" class="panel-body"></div></section>
         <section class="panel"><div class="panel-head"><h3>Últimos 30 días</h3></div><div id="review-recent" class="panel-body"></div></section>
       </section>
       <section id="view-reviews" class="view mp-next hidden">
-        <div class="section-head"><div><h2>Comentarios</h2><p>Reseñas de App Store y Google Play de los últimos 365 días.</p></div></div>
-        <div id="review-markets" class="period-controls" aria-label="Mercados consultados"></div>
-        <button id="review-filter-open" type="button" class="alert-button secondary">Filtros</button>
-        <dialog id="review-filter-dialog" class="panel" aria-labelledby="review-filter-title">
-        <form id="review-filters" class="panel-body"><h3 id="review-filter-title">Filtros de comentarios</h3><div class="period-controls">
-          <div class="control"><label for="review-app">Aplicación</label><select id="review-app" class="select-control"></select></div>
-          <div class="control"><label for="review-segment">Sentimiento</label><select id="review-segment" class="select-control"></select></div>
-          <div class="control"><label for="review-period">Mes</label><input id="review-period" class="select-control" type="month"></div>
-          <label>Buscar <input id="review-search" class="select-control" type="search" maxlength="200"></label><button type="reset" class="alert-button secondary">Restaurar filtros iniciales</button>
-          <details><summary>Filtros avanzados</summary><div class="period-controls">
-            <label>Bloque <select id="review-topic" class="select-control"></select></label>
-            <label>Estrellas <select id="review-rating" class="select-control"><option value="">Todas</option><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select></label>
-            <label>Desde <input id="review-start" class="select-control" type="date"></label>
-            <label>Hasta <input id="review-end" class="select-control" type="date"></label>
-          </div></details>
-          <button id="review-show-all" type="button" class="alert-button secondary">Ver todo</button>
-          <button id="review-filter-close" type="button" class="alert-button secondary"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M13.131 12L21.365 20.234L20.234 21.365L12 13.131L3.76603 21.365L2.63503 20.234L10.869 12L2.63403 3.76603L3.76503 2.63503L11.999 10.869L20.234 2.63403L21.365 3.76503L13.131 11.999V12Z"/></svg> Cancelar</button>
-          <button type="submit" class="alert-button primary">Aplicar filtros</button>
-        </div></form></dialog>
+        <div class="section-head"><div><h2><img class="radar-view-icon" src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTEyLjc5OTkgMTAuNTAwMkMxMy4yOTcgMTAuNTAwMiAxMy42OTk5IDEwLjA5NzMgMTMuNjk5OSA5LjYwMDE5QzEzLjY5OTkgOS4xMDMxNCAxMy4yOTcgOC43MDAyIDEyLjc5OTkgOC43MDAyQzEyLjMwMjggOC43MDAyIDExLjg5OTkgOS4xMDMxNCAxMS44OTk5IDkuNjAwMTlDMTEuODk5OSAxMC4wOTczIDEyLjMwMjggMTAuNTAwMiAxMi43OTk5IDEwLjUwMDJaIi8+CjxwYXRoIGQ9Ik0xNi43OTk5IDguMDAwMlYzLjIwMDJIMi4zOTk5VjE1LjAzNDJDMi4zOTk5IDE1LjUyMTIgMi42OTA5IDE1Ljk1NjIgMy4xNDA5IDE2LjE0MzJDMy4yODk5IDE2LjIwNTIgMy40NDY5IDE2LjIzNTIgMy42MDA5IDE2LjIzNTJDMy45MTI5IDE2LjIzNTIgNC4yMTc5IDE2LjExMzIgNC40NDc5IDE1Ljg4MzJMNi43MzA5IDEzLjYwMDJINy4xOTk5VjE4LjQwMDJIMTcuMjY4OUwxOS41NTE5IDIwLjY4MzJDMTkuNzgxOSAyMC45MTMyIDIwLjA4NzkgMjEuMDM1MiAyMC4zOTg5IDIxLjAzNTJDMjAuNTUzOSAyMS4wMzUyIDIwLjcwOTkgMjEuMDA1MiAyMC44NTg5IDIwLjk0MzJDMjEuMzA4OSAyMC43NTcyIDIxLjU5OTkgMjAuMzIxMiAyMS41OTk5IDE5LjgzNDJWOC4wMDAySDE2Ljc5OTlaTTYuNTY1OSAxMi4wMDAyQzYuMjQ0OSAxMi4wMDAyIDUuOTQzOSAxMi4xMjUyIDUuNzE2OSAxMi4zNTEyTDMuOTk5OSAxNC4wNjgyVjQuODAwMkgxNS4xOTk5VjEyLjAwMDJINi41NjU5Wk0xOS45OTk5IDE4Ljg2OTJMMTguMjgyOSAxNy4xNTIyQzE4LjA1NTkgMTYuOTI1MiAxNy43NTQ5IDE2LjgwMTIgMTcuNDMzOSAxNi44MDEySDguNzk5OVYxMy42MDEySDE2Ljc5OTlWOS42MDEySDE5Ljk5OTlWMTguODY5MloiLz4KPC9zdmc+Cg==" alt="">Comentarios</h2><p>Reseñas de App Store y Google Play de los últimos 365 días.</p></div></div>
+        <div id="review-filters" class="radar-filters">
+          <form class="filter-panel" hidden>
+            <div class="filter-field"><label for="review-app">Aplicación</label><select id="review-app" name="app"></select></div>
+            <div class="filter-field"><label for="review-segment">Sentimiento</label><select id="review-segment" name="segment"></select></div>
+            <label>Mes<input id="review-period" name="period" type="month"></label>
+            <label>Buscar<input id="review-search" name="search" type="search" maxlength="200"></label>
+            <details class="filter-advanced"><summary>Filtros avanzados</summary>
+              <div class="filter-field"><label for="review-topic">Bloque</label><select id="review-topic" name="topic"></select></div>
+              <div class="filter-field"><label for="review-rating">Estrellas</label><select id="review-rating" name="rating"><option value="">Todas</option><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select></div>
+              <div class="filter-dates">
+                <label>Desde<input id="review-start" name="start" type="date"></label>
+                <label>Hasta<input id="review-end" name="end" type="date"></label>
+              </div>
+            </details>
+          </form>
+        </div>
+        <div id="review-markets" class="period-controls" role="group" aria-label="Mercados consultados"></div>
         <p id="review-filter-status" role="status"></p>
-        <button id="review-return" type="button" class="alert-button secondary hidden">Volver a Analítica</button>
         <div id="review-results" class="admin-list" aria-live="polite"></div><div id="review-pagination" class="period-controls"></div>
       </section>
       <section id="view-admin" class="view mp-next hidden">
-        <div class="section-head"><div><span class="section-kicker">Acceso restringido</span><h2>Salud y operación</h2><p>Información privada para administrar la carga, las entregas y las suscripciones.</p></div><span class="privacy-badge">Solo administradores</span></div>
+        <div class="section-head"><div><span class="section-kicker">Acceso restringido</span><h2><img class="radar-view-icon" src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTIxLjM5NSAxMi41NzhMMTcuMjE1IDIwLjE3OEMxNy4wMDQgMjAuNTYxIDE2LjYwMSAyMC44IDE2LjE2NCAyMC44SDEwLjAwMVYxOS4ySDE1LjkyOEwxOS44ODggMTJMMTUuOTI4IDQuNzk5OTVIOC4wNzQwNEw0LjExNDA0IDEyTDYuODY2MDQgMTcuMDA0TDUuNjg4MDQgMTguMTgyTDIuNjA2MDQgMTIuNTc5QzIuNDA3MDQgMTIuMjE3IDIuNDA3MDQgMTEuNzg0IDIuNjA2MDQgMTEuNDIyTDYuNzg2MDQgMy44MjE5NUM2Ljk5NzA0IDMuNDM4OTUgNy40MDAwNCAzLjE5OTk1IDcuODM3MDQgMy4xOTk5NUgxNi4xNjRDMTYuNjAyIDMuMTk5OTUgMTcuMDA1IDMuNDM3OTUgMTcuMjE2IDMuODIxOTVMMjEuMzk2IDExLjQyMkMyMS41OTUgMTEuNzg0IDIxLjU5NSAxMi4yMTcgMjEuMzk2IDEyLjU3OUwyMS4zOTUgMTIuNTc4Wk0xNiAxMkMxNiAxNC4yMDYgMTQuMjA2IDE2IDEyIDE2QzkuNzk0MDQgMTYgOC4wMDAwNCAxNC4yMDYgOC4wMDAwNCAxMkM4LjAwMDA0IDkuNzkzOTUgOS43OTQwNCA3Ljk5OTk1IDEyIDcuOTk5OTVDMTQuMjA2IDcuOTk5OTUgMTYgOS43OTM5NSAxNiAxMlpNMTQuNCAxMkMxNC40IDEwLjY3NyAxMy4zMjMgOS41OTk5NSAxMiA5LjU5OTk1QzEwLjY3NyA5LjU5OTk1IDkuNjAwMDQgMTAuNjc3IDkuNjAwMDQgMTJDOS42MDAwNCAxMy4zMjMgMTAuNjc3IDE0LjQgMTIgMTQuNEMxMy4zMjMgMTQuNCAxNC40IDEzLjMyMyAxNC40IDEyWk03LjUwMDA0IDE5QzcuMDAzMDQgMTkgNi42MDAwNCAxOS40MDMgNi42MDAwNCAxOS45QzYuNjAwMDQgMjAuMzk3IDcuMDAzMDQgMjAuOCA3LjUwMDA0IDIwLjhDNy45OTcwNCAyMC44IDguNDAwMDQgMjAuMzk3IDguNDAwMDQgMTkuOUM4LjQwMDA0IDE5LjQwMyA3Ljk5NzA0IDE5IDcuNTAwMDQgMTlaIi8+Cjwvc3ZnPgo=" alt="">Salud y operación</h2><p>Información privada para administrar la carga, las entregas y las suscripciones.</p></div><span class="privacy-badge">Solo administradores</span></div>
         <div id="admin-loading" class="panel alert-loading">Validando permisos y preparando el diagnóstico…</div>
         <div id="admin-content" class="hidden">
           <div class="admin-toolbar"><div id="admin-tabs" class="admin-tabs" role="tablist" aria-label="Secciones de Administración"><button id="admin-tab-health" class="admin-tab active" data-admin-tab="health" type="button" role="tab" aria-selected="true" aria-controls="admin-panel-health">Salud</button><button id="admin-tab-performance" class="admin-tab" data-admin-tab="performance" type="button" role="tab" aria-selected="false" aria-controls="admin-panel-performance" tabindex="-1">Rendimiento</button><button id="admin-tab-usage" class="admin-tab" data-admin-tab="usage" type="button" role="tab" aria-selected="false" aria-controls="admin-panel-usage" tabindex="-1">Adopción</button><button id="admin-tab-runs" class="admin-tab" data-admin-tab="runs" type="button" role="tab" aria-selected="false" aria-controls="admin-panel-runs" tabindex="-1">Ejecuciones</button><button id="admin-tab-issues" class="admin-tab" data-admin-tab="issues" type="button" role="tab" aria-selected="false" aria-controls="admin-panel-issues" tabindex="-1">Captura</button><button id="admin-tab-subscribers" class="admin-tab" data-admin-tab="subscribers" type="button" role="tab" aria-selected="false" aria-controls="admin-panel-subscribers" tabindex="-1">Suscripciones</button><button id="admin-tab-language" class="admin-tab" data-admin-tab="language" type="button" role="tab" aria-selected="false" aria-controls="admin-panel-language" tabindex="-1">Idioma</button><button id="admin-tab-alerts" class="admin-tab" data-admin-tab="alerts" type="button" role="tab" aria-selected="false" aria-controls="admin-panel-alerts" tabindex="-1">Alertas</button></div><div class="admin-toolbar-actions"><button id="admin-recovery" class="alert-button primary" type="button">Recuperar ratings ahora</button><button id="admin-refresh" class="alert-button secondary" type="button">Actualizar datos</button></div></div>
@@ -193,17 +198,17 @@
           <div id="admin-panel-subscribers" class="admin-tab-panel hidden" data-admin-panel="subscribers" role="tabpanel" aria-labelledby="admin-tab-subscribers">
             <section class="panel">
               <div class="panel-head"><div><h3>Newsletter y alertas</h3><span>Altas, actividad y reglas de cada cuenta</span></div><button id="admin-add-subscriber" class="alert-button primary" type="button">Dar de alta usuario</button></div>
-              <section class="admin-subscriber-filters" aria-labelledby="admin-subscriber-filters-title">
-                <header><div><strong id="admin-subscriber-filters-title">Encuentra cualquier suscripción</strong><span>Combina usuario, mercados, plataformas y estado.</span></div><div><b id="admin-subscriber-results" aria-live="polite">—</b><button id="admin-subscriber-filter-clear" type="button">Limpiar filtros</button></div></header>
-                <div class="admin-subscriber-filter-grid">
-                  <label class="admin-filter-search" for="admin-subscriber-search"><span>Usuario</span><input id="admin-subscriber-search" type="search" placeholder="Buscar por nombre o correo…" autocomplete="off"><i aria-hidden="true">⌕</i></label>
-                  <label class="select-field" for="admin-subscriber-status"><span>Estado de alertas</span><select id="admin-subscriber-status" class="select-control"><option value="ALL">Todos los estados</option><option value="ACTIVE">Alertas activas</option><option value="PAUSED">Alertas pausadas</option></select></label>
-                </div>
-                <div class="admin-filter-scope-grid">
-                  <section aria-labelledby="admin-filter-country-title"><div><strong id="admin-filter-country-title">Mercados</strong><small>“Todos” es exacto; varios mercados coinciden con cualquiera</small></div><div id="admin-filter-country-pills" class="admin-filter-pills" role="group" aria-labelledby="admin-filter-country-title"></div></section>
-                  <section aria-labelledby="admin-filter-platform-title"><div><strong id="admin-filter-platform-title">Plataformas</strong><small>“Todas” es exacto; varias coinciden con cualquiera</small></div><div id="admin-filter-platform-pills" class="admin-filter-pills" role="group" aria-labelledby="admin-filter-platform-title"></div></section>
-                </div>
-              </section>
+              <div id="subscriber-filters" class="radar-filters">
+                <form class="record-filters" hidden>
+                  <label>Usuario<input id="admin-subscriber-search" name="query" type="search" placeholder="Buscar por correo…" autocomplete="off"></label>
+                  <div class="filter-field"><label for="admin-subscriber-status">Estado de alertas</label><select id="admin-subscriber-status" name="status"><option value="ALL">Todos los estados</option><option value="ACTIVE">Alertas activas</option><option value="PAUSED">Alertas pausadas</option></select></div>
+                  <div class="filter-field"><label for="admin-filter-countries">Mercados</label><select id="admin-filter-countries" name="countries" multiple aria-describedby="admin-filter-countries-help"></select></div>
+                  <small id="admin-filter-countries-help">“Todos” es exacto; varios mercados coinciden con cualquiera.</small>
+                  <div class="filter-field"><label for="admin-filter-platforms">Plataformas</label><select id="admin-filter-platforms" name="platforms" multiple aria-describedby="admin-filter-platforms-help"></select></div>
+                  <small id="admin-filter-platforms-help">“Todas” es exacto; varias coinciden con cualquiera.</small>
+                </form>
+                <span id="admin-subscriber-results" aria-live="polite">—</span>
+              </div>
               <div id="admin-subscribers" class="admin-list"></div>
             </section>
           </div>
@@ -255,6 +260,7 @@
   <?!= includeMarketsWebPartial_('Components'); ?>
   <?!= includeMarketsWebPartial_('Charts'); ?>
   <?!= includeMarketsWebPartial_('Report'); ?>
+  <?!= includeMarketsWebPartial_('RadarFilters'); ?>
   <?!= includeMarketsWebPartial_('App'); ?>
 </body>
 </html>

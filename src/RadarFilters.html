@@ -1,0 +1,261 @@
+<script>
+window.MarketRadarFilters = (() => {
+  // Search and interaction follow News Radar's searchable-selects.js.
+  const normalize = value => String(value).normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+    .toLowerCase().replace(/[^\p{L}\p{N}]/gu,"");
+
+  function flag(code, label) {
+    const source = window.MarketRadarFlags[code];
+    if (!source) return null;
+    const image = document.createElement("img");
+    image.className = "radar-flag";
+    image.src = source;
+    image.alt = label;
+    return image;
+  }
+  function searchable(select, choose) {
+    const details = document.createElement("details");
+    const label = select.labels[0].firstChild.textContent.trim();
+    details.className = "searchable-select";
+    details.innerHTML = '<summary></summary><input type="search" placeholder="Buscar opciones"><div class="select-options" role="listbox" tabindex="-1"></div><p class="small muted" hidden>Sin coincidencias</p>';
+    const [summary, search, list, empty] = details.children;
+    list.id = select.id + "-options";
+    if (select.multiple) list.setAttribute("aria-multiselectable", "true");
+    list.setAttribute("aria-label", label);
+    const description = select.getAttribute("aria-describedby");
+    if (description) summary.setAttribute("aria-describedby", description);
+    summary.setAttribute("aria-label", label);
+    summary.setAttribute("aria-haspopup", "listbox");
+    search.setAttribute("role", "combobox");
+    search.setAttribute("aria-autocomplete", "list");
+    search.setAttribute("aria-label", "Buscar opciones: " + label);
+    for (const control of [summary,search]) {
+      control.setAttribute("aria-controls", list.id);
+      control.setAttribute("aria-expanded", "false");
+    }
+    select.before(details);
+    details.append(select);
+    select.hidden = true;
+    select.labels[0].addEventListener("click", event => {
+      event.preventDefault();
+      summary.focus();
+    });
+
+    let active;
+    const visible = () => [...list.children].filter(option => !option.hidden && !option.disabled);
+    function highlight(option) {
+      active?.classList.remove("is-focused");
+      active = option;
+      active?.classList.add("is-focused");
+      for (const control of [search,list]) {
+        if (active) control.setAttribute("aria-activedescendant", active.id);
+        else control.removeAttribute("aria-activedescendant");
+      }
+    }
+    function filter() {
+      const query = normalize(search.value);
+      for (const option of list.children) option.hidden = !normalize(option.textContent).includes(query);
+      const options = visible();
+      empty.hidden = options.length > 0;
+      highlight(options.find(option => option.getAttribute("aria-selected") === "true") || options[0]);
+    }
+    function refresh() {
+      const options = [...select.options];
+      summary.textContent = [...select.selectedOptions].map(option => option.textContent).join(", ") || "Sin selección";
+      summary.setAttribute("aria-label", label + ": " + summary.textContent);
+      search.hidden = options.length <= 6;
+      list.replaceChildren(...options.map((option,index) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.id = list.id + "-" + index;
+        button.dataset.index = index;
+        button.tabIndex = -1;
+        button.setAttribute("role", "option");
+        button.setAttribute("aria-selected", String(option.selected));
+        button.disabled = option.disabled;
+        if (select.name === "countries") {
+          const image = flag(option.value, option.textContent);
+          if (image) {
+            image.setAttribute("aria-hidden", "true");
+            button.append(image);
+          }
+        }
+        button.append(option.textContent);
+        return button;
+      }));
+      filter();
+    }
+    function close() {
+      details.open = false;
+      summary.focus();
+    }
+    list.addEventListener("click", event => {
+      const item = event.target.closest("[data-index]");
+      if (!item || item.disabled) return;
+      const option = select.options[Number(item.dataset.index)];
+      if (select.multiple) {
+        const values = choose(select.name, [...select.selectedOptions].map(o => o.value), option.value);
+        for (const candidate of select.options) candidate.selected = values.includes(candidate.value);
+      } else select.value = option.value;
+      select.dispatchEvent(new Event("change", {bubbles:true}));
+      if (!select.multiple) close();
+      else (search.hidden ? list : search).focus();
+    });
+    list.addEventListener("pointerover", event => {
+      const option = event.target.closest("[role=option]");
+      if (option && !option.disabled) highlight(option);
+    });
+    select.addEventListener("change", refresh);
+    search.addEventListener("input", filter);
+    details.addEventListener("toggle", () => {
+      for (const control of [summary,search]) control.setAttribute("aria-expanded", String(details.open));
+      if (details.open) {
+        if (!active) filter();
+        (search.hidden ? list : search).focus();
+      } else {
+        search.value = "";
+        highlight(null);
+      }
+    });
+    details.addEventListener("keydown", event => {
+      if (event.key === "Escape" && details.open) {
+        event.preventDefault();
+        event.stopPropagation();
+        close();
+      } else if (["ArrowDown","ArrowUp","Home","End"].includes(event.key)) {
+        event.preventDefault();
+        const wasOpen = details.open;
+        if (!wasOpen) {
+          details.open = true;
+          filter();
+        }
+        const options = visible(), index = options.indexOf(active), step = event.key === "ArrowUp" ? -1 : 1;
+        const next = event.key === "Home" ? 0 : event.key === "End" ? options.length - 1 :
+          !wasOpen ? (step === 1 ? 0 : options.length - 1) : (index + step + options.length) % options.length;
+        highlight(options[next]);
+        active?.scrollIntoView({block:"nearest"});
+        if (!wasOpen) (search.hidden ? list : search).focus();
+      } else if (event.key === "Enter" && details.open && event.target !== summary) {
+        event.preventDefault();
+        active?.click();
+      }
+    });
+    return {refresh, details};
+  }
+
+  function create(root, {applied, initial, all, commit, prepare, validate, choose, labelValue}) {
+    const form = root.querySelector("form");
+    const fields = [...form.elements].filter(field => field.name);
+    const labels = Object.fromEntries(fields.map(field => [field.name,field.labels[0].firstChild.textContent.trim()]));
+    const combos = fields.filter(field => field.tagName === "SELECT").map(field => searchable(field,choose));
+    const id = root.id;
+    root.insertAdjacentHTML("afterbegin", `
+      <div class="selection-toolbar${form.classList.contains("record-filters") ? " record-toolbar" : ""}">
+        <button class="button" data-open type="button" aria-haspopup="dialog" aria-controls="${id}-dialog">Filtros</button>
+        <div class="filter-chips" aria-label="Filtros activos" aria-live="polite" hidden></div>
+      </div>
+      <dialog class="filter-dialog${form.classList.contains("record-filters") ? " admin-record-dialog" : ""}" id="${id}-dialog" aria-labelledby="${id}-title">
+        <div class="dialog-header"><h2 id="${id}-title">Filtros</h2><button class="button" data-close type="button" aria-label="Cerrar panel">✕</button></div>
+        <div class="mobile-filters"></div>
+        <div class="filter-dialog-actions">
+          <button class="button" data-restore type="button">Restaurar filtros iniciales</button>
+          <button class="button" data-all type="button">Ver todo</button>
+          <button class="button primary" type="submit" form="${id}-form">Aplicar filtros</button>
+        </div>
+      </dialog>`);
+    const dialog = root.querySelector("dialog"), opener = root.querySelector("[data-open]"), chips = root.querySelector(".filter-chips");
+    root.tabIndex = -1;
+    form.id = id + "-form";
+    dialog.querySelector(".mobile-filters").append(form);
+    form.hidden = false;
+    form.noValidate = true;
+    const sync = () => combos.forEach(combo => combo.refresh());
+    const read = () => Object.fromEntries(fields.map(field => [field.name,field.multiple ?
+      [...field.selectedOptions].map(option => option.value) : field.value]));
+    const defaults = () => all?.() || {};
+    const same = (a,b) => JSON.stringify(a ?? "") === JSON.stringify(b ?? "");
+    let previousChips;
+    function render() {
+      const values = applied(), clear = defaults(), entries = [];
+
+      for (const field of fields) {
+        const key = field.name, value = values[key];
+        if (same(value,clear[key])) continue;
+        const readable = (Array.isArray(value) ? value : [value]).map(item =>
+          labelValue?.(key,item) || (field.options && [...field.options].find(option => option.value === item)?.textContent) || item
+        ).join(", ");
+        entries.push([key,readable]);
+      }
+      const signature = JSON.stringify(entries);
+      if (signature === previousChips) return;
+      previousChips = signature;
+      chips.replaceChildren();
+      for (const [key,readable] of entries) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "filter-chip";
+        button.setAttribute("aria-label", "Quitar filtro " + labels[key]);
+        const text = document.createElement("span"), cross = document.createElement("span");
+        text.textContent = labels[key] + ": " + readable;
+        cross.textContent = "×";
+        cross.setAttribute("aria-hidden", "true");
+        button.append(text,cross);
+        button.addEventListener("click", () => {
+          commit({...applied(),[key]:clear[key] ?? ""});
+          (chips.querySelector("button") || (opener.disabled ? root : opener)).focus();
+        });
+        chips.append(button);
+      }
+      chips.hidden = !chips.childElementCount;
+    }
+    function apply(values, action) {
+      dialog.close();
+      commit(values,action);
+    }
+    opener.addEventListener("click", () => {
+      prepare?.();
+      const values = applied();
+      for (const field of fields) {
+        if (field.multiple) {
+          for (const option of field.options) option.selected = values[field.name].includes(option.value);
+        } else field.value = values[field.name] ?? "";
+      }
+      const advanced = form.querySelector(".filter-advanced");
+      if (advanced) advanced.open = [...advanced.querySelectorAll("[name]")].some(field => field.value);
+      validate?.(values);
+      sync();
+      dialog.showModal();
+    });
+    const close = () => dialog.close();
+    dialog.querySelector("[data-close]").addEventListener("click", close);
+    dialog.addEventListener("click", event => {
+      // Close after the click: collapsing a combo on pointerdown can move the sticky actions.
+      const path = event.composedPath();
+      for (const {details} of combos) if (!path.includes(details)) details.open = false;
+      if (event.target === dialog) {
+        const bounds = dialog.getBoundingClientRect();
+        if (event.clientX < bounds.left || event.clientX > bounds.right ||
+            event.clientY < bounds.top || event.clientY > bounds.bottom) close();
+      }
+    });
+    dialog.addEventListener("close", () => combos.forEach(({details}) => { details.open = false; }));
+    dialog.querySelector("[data-restore]").addEventListener("click", () => apply(initial(),"restore"));
+    dialog.querySelector("[data-all]").addEventListener("click", () => apply(defaults(),"all"));
+    if (validate) form.addEventListener("input", () => validate(read()));
+    form.addEventListener("submit", event => {
+      event.preventDefault();
+      const values = read();
+      validate?.(values);
+      const invalid = fields.find(field => !field.validity.valid);
+      const advanced = invalid?.closest(".filter-advanced");
+      if (advanced) advanced.open = true;
+      if (form.reportValidity()) apply(values,"apply");
+    });
+    return {render, close, enable: enabled => {
+      opener.disabled = !enabled;
+      if (enabled && document.activeElement === root) opener.focus();
+    }};
+  }
+  return {create,flag};
+})();
+</script>
