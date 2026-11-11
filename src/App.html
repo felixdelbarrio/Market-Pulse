@@ -62,7 +62,7 @@
       "Bloques funcionales: anterior":["Previous functional blocks","Önceki işlev grupları"],
       "Bloques funcionales: siguiente":["Next functional blocks","Sonraki işlev grupları"],
       "Bloque funcional más frecuente: {block} · {count} opiniones":["Most frequent functional block: {block} · {count} reviews","En sık görülen işlev grubu: {block} · {count} yorum"],
-      "Mapa de calor por bloque":["Heatmap by functional block","İşlev grubuna göre ısı haritası"],
+      "Mapa de calor por bloque funcional":["Heatmap by functional block","İşlev grubuna göre ısı haritası"],
       "Medida":["Measure","Ölçüm"],
       "% de opiniones":["% of reviews","Yorum yüzdesi"],
       "N.º de opiniones":["Review count","Yorum sayısı"],
@@ -622,7 +622,7 @@
       radarFilters.analytics.enable(false);
       radarFilters.analytics.render();
       if(!localOnly)target.innerHTML=U.loading();
-      if(!localOnly&&!heatmapOnly){$("annual-chart").innerHTML=U.loading();$("annual-series").replaceChildren()}
+      if(!heatmapOnly){$("annual-chart").innerHTML=U.loading();$("annual-series").replaceChildren()}
       if(!heatmapOnly)$("review-annual").innerHTML=U.loading();
       try{
         const countryCode=scope.country==="ALL"?"":scope.country;
@@ -637,21 +637,24 @@
         annualTrends=withPublishedRatings(rows,{country:scope.country,platform:"ALL"});
         annualYears=[...new Set(annualTrends.filter(row=>D.finite(row.ratingEom)).map(row=>row.month.slice(0,4)))].sort().reverse();
         if(!localOnly)renderReviewMatrix(target,data,{...dates,country:scope.country,platform:"ALL",segment:heatmapSegment});
-        if(!localOnly&&!heatmapOnly)renderAnnualChart(scope,dates);
         if(!heatmapOnly){
-          const options=[defaultAnalyticsEntity,...data.entityOptions.filter(name=>name!==defaultAnalyticsEntity)];
+          const apps=new Set(data.entityOptions);
+          for(const row of annualTrends)if(row.month.startsWith(scope.year)&&D.finite(row.ratingEom))apps.add(D.appName(row));
+          apps.delete(defaultAnalyticsEntity);
+          const options=[defaultAnalyticsEntity,...[...apps].sort((a,b)=>a.localeCompare(b,locale()))];
           if(!options.includes(analyticsEntity)){
             analyticsEntity=defaultAnalyticsEntity;
             return loadAnalytics(true);
           }
           entityControl.innerHTML=options.map(name=>U.option(name,name===defaultAnalyticsEntity?"BBVA":name,name===analyticsEntity)).join("");
           annualAppControl.refresh();
+          renderAnnualChart(scope,dates,analyticsEntity);
           renderAnnualReviews($("review-annual"),data,scope);
         }
       }catch(error){
         if(token!==analyticsRequest||state.view!=="analytics")return;
         if(!localOnly)target.textContent=error.message;
-        if(!localOnly&&!heatmapOnly)$("annual-chart").textContent=error.message;
+        if(!heatmapOnly)$("annual-chart").textContent=error.message;
         if(!heatmapOnly)$("review-annual").textContent=error.message;
       }finally{
         if(token===analyticsRequest){
@@ -668,9 +671,9 @@
       const keys=new Set(published.map(row=>row.appKey));
       return [...rows.filter(row=>row.month!==month||!keys.has(row.appKey)),...published.map(row=>({...row,month,ratingEom:row.rating,ratingCountEom:row.ratingCount}))];
     }
-    function renderAnnualChart(scope,dates){
+    function renderAnnualChart(scope,dates,app){
       const months=Array.from({length:Number(dates.end.slice(5,7))},(_,index)=>`${scope.year}-${String(index+1).padStart(2,"0")}`);
-      const rows=annualTrends.filter(row=>row.month.startsWith(scope.year));
+      const rows=annualTrends.filter(row=>row.month.startsWith(scope.year)&&D.appName(row)===app);
       const series=D.prepareSeries(rows,{country:scope.country,platform:"ALL"});
       const chart=C.lineChart(series,{...chartOptions(months.at(-1),"annual"),months,context:countryLabel(scope.country)});
       $("annual-chart").innerHTML=chart.svg;
