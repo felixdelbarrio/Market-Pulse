@@ -404,6 +404,10 @@ function marketsReviewTopics_(ss) {
   return topics;
 }
 
+function reviewBalancePoints_(stats) {
+  return 100 * (stats.promoters - stats.detractors) / stats.total;
+}
+
 function summarizeMarketsReviewAnalytics_(rows, topics, filters, window) {
   const segment = MARKETS_DEFAULT_REVIEW_SEGMENTS.find(group => group.id === filters.segment);
   if (filters.segment && !segment) throw new Error('Segmento de comentarios desconocido.');
@@ -444,7 +448,6 @@ function summarizeMarketsReviewAnalytics_(rows, topics, filters, window) {
     target.promoters += Number(score === 1);
     target.detractors += Number(score === -1);
   }
-  const balance = point => 100 * (point.promoters - point.detractors) / point.total;
   for (const row of local) {
     if (row.date < window.recent) {
       count(base, row);
@@ -456,12 +459,13 @@ function summarizeMarketsReviewAnalytics_(rows, topics, filters, window) {
       count(recentBlocks.get(id), row);
     }
   }
-  const baseline = base.total ? { ...base, balance: balance(base), start: window.start,
+  const baseline = base.total ? { ...base, balance: reviewBalancePoints_(base), start: window.start,
     end: shiftReviewDay_(window.recent, -1) } : null;
-  const deltas = [...recentBlocks].map(([id, stats]) => ({
-    id, label: topics[id], ...stats, weight: 100 * stats.total / recent.length,
-    balance: balance(stats), gap: baseline ? balance(stats) - baseline.balance : null
-  })).sort((a, b) => a.gap - b.gap || a.label.localeCompare(b.label));
+  const deltas = [...recentBlocks].map(([id, stats]) => {
+    const balance = reviewBalancePoints_(stats);
+    return { id, label: topics[id], ...stats, weight: 100 * stats.total / recent.length,
+      balance, gap: baseline ? balance - baseline.balance : null };
+  }).sort((a, b) => a.gap - b.gap || a.label.localeCompare(b.label));
   const examples = [];
   const used = new Set();
   for (const block of ['general', ...deltas.filter(item => item.id !== 'general').slice(0, 3).map(item => item.id)]) {
@@ -473,7 +477,8 @@ function summarizeMarketsReviewAnalytics_(rows, topics, filters, window) {
   return { window, topics, examples, total: selected.length, classified: selected.filter(row => blocksOf(row)[0] !== 'general').length,
     entities: [...groups.values()].sort((a, b) => Number(b.label === 'BBVA Empresas') - Number(a.label === 'BBVA Empresas') ||
       b.total - a.total || a.label.localeCompare(b.label)), entityOptions: [...new Set(rows.flatMap(row => row.entities))].sort(),
-    monthly: [...monthly.values()], deltas, baseline, recentTotal: recent.length };
+    monthly: [...monthly.values()].map(point => ({ ...point, balance: reviewBalancePoints_(point) })),
+    deltas, baseline, recentTotal: recent.length };
 }
 
 

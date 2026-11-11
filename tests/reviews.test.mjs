@@ -111,6 +111,7 @@ test("analytics keeps the heatmap sentiment and compares recent blocks with the 
   assert.equal(result.entities[0].counts["03"], 5);
   assert.equal(result.entities[0].counts.general, 1);
   assert.equal(result.monthly[0].total, 7);
+  assert.equal(result.monthly[0].balance, 100 * (1 - 6) / 7);
   assert.equal(result.baseline.total, 5);
   assert.equal(result.baseline.balance, -100);
   assert.equal(result.baseline.end, "2026-10-11");

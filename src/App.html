@@ -487,10 +487,9 @@
         months.push(cursor.toISOString().slice(0,7));
         cursor.setUTCMonth(cursor.getUTCMonth()+1);
       }
-      const score=point=>100*(point.promoters-point.detractors)/point.total;
       const points=new Map(), totals=new Map();
       for(const point of data.monthly){
-        points.set(JSON.stringify([point.entity,point.month]),score(point));
+        points.set(JSON.stringify([point.entity,point.month]),point.balance);
         totals.set(point.entity,(totals.get(point.entity)||0)+point.total);
       }
       legend.addEventListener("click",event=>{
@@ -509,7 +508,7 @@
         legend.innerHTML=C.reviewBalanceLegend(data.entityOptions.map(entity=>({entity,total:totals.get(entity)||0})),balanceEntity,integer);
         details.replaceChildren();
         for(const point of data.monthly.filter(item=>entities.includes(item.entity)).sort((a,b)=>a.month.localeCompare(b.month)||a.entity.localeCompare(b.entity))){
-          const label=`${point.entity} · ${point.month} · ${fmt(score(point),1)} pp · ${point.promoters} promotoras / ${point.detractors} detractoras / ${point.total} reseñas`;
+          const label=`${point.entity} · ${point.month} · ${fmt(point.balance,1)} pp · ${point.promoters} promotoras / ${point.detractors} detractoras / ${point.total} reseñas`;
           const start=point.month+"-01", next=new Date(start+"T00:00:00Z");
           next.setUTCMonth(next.getUTCMonth()+1);
           const end=reviewDay(next.toISOString().slice(0,10),-1);
