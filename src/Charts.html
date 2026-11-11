@@ -43,6 +43,66 @@
       const coverage=summary.totalSeries?summary.availableSeries/summary.totalSeries:null;
       return`<div class="new-review-overview"><div class="new-review-platform-grid">${platformCards||'<article class="new-review-platform-card neutral"><header><strong>Sin estimaciones publicables</strong></header><p>El detalle inferior explica qué impide calcular cada ficha.</p></article>'}</div><div class="new-review-mini"><article><span>Cobertura</span><strong>${options.integer(summary.availableSeries)}/${options.integer(summary.totalSeries)}</strong><small>${finite(coverage)?options.format(coverage*100,0)+"% de fichas únicas":"Sin base"}</small></article><article><span>Balance</span><strong>${options.integer(summary.improvingSeries)} / ${options.integer(summary.pressuringSeries)}</strong><small>impulsan / presionan</small></article><article><span>Estables</span><strong>${options.integer(summary.stableSeries)}</strong><small>sin diferencia relevante</small></article></div></div>${unavailableNote}<div class="new-review-table-scroll"><table class="new-review-table"><caption>Rating estimado de las opiniones nuevas por ficha y plataforma</caption><thead><tr><th>Mercado / ficha</th><th>Plataforma</th><th>Nota del mes</th><th>Volumen</th><th>Efecto</th><th>Lectura</th></tr></thead><tbody>${rows}</tbody></table></div>`;
     }
-    window.MarketsCharts=Object.freeze({lineChart,ratingBars,monthlyMatrix,newReviewImpact});
+    // Geometry, interaction targets and classes from News Radar's trend-chart.js.
+    function reviewBalance(months,series,options){
+      const {esc}=window.MarketsUI, {monthLabel,fmt,width:availableWidth}=options;
+      const width=Math.max(320,Math.min(900,availableWidth||900)), height=260, left=42,right=20,top=24,bottom=42;
+      const x=i=>left+(months.length===1?.5:i/(months.length-1))*(width-left-right);
+      const y=value=>top+(100-value)/200*(height-top-bottom);
+      const ticks=[-100,-50,0,50,100].map(value=>`<line x1="${left}" x2="${width-right}" y1="${y(value)}" y2="${y(value)}" class="chart-grid"/><text x="${left-12}" y="${y(value)+4}" text-anchor="end">${value}</text>`).join("");
+      const labels=[...new Set([0,Math.floor((months.length-1)/2),months.length-1])].map(i=>
+        `<text x="${x(i)}" y="${height-12}" text-anchor="${i===0?"start":i===months.length-1?"end":"middle"}">${esc(monthLabel(months[i]))}</text>`).join("");
+      const lines=series.map(({entity,values})=>{
+        let segment=null;
+        const points=[], paths=[];
+        values.forEach((value,i)=>{
+          if(value===null){segment=null;return}
+          const px=x(i), py=y(value);
+          if(!segment){segment=[];paths.push(segment)}
+          segment.push([px,py]);
+          points.push(`<circle class="chart-point" data-point="${i}" cx="${px}" cy="${py}" r="4" fill="${reviewSeriesColor(entity)}"/>`);
+        });
+        const path=group=>group.map(([px,py],i)=>`${i?"L":"M"}${px.toFixed(1)},${py.toFixed(1)}`).join(" ");
+        const areas=series.length===1?paths.filter(group=>group.length>1).map(group=>
+          `<path class="chart-area" d="${path(group)} L${group.at(-1)[0]},${y(0)} L${group[0][0]},${y(0)} Z"/>`).join(""):"";
+        return `<g>${areas}<path d="${paths.map(path).join(" ")}" stroke="${reviewSeriesColor(entity)}" class="chart-line"/>${points.join("")}</g>`;
+      }).join("");
+      const bands=months.map((month,i)=>{
+        const start=i?(x(i-1)+x(i))/2:left, end=i<months.length-1?(x(i)+x(i+1))/2:width-right;
+        const observations=series.filter(row=>row.values[i]!==null).map(row=>`${row.entity}: ${fmt(row.values[i],1)} pp`);
+        const label=`${monthLabel(month)} · ${observations.join(" · ")||"Sin datos"}`;
+        return `<rect class="chart-band" data-bucket="${i}" tabindex="0" aria-label="${esc(label)}" x="${start}" y="${top}" width="${end-start}" height="${height-top-bottom}"/>`;
+      }).join("");
+      return `<svg viewBox="0 0 ${width} ${height}" role="group" aria-label="Saldo mensual por entidad, de menos cien a cien puntos porcentuales">${ticks}${labels}${bands}${lines}</svg>`;
+    }
+    function reviewSeriesColor(entity){
+      let hash=0;
+      for(const char of entity)hash=(Math.imul(31,hash)+char.codePointAt(0))>>>0;
+      return `var(--chart-series-${entity==="BBVA Empresas"?1:2+hash%5})`;
+    }
+    function reviewBalanceLegend(rows,active,integer){
+      const {esc}=window.MarketsUI, max=Math.max(1,...rows.map(row=>row.total));
+      return `<p class="eyebrow">ENTIDADES DE SEGUIMIENTO</p><div class="geo-entities">${rows.map(({entity,total})=>
+        `<button type="button" class="geo-row" data-entity="${esc(entity)}" aria-pressed="${entity===active}"><span class="identity-label"><i aria-hidden="true" style="background:${reviewSeriesColor(entity)}"></i>${esc(entity)}</span><span class="geo-count">${integer(total)}</span><span class="geo-track" aria-hidden="true"><span style="width:${100*total/max}%;background:${reviewSeriesColor(entity)}"></span></span></button>`
+      ).join("")}</div>`;
+    }
+    function reviewGaps(rows,fmt){
+      if(!rows.some(row=>row.gap!==null))return "";
+      const {esc}=window.MarketsUI, width=960,left=260,right=20,top=16,step=28,height=top+step*rows.length+55;
+      const min=Math.min(0,...rows.map(row=>row.gap)), max=Math.max(0,...rows.map(row=>row.gap));
+      const interval=[5,10,20,40,50,100].find(value=>value>=Math.max(5,(max-min)/8))||100;
+      const low=Math.min(-interval,Math.floor(min/interval)*interval), high=Math.max(interval,Math.ceil(max/interval)*interval);
+      const x=value=>left+(value-low)/(high-low)*(width-left-right), zero=x(0), bottom=top+step*rows.length;
+      const grid=Array.from({length:1+Math.round((high-low)/interval)},(_,i)=>{
+        const value=low+i*interval, px=x(value);
+        return `<path class="${value===0?"gap-zero":"gap-grid"}" d="M${px} ${top}V${bottom}"/><text x="${px}" y="${bottom+20}" text-anchor="middle">${value}</text>`;
+      }).join("");
+      const bars=rows.map((row,i)=>{
+        const y=top+i*step, end=x(row.gap);
+        return `<path class="gap-grid" d="M${left} ${y+step/2}H${width-right}"/><text x="${left-8}" y="${y+step/2+4}" text-anchor="end">${esc(row.label)}</text><rect class="${row.gap<0?"gap-negative":"gap-positive"}" x="${Math.min(zero,end)}" y="${y+4}" width="${Math.abs(end-zero)}" height="${step-8}"><title>${esc(row.label)}: ${fmt(row.gap,1)} pp</title></rect>`;
+      }).join("");
+      return `<div class="review-gap-plot"><svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Brecha del saldo por bloque frente a la base histórica global"><rect class="gap-background" x="${left}" y="${top}" width="${width-left-right}" height="${bottom-top}"/>${grid}${bars}<text x="${(left+width-right)/2}" y="${height-8}" text-anchor="middle">Brecha de saldo vs. base histórica (pp)</text></svg></div>`;
+    }
+    window.MarketsCharts=Object.freeze({lineChart,ratingBars,monthlyMatrix,newReviewImpact,reviewBalance,reviewBalanceLegend,reviewGaps});
   })();
 </script>

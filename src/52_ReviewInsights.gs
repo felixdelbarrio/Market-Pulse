@@ -307,17 +307,23 @@ function reviewTopicRules_(ss) {
     : new Map();
 }
 
-function marketsReviewWindow_() {
-  const end = Utilities.formatDate(new Date(), MARKETS_CONFIG.timeZone, 'yyyy-MM-dd');
-  const day = Date.parse(end + 'T00:00:00Z');
-  const offset = days => new Date(day - days * 86400000).toISOString().slice(0, 10);
-  return { start: offset(364), recent: offset(29), end };
+function marketsReviewWindow_(filters = {}) {
+  const today = Utilities.formatDate(new Date(), MARKETS_CONFIG.timeZone, 'yyyy-MM-dd');
+  const earliest = shiftReviewDay_(today, -365);
+  const start = filters.start && filters.start > earliest ? filters.start : earliest;
+  const end = filters.end && filters.end < today ? filters.end : today;
+  const recent = shiftReviewDay_(end, -29);
+  return { start, recent: recent < start ? start : recent, end };
+}
+
+function shiftReviewDay_(date, days) {
+  return new Date(Date.parse(date + 'T00:00:00Z') + days * 86400000).toISOString().slice(0, 10);
 }
 
 function getMarketsReviewPage(filters) {
   const { ss } = requireMarketsAdministrator_();
-  const window = marketsReviewWindow_();
   filters = normalizeMarketsReviewFilters_(filters);
+  const window = marketsReviewWindow_(filters);
   return readMarketsReviewCache_(ss, 'page', filters, window, () => {
     const rows = queryMarketsReviews_(ss, { ...filters, country: 'ALL' }, window);
     return paginateMarketsReviews_(rows, { ...filters, topics: marketsReviewTopics_(ss) }, window);
@@ -364,8 +370,8 @@ function paginateMarketsReviews_(rows, filters, window) {
 
 function getMarketsReviewAnalytics(filters) {
   const { ss } = requireMarketsAdministrator_();
-  const window = marketsReviewWindow_();
   filters = normalizeMarketsReviewFilters_(filters);
+  const window = marketsReviewWindow_(filters);
   return readMarketsReviewCache_(ss, 'analytics', filters, window, () => {
     const topics = marketsReviewTopics_(ss);
     const rows = queryMarketsReviews_(ss, { ...filters, app: '', segment: '' }, window);
@@ -378,7 +384,7 @@ function readMarketsReviewCache_(ss, operation, filters, window, builder) {
   const versions = ['MARKETS_REVIEWS_GENERATION', 'MARKETS_FUNCTIONAL_REVISION'].map(key => properties[key] || '');
   const scope = Object.keys(filters).sort().map(key => [key, filters[key]]);
   const key = Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,
-    JSON.stringify(['review-v5', operation, ss.getId(), window.end, versions, scope, Math.floor(Date.now() / 300000)])));
+    JSON.stringify(['review-v6', operation, ss.getId(), window.start, window.end, versions, scope, Math.floor(Date.now() / 300000)])));
   return readMarketsWebCache_('market-review:' + key, builder);
 }
 
@@ -430,19 +436,35 @@ function summarizeMarketsReviewAnalytics_(rows, topics, filters, window) {
       monthly.set(key, point);
     }
   }
-  const deltas = Object.entries(topics).filter(([id]) => id !== 'general' && !filters.period)
-    .map(([id, label]) => {
-      const full = local.filter(row => row.blocks.includes(id));
-      const early = full.filter(row => row.date < window.recent);
-      if (early.length < 5 || early.length === full.length) return null;
-      const balance = cohort => 100 * cohort.reduce((sum, row) => sum + net(row.rating), 0) / cohort.length;
-      const before = balance(early), after = balance(full);
-      return { id, label, before, after, delta: after - before, earlyTotal: early.length, total: full.length };
-    }).filter(Boolean).sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta) || a.id.localeCompare(b.id)).slice(0, 3);
-  const recent = local.filter(row => row.date >= window.recent);
+  const base = { total: 0, promoters: 0, detractors: 0 };
+  const recent = [], recentBlocks = new Map();
+  function count(target, row) {
+    const score = net(row.rating);
+    target.total++;
+    target.promoters += Number(score === 1);
+    target.detractors += Number(score === -1);
+  }
+  const balance = point => 100 * (point.promoters - point.detractors) / point.total;
+  for (const row of local) {
+    if (row.date < window.recent) {
+      count(base, row);
+      continue;
+    }
+    recent.push(row);
+    for (const id of blocksOf(row)) {
+      if (!recentBlocks.has(id)) recentBlocks.set(id, { total: 0, promoters: 0, detractors: 0 });
+      count(recentBlocks.get(id), row);
+    }
+  }
+  const baseline = base.total ? { ...base, balance: balance(base), start: window.start,
+    end: shiftReviewDay_(window.recent, -1) } : null;
+  const deltas = [...recentBlocks].map(([id, stats]) => ({
+    id, label: topics[id], ...stats, weight: 100 * stats.total / recent.length,
+    balance: balance(stats), gap: baseline ? balance(stats) - baseline.balance : null
+  })).sort((a, b) => a.gap - b.gap || a.label.localeCompare(b.label));
   const examples = [];
   const used = new Set();
-  for (const block of ['general', ...deltas.map(item => item.id)]) {
+  for (const block of ['general', ...deltas.filter(item => item.id !== 'general').slice(0, 3).map(item => item.id)]) {
     const example = selectMarketsReviewExample_(recent.filter(row => blocksOf(row).includes(block)), used);
     if (!example) continue;
     used.add(normalizeReviewEvidence_([example.title, example.original].join(' ')));
@@ -451,7 +473,7 @@ function summarizeMarketsReviewAnalytics_(rows, topics, filters, window) {
   return { window, topics, examples, total: selected.length, classified: selected.filter(row => blocksOf(row)[0] !== 'general').length,
     entities: [...groups.values()].sort((a, b) => Number(b.label === 'BBVA Empresas') - Number(a.label === 'BBVA Empresas') ||
       b.total - a.total || a.label.localeCompare(b.label)), entityOptions: [...new Set(rows.flatMap(row => row.entities))].sort(),
-    monthly: [...monthly.values()], deltas, recentTotal: recent.length };
+    monthly: [...monthly.values()], deltas, baseline, recentTotal: recent.length };
 }
 
 
