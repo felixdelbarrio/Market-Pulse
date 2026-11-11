@@ -278,8 +278,7 @@ function getMarketsAlertPreferences() {
     defaults: alertPreferencesForClient_(defaultMarketsAlertPreferences_(email)),
     system: {
       emailDeliveryEnabled: parseBoolean_(control.SEND_ALERT_EMAILS, false),
-      reviewDataAvailable: false,
-      reviewDataMessage: 'La fuente actual publica rating y volumen agregados, no el reparto de estrellas 1 y 2 en las últimas 24 horas.',
+      reviewDataAvailable: Boolean(ss.getSheetByName('MARKET_REVIEWS')),
       configWarning: trimString_(control.ALERT_CONFIG_WARNING),
       schedule: 'Resumen diario tras la actualización de las 07:05',
       privacy: 'Puedes modificar esta configuración desde Alertas aunque el alta la haya realizado un administrador. Administración conserva la gestión y la auditoría.',

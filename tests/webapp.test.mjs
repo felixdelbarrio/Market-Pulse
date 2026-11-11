@@ -143,7 +143,8 @@ test("doGet builds an HtmlService response using supported metadata", () => {
   const calls = [];
   const output = {
     setTitle(value) { calls.push(["title", value]); return this; },
-    addMetaTag(name, value) { calls.push(["meta", name, value]); return this; }
+    addMetaTag(name, value) { calls.push(["meta", name, value]); return this; },
+    setFaviconUrl(value) { calls.push(["favicon", value]); return this; }
   };
   context.HtmlService = {
     createTemplateFromFile(file) {
@@ -156,8 +157,10 @@ test("doGet builds an HtmlService response using supported metadata", () => {
     ["template", "Index"],
     ["evaluate"],
     ["title", "Market Pulse · BBVA Banca de Empresas e Instituciones"],
-    ["meta", "viewport", "width=device-width, initial-scale=1, viewport-fit=cover"]
+    ["meta", "viewport", "width=device-width, initial-scale=1, viewport-fit=cover"],
+    ["favicon", calls.at(-1)[1]]
   ]);
+  assert.match(calls.at(-1)[1], /^https:\/\/raw\.githubusercontent\.com\/felixdelbarrio\/Market-Pulse\/[a-f0-9]{40}\/assets\/favicon\.png$/);
 });
 
 test("latest snapshot bounds avoid scanning the full competition column", () => {
@@ -341,16 +344,16 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(app, /target=\"_blank\"/);
   assert.match(app, /rel=\"noopener noreferrer\"/);
   assert.match(app, /function renderRankRow/);
-  assert.match(app, /item\.volumeScope!=="SHARED_LISTING"/);
-  assert.match(index, /<label for="country-filter">Mercado<\/label>/);
+  assert.match(index, /<label for="country-filter">Geografía<\/label>/);
   assert.match(index, /<label>Plataforma<\/label>/);
   assert.match(index, /id="benchmark-control" class="control hidden"/);
-  assert.match(index, /<label for="segment-filter">Benchmark<\/label>/);
-  assert.match(index, /<strong>Periodo Evolución<\/strong>/);
-  assert.match(index, /data-view="evolution"[^>]*>Evolución<\/button><button class="nav-button" data-view="alerts"/);
+  assert.match(index, /<label for="segment-filter">Tipo de entidad<\/label>/);
+  assert.match(index, /id="evolution-filters"[\s\S]+name="app"[\s\S]+name="year"[\s\S]+name="month"/);
+  assert.deepEqual([...index.matchAll(/<button[^>]+data-view="([^"]+)"/g)].map(match => match[1]),
+    ["benchmark", "reviews", "evolution", "analytics", "alerts", "admin"]);
   assert.match(index, /id="view-alerts"/);
   assert.match(index, /Privado para tu cuenta/);
-  assert.match(index, /id="admin-nav" class="nav-button hidden"/);
+  assert.match(index, /class="nav-button hidden" id="admin-nav"/);
   assert.match(index, /id="view-admin"/);
   assert.match(index, /id="admin-tabs"[^>]*role="tablist"/);
   assert.match(index, /data-admin-tab="performance"/);
@@ -363,20 +366,14 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.doesNotMatch(app, /function adminScopeValue/);
   assert.match(app, /function activateAdminTab/);
   assert.match(app, /function handleAdminTabKeydown/);
-  assert.match(app, /if\(\(\["admin","reviews","analytics"\]\.includes\(view\)\)&&!state\.userContext\?\.isAdmin\)return/);
+  assert.match(app, /if\(view==="admin"&&!state\.userContext\?\.isAdmin\)return/);
   assert.match(app, /getMarketsAdminDashboard\(\)/);
-  assert.match(app, /localStorage\.setItem\(preferenceKey\(\)/);
-  assert.match(app, /localStorage\.getItem\(preferenceKey\(\)/);
-  assert.match(index, /id="overview-comparison"/);
-  assert.doesNotMatch(index + app, /overview-chart|renderOverviewChart/);
-  assert.match(app, /C\.ratingBars/);
-  assert.doesNotMatch(index + app + report + reportStyles, /platformBadge|platform-symbol|platform-monogram|platform-legal/);
-  assert.ok(index.indexOf('id="kpi-grid"') < index.indexOf('id="overview-comparison"'));
-  assert.ok(index.indexOf('id="overview-comparison"') < index.indexOf('id="signal-list"'));
-  const overviewMarkup = index.slice(index.indexOf('id="view-overview"'), index.indexOf('id="view-benchmark"'));
+  assert.doesNotMatch(app, /localStorage|markets-voc-preferences|market-pulse-language/);
+  assert.doesNotMatch(index, /id="view-overview"/);
   const evolutionMarkup = index.slice(index.indexOf('id="view-evolution"'), index.indexOf('id="view-alerts"'));
-  assert.doesNotMatch(overviewMarkup, /monthly-matrix/);
-  assert.match(evolutionMarkup, /id="evolution-chart"[\s\S]*id="monthly-matrix"[\s\S]*id="new-review-impact"/);
+  const analyticsMarkup = index.slice(index.indexOf('id="view-analytics"'), index.indexOf('id="view-reviews"'));
+  assert.match(evolutionMarkup, /id="evolution-kpis"[\s\S]*id="review-balance"[\s\S]*id="review-deltas"[\s\S]*id="review-examples"[\s\S]*id="monthly-matrix"[\s\S]*id="new-review-impact"/);
+  assert.match(analyticsMarkup, /id="annual-chart"[\s\S]*id="review-heatmap"[\s\S]*id="review-annual"/);
   const charts = fs.readFileSync(new URL("../src/Charts.html", import.meta.url), "utf8");
   assert.match(charts, /class="rating-bar-metric"/);
   assert.match(charts, /<\/span><b aria-label="Rating/);
@@ -398,7 +395,8 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(index, /id="review-critical"[^>]*disabled/);
   assert.match(app, /\$\("review-warning"\)\.value=draft\.reviewWarningPct/);
   assert.match(app, /\$\("review-critical"\)\.value=draft\.reviewCriticalPct/);
-  assert.match(index, /WIP · Fuente pendiente/);
+  assert.match(index, /id="review-rule-card" class="alert-rule-card hidden"/);
+  assert.match(index, /id="review-enabled"/);
   assert.match(index, /id="daily-enabled"/);
   assert.match(index, /id="mtd-enabled"/);
   assert.match(index, /id="ytd-enabled"/);
@@ -415,7 +413,7 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(app, /state\.userContext=data\.userContext/);
   assert.match(app, /Market Pulse no ha respondido a tiempo/);
   assert.doesNotMatch(app, /Promise\.all\\(\\[callServer\\("bootstrap"\\),callServer\\("user:context"\\)\\]\\)/);
-  assert.match(app, /function renderDashboard\(\)\{if\(state\.view==="overview"\)/);
+  assert.match(app, /function renderDashboard\(\)\{if\(state\.view==="benchmark"\)/);
   assert.match(index, /id="alert-test-result"/);
   assert.match(app, /Gmail ha aceptado la prueba/);
   assert.match(app, /result\.senderAddress/);
@@ -432,7 +430,7 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.equal((index.match(/class="bbva-logo"/g) || []).length, 2);
   assert.doesNotMatch(index, /(?:brand-mark|loader-mark)">BBVA/);
   assert.equal((assets.match(/@font-face/g) || []).length, 3);
-  assert.match(assets, /font-family:"Benton Sans BBVA"/);
+  assert.match(assets, /font-family:"BBVA Benton Sans"/);
   assert.match(assets, /data:font\/woff2;base64,/);
   assert.match(assets, /--asset-bbva-logo:url\("data:image\/png;base64,/);
   assert.doesNotMatch(index + app, /(?:market|itms-apps|appmarket):\/\//);
@@ -712,7 +710,7 @@ test("evolution includes all apps by default and supports filtering by app", () 
   assert.deepEqual(Array.from(browser.MarketsDomain.selectionRows(snapshot, { country: "MX", platform: "ALL" }, "FINTECH", true), row => row.appKey), ["BBVA", "MP"]);
   const app = fs.readFileSync(new URL("../src/App.html", import.meta.url), "utf8");
   assert.match(app, /function trendRequest\(\)\{return\{[^}]*segment:"ALL"/);
-  assert.match(app, /function activeTrendRows\(\)\{return D\.trendRows\(state\.trends,\{\.\.\.selection\(\),app:state\.evolutionApp\}\)\}/);
+  assert.match(app, /function activeTrendRows\(\)\{return D\.trendRows\(withPublishedRatings\(state\.trends,selection\(\)\),\{\.\.\.selection\(\),app:state\.evolutionApp\}\)\}/);
   assert.doesNotMatch(app, /activeTrendRows\(\).*benchmarkSegment/);
 });
 

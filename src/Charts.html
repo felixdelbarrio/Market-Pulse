@@ -4,8 +4,8 @@
     function lineChart(series,options){
       const ui=window.MarketsUI,theme=window.MarketsTheme.chart,finite=window.MarketsDomain.finite;
       const visible=(series||[]).slice(0,12).map(item=>({...item,points:(item.points||[]).filter(point=>!options.period||point.month<=options.period)})).filter(item=>item.points.length);
-      if(!visible.length)return{svg:ui.empty("Sin datos para esta selección","No existen observaciones con los filtros y el periodo elegidos."),legend:"",series:[]};
-      const months=[...new Set(visible.flatMap(item=>item.points.map(point=>point.month)))].sort();
+      if(!visible.length)return{svg:ui.empty("Sin datos para esta selección","No existen observaciones con los filtros y el periodo elegidos."),series:[]};
+      const months=options.months||[...new Set(visible.flatMap(item=>item.points.map(point=>point.month)))].sort();
       const monthIndex=new Map(months.map((month,index)=>[month,index]));
       const values=visible.flatMap(item=>item.points.map(point=>point.value)).filter(finite);
       let min=Math.max(1,Math.floor((Math.min(...values)-.12)*10)/10),max=Math.min(5,Math.ceil((Math.max(...values)+.12)*10)/10);if(max-min<.4){min=Math.max(1,min-.2);max=Math.min(5,max+.2)}
@@ -17,7 +17,7 @@
       const lines=visible.map((item,index)=>{const color=theme.palette[index%theme.palette.length];const points=item.points.filter(point=>finite(point.value)).sort((a,b)=>a.month.localeCompare(b.month));const path=points.map((point,position)=>`${position?"L":"M"}${x(point.month).toFixed(1)},${y(point.value).toFixed(1)}`).join(" ");const circles=points.map(point=>`<circle class="chart-point" tabindex="0" cx="${x(point.month)}" cy="${y(point.value)}" r="${theme.pointRadius}" fill="${color}" stroke="${theme.surface}" stroke-width="${theme.pointStroke}" data-label="${ui.esc(item.label)}" data-month="${ui.esc(options.monthLabel(point.month))}" data-value="${options.format(point.value,2)}"></circle>`).join("");return`<path d="${path}" fill="none" stroke="${color}" stroke-width="${item.isBbva?theme.focusLineWidth:theme.lineWidth}" stroke-linejoin="round" stroke-linecap="round" opacity="${item.isBbva?1:.82}"/>${circles}`}).join("");
       const scope=options.context,idPrefix=options.idPrefix||"markets";
       const svg=`<svg viewBox="0 0 ${width} ${height}" role="img" aria-labelledby="${idPrefix}-chart-title ${idPrefix}-chart-desc"><title id="${idPrefix}-chart-title">Evolución mensual de ratings</title><desc id="${idPrefix}-chart-desc">${ui.esc(scope)}. Periodo hasta ${ui.esc(options.monthLabel(months.at(-1)))}</desc>${grid}<line x1="${left}" y1="${top}" x2="${left}" y2="${height-bottom}" stroke="${theme.axis}"/>${labels}${lines}</svg>`;
-      return{svg,legend:ui.legend(visible,theme.palette),series:visible};
+      return{svg,series:visible};
     }
     function ratingBars(groups,options){
       const ui=window.MarketsUI,finite=window.MarketsDomain.finite;
@@ -86,7 +86,7 @@
         `<button type="button" class="geo-row" data-entity="${esc(entity)}" aria-pressed="${entity===active}"><span class="identity-label"><i aria-hidden="true" style="background:${reviewSeriesColor(entity)}"></i>${esc(entity)}</span><span class="geo-count">${integer(total)}</span><span class="geo-track" aria-hidden="true"><span style="width:${100*total/max}%;background:${reviewSeriesColor(entity)}"></span></span></button>`
       ).join("")}</div>`;
     }
-    function reviewGaps(rows,fmt){
+    function reviewGaps(rows,fmt,translate){
       if(!rows.some(row=>row.gap!==null))return "";
       const {esc}=window.MarketsUI, width=960,left=260,right=20,top=16,step=28,height=top+step*rows.length+55;
       const min=Math.min(0,...rows.map(row=>row.gap)), max=Math.max(0,...rows.map(row=>row.gap));
@@ -101,7 +101,7 @@
         const y=top+i*step, end=x(row.gap);
         return `<path class="gap-grid" d="M${left} ${y+step/2}H${width-right}"/><text x="${left-8}" y="${y+step/2+4}" text-anchor="end">${esc(row.label)}</text><rect class="${row.gap<0?"gap-negative":"gap-positive"}" x="${Math.min(zero,end)}" y="${y+4}" width="${Math.abs(end-zero)}" height="${step-8}"><title>${esc(row.label)}: ${fmt(row.gap,1)} pp</title></rect>`;
       }).join("");
-      return `<div class="review-gap-plot"><svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Brecha del saldo por bloque frente a la base histórica global"><rect class="gap-background" x="${left}" y="${top}" width="${width-left-right}" height="${bottom-top}"/>${grid}${bars}<text x="${(left+width-right)/2}" y="${height-8}" text-anchor="middle">Brecha de saldo vs. base histórica (pp)</text></svg></div>`;
+      return `<div class="review-gap-plot"><svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${esc(translate("Brecha de saldo por bloque"))}"><rect class="gap-background" x="${left}" y="${top}" width="${width-left-right}" height="${bottom-top}"/>${grid}${bars}<text x="${(left+width-right)/2}" y="${height-8}" text-anchor="middle">${esc(translate("Brecha de saldo vs. base histórica (pp)"))}</text></svg></div>`;
     }
     window.MarketsCharts=Object.freeze({lineChart,ratingBars,monthlyMatrix,newReviewImpact,reviewBalance,reviewBalanceLegend,reviewGaps});
   })();
