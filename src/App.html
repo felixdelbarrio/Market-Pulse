@@ -99,10 +99,25 @@
     async function loadBootstrap(){if(state.bootstrapLoading)return;state.bootstrapLoading=true;const loader=$("loader");loader.classList.remove("done","failed");$("loader-title").textContent="Preparando Market Pulse…";$("loader-detail").classList.add("hidden");$("loader-retry").classList.add("hidden");try{const data=validateBootstrap(await callServer("bootstrap"));state.meta=data.meta;state.userContext=data.userContext||{email:"",isAdmin:false};state.snapshot=data.snapshot;state.trends=data.trends;state.consolidated=data.consolidated||null;state.trendsLoading=false;state.trendCache.set("ALL|ALL|ALL|BBVA|18",state.trends);state.country=browserMarket();restoreUserPreferences();buildControls();configureAdminNavigation();renderHero();renderDashboard();startUsageTracking();if(state.country!=="ALL"||state.platform!=="ALL")scheduleTrends(0);$("footer-version").textContent=`Contrato ${data.meta.codeVersion} · Web ${data.meta.webVersion||"1"}`;loader.classList.add("done")}catch(error){showStartupFailure(error)}finally{state.bootstrapLoading=false}}
     function showStartupFailure(error){const loader=$("loader");if(!loader)return;loader.classList.remove("done");loader.classList.add("failed");$("loader-title").textContent="No hemos podido iniciar Market Pulse";$("loader-detail").textContent=error?.message||String(error);$("loader-detail").classList.remove("hidden");$("loader-retry").classList.remove("hidden")}
 
-    function usageSessionId(){const key="markets-usage-session-v1";try{let value=sessionStorage.getItem(key);if(!value){value=window.crypto?.randomUUID?.()||`${Date.now()}-${Math.random().toString(36).slice(2)}`;sessionStorage.setItem(key,value)}return value}catch(ignored){return`${Date.now()}-${Math.random().toString(36).slice(2)}`}}
+    let usageSession="";
+    function usageSessionId(){
+      if(usageSession)return usageSession;
+      const key="markets-usage-session-v1";
+      try{
+        const saved=sessionStorage.getItem(key);
+        if(/^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i.test(saved||""))return usageSession=saved;
+      }catch(ignored){}
+      try{
+        const random=window.crypto?.getRandomValues(new Uint8Array(16));
+        if(!random)return "";
+        usageSession=Array.from(random,byte=>byte.toString(16).padStart(2,"0")).join("");
+      }catch(ignored){return ""}
+      try{sessionStorage.setItem(key,usageSession)}catch(ignored){}
+      return usageSession;
+    }
     function usageDevice(){const width=Math.min(window.innerWidth||9999,window.screen?.width||9999);return width<=780?"MOBILE":width<=1180?"TABLET":"DESKTOP"}
     function startUsageTracking(){if(state.usageStarted)return;state.usageStarted=true;trackUsage("SESSION_START",state.view,"APP_OPEN");trackUsage("VIEW",state.view,"OPEN_VIEW")}
-    function trackUsage(eventType,view=state.view,action="",detail=""){state.usageQueue.push({eventType,view,action,detail:String(detail||"").slice(0,240),sessionId:usageSessionId(),webVersion:state.meta?.webVersion||"",device:usageDevice()});if(state.usageQueue.length>=12)flushUsage();else{window.clearTimeout(state.usageTimer);state.usageTimer=window.setTimeout(flushUsage,1600)}}
+    function trackUsage(eventType,view=state.view,action="",detail=""){const sessionId=usageSessionId();if(!sessionId)return;state.usageQueue.push({eventType,view,action,detail:String(detail||"").slice(0,240),sessionId,webVersion:state.meta?.webVersion||"",device:usageDevice()});if(state.usageQueue.length>=12)flushUsage();else{window.clearTimeout(state.usageTimer);state.usageTimer=window.setTimeout(flushUsage,1600)}}
     function flushUsage(){window.clearTimeout(state.usageTimer);if(!state.usageQueue.length||!window.google?.script?.run)return;const batch=state.usageQueue.splice(0,25);google.script.run.withSuccessHandler(result=>{if(result?.deferred)state.usageQueue=batch.concat(state.usageQueue).slice(0,100);if(state.usageQueue.length)state.usageTimer=window.setTimeout(flushUsage,result?.deferred?1200:400)}).withFailureHandler(()=>{state.usageQueue=batch.concat(state.usageQueue).slice(0,100)}).recordMarketsUsageEvents(batch)}
 
     function adminSubscriberScopeMarkup(){return`<legend>Ámbito de la suscripción</legend><p class="admin-scope-intro">Selecciona “Todos” o combina únicamente los mercados y plataformas que debe recibir esta cuenta.</p><div class="admin-scope-grid"><section class="admin-scope-card" aria-labelledby="admin-country-scope-title"><header><div><strong id="admin-country-scope-title">Mercados</strong><span>Uno, varios o todos</span></div><b id="admin-country-scope-summary" aria-live="polite">Todos</b></header><div id="admin-country-pills" class="admin-scope-pills" role="group" aria-labelledby="admin-country-scope-title"></div></section><section class="admin-scope-card" aria-labelledby="admin-platform-scope-title"><header><div><strong id="admin-platform-scope-title">Plataformas</strong><span>Una, varias o todas</span></div><b id="admin-platform-scope-summary" aria-live="polite">Todas</b></header><div id="admin-platform-pills" class="admin-scope-pills" role="group" aria-labelledby="admin-platform-scope-title"></div></section></div>`}

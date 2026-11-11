@@ -2,13 +2,15 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
+import { clientScript } from './client-script.mjs';
 
 const read = name => fs.readFileSync(new URL(`../src/${name}.html`, import.meta.url), 'utf8');
 
-function filterBindings() {
+function filterBindings({ crypto, sessionStorage } = {}) {
   const bindings = {}, calls = [], controls = new Map();
   const context = vm.createContext({
     navigator: { language: 'es' },
+    sessionStorage,
     document: {
       addEventListener() {},
       getElementById(id) {
@@ -17,6 +19,7 @@ function filterBindings() {
       }
     },
     window: {
+      crypto,
       matchMedia() {},
       MarketsUI: { option() { return ''; } },
       MarketsDomain: { config: { flags: {}, countries: { ES: 'España', MX: 'México' }, platforms: ['iOS', 'Android'] } },
@@ -29,7 +32,7 @@ function filterBindings() {
     },
     calls
   });
-  const script = read('App').replace(/<\/?script>/g, '').replace(/\}\)\(\);\s*$/, `
+  const script = clientScript(read('App')).replace(/\}\)\(\);\s*$/, `
     loadReviews = () => calls.push({ page: 0, ...reviewScope() });
     loadAnalytics = () => calls.push({ ...selection(), ...analyticsSelection });
     renderAdminSubscribers = rows => calls.push(adminSubscriberFilterRows(rows).map(row => row.email));
@@ -39,10 +42,11 @@ function filterBindings() {
       if (rows) state.adminCenter={subscribers:rows};
       bindRadarFilters();
     };
+    globalThis.sessionId = usageSessionId;
     globalThis.setBalanceRender = () => renderBalanceEntity = () => calls.push("balance-only");
   })();`);
   vm.runInContext(script, context);
-  return { bindings, calls, setup: context.setup, setBalanceRender: context.setBalanceRender };
+  return { bindings, calls, setup: context.setup, setBalanceRender: context.setBalanceRender, sessionId: context.sessionId };
 }
 
 const copy = value => JSON.parse(JSON.stringify(value));
@@ -95,4 +99,17 @@ test('market controls follow the review filters and the old return control is ab
   const index = read('Index');
   assert.match(index,/id="review-filters"[\s\S]+id="review-markets"[\s\S]+id="review-results"/);
   assert.doesNotMatch(index,/review-return|Volver a Analítica/);
+});
+
+test('telemetry replaces legacy insecure identifiers and reuses the secure identifier for the tab', () => {
+  let stored = '1699999999999-legacy';
+  let generated = 0;
+  const { sessionId } = filterBindings({
+    crypto: { getRandomValues(bytes) { generated++; return bytes.fill(0xa5); } },
+    sessionStorage: { getItem: () => stored, setItem: (_, value) => { stored = value; } }
+  });
+  assert.equal(sessionId(), 'a5'.repeat(16));
+  assert.equal(sessionId(), stored);
+  assert.equal(generated, 1);
+  assert.equal(filterBindings().sessionId(), '');
 });
