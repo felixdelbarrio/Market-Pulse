@@ -356,8 +356,8 @@
     async function loadTrends(){const request=trendRequest(),key=trendKey(request),token=++state.trendToken;if(state.trendCache.has(key)){trackUsage("PERFORMANCE",state.view,"trends","CACHE 0 OK");state.trends=state.trendCache.get(key);state.trendsLoading=false;renderDashboard();return}state.trendsLoading=true;renderChartsLoading();if(!trendRequests.has(key)){const pending=callServer("trends",request);trendRequests.set(key,pending);const clear=()=>trendRequests.delete(key);pending.then(clear,clear)}state.trendPromise=trendRequests.get(key);try{const trends=await state.trendPromise;if(token!==state.trendToken)return;state.trends=trends||[];state.trendCache.set(key,state.trends);if(state.trendCache.size>12)state.trendCache.delete(state.trendCache.keys().next().value)}catch(error){if(token===state.trendToken){state.trends=[];showError(error)}}finally{if(token===state.trendToken){state.trendsLoading=false;state.trendPromise=null;renderDashboard()}}}
 
     function renderDashboard(){if(state.view==="benchmark")renderBenchmark();else if(state.view==="evolution")renderEvolution();renderPrintContext()}
-    function renderRunStatus(){document.querySelectorAll(".data-freshness").forEach(node=>{node.textContent=translate("Última recopilación · {date}",{date:dateLabel(state.meta.dataDate)})});const run=state.meta.latestRun||{},status=run.status||"SIN RUN",incidents=run.incidents||[];$("run-status").textContent=status==="OK"?"Datos actualizados":status==="PARTIAL"?"Actualización parcial":status;$("run-dot").className=`status-dot ${status==="OK"?"":status==="PARTIAL"?"warn":"bad"}`;$("run-date").textContent=`${dateTimeLabel(run.startedAt)} · ${run.appsOk??0}/${run.appsTotal??0} apps con rating`;$("incident-button").textContent=incidents.length?`${incidents.length} incidencia${incidents.length===1?"":"s"}`:"Sin incidencias";$("incident-button").disabled=!incidents.length;$("incident-list").innerHTML=incidents.map(item=>`<article class="incident"><strong>${U.esc(`${countryLabel(item.countryCode)} · ${item.platform} · ${item.status}`)}</strong><span>${U.esc(`${appNameFromKey(item.appKey)} · ${item.detail}`)}</span></article>`).join("")||U.empty("Sin incidencias","La última actualización terminó correctamente.")}
-    const appNameFromKey=appKey=>{const row=state.snapshot.find(item=>item.appKey===appKey);return row?D.appName(row):appKey};
+    function renderRunStatus(){document.querySelectorAll(".data-freshness").forEach(node=>{node.textContent=translate("Última recopilación · {date}",{date:dateLabel(state.meta.dataDate)})});const run=state.meta.latestRun||{},status=run.status||"SIN RUN",incidents=run.incidents||[];$("run-status").textContent=status==="OK"?"Datos actualizados":status==="PARTIAL"?"Actualización parcial":status;$("run-dot").className=`status-dot ${status==="OK"?"":status==="PARTIAL"?"warn":"bad"}`;$("run-date").textContent=`${dateTimeLabel(run.startedAt)} · ${run.appsOk??0}/${run.appsTotal??0} apps con rating`;$("incident-button").textContent=incidents.length?`${incidents.length} incidencia${incidents.length===1?"":"s"}`:"Sin incidencias";$("incident-button").disabled=!incidents.length;$("incident-list").innerHTML=incidents.map(item=>`<article class="incident"><strong>${U.esc(`${countryLabel(item.countryCode)} · ${item.platform} · ${item.status}`)}</strong><span>${U.esc([appNameFromKey(item.appKey),item.detail].filter(Boolean).join(" · "))}</span></article>`).join("")||U.empty("Sin incidencias","La última actualización terminó correctamente.")}
+    const appNameFromKey=appKey=>{const row=state.snapshot.find(item=>item.appKey===appKey);return row?D.appName(row):""};
     const selectionContext=scope=>`${state.country==="ALL"?"Todos los mercados":countryLabel(state.country)} · ${D.config.platformLabels[selection().platform]} · ${scope}`;
     const overviewContext=()=>selectionContext("BBVA Empresas");
     const activeBenchmark=()=>state.country==="ALL"?"BBVA Empresas":D.config.segmentLabels[state.benchmarkSegment];
@@ -610,7 +610,7 @@
       return `<article class="review-card review-${sentiment}">
         <header class="review-card-head"><span class="review-stars" aria-label="${U.esc(translate("{rating} de 5 estrellas",{rating:row.rating}))}">${stars}</span>
           <div class="review-identity">${platformIcon?`<img src="${platformIcon}" alt="${U.esc(row.platform)}">`:""}${entityLogo(entity,country,row.platform)}
-          ${country?geographyFlag(country,countryLabel(country)):row.sharedListing?"<small>Ficha compartida</small>":""}</div></header>
+          ${country==="UNKNOWN"?`<small>${U.esc(countryLabel(country))}</small>`:country?geographyFlag(country,countryLabel(country)):row.sharedListing?"<small>Ficha compartida</small>":""}</div></header>
         <div><span data-review-content>${link}</span> · <strong data-review-content>${U.esc(entity)}</strong> <time datetime="${U.esc(row.date)}">${U.esc(dateLabel(row.date))}</time></div>
         ${row.title?`<h4 data-review-content>${U.esc(row.title)}</h4>`:""}<p data-review-content>${U.esc(row.text)}</p>
         ${row.translated?`<details><summary>Ver original</summary><p data-review-content>${U.esc(row.original)}</p></details>`:""}
@@ -633,16 +633,16 @@
         const countryCode=scope.country==="ALL"?"":scope.country;
         const request={countryCode,platform:"",segment:"ALL",months:36,bbvaOnly:false};
         const key=trendKey(request);
-        const trends=scope.country==="UNKNOWN"?[]:state.trendCache.get(key) ?? callServer("trends",request).then(rows=>{state.trendCache.set(key,rows);return rows});
+        const trends=heatmapOnly||scope.country==="UNKNOWN"?[]:state.trendCache.get(key) ?? callServer("trends",request).then(rows=>{state.trendCache.set(key,rows);return rows});
         const [data, rows]=await Promise.all([
           callServer("review:analytics",{...scope,segment:heatmapSegment,entity:heatmapOnly?defaultAnalyticsEntity:analyticsEntity,language:appLanguage}),
           trends
         ]);
         if(token!==analyticsRequest||state.view!=="analytics")return;
-        annualTrends=scope.country==="UNKNOWN"?[]:withPublishedRatings(rows,{country:scope.country,platform:"ALL"});
-        if(scope.country!=="UNKNOWN")annualYears=[...new Set(annualTrends.filter(row=>D.finite(row.ratingEom)).map(row=>row.month.slice(0,4)))].sort().reverse();
         if(!localOnly)renderReviewMatrix(target,data,{...dates,country:scope.country,platform:"ALL",segment:heatmapSegment});
         if(!heatmapOnly){
+          annualTrends=scope.country==="UNKNOWN"?[]:withPublishedRatings(rows,{country:scope.country,platform:"ALL"});
+          if(scope.country!=="UNKNOWN")annualYears=[...new Set(annualTrends.filter(row=>D.finite(row.ratingEom)).map(row=>row.month.slice(0,4)))].sort().reverse();
           const apps=new Set(data.entityOptions);
           for(const row of annualTrends)if(row.month.startsWith(scope.year)&&D.finite(row.ratingEom))apps.add(D.appName(row));
           apps.delete(defaultAnalyticsEntity);
@@ -729,8 +729,10 @@
       const stats=[
         {label:"Opiniones del año anterior",value:integer(annual.previousTotal)},
         {label:"Opiniones del año seleccionado",value:integer(annual.total),...metricDelta(difference(annual.total,annual.previousTotal))},
-        {label:"Rating al inicio del periodo",value:fmt(openingRating,2),foot:monthLabel(opening)},
-        {label:"Último rating publicado del periodo",value:fmt(closingRating,2),...metricDelta(difference(closingRating,openingRating))}
+        ...(scope.country==="UNKNOWN"?[]:[
+          {label:"Rating al inicio del periodo",value:fmt(openingRating,2),foot:monthLabel(opening)},
+          {label:"Último rating publicado del periodo",value:fmt(closingRating,2),...metricDelta(difference(closingRating,openingRating))}
+        ])
       ];
       const cards=[
         ["Promotoras",annual.promoters],["Detractoras",annual.detractors],
