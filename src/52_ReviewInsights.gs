@@ -483,6 +483,7 @@ function getMarketsReviewAnalytics(filters) {
     window.recent = window.start;
   }
   if (filters.analysisMonth) {
+    filters.monthlyScopeVersion = 1;
     const start = filters.analysisMonth + '-01';
     const [year, month] = filters.analysisMonth.split('-').map(Number);
     window.recent = start;
@@ -565,7 +566,10 @@ function summarizeMarketsReviewAnalytics_(rows, topics, filters, window, annual 
   };
   const groups = new Map();
   const monthly = new Map();
-  const local = selected.filter(row => row.entities.includes(filters.entity || MARKETS_REVIEW_ENTITY));
+  const entity = filters.entity || MARKETS_REVIEW_ENTITY;
+  const matchesEntity = row => entity === 'ALL' || row.entities.includes(entity);
+  const monthlyRows = filters.analysisMonth ? visible.filter(matchesEntity) : visible;
+  const local = (filters.analysisMonth ? monthlyRows : selected).filter(matchesEntity);
   const net = rating => MARKETS_DEFAULT_REVIEW_SEGMENTS[2].stars.includes(rating) ? 1
     : MARKETS_DEFAULT_REVIEW_SEGMENTS[0].stars.includes(rating) ? -1 : 0;
   const blockTotals = new Map();
@@ -579,11 +583,12 @@ function summarizeMarketsReviewAnalytics_(rows, topics, filters, window, annual 
       groups.set(entity, group);
     }
   }
-  for (const row of filters.year ? [] : visible) {
+  for (const row of filters.year ? [] : monthlyRows) {
     const month = row.date.slice(0, 7);
-    for (const entity of row.entities) {
-      const key = JSON.stringify([entity, month]);
-      const point = monthly.get(key) || { entity, month, total: 0, promoters: 0, detractors: 0 };
+    for (const entityName of row.entities) {
+      if (filters.analysisMonth && entity !== 'ALL' && entityName !== entity) continue;
+      const key = JSON.stringify([entityName, month]);
+      const point = monthly.get(key) || { entity: entityName, month, total: 0, promoters: 0, detractors: 0 };
       point.total++;
       point.promoters += Number(net(row.rating) === 1);
       point.detractors += Number(net(row.rating) === -1);
@@ -603,6 +608,7 @@ function summarizeMarketsReviewAnalytics_(rows, topics, filters, window, annual 
       count(base, row);
       continue;
     }
+    if (filters.analysisMonth && segment && !segment.stars.includes(row.rating)) continue;
     recent.push(row);
     for (const id of blocksOf(row)) {
       if (!recentBlocks.has(id)) recentBlocks.set(id, { total: 0, promoters: 0, detractors: 0 });
@@ -630,7 +636,7 @@ function summarizeMarketsReviewAnalytics_(rows, topics, filters, window, annual 
     annual: summarizeAnnualMarketsReviews_(rows, filters.entity || MARKETS_REVIEW_ENTITY, annual, net),
     entities: [...groups.values()].sort((a, b) => Number(b.label === 'BBVA Empresas') - Number(a.label === 'BBVA Empresas') ||
       b.total - a.total || a.label.localeCompare(b.label)), entityOptions: [...new Set(visible.flatMap(row => row.entities))].sort(),
-    monthlyEntityOptions: [...new Set(visible.flatMap(row => row.entities))].sort(),
+    monthlyEntityOptions: [...new Set([...monthly.values()].map(point => point.entity))].sort(),
     monthly: [...monthly.values()].map(point => ({ ...point, balance: reviewBalancePoints_(point) })),
     deltas, baseline, recentTotal: recent.length };
 }

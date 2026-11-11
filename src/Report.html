@@ -62,7 +62,7 @@
         chunk(benchmarkRows,12).forEach((rows,index)=>builders.push((context,page)=>benchmarkPage(context,{benchmark:rows,segment,scopeLabel},page,chunkLabel(rows),`01${benchmarkRows.length>12?String.fromCharCode(65+index):""}`)));
       }else{
         builders.push((context,page)=>evolutionPage(context,{chart,movements,evolution,period,scopeLabel},page,"01"));
-        builders.push((context,page)=>monthlyPulsePage(context,{monthly,scopeLabel},page,"02"));
+        builders.push((context,page)=>monthlyPulsePage(context,{monthly,scopeLabel,selection},page,"02"));
         builders.push((context,page)=>newReviewImpactPage(context,{model:newReviewImpact,scopeLabel},page,"03"));
       }
       const totalPages=1+builders.length;
@@ -182,8 +182,8 @@
       const model=data.monthly;
       const header=(model.periods||[]).map((month,index)=>`<th class="${index===model.periods.length-1?"latest":""}">${esc(monthLabel(month))}</th>`).join("");
       const rows=(model.rows||[]).map(row=>`<tr><th><strong>${esc(row.country)}</strong><small>${esc(row.countryCode)}</small></th>${row.cells.map((cell,index)=>`<td class="${index===row.cells.length-1?"latest":""}"><strong>${fmt(cell.rating,2)}</strong><em class="${tone(cell.delta)}">${signed(cell.delta)}</em>${cell.platforms.map(item=>`<small><b>${esc(item.platform)}</b> ${item.unavailable?"N/D":integer(item.value)}</small>`).join("")}</td>`).join("")}</tr>`).join("");
-      const body=`<div class="report-title compact"><span>${esc(sectionNumber)} · Pulso mensual</span><h2>BBVA Empresas, cierre a cierre</h2><p>${esc(data.scopeLabel)} · hasta ${esc(monthLabel(model.periods?.at(-1)))}.</p></div><div class="report-table-wrap"><table class="report-table report-monthly-table"><thead><tr><th>Geografía</th>${header}</tr></thead><tbody>${rows}</tbody></table></div><aside class="report-note compact"><strong>Opiniones acumuladas</strong><span>Se muestran por plataforma y respetan el corte seleccionado. N/D identifica una ficha Android compartida que no admite desglose fiable por geografía.</span></aside>`;
-      return pageShell(context,pageNumber,"Pulso mensual de BBVA Empresas",data.scopeLabel,body);
+      const body=`<div class="report-title compact"><span>${esc(sectionNumber)} · Pulso mensual</span><h2>${esc(data.selection.app || "BBVA Empresas")}, cierre a cierre</h2><p>${esc(data.scopeLabel)} · hasta ${esc(monthLabel(model.periods?.at(-1)))}.</p></div><div class="report-table-wrap"><table class="report-table report-monthly-table"><thead><tr><th>Geografía</th>${header}</tr></thead><tbody>${rows}</tbody></table></div><aside class="report-note compact"><strong>Opiniones acumuladas</strong><span>Se muestran por plataforma y respetan el corte seleccionado. N/D identifica una ficha Android compartida que no admite desglose fiable por geografía.</span></aside>`;
+      return pageShell(context,pageNumber,"Pulso mensual de " + (data.selection.app || "BBVA Empresas"),data.scopeLabel,body);
     }
 
     function newReviewImpactPage(context,data,pageNumber,sectionNumber){

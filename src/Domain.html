@@ -131,17 +131,18 @@
         return{platform,rows:rankRows(rows)};
       }).filter(group=>group.rows.length);
     }
+    const monthlyAppMatches=(row,app)=>app==="ALL"||(app?appName(row)===app:row.isBbva);
     function monthlyRatingMatrix(trends,snapshot,selection,endPeriod,limit=8){
-      const rows=(trends||[]).filter(row=>row.isBbva&&finite(row.ratingEom)&&(!endPeriod||row.month<=endPeriod)&&(selection.country==="ALL"||row.countryCode===selection.country)&&(selection.platform==="ALL"||row.platform===selection.platform));
+      const rows=(trends||[]).filter(row=>monthlyAppMatches(row,selection.app)&&finite(row.ratingEom)&&(!endPeriod||row.month<=endPeriod)&&(selection.country==="ALL"||row.countryCode===selection.country)&&(selection.platform==="ALL"||row.platform===selection.platform));
       const periods=[...new Set(rows.map(row=>row.month))].sort().slice(-Math.max(1,limit));
       const platforms=selection.platform==="ALL"?config.platforms.filter(platform=>isCriticalPlatform(platform)||rows.some(row=>row.platform===platform&&finite(row.ratingEom))):[selection.platform];
-      const metadata=new Map((snapshot||[]).filter(row=>row.isBbva).map(row=>[row.appKey,row]));
+      const metadata=new Map((snapshot||[]).map(row=>[row.appKey,row]));
       const countryCodes=[...new Set(rows.map(row=>row.countryCode))].sort((a,b)=>(config.countries[a]||a).localeCompare(config.countries[b]||b,"es"));
       const matrixRows=countryCodes.map(countryCode=>{
         const cells=periods.map(month=>{
           const platformVolumes=platforms.map(platform=>{
             const matches=rows.filter(row=>row.countryCode===countryCode&&row.month===month&&row.platform===platform);
-            const unavailable=platform==="Android"&&matches.some(row=>metadata.get(row.appKey)?.volumeScope==="SHARED_LISTING");
+            const unavailable=platform==="Android"&&matches.some(row=>(metadata.get(row.appKey)||row).volumeScope==="SHARED_LISTING");
             return{platform,rating:mean(matches.map(row=>row.ratingEom)),value:unavailable?null:sumOrNull(matches.map(row=>row.ratingCountEom)),unavailable};
           });
           return{month,rating:weightedMean(rows.filter(row=>row.countryCode===countryCode&&row.month===month),row=>row.ratingEom,false),platforms:platformVolumes};
@@ -168,13 +169,13 @@
       return .5*Math.pow(10,-Math.max(minimumDecimals,observedDecimals));
     }
     function monthlyNewReviewImpact(trends,snapshot,selection,period){
-      const previousPeriod=previousCalendarMonth(period),metadata=new Map((snapshot||[]).filter(row=>row.isBbva).map(row=>[row.appKey,row]));
-      const scoped=(trends||[]).filter(row=>row.isBbva&&(selection.country==="ALL"||row.countryCode===selection.country)&&(selection.platform==="ALL"||row.platform===selection.platform));
+      const previousPeriod=previousCalendarMonth(period),metadata=new Map((snapshot||[]).map(row=>[row.appKey,row]));
+      const scoped=(trends||[]).filter(row=>monthlyAppMatches(row,selection.app)&&(selection.country==="ALL"||row.countryCode===selection.country)&&(selection.platform==="ALL"||row.platform===selection.platform));
       const byApp=groupBy(scoped,row=>row.appKey),rawItems=[];
       Object.values(byApp).forEach(appRows=>{
         const current=appRows.find(row=>row.month===period),previous=appRows.find(row=>row.month===previousPeriod);
         if(!current)return;
-        const meta=metadata.get(current.appKey)||{},base={appKey:current.appKey,volumeKey:meta.volumeKey||current.appKey,volumeScope:meta.volumeScope||"MARKET",countryCode:current.countryCode,country:config.countries[current.countryCode]||current.country||current.countryCode,platform:current.platform,previousRating:previous?.ratingEom,currentRating:current.ratingEom,rating:null,newReviews:null,impact:null,confidence:"NONE"};
+        const meta=metadata.get(current.appKey)||current,base={appKey:current.appKey,volumeKey:meta.volumeKey||current.appKey,volumeScope:meta.volumeScope||"MARKET",countryCode:current.countryCode,country:config.countries[current.countryCode]||current.country||current.countryCode,platform:current.platform,previousRating:previous?.ratingEom,currentRating:current.ratingEom,rating:null,newReviews:null,impact:null,confidence:"NONE"};
         if(meta.volumeScope==="SHARED_LISTING"&&selection.country!=="ALL"){rawItems.push({...base,available:false,reason:"SHARED_LISTING"});return}
         if(!previous||![current.ratingEom,current.ratingCountEom,previous.ratingEom,previous.ratingCountEom].every(finite)){rawItems.push({...base,available:false,reason:"MISSING_BASE"});return}
         const newReviews=current.ratingCountEom-previous.ratingCountEom;

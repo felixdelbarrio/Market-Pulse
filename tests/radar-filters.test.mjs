@@ -153,7 +153,7 @@ test('monthly balance does not bridge missing months and the legend matches the 
   assert.equal(path.split('M').length - 1,2);
   assert.doesNotMatch(path,/L/);
   assert.match(chart,/2026-08 · Sin datos/);
-  const legend = reviewBalanceLegend([{entity:'Banco Central',total:19}],'Banco Central',String);
+  const legend = reviewBalanceLegend([{entity:'Banco Central',total:19}],String);
   assert.ok(legend.includes('background:' + color));
-  assert.match(legend,/aria-pressed="true"/);
+  assert.doesNotMatch(legend,/<button/);
 });
