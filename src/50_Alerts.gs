@@ -5,6 +5,65 @@ var MARKETS_ALERT_EMAIL = Object.freeze({
   senderMode: 'GROUP_ALIAS'
 });
 
+function buildMarketsReviewPilotEvents_(rows, preferences, existing, now, day) {
+  if (!preferences.active || !preferences.reviewShareEnabled || preferences.email !== MARKETS_REVIEW_PILOT_EMAIL) return [];
+  const groups = new Map();
+  const allCountries = preferences.countries.includes('ALL');
+  const start = now.getTime() - 24 * 60 * 60 * 1000;
+  const seen = new Set();
+  for (const row of rows) {
+    const timestamp = Date.parse(row.updatedAt);
+    if (!(timestamp > start && timestamp <= now.getTime()) || seen.has(row.key) ||
+        !Number.isInteger(row.rating) || row.rating < 1 || row.rating > 5 ||
+        !['Android', 'iOS'].includes(row.platform) ||
+        !(preferences.platforms.includes('ALL') || preferences.platforms.includes(row.platform))) continue;
+    // El mismo package Android se cuenta una vez y no se asigna a una geografía concreta.
+    const countryCode = row.countries.length === 1 && !row.sharedListing ? row.countries[0] : 'ALL';
+    if (!allCountries && !preferences.countries.includes(countryCode)) continue;
+    seen.add(row.key);
+    const id = [row.platform, countryCode].join('|');
+    const group = groups.get(id) || { platform: row.platform, countryCode, total: 0, low: 0 };
+    group.total++;
+    group.low += Number(row.rating <= 2);
+    groups.set(id, group);
+  }
+  return [...groups.values()].flatMap(group => {
+    if (!group.low) return [];
+    const share = 100 * group.low / group.total;
+    const severity = share >= preferences.reviewCriticalPct ? 'CRITICAL' : share >= preferences.reviewWarningPct ? 'WARNING' : '';
+    const eventKey = ['REVIEW_LOW_SHARE', day, group.platform, group.countryCode, preferences.email].join('|');
+    if (!severity || existing[eventKey]) return [];
+    const threshold = severity === 'CRITICAL' ? preferences.reviewCriticalPct : preferences.reviewWarningPct;
+    return [{ timestamp: now, eventKey, referenceDate: dateFromKey_(day), platform: group.platform,
+      countryCode: group.countryCode, country: group.countryCode === 'ALL' ? 'Ficha compartida' : group.countryCode,
+      type: 'REVIEW_LOW_SHARE', severity, threshold, metricValue: round2_(share),
+      detail: group.low + ' de ' + group.total + ' reseñas públicas de BBVA Empresas fechadas en las últimas 24 horas. Umbral: ' + threshold + ' %.',
+      recipients: preferences.email, userEmail: preferences.email, ruleId: 'REVIEW_LOW_SHARE', direction: 'UP',
+      runId: 'review-' + day, source: 'REVIEW_PILOT' }];
+  });
+}
+
+function processMarketsReviewPilot_(day) {
+  const ss = openMarketsSpreadsheet_(), control = readControl_(ss);
+  if (!marketsReviewPilotAllowed_(MARKETS_REVIEW_PILOT_EMAIL, control)) return 0;
+  const preferences = readMarketsAlertPreferences_(ss, MARKETS_REVIEW_PILOT_EMAIL);
+  if (!preferences.active || !preferences.reviewShareEnabled) return 0;
+  const now = new Date();
+  if (Utilities.formatDate(now, MARKETS_CONFIG.timeZone, 'yyyy-MM-dd') !== day) return 0;
+  const window = { start: shiftReviewDay_(day, -2), end: shiftReviewDay_(day, 1) };
+  const rows = queryMarketsReviews_(ss, { country: 'ALL', platform: 'ALL', app: 'BBVA Empresas' }, window);
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(1000)) throw new Error('La auditoría de alertas está ocupada.');
+  try {
+    const events = buildMarketsReviewPilotEvents_(rows, preferences, readExistingAlertKeys_(ss), now, day);
+    const result = deliverMarketsAlertEvents_(ss, events, control, 1);
+    if (['PARTIAL', 'ERROR'].includes(result.deliveryStatus)) throw new Error(result.deliveryDetail || 'Fallo en el envío del piloto.');
+    return result.length;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function buildAndProcessAlerts_(ss, referenceDate, catalog, runId, control, ratingObjects) {
   const ratings = ratingObjects || readRatingObjects_(ss);
   const subscribers = readAllMarketsAlertPreferences_(ss).filter(function (item) { return item.active; });
@@ -16,7 +75,11 @@ function buildAndProcessAlerts_(ss, referenceDate, catalog, runId, control, rati
     events = events.concat(buildCompetitiveCrossoverAlerts_(ratings, referenceDate, preferences, catalogByKey, existing));
   });
   events.forEach(function (event) { event.runId = runId; });
-  events.subscriberCount = subscribers.length;
+  return deliverMarketsAlertEvents_(ss, events, control, subscribers.length);
+}
+
+function deliverMarketsAlertEvents_(ss, events, control, subscriberCount) {
+  events.subscriberCount = subscriberCount;
   events.deliveryCount = 0;
   events.deliveryStatus = events.length ? 'DISABLED' : 'NOT_REQUIRED';
   events.deliveryDetail = '';
@@ -637,6 +700,7 @@ function marketsAlertEmailSubject_(events) {
     return '[PRUEBA] Market Pulse · ' + result + ' · ' +
       trimString_(tests[0].testId || tests[0].ruleId || 'verificación');
   }
+  if (marketsAlertIsReviewPilot_(events)) return '[Market Pulse] Alertas de reseñas · piloto';
   return '[Market Pulse] Alertas personalizadas · ' + events.length + ' cambio' +
     (events.length === 1 ? '' : 's') + ' en ratings';
 }
@@ -655,6 +719,7 @@ function renderMarketsAlertPlainText_(events, recipient) {
           '\nValoraciones acumuladas: ' + Math.round(event.ratingCount)) +
         '\nLectura: ' + trimString_(event.detail);
     }
+    if (event.type === 'REVIEW_LOW_SHARE') return marketsAlertCardTitle_(event) + '\n' + event.detail;
     if (event.isBelowThresholdPreview) {
       return '[PRUEBA · BAJO UMBRAL] ' + marketsAlertCardTitle_(event) +
         '\nMercado y plataforma: ' +
@@ -672,7 +737,7 @@ function renderMarketsAlertPlainText_(events, recipient) {
   return 'MARKET PULSE\nBBVA Banca de Empresas e Instituciones\n\n' +
     (noSignals ? 'Sin alertas activas en el ámbito seleccionado\n' :
       marketsAlertPreviewIsBelowThreshold_(events) ? 'Prueba con movimientos reales bajo umbral\n' :
-        'Alerta por cambios en ratings\n') +
+        (marketsAlertIsReviewPilot_(events) ? 'Alerta de reseñas · piloto\n' : 'Alerta por cambios en ratings\n')) +
     (isTest ? 'Vista previa construida exclusivamente con el último cierre real y la configuración vigente. No genera una alerta operativa.\n\n' : '\n') +
     lines.join('\n\n') + '\n\nDatos obtenidos: ' + marketsAlertDataDateLabel_(events) +
     '\nVersión: backend ' + MARKETS_CONFIG.codeVersion + ' / web ' + marketsAlertWebVersion_() +
@@ -682,6 +747,7 @@ function renderMarketsAlertPlainText_(events, recipient) {
 function renderMarketsAlertEmail_(events, recipient, feedback) {
   const isTest = marketsAlertIsTest_(events);
   const noSignals = marketsAlertPreviewHasNoSignals_(events);
+  const reviewPilot = marketsAlertIsReviewPilot_(events);
   const critical = (events || []).filter(function (event) { return event.severity === 'CRITICAL'; }).length;
   const warning = (events || []).filter(function (event) { return event.severity === 'WARNING'; }).length;
   const positive = (events || []).filter(function (event) { return event.severity === 'POSITIVE'; }).length;
@@ -705,12 +771,16 @@ function renderMarketsAlertEmail_(events, recipient, feedback) {
   return '<!doctype html><html><body style="margin:0;background:#F7F8F8;font-family:\'BBVABentonSans\',\'Benton Sans BBVA\',Arial,Helvetica,sans-serif;color:#000519;">' +
     '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#F7F8F8;"><tr><td align="center" style="padding:28px 12px;">' +
     '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="width:100%;max-width:640px;background:#FFFFFF;border-radius:16px;overflow:hidden;">' +
-    '<tr><td width="100%" style="padding:24px 28px;background:#001391;"><img src="cid:bbvaLogo" width="156" alt="BBVA Banca de Empresas e Instituciones" style="display:block;width:156px;height:auto;"><div style="margin-top:22px;color:#8BE1E9;font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">MARKET PULSE · ' + (isTest ? 'PRUEBA DE CANAL' : 'ALERTAS DE RATINGS') + '</div><h1 style="margin:8px 0 0;color:#FFFFFF;font-size:28px;line-height:34px;">' + (noSignals ? 'Sin alertas activas' : marketsAlertPreviewIsBelowThreshold_(events) ? 'Prueba con datos reales' : 'Alerta por cambios en ratings') + '</h1><p style="margin:10px 0 0;color:#85C8FF;font-size:15px;line-height:22px;">' + escapeMarketsAlertHtml_(subtitle) + '</p></td></tr>' +
+    '<tr><td width="100%" style="padding:24px 28px;background:#001391;"><img src="cid:bbvaLogo" width="156" alt="BBVA Banca de Empresas e Instituciones" style="display:block;width:156px;height:auto;"><div style="margin-top:22px;color:#8BE1E9;font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">MARKET PULSE · ' + (isTest ? 'PRUEBA DE CANAL' : reviewPilot ? 'PILOTO DE RESEÑAS' : 'ALERTAS DE RATINGS') + '</div><h1 style="margin:8px 0 0;color:#FFFFFF;font-size:28px;line-height:34px;">' + (noSignals ? 'Sin alertas activas' : marketsAlertPreviewIsBelowThreshold_(events) ? 'Prueba con datos reales' : reviewPilot ? 'Alerta de reseñas' : 'Alerta por cambios en ratings') + '</h1><p style="margin:10px 0 0;color:#85C8FF;font-size:15px;line-height:22px;">' + escapeMarketsAlertHtml_(subtitle) + '</p></td></tr>' +
     '<tr><td width="100%" style="padding:22px 28px 8px;">' + summary + '</td></tr>' +
     '<tr><td width="100%" style="padding:14px 28px 8px;">' + cards + '</td></tr>' +
     '<tr><td width="100%" style="padding:18px 28px 30px;">' + cta + '<p style="margin:18px 0 0;color:#46536D;font-size:12px;line-height:18px;">Este correo es privado y contiene únicamente señales configuradas para tu cuenta. Las preferencias de otros usuarios nunca son visibles.</p><p style="margin:7px 0 0;color:#ADB8C2;font-size:10px;line-height:15px;">Datos obtenidos el ' + escapeMarketsAlertHtml_(marketsAlertDataDateLabel_(events)) + ' · backend ' + escapeMarketsAlertHtml_(MARKETS_CONFIG.codeVersion) + ' / web ' + escapeMarketsAlertHtml_(marketsAlertWebVersion_()) + '.</p></td></tr>' +
     '<tr><td width="100%" style="padding:16px 28px;background:#070E46;color:#85C8FF;font-size:11px;line-height:17px;"><strong style="color:#FFFFFF;">Market Pulse</strong><br>BBVA Banca de Empresas e Instituciones · Ratings y valoraciones públicas.</td></tr>' +
     renderMarketsAlertFeedbackFooter_(feedback) + '</table></td></tr></table></body></html>';
+}
+
+function marketsAlertIsReviewPilot_(events) {
+  return Boolean(events?.length) && events.every(event => event.type === 'REVIEW_LOW_SHARE');
 }
 
 function marketsAlertIsTest_(events) {
@@ -804,6 +874,9 @@ function renderMarketsAlertSnapshotCard_(event) {
 
 function marketsAlertCardTitle_(event) {
   const app = trimString_(event.appName || 'BBVA Empresas');
+  if (event.type === 'REVIEW_LOW_SHARE') {
+    return marketsAlertNumberLabel_(event.metricValue) + ' % de reseñas de 1 o 2 estrellas';
+  }
   if (event.type === 'COMPETITIVE_CROSSOVER') {
     return event.direction === 'LOST' ? trimString_(event.competitorName) + ' ha superado a ' + app :
       app + ' ha recuperado posición frente a ' + trimString_(event.competitorName);
@@ -816,6 +889,7 @@ function marketsAlertGeographyLabel_(event) {
 }
 
 function marketsAlertMetricsHtml_(event, palette) {
+  if (event.type === 'REVIEW_LOW_SHARE') return '';
   if (event.type === 'COMPETITIVE_CROSSOVER') {
     return '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-top:13px;background:#FFFFFF;border-radius:8px;"><tr>' +
       marketsAlertMetricCell_('BBVA', marketsAlertNumberLabel_(event.bbvaRating), 'rating') +
@@ -837,6 +911,7 @@ function marketsAlertSeverityLabel_(severity) {
 }
 
 function marketsAlertReason_(event) {
+  if (event.type === 'REVIEW_LOW_SHARE') return event.detail;
   if (event.type === 'COMPETITIVE_CROSSOVER') {
     return event.direction === 'LOST' ? 'El competidor ha pasado de estar por debajo o empatado a situarse por encima de BBVA.' :
       'BBVA ha pasado de estar por debajo o empatado a situarse por encima del competidor.';
@@ -848,6 +923,7 @@ function marketsAlertReason_(event) {
 }
 
 function marketsAlertRecommendation_(event) {
+  if (event.type === 'REVIEW_LOW_SHARE') return 'Consulta las reseñas recientes de BBVA Empresas en Market Pulse.';
   if (event.type === 'COMPETITIVE_CROSSOVER') return 'Abre Market Pulse y compara la evolución de BBVA con el competidor en ese mercado.';
   return 'Abre Market Pulse, revisa la evolución de la aplicación y contrasta el movimiento con las valoraciones recientes.';
 }
@@ -888,7 +964,8 @@ function marketsAlertDataDateLabel_(events) {
 }
 
 function marketsAlertRuleLabel_(type) {
-  return type === 'RATING_DROP_DAILY' ? 'Caída diaria del rating' :
+  return type === 'REVIEW_LOW_SHARE' ? 'Proporción de reseñas de 1 y 2 estrellas' :
+    type === 'RATING_DROP_DAILY' ? 'Caída diaria del rating' :
     type === 'RATING_DROP_MTD' ? 'Caída del día 15 al día 15' :
     type === 'RATING_DROP_YTD' ? 'Caída desde inicio de año' :
     type === 'COMPETITIVE_CROSSOVER' ? 'Cruce de posición competitiva' :

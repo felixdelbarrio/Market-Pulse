@@ -234,7 +234,8 @@ function setupMarketsReviewInsights() {
 }
 
 function getMarketsReviewHeatmap(filters) {
-  const { ss } = requireMarketsAdministrator_();
+  currentMarketsUserEmail_();
+  const ss = openMarketsSpreadsheet_();
   const catalog = ss.getSheetByName('FUNCTIONAL_CATALOG');
   if (!catalog || catalog.getLastRow() < 2) return { configured: false, functions: [] };
   const properties = PropertiesService.getScriptProperties();
@@ -320,9 +321,78 @@ function shiftReviewDay_(date, days) {
   return new Date(Date.parse(date + 'T00:00:00Z') + days * 86400000).toISOString().slice(0, 10);
 }
 
+function marketsDefaultCommentStart_(end) {
+  const [year, month] = end.split('-').map(Number);
+  return shiftReviewDay_(end, 1 - new Date(Date.UTC(year, month, 0)).getUTCDate());
+}
+
+function marketsReviewVersions_(properties) {
+  return ['MARKETS_REVIEWS_GENERATION', 'MARKETS_FUNCTIONAL_REVISION'].map(key => properties[key] || '');
+}
+
+function marketsReviewSnapshotScope_(operation, filters, window) {
+  if (filters.platform !== 'ALL' || filters.topic || filters.rating || filters.search || filters.reviewKey ||
+      filters.period || filters.entity || Number(filters.page || 0) !== 0) return '';
+  const language = ['es', 'en', 'tr'].includes(filters.language) ? filters.language : 'es';
+  if (operation === 'page') {
+    return filters.app === 'BBVA Empresas' && !filters.segment && window.start === marketsDefaultCommentStart_(window.end)
+      ? ['page', filters.country, language].join(':') : '';
+  }
+  return !filters.app && filters.segment === 'DETRACTOR' && window.start === shiftReviewDay_(window.end, -365)
+    ? ['analytics', filters.country].join(':') : '';
+}
+
+function publishMarketsReviewSnapshot_() {
+  const ss = openMarketsSpreadsheet_();
+  const properties = PropertiesService.getScriptProperties();
+  const versions = marketsReviewVersions_(properties.getProperties());
+  const { end } = marketsReviewWindow_();
+  const previous = readMarketsPersistentCache_('review-snapshot');
+  if (previous?.end === end && JSON.stringify(previous.versions) === JSON.stringify(versions)) {
+    return { complete: true, published: Object.keys(previous.values).length };
+  }
+  const analyticsWindow = marketsReviewWindow_();
+  const commentWindow = marketsReviewWindow_({ start: marketsDefaultCommentStart_(end) });
+  const topics = marketsReviewTopics_(ss);
+  const rows = queryMarketsReviews_(ss, { country: 'ALL', platform: 'ALL' }, analyticsWindow, true);
+  const comments = rows.filter(row => row.date >= commentWindow.start && row.entities.includes('BBVA Empresas'))
+    .map(row => ({ ...row, listings: row.listings.filter(item => item.entity === 'BBVA Empresas') }))
+    .map(row => ({ ...row, countries: row.listings.map(item => item.country) }));
+  const values = {};
+  for (const country of ['ALL', ...MARKETS_WEB.countryCodes]) {
+    const scoped = country === 'ALL' ? rows : rows.flatMap(row => {
+      const listing = row.listings.find(item => item.country === country);
+      return listing ? [{ ...row, listings: [listing], entities: [listing.entity], countries: [country], app: listing.app }] : [];
+    });
+    const analytics = summarizeMarketsReviewAnalytics_(scoped, topics, { segment: 'DETRACTOR' }, analyticsWindow);
+    analytics.examples = analytics.examples.map(({ block, review: { translations, ...review } }) => ({ block, review }));
+    values['analytics:' + country] = analytics;
+    if (country === 'ALL') continue;
+    for (const language of ['es', 'en', 'tr']) {
+      const page = paginateMarketsReviews_(comments, { country, topics }, commentWindow);
+      page.rows = page.rows.map(({ translations, ...row }) => {
+        const translated = translations[language];
+        return { ...row, text: translated || row.original, translated: Boolean(translated && translated !== row.original) };
+      });
+      values['page:' + country + ':' + language] = page;
+    }
+  }
+  if (JSON.stringify(marketsReviewVersions_(properties.getProperties())) !== JSON.stringify(versions)) {
+    return { complete: false, published: 0 };
+  }
+  const result = tryWriteMarketsPersistentCache_('review-snapshot', { end, versions, values }, end);
+  if (!result.ok) throw new Error(result.error);
+  return { complete: true, published: Object.keys(values).length };
+}
+
 function getMarketsReviewPage(filters) {
-  const { ss } = requireMarketsAdministrator_();
+  currentMarketsUserEmail_();
+  const ss = openMarketsSpreadsheet_();
   filters = normalizeMarketsReviewFilters_(filters);
+  if (!filters.start && !filters.period) {
+    const { end } = marketsReviewWindow_(filters);
+    filters.start = marketsDefaultCommentStart_(end);
+  }
   const window = marketsReviewWindow_(filters);
   return readMarketsReviewCache_(ss, 'page', filters, window, () => {
     const rows = queryMarketsReviews_(ss, { ...filters, country: 'ALL' }, window);
@@ -330,10 +400,11 @@ function getMarketsReviewPage(filters) {
   });
 }
 
-function normalizeMarketsReviewFilters_(filters = {}) {
+function normalizeMarketsReviewFilters_(filters) {
+  filters = filters || {};
   const country = filters.country || 'ALL', platform = filters.platform || 'ALL';
   if (!/^(ALL|[A-Z]{2})$/.test(country) || !['ALL', 'iOS', 'Android', 'Huawei'].includes(platform)) {
-    throw new Error('Mercado o plataforma no válidos.');
+    throw new Error('Geografía o plataforma no válidas.');
   }
   for (const value of [filters.start, filters.end]) {
     if (value && (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) ||
@@ -344,10 +415,16 @@ function normalizeMarketsReviewFilters_(filters = {}) {
   if (filters.start && filters.end && filters.start > filters.end) throw new Error('Intervalo no válido.');
   if (filters.period && !/^\d{4}-(0[1-9]|1[0-2])$/.test(filters.period)) throw new Error('Mes no válido.');
   if (filters.topic && !/^(general|\d{2})$/.test(filters.topic)) throw new Error('Bloque no válido.');
-  if (filters.rating !== undefined && filters.rating !== '' && !/^[0-5]$/.test(filters.rating)) {
+  if (filters.rating !== undefined && filters.rating !== '' && !/^[1-5]$/.test(filters.rating)) {
     throw new Error('Número de estrellas no válido.');
   }
-  return { ...filters, country, platform };
+  const normalized = { country, platform, page: Math.min(10000, Math.max(0, Math.floor(Number(filters.page) || 0))) };
+  for (const key of ['start', 'end', 'period', 'topic', 'segment', 'app', 'entity', 'reviewKey', 'search']) {
+    if (typeof filters[key] === 'string' && filters[key]) normalized[key] = filters[key].slice(0, 200);
+  }
+  if (filters.rating) normalized.rating = String(filters.rating);
+  if (['es', 'en', 'tr'].includes(filters.language)) normalized.language = filters.language;
+  return normalized;
 }
 
 function paginateMarketsReviews_(rows, filters, window) {
@@ -369,7 +446,8 @@ function paginateMarketsReviews_(rows, filters, window) {
 }
 
 function getMarketsReviewAnalytics(filters) {
-  const { ss } = requireMarketsAdministrator_();
+  currentMarketsUserEmail_();
+  const ss = openMarketsSpreadsheet_();
   filters = normalizeMarketsReviewFilters_(filters);
   const window = marketsReviewWindow_(filters);
   return readMarketsReviewCache_(ss, 'analytics', filters, window, () => {
@@ -381,11 +459,19 @@ function getMarketsReviewAnalytics(filters) {
 
 function readMarketsReviewCache_(ss, operation, filters, window, builder) {
   const properties = PropertiesService.getScriptProperties().getProperties();
-  const versions = ['MARKETS_REVIEWS_GENERATION', 'MARKETS_FUNCTIONAL_REVISION'].map(key => properties[key] || '');
+  const versions = marketsReviewVersions_(properties);
   const scope = Object.keys(filters).sort().map(key => [key, filters[key]]);
   const key = Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,
-    JSON.stringify(['review-v6', operation, ss.getId(), window.start, window.end, versions, scope, Math.floor(Date.now() / 300000)])));
-  return readMarketsWebCache_('market-review:' + key, builder);
+    JSON.stringify(['review-v7', operation, ss.getId(), window.start, window.end, versions, scope])));
+  return readMarketsWebCache_('market-review:' + key, () => {
+    const snapshotScope = marketsReviewSnapshotScope_(operation, filters, window);
+    if (snapshotScope) {
+      const snapshot = readMarketsPersistentCache_('review-snapshot');
+      if (snapshot?.end === window.end && JSON.stringify(snapshot.versions) === JSON.stringify(versions) &&
+          Object.hasOwn(snapshot.values, snapshotScope)) return snapshot.values[snapshotScope];
+    }
+    return builder();
+  });
 }
 
 function advanceMarketsReviewGeneration_(properties) {

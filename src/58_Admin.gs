@@ -78,7 +78,7 @@ function getMarketsAdminDashboard() {
       webVersion: MARKETS_WEB.version,
       webAppUrl: marketsWebAppUrl_(),
       timeZone: trimString_(access.control.TIME_ZONE) || MARKETS_CONFIG.timeZone,
-      reviewJobs: marketsAdminReviewJobs_(access.email),
+      reviewPipeline: marketsAdminReviewPipeline_(access.email),
       dailySchedule: String(MARKETS_CONFIG.runHour).padStart(2, '0') + ':' + String(MARKETS_CONFIG.runMinute).padStart(2, '0'),
       healthSchedule: String(MARKETS_CONFIG.healthCheckHour).padStart(2, '0') + ':' + String(MARKETS_CONFIG.healthCheckMinute).padStart(2, '0'),
       newsletterSchedule: 'Día 1 · ' + String(MARKETS_CONFIG.newsletterHour).padStart(2, '0') + ':' +
@@ -191,22 +191,22 @@ function requestMarketsAdminRatingRecovery() {
   });
 }
 
-function marketsAdminReviewJobs_(email) {
-  const owner = normalizeEmailForComparison_(Session.getEffectiveUser().getEmail());
+function marketsAdminReviewPipeline_(email) {
+  const owner = email === normalizeEmailForComparison_(Session.getEffectiveUser().getEmail());
   let installed = null;
-  if (owner && email === owner) {
+  if (owner) {
     try {
-      installed = new Set(ScriptApp.getProjectTriggers()
-        .filter(trigger => trigger.getEventType() === ScriptApp.EventType.CLOCK)
-        .map(trigger => trigger.getHandlerFunction()));
+      installed = ScriptApp.getProjectTriggers()
+        .some(trigger => trigger.getHandlerFunction() === MARKETS_REVIEW_SUPERVISOR);
     } catch (error) {
       console.warn('No se pudo consultar la programación de reseñas. ' + error.message);
     }
   }
-  return MARKETS_REVIEW_JOBS.map(({ handler, label, hour, minute }) => ({
-    label, installed: installed ? installed.has(handler) : null, timeZone: 'Europe/Madrid',
-    schedule: String(hour).padStart(2, '0') + ':' + String(minute).padStart(2, '0')
-  }));
+  const state = readMarketsReviewPipeline_(PropertiesService.getScriptProperties());
+  const jobs = state?.jobs || newMarketsReviewPipeline_('').jobs;
+  return { day: state?.day || '', installed, canRestart: owner && installed === true,
+    jobs: [{ id: 'supervisor', label: 'Supervisor de reseñas', priority: 0,
+      status: installed === null ? 'Activador sin verificar' : installed ? 'Activo' : 'Sin activador instalado' }, ...jobs] };
 }
 
 function readRecentMarketsAdminRuns_(ss, limit) {

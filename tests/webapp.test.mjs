@@ -342,15 +342,16 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(app, /rel=\"noopener noreferrer\"/);
   assert.match(app, /function renderRankRow/);
   assert.match(app, /item\.volumeScope!=="SHARED_LISTING"/);
-  assert.match(index, /<label for="country-filter">Mercado<\/label>/);
+  assert.match(index, /<label for="country-filter">Geografía<\/label>/);
   assert.match(index, /<label>Plataforma<\/label>/);
   assert.match(index, /id="benchmark-control" class="control hidden"/);
-  assert.match(index, /<label for="segment-filter">Benchmark<\/label>/);
-  assert.match(index, /<strong>Periodo Evolución<\/strong>/);
-  assert.match(index, /data-view="evolution"[^>]*>Evolución<\/button><button class="nav-button" data-view="alerts"/);
+  assert.match(index, /<label for="segment-filter">Tipo de entidad<\/label>/);
+  assert.match(index, /id="evolution-filters"[\s\S]+name="app"[\s\S]+name="year"[\s\S]+name="month"/);
+  assert.deepEqual([...index.matchAll(/<button[^>]+data-view="([^"]+)"/g)].map(match => match[1]),
+    ["overview", "analytics", "reviews", "benchmark", "evolution", "alerts", "admin"]);
   assert.match(index, /id="view-alerts"/);
   assert.match(index, /Privado para tu cuenta/);
-  assert.match(index, /id="admin-nav" class="nav-button hidden"/);
+  assert.match(index, /class="nav-button hidden" id="admin-nav"/);
   assert.match(index, /id="view-admin"/);
   assert.match(index, /id="admin-tabs"[^>]*role="tablist"/);
   assert.match(index, /data-admin-tab="performance"/);
@@ -363,7 +364,7 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.doesNotMatch(app, /function adminScopeValue/);
   assert.match(app, /function activateAdminTab/);
   assert.match(app, /function handleAdminTabKeydown/);
-  assert.match(app, /if\(\(\["admin","reviews","analytics"\]\.includes\(view\)\)&&!state\.userContext\?\.isAdmin\)return/);
+  assert.match(app, /if\(view==="admin"&&!state\.userContext\?\.isAdmin\)return/);
   assert.match(app, /getMarketsAdminDashboard\(\)/);
   assert.match(app, /localStorage\.setItem\(preferenceKey\(\)/);
   assert.match(app, /localStorage\.getItem\(preferenceKey\(\)/);
@@ -398,7 +399,8 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(index, /id="review-critical"[^>]*disabled/);
   assert.match(app, /\$\("review-warning"\)\.value=draft\.reviewWarningPct/);
   assert.match(app, /\$\("review-critical"\)\.value=draft\.reviewCriticalPct/);
-  assert.match(index, /WIP · Fuente pendiente/);
+  assert.match(index, /id="review-rule-card" class="alert-rule-card hidden"/);
+  assert.match(index, /id="review-enabled"/);
   assert.match(index, /id="daily-enabled"/);
   assert.match(index, /id="mtd-enabled"/);
   assert.match(index, /id="ytd-enabled"/);
@@ -432,7 +434,7 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.equal((index.match(/class="bbva-logo"/g) || []).length, 2);
   assert.doesNotMatch(index, /(?:brand-mark|loader-mark)">BBVA/);
   assert.equal((assets.match(/@font-face/g) || []).length, 3);
-  assert.match(assets, /font-family:"Benton Sans BBVA"/);
+  assert.match(assets, /font-family:"BBVA Benton Sans"/);
   assert.match(assets, /data:font\/woff2;base64,/);
   assert.match(assets, /--asset-bbva-logo:url\("data:image\/png;base64,/);
   assert.doesNotMatch(index + app, /(?:market|itms-apps|appmarket):\/\//);

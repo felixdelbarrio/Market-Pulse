@@ -4,7 +4,7 @@ import { createHmac } from "node:crypto";
 import test from "node:test";
 import vm from "node:vm";
 
-const source = ["../src/99_Core.gs", "../src/00_Config.gs", "../src/55_AlertPreferences.gs", "../src/50_Alerts.gs", "../src/56_Newsletter.gs"]
+const source = ["../src/99_Core.gs", "../src/00_Config.gs", "../src/55_AlertPreferences.gs", "../src/50_Alerts.gs", "../src/56_Newsletter.gs", "../src/58_Admin.gs"]
   .map(file => fs.readFileSync(new URL(file, import.meta.url), "utf8"))
   .join("\n");
 const context = {
@@ -609,6 +609,28 @@ test("the alert center validates only the sheets it consumes", () => {
   assert.equal(result.user.email, "felix.delbarrio@bbva.com");
   assert.deepEqual(checked, ["CONTROL", "ALERT_SUBSCRIPTIONS", "ALERT_LOG"]);
   assert.equal(checked.includes("RUN_LOG"), false);
+  assert.equal(result.system.reviewDataAvailable, false);
+});
+
+test("review pilot only alerts the selected account using unique public reviews from the last 24 hours", () => {
+  const now = new Date("2026-11-11T09:00:00Z");
+  const date = "2026-11-11";
+  const pilot = "felix.delbarrio@bbva.com";
+  const pref = preferences({ email: pilot, reviewShareEnabled: true });
+  assert.equal(pref.reviewShareEnabled, true);
+  assert.equal(context.normalizeMarketsAlertPreferences_({ reviewShareEnabled: true }, "other@bbva.com").reviewShareEnabled, false);
+  assert.equal(context.marketsReviewPilotAllowed_(pilot, { ADMIN_EMAILS: "other@bbva.com" }), false);
+  assert.equal(context.marketsReviewPilotAllowed_(pilot, { ADMIN_EMAILS: pilot }), true);
+  const row = { key: "shared", platform: "Android", sharedListing: true, countries: ["ES"],
+    rating: 1, updatedAt: "2026-11-10T18:00:00Z" };
+  const rows = [row, row, { ...row, key: "second", rating: 5 },
+    { ...row, key: "old", updatedAt: "2026-11-10T08:59:59Z" }];
+  const [event] = context.buildMarketsReviewPilotEvents_(rows, pref, {}, now, date);
+  assert.equal(event.metricValue, 50);
+  assert.equal(event.countryCode, "ALL");
+  assert.equal(event.recipients, pilot);
+  assert.equal(context.buildMarketsReviewPilotEvents_(rows, { ...pref, countries: ["ES"] }, {}, now, date).length, 0);
+  assert.equal(context.buildMarketsReviewPilotEvents_(rows, pref, { [event.eventKey]: true }, now, date).length, 0);
 });
 
 test("alert feedback tokens bind the vote to the recipient and deduplicate across choices", () => {
