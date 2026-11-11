@@ -11,7 +11,7 @@ test("App Store reviews require the requested storefront and listing and follow 
   const app = { platform: "iOS", countryCode: "TR", appId: "123", appKey: "IOS|TR|BANK" };
   const entry = {
     id: { label: "456" }, content: { label: "Yorum" }, updated: { label: "2026-10-01T12:00:00Z" },
-    "im:rating": { label: "4" }
+    "im:rating": { label: "4" }, author: { name: { label: "Autora" } }
   };
   const url = page => api.marketsReviewFeedUrl_(app, page);
   const link = (rel, href) => ({ attributes: { rel, href } });
@@ -21,6 +21,7 @@ test("App Store reviews require the requested storefront and listing and follow 
   const result = api.parseMarketsReviewFeed_(app, 1, payload);
   assert.equal(result.rows[0][0], '["iOS","TR","123","456"]');
   assert.equal(result.more, true);
+  assert.equal(JSON.parse(result.rows[0][15]).author, "Autora");
   assert.throws(() => api.parseMarketsReviewFeed_({ ...app, countryCode: "ES" }, 1, payload), /escaparate/);
   assert.throws(() => api.parseMarketsReviewFeed_({ ...app, appId: "124" }, 1, payload), /escaparate/);
   assert.equal(api.marketsReviewLiteral_("=1+1"), "'=1+1");
@@ -32,7 +33,7 @@ test("an edited review updates its existing row and requeues translation", () =>
   const previous = [id, app.appKey, "TR", "iOS", "123", "456", "2026-10-01T12:00:00Z", 4, "", "", "Old"];
   const properties = new Map([["MARKETS_REVIEWS_TRANSLATION_ROW", "18"]]);
   const writes = [];
-  const sheet = { getLastRow: () => 2, getRange: (row, column, height, width) => ({
+  const sheet = { getLastRow: () => 2, getLastColumn: () => 15, getRange: (row, column, height, width) => ({
     getValues: () => [previous], setValues: values => writes.push({ row, column, width, values })
   }) };
   Object.assign(api, {
@@ -58,17 +59,21 @@ test("an edited review updates its existing row and requeues translation", () =>
   assert.equal(result.updated, 1);
   assert.equal(writes[0].row, 2);
   assert.equal(writes[0].column, 7);
-  assert.deepEqual(Array.from(writes[0].values[0].slice(-4)), ["Edited", "", "", ""]);
+  assert.deepEqual(Array.from(writes[0].values[0].slice(4, 8)), ["Edited", "", "", ""]);
   assert.equal(properties.get("MARKETS_REVIEWS_TRANSLATION_ROW"), "2");
 });
 
 test("Google Play pagination preserves provenance and deduplicates across storefronts", () => {
   vm.runInContext(fs.readFileSync(new URL("../src/53_PlayReviews.gs", import.meta.url), "utf8"), api);
-  const item = ["review-123", null, 4, null, "Review", [1760000000, 1000000]];
+  const item = ["review-123", ["Autora"], 4, null, "Review", [1760000000, 1000000], 0,
+    ["Entidad", "Respuesta", [1760001000, 0]]];
   const frame = [["wrb.fr", "oCPfdb", JSON.stringify([[item], [null, "continuation"]])]];
   const page = api.parsePlayReviewPage_(")]}'\n\n" + JSON.stringify(frame));
   assert.equal(page.next, "continuation");
   assert.equal(page.rows[0].date, "2025-10-09T08:53:20.001Z");
+  assert.deepEqual(JSON.parse(JSON.stringify(page.rows[0].metadata)), {
+    author: "Autora", helpful: 0, replyAuthor: "Entidad", reply: "Respuesta", replyDate: "2025-10-09T09:10:00.000Z"
+  });
   assert.throws(() => api.parsePlayReviewPage_("<html>"), /inesperada/);
   const writes = [];
   const sheet = {
@@ -79,12 +84,16 @@ test("Google Play pagination preserves provenance and deduplicates across storef
   const properties = { getProperty: () => null, setProperty() {} };
   const known = new Map(), summary = { added: 0, updated: 0 };
   const listing = { packageName: "com.example.app", appKey: "ANDROID|ES|APP", countryCode: "ES" };
-  api.storePlayReviews_(sheet, properties, known, listing, page.rows, summary);
-  api.storePlayReviews_(sheet, properties, known, { ...listing, countryCode: "TR" }, page.rows, summary);
+  api.storePlayReviews_(sheet, properties, known, listing, page.rows, summary, 16);
+  api.storePlayReviews_(sheet, properties, known, { ...listing, countryCode: "TR" }, page.rows, summary, 16);
   assert.equal(summary.added, 1);
   assert.equal(summary.updated, 1);
   assert.equal(writes[1].row, 2);
   assert.equal(writes[1].rows[0][2], "ES,TR");
+  const changed = [{ ...page.rows[0], metadata: { ...page.rows[0].metadata, helpful: 4 } }];
+  api.storePlayReviews_(sheet, properties, known, listing, changed, summary, 16);
+  assert.equal(JSON.parse(writes[2].rows[0][15]).helpful, 4);
+  assert.equal(writes[2].rows[0][6], page.rows[0].date);
 });
 
 test("functional review evidence uses catalog IDs, context and exclusions", () => {
@@ -168,8 +177,36 @@ test("review cache isolates scopes and invalidates when the data generation chan
   assert.equal(get({ country: "ES", page: 0 }), 3);
 });
 
-test("review endpoints reject non-admins before resolving data or caches", () => {
-  api.requireMarketsAdministrator_ = () => { throw new Error("Acceso denegado"); };
+test("review endpoints accept corporate readers and reject anonymous users before reading data", () => {
+  const opened = [];
+  const sheet = { getSheetByName: () => null, getId: () => "test" };
+  Object.assign(api, {
+    MARKETS_CONFIG: { timeZone: "Europe/Madrid" },
+    openMarketsSpreadsheet_: () => { opened.push(1); return sheet; },
+    currentMarketsUserEmail_: () => { throw new Error("Acceso denegado"); }
+  });
+  api.Utilities.formatDate = () => "2026-11-11";
   assert.throws(() => api.getMarketsReviewAnalytics({ country: "ALL" }), /Acceso denegado/);
   assert.throws(() => api.getMarketsReviewPage({ country: "ALL", page: 0 }), /Acceso denegado/);
+  assert.equal(opened.length, 0);
+  api.currentMarketsUserEmail_ = () => "reader@bbva.com";
+  assert.equal(api.getMarketsReviewAnalytics({ country: "ES" }).total, 0);
+  const page = api.getMarketsReviewPage({ country: "ES", page: 0 });
+  assert.equal(page.total, 0);
+  assert.equal(page.window.start, "2026-10-13");
+});
+
+test("the default review scope serves the persistent snapshot only for the matching generation", () => {
+  const window = { start: "2026-10-13", end: "2026-11-11" };
+  const filters = { country: "ES", platform: "ALL", app: "BBVA Empresas", language: "es" };
+  const staticPage = { total: 10 };
+  const ss = { getId: () => "test" };
+  let generation = "1";
+  api.PropertiesService = { getScriptProperties: () => ({
+    getProperties: () => ({ MARKETS_REVIEWS_GENERATION: generation })
+  }) };
+  api.readMarketsPersistentCache_ = () => ({ end: window.end, versions: ["1", ""], values: { "page:ES:es": staticPage } });
+  assert.equal(api.readMarketsReviewCache_(ss, "page", filters, window, () => null), staticPage);
+  generation = "2";
+  assert.equal(api.readMarketsReviewCache_(ss, "page", filters, window, () => null), null);
 });

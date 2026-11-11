@@ -22,7 +22,7 @@ function filterBindings({ crypto, sessionStorage } = {}) {
       crypto,
       matchMedia() {},
       MarketsUI: { option() { return ''; } },
-      MarketsDomain: { config: { flags: {}, countries: { ES: 'España', MX: 'México' }, platforms: ['iOS', 'Android'] } },
+      MarketsDomain: { browserMarket: () => 'ES', config: { countries: { ES: 'España', MX: 'México' }, platforms: ['iOS', 'Android'] } },
       MarketRadarFilters: {
         create(root, binding) {
           bindings[root.id] = binding;
@@ -54,22 +54,26 @@ const copy = value => JSON.parse(JSON.stringify(value));
 test('review chips preserve drill-down context and restore and show all reset the scope', () => {
   const { bindings, calls, setup } = filterBindings();
   const dates = {start:'2026-08-01',end:'2026-09-01'};
-  setup({scope:{country:'MX',platform:'Android'},cohort:{...dates,country:'ES',platform:'iOS',segment:'NEUTRAL',topic:'01',reviewKey:'a'}});
+  setup({scope:{country:'MX',platform:'Android',meta:{countries:[{code:'ES'},{code:'MX'}]}},cohort:{...dates,country:'ES',platform:'iOS',segment:'NEUTRAL',topic:'01',reviewKey:'a'}});
   const reviews = bindings['review-filters'];
   const initial = reviews.initial(), all = reviews.all();
   reviews.commit({...reviews.applied(),topic:''});
   reviews.commit(initial,'restore');
   reviews.commit(all,'all');
-  assert.equal((Date.parse(initial.end)-Date.parse(initial.start))/86400000,365);
+  const [year,month]=initial.end.split('-').map(Number);
+  assert.equal((Date.parse(initial.end)-Date.parse(initial.start))/86400000+1,new Date(Date.UTC(year,month,0)).getUTCDate());
   assert.deepEqual(copy(reviews.fixedChips),['start','end']);
   assert.deepEqual(copy(calls), [
     {page:0,...dates,country:'ES',platform:'iOS',segment:'NEUTRAL',topic:'',reviewKey:'a'},
     {page:0,...initial,reviewKey:''},
     {page:0,...all,reviewKey:''}
   ]);
-  assert.equal(initial.country,'MX');
-  assert.equal(initial.platform,'Android');
-  assert.equal(all.country,'ALL');
+  assert.equal(initial.country,'ES');
+  assert.equal(initial.platform,'ALL');
+  assert.equal(initial.app,'BBVA Empresas');
+  assert.equal(all.country,'ES');
+  assert.deepEqual(copy(reviews.omitChips),['country']);
+  assert.ok(reviews.alwaysChips.includes('platform'));
   assert.equal(all.segment,'');
 });
 

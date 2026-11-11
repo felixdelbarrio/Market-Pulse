@@ -66,6 +66,10 @@ window.MarketRadarFilters = (() => {
     function refresh() {
       const options = [...select.options];
       summary.textContent = [...select.selectedOptions].map(option => option.textContent).join(", ") || "Sin selección";
+      if (select.name === "country") {
+        const image = flag(select.value, "");
+        if (image) summary.prepend(image);
+      }
       summary.setAttribute("aria-label", label + ": " + summary.textContent);
       search.hidden = options.length <= 6;
       list.replaceChildren(...options.map((option,index) => {
@@ -147,7 +151,7 @@ window.MarketRadarFilters = (() => {
     return {refresh, details};
   }
 
-  function create(root, {applied, initial, all, commit, prepare, validate, choose, labelValue, fixedChips = [], draftChanged}) {
+  function create(root, {applied, initial, all, commit, prepare, validate, choose, labelValue, fixedChips = [], alwaysChips = [], omitChips = [], draftChanged}) {
     const form = root.querySelector("form");
     const fields = [...form.elements].filter(field => field.name);
     const labels = Object.fromEntries(fields.map(field => [field.name,field.labels[0].firstChild.textContent.trim()]));
@@ -184,7 +188,7 @@ window.MarketRadarFilters = (() => {
 
       for (const field of fields) {
         const key = field.name, value = values[key];
-        if (!fixedChips.includes(key) && same(value,clear[key])) continue;
+        if (omitChips.includes(key) || (!fixedChips.includes(key) && !alwaysChips.includes(key) && same(value,clear[key]))) continue;
         const readable = (Array.isArray(value) ? value : [value]).map(item =>
           labelValue?.(key,item) || (field.options && [...field.options].find(option => option.value === item)?.textContent) || item
         ).join(", ");
@@ -195,7 +199,7 @@ window.MarketRadarFilters = (() => {
       previousChips = signature;
       chips.replaceChildren();
       for (const [key,readable] of entries) {
-        const fixed = fixedChips.includes(key);
+        const fixed = fixedChips.includes(key) || same(values[key],clear[key]);
         const button = document.createElement(fixed ? "span" : "button");
         button.className = "filter-chip";
         if (fixed) {
@@ -262,11 +266,11 @@ window.MarketRadarFilters = (() => {
       if (advanced) advanced.open = true;
       if (form.reportValidity()) apply(values,"apply");
     });
-    return {render, close, enable: enabled => {
+    return {render, close, refresh: sync, enable: enabled => {
       opener.disabled = !enabled;
       if (enabled && document.activeElement === root) opener.focus();
     }};
   }
-  return {create,flag};
+  return {create,flag,searchable};
 })();
 </script>

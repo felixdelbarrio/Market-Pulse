@@ -1,6 +1,6 @@
 /** Web app de lectura para el dashboard de ratings. */
 var MARKETS_WEB = Object.freeze({
-  version: '2026.07.27.50',
+  version: '2026.11.11.51',
   // Solo debe cambiar si cambia el formato serializado. Un cambio visual no
   // puede obligar al primer usuario a reconstruir la cache desde Sheets.
   cacheSchemaVersion: '2026.10.21.41',
@@ -33,6 +33,7 @@ function includeMarketsWebPartial_(name) {
 
 /** RPC inicial consumido por Index.html. */
 function getMarketsDashboardBootstrap() {
+  const userContext = getMarketsUserContext();
   const cacheKey = marketsBootstrapCacheKey_();
   const data = readMarketsWebCache_(cacheKey, function () {
     const persistent = readMarketsPersistentCache_('bootstrap');
@@ -46,10 +47,12 @@ function getMarketsDashboardBootstrap() {
     return bootstrap;
   });
   // La identidad nunca se almacena en la cache compartida.
-  data.meta = data.meta || {};
+  data.meta = { ...data.meta };
+  if (!userContext.isAdmin) delete data.meta.latestRun;
   data.meta.codeVersion = MARKETS_CONFIG.codeVersion;
   data.meta.webVersion = MARKETS_WEB.version;
-  data.userContext = getMarketsUserContext();
+  data.userContext = userContext;
+  data.reviewSegments = MARKETS_DEFAULT_REVIEW_SEGMENTS;
   return data;
 }
 
@@ -513,7 +516,6 @@ function writeMarketsPersistentCache_(name, value, revision) {
     chunks[marketsPersistentChunkKey_(name, generation, index)] = encoded.slice(
       index * MARKETS_WEB.persistentChunkCharacters, (index + 1) * MARKETS_WEB.persistentChunkCharacters);
   }
-  properties.setProperties(chunks, false);
   const meta = {
     version: MARKETS_WEB.cacheSchemaVersion,
     generation: generation,
@@ -523,7 +525,14 @@ function writeMarketsPersistentCache_(name, value, revision) {
     jsonCharacters: serialized.length,
     encodedCharacters: encoded.length
   };
-  properties.setProperty(metaKey, JSON.stringify(meta));
+  try {
+    properties.setProperties(chunks, false);
+    properties.setProperty(metaKey, JSON.stringify(meta));
+  } catch (error) {
+    try { deleteMarketsPersistentGeneration_(properties, name, meta); }
+    catch (cleanupError) { console.warn('No se pudo limpiar la caché parcial: ' + errorToString_(cleanupError)); }
+    throw error;
+  }
   deleteMarketsPersistentGeneration_(properties, name, oldMeta);
   return meta;
 }

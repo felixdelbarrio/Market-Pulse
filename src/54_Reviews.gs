@@ -4,29 +4,22 @@ var MARKETS_REVIEW_HEADERS = Object.freeze([
   'updated_at', 'rating', 'version', 'title', 'original', 'es', 'en', 'tr'
 ]);
 
-const MARKETS_REVIEW_JOBS = Object.freeze([
-  { handler: 'collectMarketsReviews_', label: 'Captura de App Store', hour: 8, minute: 5 },
-  { handler: 'collectMarketsPlayReviews_', label: 'Captura de Google Play', hour: 8, minute: 35 },
-  { handler: 'translateMarketsReviews_', label: 'Traducción de reseñas', hour: 9, minute: 5 }
-]);
+const MARKETS_REVIEW_METADATA_COLUMN = 16;
+const MARKETS_REVIEW_METADATA_HEADER = 'store_metadata';
 
 function setupMarketsReviews() {
   const access = requireMarketsReviewOwner_();
   if (!access.ss.getSheetByName('MARKET_REVIEWS')) {
     const sheet = access.ss.insertSheet('MARKET_REVIEWS');
-    sheet.getRange(1, 1, 1, MARKETS_REVIEW_HEADERS.length).setValues([MARKETS_REVIEW_HEADERS]);
+    const headers = [...MARKETS_REVIEW_HEADERS, 'captured_at', MARKETS_REVIEW_METADATA_HEADER];
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
     sheet.setFrozenRows(1);
   }
   const sheet = marketsReviewSheet_(access.ss);
   ensureSheetCapacity_(sheet, 2, 15);
-  sheet.getRange(1, 15).setValue('captured_at');
-  const existing = ScriptApp.getProjectTriggers().map(trigger => trigger.getHandlerFunction());
-  MARKETS_REVIEW_JOBS.forEach(({ handler, hour, minute }) => {
-    if (!existing.includes(handler)) {
-      ScriptApp.newTrigger(handler).timeBased().everyDays(1).atHour(hour).nearMinute(minute)
-        .inTimezone('Europe/Madrid').create();
-    }
-  });
+  const captured = sheet.getRange(1, 15);
+  if (!captured.getValue()) captured.setValue('captured_at');
+  installMarketsReviewSupervisor_();
 }
 
 function requireMarketsReviewOwner_() {
@@ -35,6 +28,52 @@ function requireMarketsReviewOwner_() {
     throw new Error('Esta operación está reservada al propietario de los activadores.');
   }
   return access;
+}
+
+/** Migración explícita y aditiva para instalaciones con el contrato anterior. */
+function migrateMarketsReviewMetadata() {
+  const { ss } = requireMarketsReviewOwner_();
+  const lock = LockService.getUserLock();
+  lock.waitLock(5000);
+  try {
+    const sheet = marketsReviewSheet_(ss);
+    if (sheet.getRange(1, 15).getValue() !== 'captured_at') {
+      throw new Error('MARKET_REVIEWS no tiene la cabecera esperada captured_at.');
+    }
+    if (marketsReviewWidth_(sheet) === MARKETS_REVIEW_METADATA_COLUMN) return { changed: false };
+    if (sheet.getLastColumn() >= MARKETS_REVIEW_METADATA_COLUMN) {
+      throw new Error('La columna de metadatos ya contiene datos con otro contrato.');
+    }
+    ensureSheetCapacity_(sheet, 2, MARKETS_REVIEW_METADATA_COLUMN);
+    sheet.getRange(1, MARKETS_REVIEW_METADATA_COLUMN).setValue(MARKETS_REVIEW_METADATA_HEADER);
+    SpreadsheetApp.flush();
+    return { changed: true };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function marketsReviewWidth_(sheet) {
+  return sheet.getLastColumn() >= MARKETS_REVIEW_METADATA_COLUMN &&
+    sheet.getRange(1, MARKETS_REVIEW_METADATA_COLUMN).getValue() === MARKETS_REVIEW_METADATA_HEADER
+    ? MARKETS_REVIEW_METADATA_COLUMN : 15;
+}
+
+function marketsReviewMetadata_(row) {
+  try { return JSON.parse(row[MARKETS_REVIEW_METADATA_COLUMN - 1]) || {}; }
+  catch (ignored) { return {}; }
+}
+
+function mergeMarketsReviewMetadata_(previous, source) {
+  const out = { ...previous };
+  if (source.author) out.author = source.author;
+  if (Number.isInteger(source.helpful) && source.helpful >= 0) out.helpful = source.helpful;
+  if (source.reply && (!out.replyDate || (source.replyDate && source.replyDate >= out.replyDate))) {
+    out.reply = source.reply;
+    if (source.replyDate) out.replyDate = source.replyDate;
+    if (source.replyAuthor) out.replyAuthor = source.replyAuthor;
+  }
+  return Object.keys(out).length ? JSON.stringify(out) : '';
 }
 
 function runMarketsReviewBackfill() {
@@ -74,9 +113,10 @@ function parseMarketsReviewFeed_(app, page, payload) {
     const rating = Number(entry['im:rating']?.label), updatedAt = trimString_(entry.updated?.label);
     if (!/^\d+$/.test(id) || !original || !Number.isInteger(rating) || rating < 1 || rating > 5 ||
         !Number.isFinite(Date.parse(updatedAt))) return [];
+    const metadata = mergeMarketsReviewMetadata_({}, { author: trimString_(entry.author?.name?.label) });
     return [[JSON.stringify([app.platform, app.countryCode, app.appId, id]), app.appKey, app.countryCode,
       app.platform, app.appId, id, updatedAt, rating, trimString_(entry['im:version']?.label),
-      trimString_(entry.title?.label), original, '', '', '']];
+      trimString_(entry.title?.label), original, '', '', '', '', metadata]];
   });
   return { rows, more: links.some(link => link.rel === 'next' && String(link.href).split('?')[0].replace(/\/xml$/, '/json') === marketsReviewFeedUrl_(app, page + 1)) };
 }
@@ -85,12 +125,13 @@ function marketsReviewLiteral_(value) {
   return typeof value === 'string' && /^[=+\-@']/.test(value) ? "'" + value : value;
 }
 
-function collectMarketsReviews_() {
+function collectMarketsReviews_(limit = Infinity) {
   // User lock keeps ingestion and translation mutually exclusive for the trigger owner.
   const lock = LockService.getUserLock();
   if (!lock.tryLock(1000)) return { deferred: true };
   try {
     const ss = openMarketsSpreadsheet_(), sheet = marketsReviewSheet_(ss);
+    const width = marketsReviewWidth_(sheet);
     const listings = new Map();
     readAppCatalog_(ss).filter(app => app.platform === 'iOS' && /^[A-Z]{2}$/.test(app.countryCode) &&
       /^\d+$/.test(app.appId)).forEach(app => {
@@ -101,9 +142,9 @@ function collectMarketsReviews_() {
     const apps = [...listings.values()].filter(group => group.length === 1).map(group => group[0])
       .sort((a, b) => a.appKey.localeCompare(b.appKey));
     const lastRow = sheet.getLastRow();
-    const stored = lastRow > 1 ? sheet.getRange(2, 1, lastRow - 1, 11).getValues() : [];
+    const stored = lastRow > 1 ? sheet.getRange(2, 1, lastRow - 1, width).getValues() : [];
     const known = new Map(stored.map((row, index) => [row[0], {
-      index: index + 2, updated: row[6], original: row[10]
+      index: index + 2, row
     }]));
     const translationKey = 'MARKETS_REVIEWS_TRANSLATION_ROW';
     const properties = PropertiesService.getScriptProperties(), cursorKey = 'MARKETS_REVIEWS_CURSOR';
@@ -111,7 +152,7 @@ function collectMarketsReviews_() {
     const start = Math.max(0, apps.findIndex(app => app.appKey === cursor));
     const deadline = Date.now() + 240000;
     let added = 0, updated = 0, failures = 0, processed = 0;
-    while (processed < apps.length && Date.now() < deadline) {
+    while (processed < Math.min(apps.length, limit) && Date.now() < deadline) {
       const app = apps[(start + processed) % apps.length];
       try {
         for (let page = app.appKey === cursor ? cursorPage : 1; page <= 10; page++) {
@@ -128,32 +169,41 @@ function collectMarketsReviews_() {
           const result = parseMarketsReviewFeed_(app, page, response.getContentText());
           const pending = new Map();
           const previousUpdates = updated;
+          const captured = new Date().toISOString();
           for (const row of result.rows) {
+            row[14] = captured;
             const previous = known.get(row[0]);
             if (!previous) {
               if (!pending.has(row[0]) || Date.parse(row[6]) > Date.parse(pending.get(row[0])[6])) {
-                pending.set(row[0], row);
+                pending.set(row[0], row.slice(0, width));
               }
               continue;
             }
-            if (Date.parse(row[6]) <= Date.parse(previous.updated)) continue;
-            const textChanged = row[10] !== previous.original;
+            const newer = Date.parse(row[6]) > Date.parse(previous.row[6]);
+            const textChanged = newer && row[10] !== previous.row[10];
+            const merged = width === MARKETS_REVIEW_METADATA_COLUMN ? mergeMarketsReviewMetadata_(
+              marketsReviewMetadata_(previous.row), marketsReviewMetadata_(row)) : '';
+            if (!newer && (!merged || merged === previous.row[15])) continue;
             if (textChanged) {
               const nextTranslation = Number(properties.getProperty(translationKey)) || 2;
               properties.setProperty(translationKey, String(Math.min(nextTranslation, previous.index)));
             }
-            const update = row.slice(6, textChanged ? MARKETS_REVIEW_HEADERS.length : 11);
+            const updatedRow = newer ? row.slice(0, width) : previous.row.slice();
+            if (newer && !textChanged) updatedRow.splice(11, 3, ...previous.row.slice(11, 14));
+            updatedRow[14] = captured;
+            if (width === MARKETS_REVIEW_METADATA_COLUMN) updatedRow[15] = merged;
+            const update = updatedRow.slice(6);
             sheet.getRange(previous.index, 7, 1, update.length).setValues([update.map(marketsReviewLiteral_)]);
-            known.set(row[0], { index: previous.index, updated: row[6], original: row[10] });
+            known.set(row[0], { index: previous.index, row: updatedRow });
             updated++;
           }
           if (pending.size) {
             const nextRow = sheet.getLastRow() + 1;
             const rows = [...pending.values()];
-            ensureSheetCapacity_(sheet, nextRow + rows.length - 1, MARKETS_REVIEW_HEADERS.length);
-            sheet.getRange(nextRow, 1, rows.length, MARKETS_REVIEW_HEADERS.length)
+            ensureSheetCapacity_(sheet, nextRow + rows.length - 1, width);
+            sheet.getRange(nextRow, 1, rows.length, width)
               .setValues(rows.map(row => row.map(marketsReviewLiteral_)));
-            rows.forEach((row, i) => known.set(row[0], { index: nextRow + i, updated: row[6], original: row[10] }));
+            rows.forEach((row, i) => known.set(row[0], { index: nextRow + i, row }));
             added += rows.length;
           }
           if (pending.size || updated > previousUpdates) {
@@ -184,46 +234,51 @@ function translateMarketsReviews_() {
     const sheet = marketsReviewSheet_(openMarketsSpreadsheet_()), last = sheet.getLastRow();
     const properties = PropertiesService.getScriptProperties(), key = 'MARKETS_REVIEWS_TRANSLATION_ROW';
     let first = Number(properties.getProperty(key)) || 2;
-    if (first > last) first = 2;
-    if (last < first) return { translated: 0 };
+    if (last < first) return { translated: 0, checked: last - 1, eligible: last - 1, complete: true };
     const rows = sheet.getRange(first, 11, Math.min(100, last - first + 1), 4).getValues();
     const deadline = Date.now() + 240000;
-    let translated = 0;
-    for (let i = 0; i < rows.length && Date.now() < deadline; i++) {
-      const [original, ...values] = rows[i];
-      if (values.some(value => !value)) {
-        const result = ['es', 'en', 'tr'].map((language, index) =>
-          values[index] || LanguageApp.translate(String(original), '', language));
-        sheet.getRange(first + i, 12, 1, 3).setValues([result.map(marketsReviewLiteral_)]);
+    let translated = 0, checked = first - 2;
+    try {
+      for (let i = 0; i < rows.length && Date.now() < deadline; i++) {
+        const [original, ...values] = rows[i];
+        if (original && values.some(value => !value)) {
+          const result = ['es', 'en', 'tr'].map((language, index) =>
+            values[index] || LanguageApp.translate(String(original), '', language));
+          sheet.getRange(first + i, 12, 1, 3).setValues([result.map(marketsReviewLiteral_)]);
+          translated++;
+        }
+        checked++;
+      }
+    } finally {
+      if (translated) {
         SpreadsheetApp.flush();
         advanceMarketsReviewGeneration_(properties);
-        translated++;
       }
-      properties.setProperty(key, String(first + i + 1));
+      properties.setProperty(key, String(checked + 2));
     }
-    return { translated };
+    return { translated, checked, eligible: last - 1, complete: checked >= last - 1 };
   } finally {
     lock.releaseLock();
   }
 }
 
 const MARKETS_DEFAULT_REVIEW_SEGMENTS = [
-  { id: 'DETRACTOR', label: 'Detractores', stars: [0, 1, 2] },
+  { id: 'DETRACTOR', label: 'Detractores', stars: [1, 2] },
   { id: 'NEUTRAL', label: 'Neutros', stars: [3] },
   { id: 'PROMOTER', label: 'Promotores', stars: [4, 5] }
 ];
 
 function getMarketsReviewSegments() {
-  requireMarketsAdministrator_();
+  currentMarketsUserEmail_();
   return MARKETS_DEFAULT_REVIEW_SEGMENTS;
 }
 
 function readMarketsReviewsForWeb_(filters) {
-  const access = requireMarketsAdministrator_();
-  return queryMarketsReviews_(access.ss, filters).slice(0, 100);
+  currentMarketsUserEmail_();
+  return queryMarketsReviews_(openMarketsSpreadsheet_(), filters).slice(0, 100);
 }
 
-function queryMarketsReviews_(ss, filters, window) {
+function queryMarketsReviews_(ss, filters, window, includeTranslations = false) {
   filters = filters || {};
   const segment = MARKETS_DEFAULT_REVIEW_SEGMENTS.find(group => group.id === filters.segment);
   if (filters.segment && !segment) throw new Error('Segmento de comentarios desconocido.');
@@ -240,15 +295,21 @@ function queryMarketsReviews_(ss, filters, window) {
   const languageColumn = { es: 11, en: 12, tr: 13 }[filters.language] || 11;
   const androidListings = new Map([...catalog.values()].filter(app => app.platform === 'Android')
     .map(app => [app.packageName + '|' + app.countryCode, app]));
+  const packageCountries = new Map();
+  for (const app of androidListings.values()) {
+    const countries = packageCountries.get(app.packageName) || new Set();
+    countries.add(app.countryCode);
+    packageCountries.set(app.packageName, countries);
+  }
   const seen = new Set();
   const search = normalizeReviewEvidence_(String(filters.search || "").slice(0, 200));
-  return sheet.getRange(2, 1, sheet.getLastRow() - 1, 15).getValues()
+  return sheet.getRange(2, 1, sheet.getLastRow() - 1, marketsReviewWidth_(sheet)).getValues()
     .flatMap(row => {
       const date = row[6] instanceof Date
         ? Utilities.formatDate(row[6], MARKETS_CONFIG.timeZone, 'yyyy-MM-dd')
         : String(row[6]).slice(0, 10);
-      if (window && ((filters.start && date < filters.start) || (filters.end && date > filters.end) || !/^\d{4}-\d{2}-\d{2}$/.test(date) || date < window.start || date > window.end ||
-          !MARKETS_DEFAULT_REVIEW_SEGMENTS.some(group => group.stars.includes(row[7])))) return [];
+      if (!Number.isInteger(row[7]) || row[7] < 1 || row[7] > 5) return [];
+      if (window && ((filters.start && date < filters.start) || (filters.end && date > filters.end) || !/^\d{4}-\d{2}-\d{2}$/.test(date) || date < window.start || date > window.end)) return [];
       if (window && filters.rating !== undefined && filters.rating !== '' && row[7] !== Number(filters.rating)) return [];
       if (segment && (typeof row[7] !== 'number' || !segment.stars.includes(row[7]))) return [];
       const android = row[3] === 'Android';
@@ -269,12 +330,18 @@ function queryMarketsReviews_(ss, filters, window) {
       if (window && (!key || seen.has(key) || (filters.reviewKey && filters.reviewKey !== key))) return [];
       seen.add(key);
       const url = android ? 'https://play.google.com/store/apps/details?id=' + encodeURIComponent(row[4]) +
-        '&reviewId=' + encodeURIComponent(row[5]) : '';
+        '&reviewId=' + encodeURIComponent(row[5]) : row[3] === 'iOS' && /^\d+$/.test(row[4])
+          ? 'https://apps.apple.com/' + apps[0].countryCode.toLowerCase() + '/app/' + row[4] + '?see-all=reviews&platform=iphone' : '';
+      const { author, helpful, reply, replyDate, replyAuthor } = marketsReviewMetadata_(row);
       return [{ key, listings: apps.map(app => ({ country: app.countryCode, app: app.appName, entity: app.isBbva ? 'BBVA Empresas' : app.appName })),
         entities: [...new Set(apps.map(app => app.isBbva ? 'BBVA Empresas' : app.appName))],
         blocks: [...new Set(ids.map(id => id.slice(0, 2)).filter(id => !window || knownBlocks.has(id)))], app: apps[0].appName, countries: [...new Set(apps.map(app => app.countryCode))],
         platform: row[3], date, rating: row[7], version: String(row[8]),
         title: row[9], original: row[10], text: row[languageColumn] || row[10], url,
+        author, helpful, reply, replyDate, replyAuthor,
+        sharedListing: android && packageCountries.get(row[4])?.size > 1,
+        updatedAt: row[6] instanceof Date ? row[6].toISOString() : String(row[6]),
+        ...(includeTranslations ? { translations: { es: row[11], en: row[12], tr: row[13] } } : {}),
         capturedAt: row[14] ? String(row[14]).slice(0, 10) : '',
         translated: Boolean(row[languageColumn] && row[languageColumn] !== row[10]) }];
     })
