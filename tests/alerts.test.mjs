@@ -113,7 +113,7 @@ test("a user can edit the same preferences previously created by an administrato
     persisted: true, updatedBy: "admin@bbva.com"
   });
   context.currentMarketsUserEmail_ = () => "director@bbva.com";
-  context.openMarketsSpreadsheet_ = () => ({ id: "sheet" });
+  context.openMarketsSpreadsheet_ = () => ({ id: "sheet", getSheetByName: () => null });
   context.requireCurrentSheetContract_ = () => {};
   context.readControl_ = () => ({ SEND_ALERT_EMAILS: true });
   context.registerOrTouchMarketsAlertUser_ = () => adminCreated;
@@ -600,7 +600,7 @@ test("a Gmail authorization failure does not audit undelivered events or abort t
 test("the alert center validates only the sheets it consumes", () => {
   const checked = [];
   context.currentMarketsUserEmail_ = () => "felix.delbarrio@bbva.com";
-  context.openMarketsSpreadsheet_ = () => ({ id: "sheet" });
+  context.openMarketsSpreadsheet_ = () => ({ getSheetByName: name => name === "MARKET_REVIEWS" ? {} : null });
   context.requireCurrentSheetContract_ = (_ss, name) => { checked.push(name); };
   context.readControl_ = () => ({ SEND_ALERT_EMAILS: true });
   context.registerOrTouchMarketsAlertUser_ = (_ss, email) => preferences({ email });
@@ -609,28 +609,30 @@ test("the alert center validates only the sheets it consumes", () => {
   assert.equal(result.user.email, "felix.delbarrio@bbva.com");
   assert.deepEqual(checked, ["CONTROL", "ALERT_SUBSCRIPTIONS", "ALERT_LOG"]);
   assert.equal(checked.includes("RUN_LOG"), false);
-  assert.equal(result.system.reviewDataAvailable, false);
+  assert.equal(result.system.reviewDataAvailable, true);
 });
 
-test("review pilot only alerts the selected account using unique public reviews from the last 24 hours", () => {
+test("review alerts honor corporate opt-in and use unique public reviews from the last 24 hours", () => {
   const now = new Date("2026-11-11T09:00:00Z");
   const date = "2026-11-11";
-  const pilot = "felix.delbarrio@bbva.com";
-  const pref = preferences({ email: pilot, reviewShareEnabled: true });
+  const corporate = "reader@bbva.com";
+  const pref = context.normalizeMarketsAlertPreferences_({ active: true, reviewShareEnabled: true }, corporate);
   assert.equal(pref.reviewShareEnabled, true);
-  assert.equal(context.normalizeMarketsAlertPreferences_({ reviewShareEnabled: true }, "other@bbva.com").reviewShareEnabled, false);
-  assert.equal(context.marketsReviewPilotAllowed_(pilot, { ADMIN_EMAILS: "other@bbva.com" }), false);
-  assert.equal(context.marketsReviewPilotAllowed_(pilot, { ADMIN_EMAILS: pilot }), true);
+  assert.equal(context.defaultMarketsAlertPreferences_(corporate).reviewShareEnabled, false);
+  assert.equal(context.normalizeMarketsAlertPreferences_({ reviewShareEnabled: true }, "reader@garantibbva.com.tr").reviewShareEnabled, true);
+  assert.throws(() => context.normalizeMarketsAlertPreferences_({ reviewShareEnabled: true }, "reader@example.com"), /corporativa/);
   const row = { key: "shared", platform: "Android", sharedListing: true, countries: ["ES"],
     rating: 1, updatedAt: "2026-11-10T18:00:00Z" };
   const rows = [row, row, { ...row, key: "second", rating: 5 },
     { ...row, key: "old", updatedAt: "2026-11-10T08:59:59Z" }];
-  const [event] = context.buildMarketsReviewPilotEvents_(rows, pref, {}, now, date);
+  const groups = context.summarizeMarketsReviewAlerts_(rows, now);
+  const [event] = context.buildMarketsReviewAlertEvents_(groups, pref, {}, now, date);
   assert.equal(event.metricValue, 50);
   assert.equal(event.countryCode, "ALL");
-  assert.equal(event.recipients, pilot);
-  assert.equal(context.buildMarketsReviewPilotEvents_(rows, { ...pref, countries: ["ES"] }, {}, now, date).length, 0);
-  assert.equal(context.buildMarketsReviewPilotEvents_(rows, pref, { [event.eventKey]: true }, now, date).length, 0);
+  assert.equal(event.recipients, corporate);
+  assert.equal(context.buildMarketsReviewAlertEvents_(groups, { ...pref, reviewShareEnabled: false }, {}, now, date).length, 0);
+  assert.equal(context.buildMarketsReviewAlertEvents_(groups, { ...pref, countries: ["ES"] }, {}, now, date).length, 0);
+  assert.equal(context.buildMarketsReviewAlertEvents_(groups, pref, { [event.eventKey]: true }, now, date).length, 0);
 });
 
 test("alert feedback tokens bind the vote to the recipient and deduplicate across choices", () => {

@@ -6,7 +6,7 @@ const MARKETS_REVIEW_PIPELINE_STAGES = Object.freeze([
   { id: 'android', label: 'Captura de Google Play' },
   { id: 'translate', label: 'Traducción de reseñas' },
   { id: 'publish', label: 'Publicación de vistas de reseñas' },
-  { id: 'alerts', label: 'Alertas de reseñas · piloto' }
+  { id: 'alerts', label: 'Alertas de reseñas' }
 ]);
 
 function installMarketsReviewSupervisor_() {
@@ -143,7 +143,7 @@ function advanceMarketsReviewJob_(job, pipeline) {
       if (pipeline.jobs.slice(0, 2).some(stage => stage.failures)) {
         job.failures = 1;
       } else {
-        job.added = processMarketsReviewPilot_(pipeline.day);
+        job.added = processMarketsReviewAlerts_(pipeline.day);
       }
       job.done = 1;
       return true;

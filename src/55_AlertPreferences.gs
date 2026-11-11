@@ -1,5 +1,3 @@
-var MARKETS_REVIEW_PILOT_EMAIL = 'felix.delbarrio@bbva.com';
-
 /** Preferencias privadas y autoservicio de alertas. */
 var MARKETS_ALERT_DEFAULTS = Object.freeze({
   active: false,
@@ -84,8 +82,7 @@ function normalizeMarketsAlertPreferences_(source, email) {
     active: parseBoolean_(input.active, defaults.active),
     countries: countries,
     platforms: platforms,
-    reviewShareEnabled: defaults.email === MARKETS_REVIEW_PILOT_EMAIL &&
-      parseBoolean_(input.reviewShareEnabled, defaults.reviewShareEnabled),
+    reviewShareEnabled: parseBoolean_(input.reviewShareEnabled, defaults.reviewShareEnabled),
     reviewWarningPct: reviewWarning,
     reviewCriticalPct: reviewCritical,
     dailyDropEnabled: parseBoolean_(input.dailyDropEnabled, defaults.dailyDropEnabled),
@@ -268,10 +265,6 @@ function normalizeEmailForComparison_(email) {
   return trimString_(email).toLowerCase();
 }
 
-function marketsReviewPilotAllowed_(email, control) {
-  return email === MARKETS_REVIEW_PILOT_EMAIL && isMarketsAdministrator_(email, control);
-}
-
 function getMarketsAlertPreferences() {
   const email = currentMarketsUserEmail_();
   const ss = openMarketsSpreadsheet_();
@@ -285,7 +278,7 @@ function getMarketsAlertPreferences() {
     defaults: alertPreferencesForClient_(defaultMarketsAlertPreferences_(email)),
     system: {
       emailDeliveryEnabled: parseBoolean_(control.SEND_ALERT_EMAILS, false),
-      reviewDataAvailable: marketsReviewPilotAllowed_(email, control) && Boolean(ss.getSheetByName('MARKET_REVIEWS')),
+      reviewDataAvailable: Boolean(ss.getSheetByName('MARKET_REVIEWS')),
       configWarning: trimString_(control.ALERT_CONFIG_WARNING),
       schedule: 'Resumen diario tras la actualización de las 07:05',
       privacy: 'Puedes modificar esta configuración desde Alertas aunque el alta la haya realizado un administrador. Administración conserva la gestión y la auditoría.',
