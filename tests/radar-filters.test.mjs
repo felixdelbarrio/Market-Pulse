@@ -24,6 +24,7 @@ function filterBindings({ crypto, sessionStorage } = {}) {
       MarketsUI: { option() { return ''; } },
       MarketsDomain: { browserMarket: () => 'ES', config: { countries: { ES: 'España', MX: 'México' }, platforms: ['iOS', 'Android'] } },
       MarketRadarFilters: {
+        searchable() { return {}; },
         create(root, binding) {
           bindings[root.id] = binding;
           return { render() {} };
@@ -34,7 +35,7 @@ function filterBindings({ crypto, sessionStorage } = {}) {
   });
   const script = clientScript(read('App')).replace(/\}\)\(\);\s*$/, `
     loadReviews = () => calls.push({ page: 0, ...reviewScope() });
-    loadAnalytics = (localOnly=false) => calls.push({ ...analyticsScope(), entity: analyticsEntity, localOnly });
+    loadAnalytics = (localOnly=false) => calls.push({ ...annualScope(), entity: analyticsEntity, localOnly });
     renderAdminSubscribers = rows => calls.push(adminSubscriberFilterRows(rows).map(row => row.email));
     globalThis.setup = ({scope, cohort, rows}) => {
       Object.assign(state,scope);
@@ -43,10 +44,9 @@ function filterBindings({ crypto, sessionStorage } = {}) {
       bindRadarFilters();
     };
     globalThis.sessionId = usageSessionId;
-    globalThis.setBalanceRender = () => renderBalanceEntity = () => calls.push("balance-only");
   })();`);
   vm.runInContext(script, context);
-  return { bindings, calls, handlers, setup: context.setup, setBalanceRender: context.setBalanceRender, sessionId: context.sessionId };
+  return { bindings, calls, handlers, setup: context.setup, sessionId: context.sessionId };
 }
 
 const copy = value => JSON.parse(JSON.stringify(value));
@@ -77,18 +77,19 @@ test('review chips preserve drill-down context and restore and show all reset th
   assert.equal(all.segment,'');
 });
 
-test('entity controls affect only their own chart or local panels and context changes reset them', () => {
-  const { bindings, calls, handlers, setup, setBalanceRender } = filterBindings();
+test('annual filters use the browser country and reset the KPI app on year changes', () => {
+  const { bindings, calls, handlers, setup } = filterBindings();
   setup({scope:{country:'MX',platform:'Android'}});
-  setBalanceRender();
   const analytics = bindings['analytics-filters'], initial = analytics.initial();
-  handlers.get('analytics-balance-entity:change')({target:{value:'Banco Central'}});
+  assert.equal(initial.country,'ES');
+  assert.match(initial.year,/^\d{4}$/);
+  assert.deepEqual(copy(analytics.alwaysChips),['country','year']);
   handlers.get('analytics-entity:change')({target:{value:'Banco Central'}});
-  analytics.commit({...analytics.applied(),country:'ES',start:'2026-10-01'});
+  const year=String(Number(initial.year)-1);
+  analytics.commit({...analytics.applied(),year});
   assert.deepEqual(copy(calls), [
-    'balance-only',
     {...initial,entity:'Banco Central',localOnly:true},
-    {...initial,country:'ES',start:'2026-10-01',entity:'',localOnly:false}
+    {...initial,year,entity:'BBVA Empresas',localOnly:false}
   ]);
 });
 

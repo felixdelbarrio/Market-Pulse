@@ -1,6 +1,6 @@
 /** Web app de lectura para el dashboard de ratings. */
 var MARKETS_WEB = Object.freeze({
-  version: '2026.11.11.51',
+  version: '2026.11.11.52',
   // Solo debe cambiar si cambia el formato serializado. Un cambio visual no
   // puede obligar al primer usuario a reconstruir la cache desde Sheets.
   cacheSchemaVersion: '2026.10.21.41',
@@ -19,10 +19,8 @@ function doGet(event) {
   if (event?.parameter?.alertFeedback) return renderMarketsAlertFeedbackPage_(event.parameter.alertFeedback);
   const page = HtmlService.createTemplateFromFile('Index').evaluate()
     .setTitle('Market Pulse · BBVA Banca de Empresas e Instituciones')
-    .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover');
-  // HtmlService renders the browser tab outside the app's iframe.
-  try { page.setFaviconUrl(includeMarketsWebPartial_('RadarFavicon').trim()); }
-  catch (error) { console.warn('No se pudo configurar el favicon local: ' + error.message); }
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover')
+    .setFaviconUrl('https://raw.githubusercontent.com/felixdelbarrio/Market-Pulse/3a4ebca6387785f387441aabd591b3e1ba429e49/assets/favicon.png');
   return page;
 }
 
