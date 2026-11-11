@@ -48,7 +48,7 @@
 
     <template id="global-controls"><div id="filter-wrap" class="filter-wrap"><section id="filter-bar" class="filter-bar radar-filters" aria-label="Filtros globales">
       <div class="control"><label for="country-filter">Geografía</label><select id="country-filter" name="country" class="select-control"><option value="ALL">Todos los mercados</option></select></div>
-      <div class="control"><label>Plataforma</label><div id="platform-switch" class="platform-switch" role="group" aria-label="Plataforma"></div></div>
+      <div id="platform-control" class="control"><label>Plataforma</label><div id="platform-switch" class="platform-switch" role="group" aria-label="Plataforma"></div></div>
       <div id="benchmark-control" class="control hidden"><label for="segment-filter">Tipo de entidad</label><select id="segment-filter" class="select-control"><option value="BANK">Solo bancos</option><option value="FINTECH">Fintech y Neobancos</option><option value="ALL">Todo el mercado</option></select></div>
     </section></div></template>
 
@@ -80,6 +80,10 @@
         <section class="section panel new-review-panel" aria-labelledby="new-review-title"><div class="panel-head"><div><span class="section-kicker">Voz nueva del mes</span><h3 id="new-review-title">Qué nota dejan las nuevas opiniones</h3><span>Calidad del feedback recibido y su efecto observable en el rating acumulado.</span></div><span id="new-review-meta" class="panel-meta">Cierre seleccionado</span></div><div id="new-review-impact" class="new-review-impact"></div><div class="new-review-note"><strong>Cómo leerlo</strong><span>Para cada ficha se despeja la nota de las nuevas opiniones usando sus dos cierres acumulados consecutivos. Una ficha Android compartida solo se calcula en el alcance multipaís y una sola vez; nunca se atribuye a una geografía concreta. Si falta volumen, continuidad o precisión, se muestra N/D.</span></div></section>
         <section id="review-balance-panel" class="section panel trend-panel">
           <div class="panel-header"><div><p class="eyebrow">EVOLUCIÓN POR ENTIDAD</p><h3>% Promotores - % Detractores</h3></div><span id="review-balance-period" class="chart-period"></span></div>
+          <div class="radar-filters monthly-sentiment">
+            <label for="monthly-review-country">Geografía de reseñas</label>
+            <select id="monthly-review-country"><option value="">Geografía seleccionada</option><option value="UNKNOWN">Sin geografía</option></select>
+          </div>
           <div id="review-balance"></div>
         </section>
         <div class="section radar-filters monthly-sentiment">
@@ -171,6 +175,7 @@
           </form>
         </div>
         </div>
+        <section class="panel"><div class="panel-head"><h3>Mapa de calor por bloque funcional</h3></div><div id="review-heatmap" class="panel-body" aria-live="polite"></div></section>
         <section class="panel">
           <div class="panel-body radar-filters">
             <div class="filter-field analytics-app"><label for="analytics-entity">Aplicación</label><select id="analytics-entity"><option value="BBVA Empresas">BBVA</option></select></div>
@@ -183,7 +188,6 @@
           <div class="panel-head"><h3>Indicadores del periodo</h3></div>
           <div id="review-annual" class="panel-body" aria-live="polite"></div>
         </section>
-        <section class="panel"><div class="panel-head"><h3>Mapa de calor por bloque funcional</h3></div><div id="review-heatmap" class="panel-body" aria-live="polite"></div></section>
       </section>
       <section id="view-reviews" class="view mp-next hidden">
         <div class="section-head"><div><span class="section-kicker">Reseñas públicas de App Store y Google Play.</span><h2><img class="radar-view-icon" src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTEyLjc5OTkgMTAuNTAwMkMxMy4yOTcgMTAuNTAwMiAxMy42OTk5IDEwLjA5NzMgMTMuNjk5OSA5LjYwMDE5QzEzLjY5OTkgOS4xMDMxNCAxMy4yOTcgOC43MDAyIDEyLjc5OTkgOC43MDAyQzEyLjMwMjggOC43MDAyIDExLjg5OTkgOS4xMDMxNCAxMS44OTk5IDkuNjAwMTlDMTEuODk5OSAxMC4wOTczIDEyLjMwMjggMTAuNTAwMiAxMi43OTk5IDEwLjUwMDJaIi8+CjxwYXRoIGQ9Ik0xNi43OTk5IDguMDAwMlYzLjIwMDJIMi4zOTk5VjE1LjAzNDJDMi4zOTk5IDE1LjUyMTIgMi42OTA5IDE1Ljk1NjIgMy4xNDA5IDE2LjE0MzJDMy4yODk5IDE2LjIwNTIgMy40NDY5IDE2LjIzNTIgMy42MDA5IDE2LjIzNTJDMy45MTI5IDE2LjIzNTIgNC4yMTc5IDE2LjExMzIgNC40NDc5IDE1Ljg4MzJMNi43MzA5IDEzLjYwMDJINy4xOTk5VjE4LjQwMDJIMTcuMjY4OUwxOS41NTE5IDIwLjY4MzJDMTkuNzgxOSAyMC45MTMyIDIwLjA4NzkgMjEuMDM1MiAyMC4zOTg5IDIxLjAzNTJDMjAuNTUzOSAyMS4wMzUyIDIwLjcwOTkgMjEuMDA1MiAyMC44NTg5IDIwLjk0MzJDMjEuMzA4OSAyMC43NTcyIDIxLjU5OTkgMjAuMzIxMiAyMS41OTk5IDE5LjgzNDJWOC4wMDAySDE2Ljc5OTlaTTYuNTY1OSAxMi4wMDAyQzYuMjQ0OSAxMi4wMDAyIDUuOTQzOSAxMi4xMjUyIDUuNzE2OSAxMi4zNTEyTDMuOTk5OSAxNC4wNjgyVjQuODAwMkgxNS4xOTk5VjEyLjAwMDJINi41NjU5Wk0xOS45OTk5IDE4Ljg2OTJMMTguMjgyOSAxNy4xNTIyQzE4LjA1NTkgMTYuOTI1MiAxNy43NTQ5IDE2LjgwMTIgMTcuNDMzOSAxNi44MDEySDguNzk5OVYxMy42MDEySDE2Ljc5OTlWOS42MDEySDE5Ljk5OTlWMTguODY5MloiLz4KPC9zdmc+Cg==" alt="">Comentarios</h2><p>Explora los comentarios sobre canales digitales de banca de empresas e instituciones, agrupadas por entidad financiera. Consulta la actualidad del mes en curso y profundiza en cualquier periodo mediante búsquedas y filtros.</p></div>
@@ -200,16 +204,15 @@
             <label>Buscar<input id="review-search" name="search" type="search" maxlength="200"></label>
             <details class="filter-advanced"><summary>Filtros avanzados</summary>
               <div class="filter-field"><label for="review-topic">Bloque funcional</label><select id="review-topic" name="topic"></select></div>
-              <div class="filter-field"><label for="review-rating">Estrellas</label><select id="review-rating" name="rating"><option value="">Todas</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select></div>
 
             </details>
           </form>
         </div>
         </div>
         <div id="review-markets" class="geography-tabs" role="group" aria-label="Geografías"></div>
-        <p class="review-chart-note">Las reseñas de fichas compartidas de Google Play se incluyen en el análisis global.</p>
+        <p class="review-chart-note">Sin geografía reúne comentarios cuya geografía no puede determinarse con suficiente fiabilidad. El país visible indica el escaparate observado.</p>
         <p id="review-filter-status" role="status"></p>
-        <div id="review-results" class="admin-list" aria-live="polite"></div><div id="review-pagination" class="period-controls"></div>
+        <div id="review-results" class="admin-list" aria-live="polite"></div><div id="review-pagination" class="review-pagination"></div>
       </section>
       <section id="view-admin" class="view mp-next hidden">
         <div class="section-head"><div><span class="section-kicker">Acceso restringido</span><h2><img class="radar-view-icon" src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTIxLjM5NSAxMi41NzhMMTcuMjE1IDIwLjE3OEMxNy4wMDQgMjAuNTYxIDE2LjYwMSAyMC44IDE2LjE2NCAyMC44SDEwLjAwMVYxOS4ySDE1LjkyOEwxOS44ODggMTJMMTUuOTI4IDQuNzk5OTVIOC4wNzQwNEw0LjExNDA0IDEyTDYuODY2MDQgMTcuMDA0TDUuNjg4MDQgMTguMTgyTDIuNjA2MDQgMTIuNTc5QzIuNDA3MDQgMTIuMjE3IDIuNDA3MDQgMTEuNzg0IDIuNjA2MDQgMTEuNDIyTDYuNzg2MDQgMy44MjE5NUM2Ljk5NzA0IDMuNDM4OTUgNy40MDAwNCAzLjE5OTk1IDcuODM3MDQgMy4xOTk5NUgxNi4xNjRDMTYuNjAyIDMuMTk5OTUgMTcuMDA1IDMuNDM3OTUgMTcuMjE2IDMuODIxOTVMMjEuMzk2IDExLjQyMkMyMS41OTUgMTEuNzg0IDIxLjU5NSAxMi4yMTcgMjEuMzk2IDEyLjU3OUwyMS4zOTUgMTIuNTc4Wk0xNiAxMkMxNiAxNC4yMDYgMTQuMjA2IDE2IDEyIDE2QzkuNzk0MDQgMTYgOC4wMDAwNCAxNC4yMDYgOC4wMDAwNCAxMkM4LjAwMDA0IDkuNzkzOTUgOS43OTQwNCA3Ljk5OTk1IDEyIDcuOTk5OTVDMTQuMjA2IDcuOTk5OTUgMTYgOS43OTM5NSAxNiAxMlpNMTQuNCAxMkMxNC40IDEwLjY3NyAxMy4zMjMgOS41OTk5NSAxMiA5LjU5OTk1QzEwLjY3NyA5LjU5OTk1IDkuNjAwMDQgMTAuNjc3IDkuNjAwMDQgMTJDOS42MDAwNCAxMy4zMjMgMTAuNjc3IDE0LjQgMTIgMTQuNEMxMy4zMjMgMTQuNCAxNC40IDEzLjMyMyAxNC40IDEyWk03LjUwMDA0IDE5QzcuMDAzMDQgMTkgNi42MDAwNCAxOS40MDMgNi42MDAwNCAxOS45QzYuNjAwMDQgMjAuMzk3IDcuMDAzMDQgMjAuOCA3LjUwMDA0IDIwLjhDNy45OTcwNCAyMC44IDguNDAwMDQgMjAuMzk3IDguNDAwMDQgMTkuOUM4LjQwMDA0IDE5LjQwMyA3Ljk5NzA0IDE5IDcuNTAwMDQgMTlaIi8+Cjwvc3ZnPgo=" alt="">Salud y operación</h2><p>Información privada para administrar la carga, las entregas y las suscripciones.</p></div><span class="privacy-badge">Solo administradores</span></div>

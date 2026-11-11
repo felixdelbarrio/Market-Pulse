@@ -126,9 +126,10 @@ function advanceMarketsReviewJob_(job, pipeline) {
       job.done = result.checked;
       job.total = result.eligible;
       job.updated += result.translated;
+      job.failures += result.failed || 0;
       if (result.complete) return true;
       if (job.batches < 4) return false;
-      job.pending = job.total - job.done;
+      job.pending = Math.max(job.total - job.done, result.pending || 0);
       return true;
     }
     case 'publish': {
