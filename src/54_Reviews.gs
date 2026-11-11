@@ -210,39 +210,61 @@ function getMarketsReviewSegments() {
 
 function readMarketsReviewsForWeb_(filters) {
   const access = requireMarketsAdministrator_();
+  return queryMarketsReviews_(access.ss, filters).slice(0, 100);
+}
+
+function queryMarketsReviews_(ss, filters, window) {
   filters = filters || {};
   const segment = MARKETS_DEFAULT_REVIEW_SEGMENTS.find(group => group.id === filters.segment);
   if (filters.segment && !segment) throw new Error('Segmento de comentarios desconocido.');
-  const catalog = new Map(readAppCatalog_(access.ss).map(app => [app.appKey, app]));
-  const sheet = access.ss.getSheetByName('MARKET_REVIEWS');
+  const catalog = new Map(readAppCatalog_(ss).map(app => [app.appKey, app]));
+  const sheet = ss.getSheetByName('MARKET_REVIEWS');
   if (!sheet || sheet.getLastRow() < 2) return [];
-  marketsReviewSheet_(access.ss);
+  marketsReviewSheet_(ss);
   const topic = /^(?:\d{2})(?:\.(?:\d{2}|xx))?$/.test(filters.topic) ? filters.topic : "";
-  const rules = topic ? reviewTopicRules_(access.ss) : null;
+  const taxonomy = window ? ss.getSheetByName('FUNCTIONAL_CATALOG') : null;
+  const entries = taxonomy && taxonomy.getLastRow() > 1
+    ? taxonomy.getRange(2, 1, taxonomy.getLastRow() - 1, 3).getDisplayValues() : [];
+  const knownBlocks = new Set(entries.filter(([id, label]) => /^\d{2}\./.test(id) && label).map(([id]) => id.slice(0, 2)));
+  const rules = window ? compileReviewRules_(entries) : topic ? reviewTopicRules_(ss) : null;
   const languageColumn = { es: 11, en: 12, tr: 13 }[filters.language] || 11;
   const androidListings = new Map([...catalog.values()].filter(app => app.platform === 'Android')
     .map(app => [app.packageName + '|' + app.countryCode, app]));
+  const seen = new Set();
+  const search = normalizeReviewEvidence_(String(filters.search || "").slice(0, 200));
   return sheet.getRange(2, 1, sheet.getLastRow() - 1, 15).getValues()
     .flatMap(row => {
+      const date = row[6] instanceof Date
+        ? Utilities.formatDate(row[6], MARKETS_CONFIG.timeZone, 'yyyy-MM-dd')
+        : String(row[6]).slice(0, 10);
+      if (window && ((filters.start && date < filters.start) || (filters.end && date > filters.end) || !/^\d{4}-\d{2}-\d{2}$/.test(date) || date < window.start || date > window.end ||
+          !MARKETS_DEFAULT_REVIEW_SEGMENTS.some(group => group.stars.includes(row[7])))) return [];
       if (segment && (typeof row[7] !== 'number' || !segment.stars.includes(row[7]))) return [];
       const android = row[3] === 'Android';
       if (filters.platform !== 'ALL' && row[3] !== filters.platform) return [];
-      if (filters.period && !String(row[6]).startsWith(filters.period)) return [];
+      if (filters.period && !date.startsWith(filters.period)) return [];
       const countries = String(row[2]).split(',').filter(country => filters.country === 'ALL' || country === filters.country);
       const apps = countries.map(country => android ? androidListings.get(row[4] + '|' + country) : catalog.get(row[1]))
         .filter(app => app && (android || (app.countryCode === row[2] && app.platform === row[3] &&
           String(row[4]) === app.appId)) && (!filters.app || (app.isBbva ? 'BBVA Empresas' : app.appName) === filters.app));
       if (!apps.length) return [];
-      if (rules && (!(row[7] >= 1 && row[7] <= 3) ||
-          !classifyReviewEvidence_([row[9], row[10]].join(' '), rules)
-            .some(id => id === topic || id.slice(0, 2) === topic))) return [];
+      const original = [row[9], row[10]].join(' ');
+      if (search && !normalizeReviewEvidence_(original).includes(search)) return [];
+      const ids = rules ? classifyReviewEvidence_(original, rules) : [];
+      if (window && filters.topic === "general" && ids.some(id => knownBlocks.has(id.slice(0, 2)))) return [];
+      if (topic && ((!window && !(row[7] >= 1 && row[7] <= 3)) ||
+          !ids.some(id => id === topic || id.slice(0, 2) === topic))) return [];
+      const key = String(row[0]);
+      if (window && (!key || seen.has(key) || (filters.reviewKey && filters.reviewKey !== key))) return [];
+      seen.add(key);
       const url = android ? 'https://play.google.com/store/apps/details?id=' + encodeURIComponent(row[4]) +
         '&reviewId=' + encodeURIComponent(row[5]) : '';
-      return [{ app: apps[0].appName, countries: [...new Set(apps.map(app => app.countryCode))],
-        platform: row[3], date: String(row[6]).slice(0, 10), rating: row[7], version: String(row[8]),
+      return [{ key, entities: [...new Set(apps.map(app => app.isBbva ? 'BBVA Empresas' : app.appName))],
+        blocks: [...new Set(ids.map(id => id.slice(0, 2)))], app: apps[0].appName, countries: [...new Set(apps.map(app => app.countryCode))],
+        platform: row[3], date, rating: row[7], version: String(row[8]),
         title: row[9], original: row[10], text: row[languageColumn] || row[10], url,
         capturedAt: row[14] ? String(row[14]).slice(0, 10) : '',
         translated: Boolean(row[languageColumn] && row[languageColumn] !== row[10]) }];
     })
-    .sort((a, b) => b.date.localeCompare(a.date)).slice(0, 100);
+    .sort((a, b) => b.date.localeCompare(a.date) || a.key.localeCompare(b.key));
 }

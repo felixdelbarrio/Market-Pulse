@@ -306,3 +306,117 @@ function reviewTopicRules_(ss) {
     ? compileReviewRules_(catalog.getRange(2, 1, catalog.getLastRow() - 1, 3).getDisplayValues())
     : new Map();
 }
+
+function marketsReviewWindow_() {
+  const end = Utilities.formatDate(new Date(), MARKETS_CONFIG.timeZone, 'yyyy-MM-dd');
+  const day = Date.parse(end + 'T00:00:00Z');
+  const offset = days => new Date(day - days * 86400000).toISOString().slice(0, 10);
+  return { start: offset(364), recent: offset(29), end };
+}
+
+function getMarketsReviewPage(filters) {
+  const { ss } = requireMarketsAdministrator_();
+  const window = marketsReviewWindow_();
+  const rows = queryMarketsReviews_(ss, filters, window);
+  const size = 25;
+  const page = Math.min(Math.max(0, Math.ceil(rows.length / size) - 1),
+    Math.max(0, Math.trunc(Number(filters?.page) || 0)));
+  return { page, size, total: rows.length, rows: rows.slice(page * size, (page + 1) * size), window };
+}
+
+function getMarketsReviewAnalytics(filters) {
+  const { ss } = requireMarketsAdministrator_();
+  const window = marketsReviewWindow_();
+  const catalog = ss.getSheetByName('FUNCTIONAL_CATALOG');
+  const topics = { general: 'Generalista' };
+  if (catalog && catalog.getLastRow() > 1) {
+    for (const [id, label] of catalog.getRange(2, 1, catalog.getLastRow() - 1, 2).getDisplayValues()) {
+      if (/^\d{2}\./.test(id) && label) topics[id.slice(0, 2)] = label;
+    }
+  }
+  const rows = queryMarketsReviews_(ss, { ...filters, app: '', segment: '' }, window);
+  return summarizeMarketsReviewAnalytics_(rows, topics, filters || {}, window);
+}
+
+function summarizeMarketsReviewAnalytics_(rows, topics, filters, window) {
+  const segment = MARKETS_DEFAULT_REVIEW_SEGMENTS.find(group => group.id === filters.segment);
+  if (filters.segment && !segment) throw new Error('Segmento de comentarios desconocido.');
+  const selected = rows.filter(row => !segment || segment.stars.includes(row.rating));
+  const blocksOf = row => {
+    const blocks = row.blocks.filter(id => Object.hasOwn(topics, id));
+    return blocks.length ? blocks : ['general'];
+  };
+  const groups = new Map();
+  const monthly = new Map();
+  const local = rows.filter(row => !filters.entity || row.entities.includes(filters.entity));
+  const net = rating => MARKETS_DEFAULT_REVIEW_SEGMENTS[2].stars.includes(rating) ? 1
+    : MARKETS_DEFAULT_REVIEW_SEGMENTS[0].stars.includes(rating) ? -1 : 0;
+  for (const row of selected) {
+    for (const entity of row.entities) {
+      const group = groups.get(entity) || { label: entity, total: 0, counts: {} };
+      group.total++;
+      for (const block of blocksOf(row)) group.counts[block] = (group.counts[block] || 0) + 1;
+      groups.set(entity, group);
+    }
+  }
+  for (const row of rows) {
+    const month = row.date.slice(0, 7);
+    for (const entity of row.entities) {
+      const key = JSON.stringify([entity, month]);
+      const point = monthly.get(key) || { entity, month, total: 0, promoters: 0, detractors: 0 };
+      point.total++;
+      point.promoters += Number(net(row.rating) === 1);
+      point.detractors += Number(net(row.rating) === -1);
+      monthly.set(key, point);
+    }
+  }
+  const deltas = Object.entries(topics).filter(([id]) => id !== 'general' && !filters.period)
+    .map(([id, label]) => {
+      const full = local.filter(row => row.blocks.includes(id));
+      const early = full.filter(row => row.date < window.recent);
+      if (early.length < 5 || early.length === full.length) return null;
+      const balance = cohort => 100 * cohort.reduce((sum, row) => sum + net(row.rating), 0) / cohort.length;
+      const before = balance(early), after = balance(full);
+      return { id, label, before, after, delta: after - before, earlyTotal: early.length, total: full.length };
+    }).filter(Boolean).sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta) || a.id.localeCompare(b.id)).slice(0, 3);
+  const recent = local.filter(row => row.date >= window.recent);
+  const examples = [];
+  const used = new Set();
+  for (const block of ['general', ...deltas.map(item => item.id)]) {
+    const example = selectMarketsReviewExample_(recent.filter(row => blocksOf(row).includes(block)), used);
+    if (!example) continue;
+    used.add(normalizeReviewEvidence_([example.title, example.original].join(' ')));
+    examples.push({ block, review: example });
+  }
+  return { window, topics, examples, total: selected.length, classified: selected.filter(row => blocksOf(row)[0] !== 'general').length,
+    entities: [...groups.values()].sort((a, b) => Number(b.label === 'BBVA Empresas') - Number(a.label === 'BBVA Empresas') ||
+      b.total - a.total || a.label.localeCompare(b.label)), entityOptions: [...new Set(rows.flatMap(row => row.entities))].sort(),
+    monthly: [...monthly.values()], deltas, recentTotal: recent.length };
+}
+
+
+function selectMarketsReviewExample_(rows, used) {
+  const documents = new Map();
+  const frequency = new Map();
+  const stop = new Set('para como este esta esto pero porque desde hasta sobre with this that from have your bir için ama olan'.split(' '));
+  for (const row of rows) {
+    const text = normalizeReviewEvidence_([row.title, row.original].join(' '));
+    if (!text || used.has(text) || documents.has(text)) continue;
+    const terms = new Set(text.split(' ').filter(word => word.length > 2 && !stop.has(word) && !/\d/.test(word)));
+    if (!terms.size) continue;
+    documents.set(text, { row, terms });
+    for (const term of terms) frequency.set(term, (frequency.get(term) || 0) + 1);
+  }
+  const count = documents.size;
+  const centroid = new Map();
+  const vectors = [];
+  for (const { row, terms } of documents.values()) {
+    const vector = [...terms].map(term => [term, Math.log((count + 1) / (frequency.get(term) + 1)) + 1]);
+    const length = Math.sqrt(vector.reduce((sum, [, value]) => sum + value * value, 0));
+    const unit = vector.map(([term, value]) => [term, value / length]);
+    for (const [term, value] of unit) centroid.set(term, (centroid.get(term) || 0) + value / count);
+    vectors.push({ row, unit });
+  }
+  return vectors.map(({ row, unit }) => ({ row, score: unit.reduce((sum, [term, value]) => sum + value * centroid.get(term), 0) }))
+    .sort((a, b) => b.score - a.score || a.row.key.localeCompare(b.row.key))[0]?.row;
+}

@@ -95,3 +95,25 @@ test("functional review evidence uses catalog IDs, context and exclusions", () =
   assert.deepEqual(classify("No puedo iniciar sesión"), ["16.xx"]);
   assert.deepEqual(classify("No funciona"), []);
 });
+
+test("analytics shares the selected sentiment and separates the cumulative delta cohort", () => {
+  const review = (key, date, rating, blocks) => ({
+    key, date, rating, blocks, entities: ["BBVA Empresas"], title: "Transferencia bancaria", original: key
+  });
+  const rows = [
+    ...Array.from({ length: 5 }, (_, index) => review(String(index), "2026-10-11", 1, ["03"])),
+    review("new", "2026-10-12", 5, ["03"]),
+    review("generic", "2026-10-12", 1, [])
+  ];
+  const result = api.summarizeMarketsReviewAnalytics_(rows, { "03": "Transferencias", general: "Generalista" },
+    { segment: "DETRACTOR" }, { start: "2025-11-12", recent: "2026-10-12", end: "2026-11-10" });
+  assert.equal(result.total, 6);
+  assert.equal(result.entities[0].counts["03"], 5);
+  assert.equal(result.entities[0].counts.general, 1);
+  assert.equal(result.monthly[0].total, 7);
+  assert.equal(result.deltas[0].earlyTotal, 5);
+  assert.equal(result.deltas[0].total, 6);
+  assert.ok(Math.abs(result.deltas[0].delta - 100 / 3) < 1e-8);
+  assert.equal(result.examples[0].review.key, "generic");
+  assert.equal(result.examples[1].review.key, "new");
+});

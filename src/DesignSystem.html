@@ -118,6 +118,21 @@
   @media print{@page{size:A4 landscape;margin:0}:root{--elevation-1:none;--elevation-2:none}html,body{width:297mm;height:auto;margin:0!important;padding:0!important;background:#fff!important;print-color-adjust:exact;-webkit-print-color-adjust:exact}#loader,#app,.toast,dialog,.chart-tooltip{display:none!important}.print-report{display:block!important}.report-page{display:block;break-after:page;page-break-after:always}.report-page:last-child{break-after:auto;page-break-after:auto}}
   .admin-table .review-heat-cell{background:color-mix(in srgb,var(--color-primary-light) var(--heat),var(--color-surface));color:var(--color-primary-darkest);font-weight:var(--weight-bold)}
   .review-matrix .review-heat-cell{text-align:center}.review-heat-cell button{width:100%;padding:var(--space-1);border:0;background:transparent;color:inherit;font:inherit;cursor:pointer;text-decoration:underline}
+  .mp-next .panel + .panel{margin-top:var(--space-3)}
+  .mp-next .review-matrix th:first-child{position:sticky;left:0;background:var(--color-surface);z-index:1}
+  .mp-next .review-matrix .review-heat-cell{border-radius:var(--radius-component)}
+  .mp-next #review-balance,.mp-next #review-deltas{display:grid;gap:var(--space-1);justify-items:start}
+  .mp-next #review-balance svg{display:block;width:min(100%,720px);height:auto}
+  .mp-next #review-balance>div{width:100%}
+  .mp-next .incident{overflow-wrap:anywhere}
+  @media(max-width:767px){
+    .mp-next .review-matrix,.mp-next .review-matrix tbody{display:block;min-width:0}
+    .mp-next .review-matrix thead{position:absolute;clip-path:inset(50%);width:1px;height:1px;overflow:hidden}
+    .mp-next .review-matrix tr{display:grid;margin-block:var(--space-2);border:1px solid var(--color-border);border-radius:var(--radius-component)}
+    .mp-next .review-matrix th:first-child{position:static;text-align:left}
+    .mp-next .review-matrix .review-heat-cell{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;text-align:left;gap:var(--space-1)}
+    .mp-next .review-matrix .review-heat-cell::before{content:attr(data-topic);overflow-wrap:anywhere}
+  }
 </style>
 <script>
   window.MarketsTheme=Object.freeze({

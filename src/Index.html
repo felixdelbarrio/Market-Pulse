@@ -18,7 +18,7 @@
   <div id="app" class="app-shell">
     <header class="topbar">
       <div class="brand"><div class="brand-mark"><span class="bbva-logo" role="img" aria-label="BBVA Banca de Empresas e Instituciones"></span></div><div class="brand-divider"></div><div class="brand-product">Market Pulse</div></div>
-      <nav class="main-nav" aria-label="Secciones"><button class="nav-button active" data-view="overview" type="button">Resumen</button><button class="nav-button" data-view="benchmark" type="button">Benchmark</button><button class="nav-button" data-view="evolution" type="button">Evolución</button><button class="nav-button" data-view="alerts" type="button">Alertas</button><button id="reviews-nav" class="nav-button hidden" data-view="reviews" type="button">Comentarios</button><button id="admin-nav" class="nav-button hidden" data-view="admin" type="button">Administración</button></nav>
+      <nav class="main-nav" aria-label="Secciones"><button class="nav-button active" data-view="overview" type="button">Resumen</button><button class="nav-button" data-view="benchmark" type="button">Benchmark</button><button class="nav-button" data-view="evolution" type="button">Evolución</button><button class="nav-button" data-view="alerts" type="button">Alertas</button><button id="analytics-nav" class="nav-button hidden" data-view="analytics" type="button">Analítica</button><button id="reviews-nav" class="nav-button hidden" data-view="reviews" type="button">Comentarios</button><button id="admin-nav" class="nav-button hidden" data-view="admin" type="button">Administración</button></nav>
       <button id="report-button" class="button button-secondary" type="button" title="Descargar informe completo" aria-label="Descargar informe completo"><span aria-hidden="true">↓</span><span>Descargar informe</span></button>
     </header>
 
@@ -123,20 +123,32 @@
         </div>
       </section>
 
-      <section id="view-reviews" class="view hidden">
-        <div class="section-head"><div><h2>Comentarios</h2><p>Reseñas de App Store y Google Play. Hasta 100 resultados recientes.</p></div></div>
+      <section id="view-analytics" class="view mp-next hidden">
+        <div class="section-head"><div><h2>Analítica</h2><p>Reseñas de los últimos 365 días por mercado consultado.</p></div></div>
+        <div class="period-controls">
+          <label>Sentimiento <select id="analytics-segment" class="select-control"></select></label>
+          <label>Mes <input id="analytics-period" type="month" class="select-control"></label>
+        </div>
+        <section class="panel"><div class="panel-head"><h3>Mapa de calor por bloque</h3></div><div id="review-heatmap" class="panel-body" aria-live="polite"></div></section>
+        <section class="panel"><div class="panel-head"><h3>Saldo mensual de promotores y detractores</h3></div><div id="review-balance" class="panel-body"></div></section>
+        <section class="panel"><div class="panel-head"><h3>Deltas acumulados por bloque</h3><label>Entidad <select id="analytics-entity" class="select-control"></select></label></div><div id="review-deltas" class="panel-body"></div></section>
+        <section class="panel"><div class="panel-head"><h3>Ejemplos de los últimos 30 días</h3></div><div id="review-examples" class="panel-body"></div></section>
+        <section class="panel"><div class="panel-head"><h3>Últimos 30 días</h3></div><div id="review-recent" class="panel-body"></div></section>
+      </section>
+      <section id="view-reviews" class="view mp-next hidden">
+        <div class="section-head"><div><h2>Comentarios</h2><p>Reseñas de App Store y Google Play de los últimos 365 días.</p></div></div>
         <form id="review-filters" class="period-toolbar"><div class="period-controls">
           <div class="control"><label for="review-app">Aplicación</label><select id="review-app" class="select-control"></select></div>
           <div class="control"><label for="review-segment">Sentimiento</label><select id="review-segment" class="select-control"></select></div>
           <div class="control"><label for="review-period">Mes</label><input id="review-period" class="select-control" type="month"></div>
-          <button type="reset" class="alert-button secondary">Limpiar aplicación y mes</button>
+          <label>Buscar <input id="review-search" class="select-control" type="search" maxlength="200"></label><button type="reset" class="alert-button secondary">Restaurar filtros iniciales</button>
           <button type="submit" class="alert-button primary">Aplicar filtros</button>
         </div></form>
         <p id="review-filter-status" role="status"></p>
-        <section class="panel"><div class="panel-head"><div><h3>Mapa de calor de quejas</h3><span>Funcionalidades del catálogo global · BBVA y competidores</span></div></div><div id="review-heatmap" class="panel-body" aria-live="polite"></div></section>
-        <div id="review-results" class="admin-list" aria-live="polite"></div>
+        <button id="review-return" type="button" class="alert-button secondary hidden">Volver a Analítica</button>
+        <div id="review-results" class="admin-list" aria-live="polite"></div><div id="review-pagination" class="period-controls"></div>
       </section>
-      <section id="view-admin" class="view hidden">
+      <section id="view-admin" class="view mp-next hidden">
         <div class="section-head"><div><span class="section-kicker">Acceso restringido</span><h2>Salud y operación</h2><p>Información privada para administrar la carga, las entregas y las suscripciones.</p></div><span class="privacy-badge">Solo administradores</span></div>
         <div id="admin-loading" class="panel alert-loading">Validando permisos y preparando el diagnóstico…</div>
         <div id="admin-content" class="hidden">
