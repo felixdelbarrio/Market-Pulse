@@ -80,7 +80,7 @@ function superviseMarketsReviews_() {
     // Una ejecución de Apps Script no puede superar los seis minutos.
     pipeline.leaseUntil = now.getTime() + 7 * 60 * 1000;
     job.status = 'En curso';
-    job.startedAt ||= now.toISOString();
+    if (!job.startedAt) job.startedAt = now.toISOString();
     properties.setProperty(MARKETS_REVIEW_PIPELINE_KEY, JSON.stringify(pipeline));
   } finally {
     lock.releaseLock();
