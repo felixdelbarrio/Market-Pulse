@@ -153,3 +153,9 @@ test("review cache isolates scopes and invalidates when the data generation chan
   properties.MARKETS_REVIEWS_GENERATION = "new";
   assert.equal(get({ country: "ES", page: 0 }), 3);
 });
+
+test("review endpoints reject non-admins before resolving data or caches", () => {
+  api.requireMarketsAdministrator_ = () => { throw new Error("Acceso denegado"); };
+  assert.throws(() => api.getMarketsReviewAnalytics({ country: "ALL" }), /Acceso denegado/);
+  assert.throws(() => api.getMarketsReviewPage({ country: "ALL", page: 0 }), /Acceso denegado/);
+});

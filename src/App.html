@@ -516,10 +516,12 @@
       const cards=[
         {name:"Carga diaria de ratings",schedule:system.dailySchedule,status:latest?.status||"Sin ejecución registrada",progress},
         {name:"Monitor de salud",schedule:system.healthSchedule,status:system.healthMonitorEnabled?"Habilitado":"Deshabilitado"},
-        {name:"Newsletter mensual",schedule:system.newsletterSchedule,status:system.newsletterDeliveryEnabled?"Habilitada":"Deshabilitada"}
+        {name:"Newsletter mensual",schedule:system.newsletterSchedule,status:system.newsletterDeliveryEnabled?"Habilitada":"Deshabilitada"},
+        ...(system.reviewJobs||[]).map(job=>({name:job.label,schedule:`Ventana diaria · ${job.schedule}`,timeZone:job.timeZone,
+          status:job.installed===null?"Activador sin verificar":job.installed?"Activador instalado":"Sin activador instalado"}))
       ];
       $("admin-jobs").innerHTML=cards.map(card=>`<article><strong>${U.esc(card.name)}</strong>
-        <p class="admin-job-schedule">${U.esc(card.schedule)} · ${U.esc(system.timeZone)}</p>
+        <p class="admin-job-schedule">${U.esc(card.schedule)} · ${U.esc(card.timeZone||system.timeZone)}</p>
         <span>${U.esc(card.status)}</span>${card.progress||""}</article>`).join("");
     }
     function renderAdminSystem(system){const items=[{label:"Backend / Web",value:`${system.codeVersion} / ${system.webVersion}`},{label:"URL canónica",value:system.webAppUrl?"Abrir Web App":"Sin despliegue activo",href:system.webAppUrl},{label:"Carga diaria",value:`${system.dailySchedule} · ${system.timeZone}`},{label:"Monitor de salud",value:system.healthMonitorEnabled?`Activo · ${system.healthSchedule}`:"Desactivado"},{label:"Newsletter mensual",value:system.newsletterDeliveryEnabled?`Activa · ${system.newsletterSchedule}`:"Desactivada"},{label:"Destinatario técnico",value:system.healthRecipient||"Sin configurar"},{label:"Envío de alertas",value:system.emailDeliveryEnabled?"Activo":"Desactivado"},{label:"Remitente",value:system.senderAddress||"Sin alias",meta:system.senderVerificationStatus||system.senderError},{label:"Administradores",value:(system.administratorEmails||[]).join(", ")||"Sin configurar"}];$("admin-system").innerHTML=items.map(item=>`<article><small>${U.esc(item.label)}</small>${item.href?`<a class="admin-system-link" href="${U.esc(item.href)}" target="_blank" rel="noopener noreferrer">${U.esc(item.value)}</a>`:`<strong>${U.esc(item.value)}</strong>`}${item.meta?`<span>${U.esc(item.meta)}</span>`:""}</article>`).join("")}

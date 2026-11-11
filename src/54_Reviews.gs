@@ -4,6 +4,12 @@ var MARKETS_REVIEW_HEADERS = Object.freeze([
   'updated_at', 'rating', 'version', 'title', 'original', 'es', 'en', 'tr'
 ]);
 
+const MARKETS_REVIEW_JOBS = Object.freeze([
+  { handler: 'collectMarketsReviews_', label: 'Captura de App Store', hour: 8, minute: 5 },
+  { handler: 'collectMarketsPlayReviews_', label: 'Captura de Google Play', hour: 8, minute: 35 },
+  { handler: 'translateMarketsReviews_', label: 'Traducción de reseñas', hour: 9, minute: 5 }
+]);
+
 function setupMarketsReviews() {
   const access = requireMarketsReviewOwner_();
   if (!access.ss.getSheetByName('MARKET_REVIEWS')) {
@@ -15,9 +21,9 @@ function setupMarketsReviews() {
   ensureSheetCapacity_(sheet, 2, 15);
   sheet.getRange(1, 15).setValue('captured_at');
   const existing = ScriptApp.getProjectTriggers().map(trigger => trigger.getHandlerFunction());
-  [['collectMarketsReviews_', 8], ['collectMarketsPlayReviews_', 8], ['translateMarketsReviews_', 9]].forEach(([handler, hour]) => {
+  MARKETS_REVIEW_JOBS.forEach(({ handler, hour, minute }) => {
     if (!existing.includes(handler)) {
-      ScriptApp.newTrigger(handler).timeBased().everyDays(1).atHour(hour).nearMinute(handler === 'collectMarketsPlayReviews_' ? 35 : 5)
+      ScriptApp.newTrigger(handler).timeBased().everyDays(1).atHour(hour).nearMinute(minute)
         .inTimezone('Europe/Madrid').create();
     }
   });
