@@ -29,6 +29,7 @@
   --line-2xl:48px;
   --sidebar-width:272px;
   --control-height:48px;
+  --icon-size:24px;
   --stroke:1px;
   --focus-width:2px;
   --focus-offset:4px;
@@ -40,6 +41,7 @@
 }
 .radar-filters :is(button,input,select){font:inherit;max-width:100%;min-width:0}
 .radar-filters .button{border:var(--stroke) solid var(--color-primary-border);background:var(--color-primary-bg-alternative);color:var(--color-primary-bg-action);border-radius:var(--radius-component);padding:var(--space-1) var(--space-2);min-height:var(--control-height);font-weight:500;display:inline-flex;align-items:center;justify-content:center;gap:var(--space-1);transition:background var(--transition-duration) ease,border-color var(--transition-duration) ease}
+.radar-filters .filter-icon{width:var(--icon-size);height:var(--icon-size);fill:currentColor;flex-shrink:0}
 .radar-filters .button:hover{background:var(--color-primary-bg-surface);border-color:var(--color-primary-bg-action);text-decoration:none}
 .radar-filters .button.primary{background:var(--color-primary-bg-action);border-color:var(--color-primary-bg-action);color:var(--color-primary-text-on-main)}
 .radar-filters .button.primary:hover{background:var(--color-primary-bg-action-pressed)}
