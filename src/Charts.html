@@ -80,10 +80,10 @@
       for(const char of entity)hash=(Math.imul(31,hash)+char.codePointAt(0))>>>0;
       return `var(--chart-series-${entity==="BBVA Empresas"?1:2+hash%5})`;
     }
-    function reviewBalanceLegend(rows,active,integer){
+    function reviewBalanceLegend(rows,integer){
       const {esc}=window.MarketsUI, max=Math.max(1,...rows.map(row=>row.total));
       return `<p class="eyebrow">ENTIDADES DE SEGUIMIENTO</p><div class="geo-entities">${rows.map(({entity,total})=>
-        `<button type="button" class="geo-row" data-entity="${esc(entity)}" aria-pressed="${entity===active}"><span class="identity-label"><i aria-hidden="true" style="background:${reviewSeriesColor(entity)}"></i>${esc(entity)}</span><span class="geo-count">${integer(total)}</span><span class="geo-track" aria-hidden="true"><span style="width:${100*total/max}%;background:${reviewSeriesColor(entity)}"></span></span></button>`
+        `<div class="geo-row"><span class="identity-label"><i aria-hidden="true" style="background:${reviewSeriesColor(entity)}"></i>${esc(entity)}</span><span class="geo-count">${integer(total)}</span><span class="geo-track" aria-hidden="true"><span style="width:${100*total/max}%;background:${reviewSeriesColor(entity)}"></span></span></div>`
       ).join("")}</div>`;
     }
     function reviewGaps(rows,fmt,translate){

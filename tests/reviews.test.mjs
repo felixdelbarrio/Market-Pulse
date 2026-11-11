@@ -264,3 +264,23 @@ test("calendar analytics reads a closed year and its predecessor independently o
   assert.equal(result.annual.promoters,1);
   assert.equal(result.entities[0].total,1);
 });
+
+test("monthly sentiment filters gaps and examples while balance and baseline keep all stars for the selected app", () => {
+  const review = (key, date, rating, entity = "BBVA Empresas") => ({
+    key, date, rating, entities:[entity], blocks:["01"], title:key, original:key
+  });
+  const rows = [
+    review("prior promoter","2026-10-10",5), review("prior detractor","2026-10-11",1),
+    review("recent promoter","2026-11-01",5), review("recent detractor","2026-11-02",1),
+    review("recent neutral","2026-11-02",3), review("other bank","2026-11-02",5,"Banco")
+  ];
+  const window = { start:"2026-10-01", recent:"2026-11-01", end:"2026-11-11" };
+  for (const [segment,key,balance] of [["DETRACTOR","recent detractor",-100],["PROMOTER","recent promoter",100],["NEUTRAL","recent neutral",0]]) {
+    const result = api.summarizeMarketsReviewAnalytics_(rows, {"01":"Pagos"}, {analysisMonth:"2026-11",segment,entity:"BBVA Empresas"}, window);
+    assert.deepEqual(Array.from(result.monthlyEntityOptions),["BBVA Empresas"]);
+    assert.equal(result.monthly.find(point=>point.month==="2026-11").total,3);
+    assert.equal(result.baseline.total,2);
+    assert.equal(result.deltas[0].gap,balance);
+    assert.deepEqual(Array.from(result.examples, item=>item.review.key),[key]);
+  }
+});

@@ -372,7 +372,7 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.doesNotMatch(index, /id="view-overview"/);
   const evolutionMarkup = index.slice(index.indexOf('id="view-evolution"'), index.indexOf('id="view-alerts"'));
   const analyticsMarkup = index.slice(index.indexOf('id="view-analytics"'), index.indexOf('id="view-reviews"'));
-  assert.match(evolutionMarkup, /id="evolution-kpis"[\s\S]*id="review-balance"[\s\S]*id="review-deltas"[\s\S]*id="review-examples"[\s\S]*id="monthly-matrix"[\s\S]*id="new-review-impact"/);
+  assert.match(evolutionMarkup, /id="evolution-kpis"[\s\S]*id="monthly-matrix"[\s\S]*id="new-review-impact"[\s\S]*id="review-balance"[\s\S]*id="monthly-review-segment"[\s\S]*id="review-deltas"[\s\S]*id="review-examples"/);
   assert.match(analyticsMarkup, /id="annual-chart"[\s\S]*id="review-heatmap"[\s\S]*id="review-annual"/);
   const charts = fs.readFileSync(new URL("../src/Charts.html", import.meta.url), "utf8");
   assert.match(charts, /class="rating-bar-metric"/);
@@ -384,7 +384,7 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(charts, /class="new-review-unavailable"/);
   assert.doesNotMatch(charts, /platformBadge/);
   assert.match(app, /const mobileViewport=window\.matchMedia\("\(max-width:780px\)"\)/);
-  assert.match(app, /monthlyRatingMatrix\(state\.trends,state\.snapshot,selection\(\),period,mobileViewport\.matches\?3:6\)/);
+  assert.match(app, /monthlyRatingMatrix\(state\.trends,state\.snapshot,\{\.\.\.selection\(\),app:state\.evolutionApp\|\|"ALL"\},period,mobileViewport\.matches\?3:6\)/);
   assert.match(app, /const compactInteger=/);
   assert.doesNotMatch(charts, /Cierre mensual|<span>\/ 5<\/span>/);
   const components = fs.readFileSync(new URL("../src/Components.html", import.meta.url), "utf8");

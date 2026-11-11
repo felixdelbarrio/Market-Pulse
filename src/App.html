@@ -3,10 +3,13 @@
     "use strict";
     const D=window.MarketsDomain,U=window.MarketsUI,C=window.MarketsCharts,T=window.MarketsTheme;
     const mobileViewport=window.matchMedia("(max-width:780px)");
-    const state={meta:null,userContext:null,snapshot:[],trends:[],consolidated:null,country:"ALL",platform:"ALL",benchmarkSegment:"BANK",evolutionApp:"",benchmarkWeighted:false,view:"benchmark",periodYear:"",periodMonth:"",trendsLoading:true,trendToken:0,trendTimer:0,trendCache:new Map(),trendPromise:null,bootstrapLoading:false,alertCenter:null,alertDraft:null,alertsLoading:false,alertsLoaded:false,adminCenter:null,adminLoading:false,adminLoaded:false,adminTab:"health",adminEditingEmail:"",adminSubscriberFilters:{query:"",countries:["ANY"],platforms:["ANY"],status:"ALL"},usageQueue:[],usageTimer:0,usageStarted:false};
+    const state={meta:null,userContext:null,snapshot:[],trends:[],consolidated:null,country:"ALL",platform:"ALL",benchmarkSegment:"BANK",evolutionApp:"BBVA Empresas",benchmarkWeighted:false,view:"benchmark",periodYear:"",periodMonth:"",trendsLoading:true,trendToken:0,trendTimer:0,trendCache:new Map(),trendPromise:null,bootstrapLoading:false,alertCenter:null,alertDraft:null,alertsLoading:false,alertsLoaded:false,adminCenter:null,adminLoading:false,adminLoaded:false,adminTab:"health",adminEditingEmail:"",adminSubscriberFilters:{query:"",countries:["ANY"],platforms:["ANY"],status:"ALL"},usageQueue:[],usageTimer:0,usageStarted:false};
     const $=id=>document.getElementById(id);
     const bindOptional=(id,event,handler)=>$(id)?.addEventListener(event,handler);
     const interfaceCopy={
+      "Sentimiento de brechas y ejemplos":["Sentiment for gaps and examples","Farklar ve örnekler için duygu"],
+      "Pulso mensual de {app}":["Monthly pulse for {app}","{app} aylık görünümü"],
+      "Pulso mensual":["Monthly pulse","Aylık görünüm"],
       "Análisis anual":["Annual analysis","Yıllık analiz"],
       "Análisis mensual":["Monthly analysis","Aylık analiz"],
       "Año en curso":["Current year","İçinde bulunulan yıl"],
@@ -101,7 +104,7 @@
       "Saldo (pp)":["Balance (pp)","Denge (yüzde puan)"],
       "Brecha vs. base (pp)":["Gap vs. baseline (pp)","Referansa göre fark (yüzde puan)"],
       "Brecha de saldo vs. base histórica (pp)":["Balance gap vs. historical baseline (pp)","Geçmiş referansa göre denge farkı (yüzde puan)"],
-      "Saldo global de la base histórica: {value} pp ({dates}; {count} reseñas).":["Overall historical baseline balance: {value} pp ({dates}; {count} reviews).","Geçmiş referansın genel dengesi: {value} yüzde puan ({dates}; {count} yorum)."],
+      "Saldo histórico de referencia (todas las estrellas): {value} pp ({dates}; {count} reseñas).":["Historical reference balance (all stars): {value} pp ({dates}; {count} reviews).","Geçmiş referans dengesi (tüm yıldızlar): {value} yüzde puan ({dates}; {count} yorum)."],
       "Periodo reciente: {dates}. Una reseña puede pertenecer a varios bloques; sus pesos pueden sumar más del 100 %.":["Recent period: {dates}. Reviews can belong to several blocks, so their shares may add up to more than 100%.","Yakın dönem: {dates}. Bir yorum birden fazla gruba ait olabilir. Payların toplamı %100'ü aşabilir."],
       "Detalle del periodo reciente · {dates}":["Recent period details · {dates}","Yakın dönem ayrıntıları · {dates}"],
       "{count} reseñas":["{count} reviews","{count} yorum"],
@@ -358,8 +361,8 @@
     const evolutionContext=()=>selectionContext(trendScope());
 
     function marketLinkAttributes(item,code){const store=D.config.storeLabels[item.platform]||"market",country=countryLabel(code||item.countryCode);return` href="${U.esc(item.storeUrl)}" target="_blank" rel="noopener noreferrer" title="Abrir ficha web de ${U.esc(store)} para ${U.esc(country)}" aria-label="Abrir ${U.esc(store)} web: ${U.esc(D.appName(item))}, ${U.esc(country)}, rating ${fmt(item.rating,2)}"`}
-    function renderMonthlyMatrix(period){if(state.trendsLoading){$("monthly-shared-note").classList.add("hidden");$("monthly-matrix-meta").textContent="Actualizando cierres";$("monthly-matrix").innerHTML=U.loading("Preparando el pulso mensual","La serie se servirá desde la caché compartida.");return}const model=D.monthlyRatingMatrix(state.trends,state.snapshot,selection(),period,mobileViewport.matches?3:6);$("monthly-shared-note").classList.toggle("hidden",!model.hasSharedAndroid);$("monthly-matrix-meta").textContent=model.periods.length?`${model.periods.length} cierres hasta ${monthLabel(model.periods.at(-1))} · ${D.config.platformLabels[state.platform]}`:"Sin cierres";$("monthly-matrix").innerHTML=C.monthlyMatrix(model,{format:fmt,integer,compactInteger,monthLabel,signed,flag:code=>geographyFlag(code)})}
-    function renderNewReviewImpact(period){if(state.trendsLoading){$("new-review-meta").textContent="Actualizando cierres";$("new-review-impact").innerHTML=U.loading("Calculando la voz nueva del mes","Se validan volumen, continuidad y precisión antes de publicar el resultado.");return}const model=D.monthlyNewReviewImpact(state.trends,state.snapshot,selection(),period);$("new-review-meta").textContent=model.previousPeriod?`${monthLabel(model.previousPeriod)} → ${monthLabel(model.period)} · ${D.config.platformLabels[state.platform]}`:"Sin base mensual";$("new-review-impact").innerHTML=C.newReviewImpact(model,{format:fmt,integer,monthLabel,signed,platformLabel:D.config.platformLabels[state.platform]})}
+    function renderMonthlyMatrix(period){if(state.trendsLoading){$("monthly-shared-note").classList.add("hidden");$("monthly-matrix-meta").textContent="Actualizando cierres";$("monthly-matrix").innerHTML=U.loading("Preparando el pulso mensual","La serie se servirá desde la caché compartida.");return}const model=D.monthlyRatingMatrix(state.trends,state.snapshot,{...selection(),app:state.evolutionApp||"ALL"},period,mobileViewport.matches?3:6);$("monthly-shared-note").classList.toggle("hidden",!model.hasSharedAndroid);$("monthly-matrix-meta").textContent=model.periods.length?`${model.periods.length} cierres hasta ${monthLabel(model.periods.at(-1))} · ${D.config.platformLabels[state.platform]}`:"Sin cierres";$("monthly-matrix").innerHTML=C.monthlyMatrix(model,{format:fmt,integer,compactInteger,monthLabel,signed,flag:code=>geographyFlag(code)})}
+    function renderNewReviewImpact(period){if(state.trendsLoading){$("new-review-meta").textContent="Actualizando cierres";$("new-review-impact").innerHTML=U.loading("Calculando la voz nueva del mes","Se validan volumen, continuidad y precisión antes de publicar el resultado.");return}const model=D.monthlyNewReviewImpact(state.trends,state.snapshot,{...selection(),app:state.evolutionApp||"ALL"},period);$("new-review-meta").textContent=model.previousPeriod?`${monthLabel(model.previousPeriod)} → ${monthLabel(model.period)} · ${D.config.platformLabels[state.platform]}`:"Sin base mensual";$("new-review-impact").innerHTML=C.newReviewImpact(model,{format:fmt,integer,monthLabel,signed,platformLabel:D.config.platformLabels[state.platform]})}
 
     function renderBenchmark(){const weighted=state.platform==="ALL"&&state.benchmarkWeighted;$("benchmark-weighted-control").classList.toggle("hidden",state.platform!=="ALL");$("benchmark-weighted").disabled=state.platform!=="ALL";$("benchmark-context").textContent=translate("Comparativa de ratings a {date}",{date:state.meta.dataDate?.split("-").reverse().join("-")||"—"});const rows=D.selectionRows(state.snapshot,selection(),state.benchmarkSegment,true).filter(row=>D.finite(row.rating)),groups=D.groupBy(rows,row=>row.countryCode),codes=Object.keys(groups).sort();if(!codes.length){$("benchmark-grid").innerHTML=U.empty("Benchmark sin datos","Selecciona otra plataforma o benchmark.");return}$("benchmark-grid").innerHTML=codes.map(code=>{const platforms=(state.platform==="ALL"?D.config.platforms:[state.platform]).filter(platform=>groups[code].some(row=>row.platform===platform)),boards=weighted?renderPlatformBoard("Media ponderada",D.benchmarkWeightedRows(groups[code])):platforms.map(platform=>renderPlatformBoard(platform,groups[code].filter(row=>row.platform===platform))).join("");return`<article class="benchmark-country"><header class="benchmark-country-head"><strong>${geographyFlag(code)}${U.esc(countryLabel(code))}</strong><span>${U.esc(D.config.segmentLabels[state.benchmarkSegment])}</span></header><div class="platform-boards" style="grid-template-columns:repeat(${weighted?1:platforms.length},minmax(0,1fr))">${boards}</div></article>`}).join("")}
     const renderPlatformBoard=(platform,rows)=>`<section class="platform-board"><header class="platform-head"><strong>${U.esc(platform)}</strong><span>${rows.length} apps</span></header><ol class="rank-list">${D.rankRows(rows).map(renderRankRow).join("")}</ol></section>`;
@@ -387,7 +390,7 @@
     const initialSubscribers=()=>({query:"",countries:["ANY"],platforms:["ANY"],status:"ALL"});
     let reviewDrilldown=null, analyticsRequest=0, reviewSegments, reviewSelection=null, reviewTopics={};
     const defaultAnalyticsEntity="BBVA Empresas";
-    let analyticsSelection=null, analyticsEntity=defaultAnalyticsEntity, balanceEntity="", renderBalanceEntity=null;
+    let analyticsSelection=null, analyticsEntity=defaultAnalyticsEntity, renderBalanceEntity=null;
     let annualTrends=[], annualYears=[], heatmapSegment="DETRACTOR", annualAppControl;
     let monthlyRequest=0, monthlyReviewKey="";
     const analyticsInitial=()=>({country:browserMarket(),year:reviewDates().end.slice(0,4)});
@@ -670,7 +673,7 @@
     async function loadMonthlyReviews(period){
       const current=reviewDates().end.slice(0,7);
       const analysisMonth=period||current;
-      const scope={...selection(),analysisMonth,entity:state.evolutionApp||defaultAnalyticsEntity,language:appLanguage};
+      const scope={...selection(),analysisMonth,entity:state.evolutionApp||"ALL",segment:$("monthly-review-segment").value,language:appLanguage};
       const key=JSON.stringify(scope);
       if(key===monthlyReviewKey)return;
       monthlyReviewKey=key;
@@ -682,16 +685,16 @@
       try{
         const data=await callServer("review:analytics",scope);
         if(token!==monthlyRequest)return;
-        balanceEntity=state.evolutionApp;
-        const applied={...selection(),start:data.window.start,end:data.window.end,segment:""};
+        const applied={country:scope.country,platform:scope.platform,start:data.window.start,end:data.window.end,segment:""};
         renderBalanceEntity=renderReviewBalance(balance,data,applied);
-        renderReviewGaps(gaps,data,{...applied,app:scope.entity});
+        renderReviewGaps(gaps,data,{...applied,app:scope.entity==="ALL"?"":scope.entity,segment:scope.segment});
         $("review-examples-title").textContent=analysisMonth===current?"Ejemplos del mes en curso":"Ejemplos del mes seleccionado";
         examples.innerHTML=data.examples.map(({review})=>renderReviewCard(review,data.topics)).join("")||"<p>Sin ejemplos para este ámbito.</p>";
       }catch(error){
         if(token!==monthlyRequest)return;
         monthlyReviewKey="";
         balance.textContent=error.message;
+        gaps.textContent=error.message;
       }
     }
     function renderAnnualReviews(target,{annual,topics},scope){
@@ -727,14 +730,14 @@
       const base=baseline?`${dateLabel(baseline.start)} – ${dateLabel(baseline.end)}`:"";
       target.replaceChildren();
       const context=document.createElement("p");
-      context.textContent=baseline?translate("Saldo global de la base histórica: {value} pp ({dates}; {count} reseñas).",{value:fmt(baseline.balance,1),dates:base,count:integer(baseline.total)}):
+      context.textContent=baseline?translate("Saldo histórico de referencia (todas las estrellas): {value} pp ({dates}; {count} reseñas).",{value:fmt(baseline.balance,1),dates:base,count:integer(baseline.total)}):
         "Sin base histórica en este intervalo. Se muestran los saldos recientes sin brecha.";
       target.append(context);
       const note=document.createElement("p");
       note.textContent=translate("Periodo reciente: {dates}. Una reseña puede pertenecer a varios bloques; sus pesos pueden sumar más del 100 %.",{dates:recent});
       target.append(note);
       if(!deltas.length){target.append("Sin reseñas en el periodo reciente.");return}
-      if(baseline)appendReviewCohort(target,"Ver reseñas de la base histórica",{...scope,end:baseline.end});
+      if(baseline)appendReviewCohort(target,"Ver reseñas de la base histórica",{...scope,end:baseline.end,segment:""});
       target.insertAdjacentHTML("beforeend",C.reviewGaps(deltas,fmt,translate));
       const table=document.createElement("div");
       table.className="admin-table-wrap review-gap-table";
@@ -784,19 +787,12 @@
         points.set(JSON.stringify([point.entity,point.month]),point.balance);
         totals.set(point.entity,(totals.get(point.entity)||0)+point.total);
       }
-      legend.addEventListener("click",event=>{
-        const row=event.target.closest("[data-entity]");
-        if(!row)return;
-        balanceEntity=balanceEntity===row.dataset.entity?"":row.dataset.entity;
-        render();
-        [...legend.querySelectorAll("[data-entity]")].find(button=>button.dataset.entity===row.dataset.entity)?.focus({preventScroll:true});
-      });
       function render(){
-        const entities=balanceEntity?[balanceEntity]:data.monthlyEntityOptions;
+        const entities=data.monthlyEntityOptions;
         tooltip.hidden=true;
         plot.innerHTML=C.reviewBalance(months,entities.map(entity=>({entity,values:months.map(month=>points.get(JSON.stringify([entity,month]))??null)})),
           {fmt,monthLabel,width:plot.clientWidth});
-        legend.innerHTML=C.reviewBalanceLegend(data.monthlyEntityOptions.map(entity=>({entity,total:totals.get(entity)||0})),balanceEntity,integer);
+        legend.innerHTML=C.reviewBalanceLegend(entities.map(entity=>({entity,total:totals.get(entity)||0})),integer);
         details.replaceChildren();
         for(const point of data.monthly.filter(item=>entities.includes(item.entity)).sort((a,b)=>a.month.localeCompare(b.month)||a.entity.localeCompare(b.entity))){
           const label=`${point.entity} · ${point.month} · ${fmt(point.balance,1)} pp · ${point.promoters} promotoras / ${point.detractors} detractoras / ${point.total} reseñas`;
@@ -885,6 +881,11 @@
     }
     function activeTrendRows(){return D.trendRows(withPublishedRatings(state.trends,selection()),{...selection(),app:state.evolutionApp})}
     function renderChartsLoading(){
+      monthlyReviewKey="";
+      monthlyRequest++;
+      renderBalanceEntity=null;
+      for(const id of ["review-balance","review-deltas","review-examples"])$(id).replaceChildren();
+      $("review-balance-period").textContent="";
       for(const id of ["monthly-matrix","new-review-impact","evolution-kpis"])$(id).innerHTML=U.loading();
     }
     function chartOptions(period="",idPrefix="markets"){return{period,idPrefix,format:fmt,monthLabel,context:evolutionContext()}}
@@ -899,10 +900,11 @@
       $("month-filter").innerHTML=model.months.map(month=>U.option(month,monthName(month),month===model.month)).join("");
     }
     function bindEvolutionFilters(){
+      $("monthly-review-segment").addEventListener("change",()=>{if(!state.trendsLoading)loadMonthlyReviews(evolutionPeriod(state.evolutionApp,state.periodYear,state.periodMonth).period)});
       const current=()=>({app:state.evolutionApp,year:state.periodYear,month:state.periodMonth});
       const reset=()=>({app:"",year:"",month:""});
       radarFilters.evolution=window.MarketRadarFilters.create($("evolution-filters"),{translate,
-        applied:current,initial:reset,all:reset,alwaysChips:["app","year","month"],
+        applied:current,initial:()=>({...reset(),app:defaultAnalyticsEntity}),all:reset,alwaysChips:["app","year","month"],
         labelValue:(key,value)=>value?(key==="month"?monthName(value):value):key==="app"?"Todas":"Sin cierre",
         prepare:()=>{
           $("evolution-app").innerHTML=U.option("","Todas",!state.evolutionApp)+evolutionApps().map(app=>U.option(app,app,app===state.evolutionApp)).join("");
@@ -925,14 +927,14 @@
       return model;
     }
     function renderEvolution(){
-      if(!evolutionApps().includes(state.evolutionApp))state.evolutionApp="";
+      if(state.evolutionApp&&!evolutionApps().includes(state.evolutionApp))state.evolutionApp=evolutionApps().includes(defaultAnalyticsEntity)?defaultAnalyticsEntity:"";
       const rows=activeTrendRows(),period=syncPeriodControls(rows);
       radarFilters.evolution.render();
       radarFilters.evolution.enable(!state.trendsLoading);
       if(state.trendsLoading){renderChartsLoading();return}
       const scope={...selection(),app:state.evolutionApp};
       const month=period.period||reviewDates().end.slice(0,7);
-      const selected=rows.filter(row=>scope.app||row.isBbva);
+      const selected=rows;
       const rating=period=>D.weightedMean(selected.filter(row=>row.month===period),row=>row.ratingEom,state.country==="ALL");
       const [year,index]=month.split("-").map(Number);
       const previous=new Date(Date.UTC(year,index-2,1)).toISOString().slice(0,7);
@@ -945,6 +947,7 @@
         {label:"Variación mensual",value:signed(variation),valueClass:deltaClass}
       ]);
       loadMonthlyReviews(month);
+      $("monthly-pulse-title").textContent=state.evolutionApp?translate("Pulso mensual de {app}",{app:state.evolutionApp}):translate("Pulso mensual");
       renderMonthlyMatrix(month);
       renderNewReviewImpact(month);
     }
