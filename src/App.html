@@ -27,9 +27,6 @@
       "Ejemplos del mes seleccionado":["Examples from the selected month","Seçilen aydan örnekler"],
       "Indicadores del periodo":["Period metrics","Dönem göstergeleri"],
       "% Promotores - % Detractores":["% Promoters - % Detractors","Destekleyen % - Eleştiren %"],
-      "Cierre mes anterior":["Previous month-end rating","Önceki ayın kapanış puanı"],
-      "Rating publicado día de hoy":["Latest published rating","Yayımlanan son puan"],
-      "Rating publicado del mes":["Published rating for the month","Ayın yayımlanan puanı"],
       "Opiniones del año anterior":["Reviews from the previous year","Önceki yılın yorumları"],
       "Opiniones del año seleccionado":["Reviews from the selected year","Seçilen yılın yorumları"],
       "Rating al inicio del periodo":["Opening rating for the period","Dönemin açılış puanı"],
@@ -154,7 +151,6 @@
       "Mercados seleccionados":["Selected markets","Seçili pazarlar"],
       "Todo el mercado":["Entire market","Tüm pazar"],
       "Variación mensual visible":["Monthly change shown","Gösterilen aylık değişim"],
-      "Variación mensual":["Monthly change","Aylık değişim"],
       "Variación anual":["Annual change","Yıllık değişim"],
       "Último movimiento":["Latest change","Son değişim"],
       "Última actualización":["Last update","Son güncelleme"],
@@ -896,7 +892,7 @@
       renderBalanceEntity=null;
       for(const id of ["review-balance","review-deltas","review-examples"])$(id).replaceChildren();
       $("review-balance-period").textContent="";
-      for(const id of ["monthly-matrix","new-review-impact","evolution-kpis"])$(id).innerHTML=U.loading();
+      for(const id of ["monthly-matrix","new-review-impact"])$(id).innerHTML=U.loading();
     }
     function chartOptions(period="",idPrefix="markets"){return{period,idPrefix,format:fmt,monthLabel,context:evolutionContext()}}
     function evolutionApps(){
@@ -942,20 +938,7 @@
       radarFilters.evolution.render();
       radarFilters.evolution.enable(!state.trendsLoading);
       if(state.trendsLoading){renderChartsLoading();return}
-      const scope={...selection(),app:state.evolutionApp};
       const month=period.period||reviewDates().end.slice(0,7);
-      const selected=rows;
-      const rating=period=>D.weightedMean(selected.filter(row=>row.month===period),row=>row.ratingEom,state.country==="ALL");
-      const [year,index]=month.split("-").map(Number);
-      const previous=new Date(Date.UTC(year,index-2,1)).toISOString().slice(0,7);
-      const prior=rating(previous),current=rating(month);
-      const variation=D.finite(prior)&&D.finite(current)?current-prior:null;
-      const deltaClass=variation>0?"delta-up":variation<0?"delta-down":"";
-      $("evolution-kpis").innerHTML=U.metrics([
-        {label:"Cierre mes anterior",value:fmt(prior,2),foot:monthLabel(previous)},
-        {label:month===state.meta.dataDate?.slice(0,7)?"Rating publicado día de hoy":"Rating publicado del mes",value:fmt(current,2),foot:month===state.meta.dataDate?.slice(0,7)?dateLabel(state.meta.dataDate):monthLabel(month)},
-        {label:"Variación mensual",value:signed(variation),valueClass:deltaClass}
-      ]);
       loadMonthlyReviews(month);
       $("monthly-pulse-title").textContent=state.evolutionApp?translate("Pulso mensual de {app}",{app:state.evolutionApp}):translate("Pulso mensual");
       renderMonthlyMatrix(month);
