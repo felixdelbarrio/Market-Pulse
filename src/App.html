@@ -7,6 +7,9 @@
     const $=id=>document.getElementById(id);
     const bindOptional=(id,event,handler)=>$(id)?.addEventListener(event,handler);
     const interfaceCopy={
+      "Detalle por geografía":["Breakdown by geography","Coğrafyaya göre ayrıntılar"],
+      "Ficha compartida":["Shared listing","Paylaşılan mağaza kaydı"],
+      "Las reseñas de fichas compartidas de Google Play se incluyen en el análisis global.":["Reviews from shared Google Play listings are included in global analysis.","Paylaşılan Google Play kayıtlarının yorumları genel analize dahil edilir."],
       "Análisis anual":["Annual analysis","Yıllık analiz"],
       "Análisis mensual":["Monthly analysis","Aylık analiz"],
       "Año en curso":["Current year","İçinde bulunulan yıl"],
@@ -375,15 +378,22 @@
       const end=`${parts.year}-${parts.month}-${parts.day}`;
       return {start:reviewDay(end,-365),end};
     }
-    const allReviews=()=>({country:"ALL",platform:"ALL",...reviewDates(),segment:""});
-    const reviewCountries=()=>Object.keys(D.config.countries).sort((a,b)=>D.config.countries[a].localeCompare(D.config.countries[b],"es"));
+    function reviewCountries(){
+      const configured=state.meta?.countries.map(item=>item.code);
+      const countries=configured?.length?configured:Object.keys(D.config.countries);
+      return [...countries].sort((a,b)=>countryLabel(a).localeCompare(countryLabel(b),locale()));
+    }
+    function defaultCommentCountry(){
+      const countries=reviewCountries(), market=browserMarket();
+      return countries.includes(market)?market:countries.includes("ES")?"ES":countries[0];
+    }
     function initialComments(){
       const {end}=reviewDates();
       const [year,month]=end.split("-").map(Number);
       const days=new Date(Date.UTC(year,month,0)).getUTCDate();
-      return {country:browserMarket(),platform:"ALL",start:reviewDay(end,1-days),end,segment:"",app:"BBVA Empresas"};
+      return {country:defaultCommentCountry(),platform:"ALL",start:reviewDay(end,1-days),end,segment:"",app:"BBVA Empresas"};
     }
-    const allComments=()=>({...allReviews(),country:reviewScope().country,app:""});
+    const allComments=()=>({country:reviewScope().country,platform:"ALL",...reviewDates(),segment:"",app:""});
     const initialSubscribers=()=>({query:"",countries:["ANY"],platforms:["ANY"],status:"ALL"});
     let reviewDrilldown=null, analyticsRequest=0, reviewSegments, reviewSelection=null, reviewTopics={};
     const defaultAnalyticsEntity="BBVA Empresas";
@@ -399,17 +409,8 @@
     let heatmapMeasure="share";
     const reviewScope=()=>reviewDrilldown?.scope||reviewSelection||initialComments();
 
-    function prepareReviewScope(prefix){
-      const market=$(`${prefix}-country`), platform=$(`${prefix}-platform`);
-      market.innerHTML=U.option("ALL","Todas")+reviewCountries()
-        .map(code=>U.option(code,countryLabel(code),false)).join("");
-      platform.innerHTML=["ALL",...D.config.platforms].map(key=>U.option(key,D.config.platformLabels[key],false)).join("");
-      if(prefix==="review" && reviewScope().country!=="ALL") market.value=reviewScope().country;
-      const {end}=reviewDates();
-      for(const name of ["start","end"])$(`${prefix}-${name}`).max=end;
-    }
-    function validateReviewDates(prefix,{start,end}){
-      $(`${prefix}-end`).setCustomValidity(start&&end&&start>end?"La fecha final debe ser posterior o igual a la inicial.":"");
+    function validateReviewDates({start,end}){
+      $("review-end").setCustomValidity(start&&end&&start>end?"La fecha final debe ser posterior o igual a la inicial.":"");
     }
     function bindRadarFilters(){
       const create=(root,options)=>window.MarketRadarFilters.create(root,{translate,...options});
@@ -438,7 +439,7 @@
       radarFilters.reviews=create($("review-filters"),{
         ...common, initial:initialComments, all:allComments, applied:reviewScope, prepare:prepareReviewFilterOptions,
         alwaysChips:["platform","app","segment","topic","rating"], omitChips:["country"],
-        validate:values=>validateReviewDates("review",values),
+        validate:validateReviewDates,
         draftChanged:(field,values)=>{
           if(field==="country"||field==="platform"){
             prepareReviewApps(values,false);
@@ -477,6 +478,8 @@
     }
     function updateReviewScope(next,resetCohort=false){
       const current=reviewScope();
+      if(!reviewCountries().includes(next.country))next={...next,country:current.country};
+      if(next.country!==current.country&&next.reviewKey)next={...next,reviewKey:""};
       if(next.app&&next.app!=="BBVA Empresas"&&(next.country!==current.country||next.platform!==current.platform)
           &&!reviewApps(next).includes(next.app))next={...next,app:""};
       reviewDrilldown=!resetCohort&&reviewDrilldown?{scope:next,label:"Filtros ajustados"}:null;
@@ -494,7 +497,10 @@
         .map(name=>U.option(name,name,name===scope.app)).join("");
     }
     function prepareReviewFilterOptions(){
-      prepareReviewScope("review");
+      $("review-country").innerHTML=reviewCountries().map(code=>U.option(code,countryLabel(code))).join("");
+      $("review-platform").innerHTML=["ALL",...D.config.platforms].map(key=>U.option(key,D.config.platformLabels[key])).join("");
+      const {end}=reviewDates();
+      for(const name of ["start","end"])$(`review-${name}`).max=end;
       prepareReviewApps(reviewScope(),true);
       $("review-topic").innerHTML=U.option("","Todos",false)+Object.entries(reviewTopics)
         .map(([id,label])=>U.option(id,label,false)).join("");
@@ -507,7 +513,11 @@
         groups.map(group=>U.option(group.id,group.label,false)).join("");
     }
     function openReviewCohort(scope,label){
-      reviewDrilldown={scope:{...scope},label};
+      const territorial=reviewCountries().includes(scope.country);
+      reviewDrilldown=territorial?{scope:{...scope},label}:{
+        scope:{...scope,country:reviewScope().country,reviewKey:""},
+        label:translate("Detalle por geografía")
+      };
       activateView("reviews");
     }
     async function loadReviews(page=0){
@@ -544,8 +554,8 @@
       const previousScroll=target.scrollLeft;
       let selected;
       target.replaceChildren();
-      for(const code of ["ALL",...reviewCountries()]){
-        const count=code==="ALL"?data.allMarkets:data.counts[code], label=code==="ALL"?"Todas":countryLabel(code);
+      for(const code of reviewCountries()){
+        const count=data.counts[code], label=countryLabel(code);
         const button=document.createElement("button");
         button.type="button";
         button.className="geography-tab";
@@ -596,7 +606,7 @@
       return `<article class="review-card review-${sentiment}">
         <header class="review-card-head"><span class="review-stars" aria-label="${U.esc(translate("{rating} de 5 estrellas",{rating:row.rating}))}">${stars}</span>
           <div class="review-identity">${platformIcon?`<img src="${platformIcon}" alt="${U.esc(row.platform)}">`:""}${entityLogo(entity,country,row.platform)}
-          ${row.countries.length===1?geographyFlag(country,countryLabel(country)):""}</div></header>
+          ${country?geographyFlag(country,countryLabel(country)):row.sharedListing?"<small>Ficha compartida</small>":""}</div></header>
         <div><span data-review-content>${link}</span> · <strong data-review-content>${U.esc(entity)}</strong> <time datetime="${U.esc(row.date)}">${U.esc(dateLabel(row.date))}</time></div>
         ${row.title?`<h4 data-review-content>${U.esc(row.title)}</h4>`:""}<p data-review-content>${U.esc(row.text)}</p>
         ${row.translated?`<details><summary>Ver original</summary><p data-review-content>${U.esc(row.original)}</p></details>`:""}
