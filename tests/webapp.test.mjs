@@ -373,6 +373,7 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   const evolutionMarkup = index.slice(index.indexOf('id="view-evolution"'), index.indexOf('id="view-alerts"'));
   const analyticsMarkup = index.slice(index.indexOf('id="view-analytics"'), index.indexOf('id="view-reviews"'));
   assert.match(evolutionMarkup, /id="evolution-kpis"[\s\S]*id="review-balance"[\s\S]*id="review-deltas"[\s\S]*id="review-examples"[\s\S]*id="monthly-matrix"[\s\S]*id="new-review-impact"/);
+  assert.match(analyticsMarkup, /class="annual-chart-layout">\s*<div id="annual-chart"[^>]*><\/div>\s*<aside id="annual-series"[^>]*><\/aside>/);
   assert.match(analyticsMarkup, /id="annual-chart"[\s\S]*id="review-heatmap"[\s\S]*id="review-annual"/);
   const charts = fs.readFileSync(new URL("../src/Charts.html", import.meta.url), "utf8");
   assert.match(charts, /class="rating-bar-metric"/);
