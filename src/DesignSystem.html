@@ -185,8 +185,8 @@
   .filter-bar .control{min-width:0}
   .radar-flag{display:inline-block;width:var(--identity-flag-width);height:var(--identity-flag-height);object-fit:contain;border-radius:var(--identity-flag-radius);vertical-align:middle}
   .country-name .radar-flag,.benchmark-country-head .radar-flag,.scope-chip .radar-flag{margin-inline-end:var(--space-1)}
-  .geography-tabs{display:grid;grid-auto-columns:minmax(var(--heatmap-label-min-width),1fr);grid-auto-flow:column;gap:var(--space-1);overflow:auto;margin-bottom:var(--space-2)}
-  .geography-tab{display:grid;justify-items:center;align-content:center;gap:var(--space-1);min-height:var(--navigation-height);padding:var(--space-1);border:var(--stroke) solid var(--color-primary-border);border-radius:var(--radius-component);background:var(--color-primary-bg-alternative);font-size:var(--text-s);cursor:pointer}
+  .geography-tabs{scroll-snap-type:inline proximity;display:grid;grid-auto-columns:minmax(var(--heatmap-label-min-width),1fr);grid-auto-flow:column;gap:var(--space-1);overflow:auto;margin-bottom:var(--space-2)}
+  .geography-tab{scroll-snap-align:start;display:grid;justify-items:center;align-content:center;gap:var(--space-1);min-height:var(--navigation-height);padding:var(--space-1);border:var(--stroke) solid var(--color-primary-border);border-radius:var(--radius-component);background:var(--color-primary-bg-alternative);font-size:var(--text-s);cursor:pointer}
   .geography-tab[aria-pressed=true]{border-color:var(--color-primary-bg-action);color:var(--color-primary-bg-action);font-weight:var(--weight-bold)}
   .review-card{display:grid;gap:var(--space-1);padding:var(--space-2);border:var(--stroke) solid var(--color-primary-border);border-inline-start:var(--focus-offset) solid var(--review-sentiment);border-radius:var(--radius-component);background:var(--color-primary-bg-alternative);overflow-wrap:anywhere}
   .review-promoter{--review-sentiment:var(--color-primary-text-positive)}
@@ -210,7 +210,6 @@
     .main-nav{position:fixed;inset:auto 0 0;height:calc(var(--mobile-navigation-height) + env(safe-area-inset-bottom));padding:0 var(--space-1) env(safe-area-inset-bottom);gap:0;justify-content:space-between}
     .nav-button{flex:1 0 auto;flex-direction:column;justify-content:center;gap:var(--space-05);font-size:var(--mobile-navigation-label)}
     .brand-product{font-size:var(--text-l);line-height:var(--line-m)}
-    .section-head .selection-toolbar>.filter-chips{flex-basis:100%}
     .bia-brand span{font-size:var(--text-s)}
     .section-head{grid-template-columns:minmax(0,1fr);padding:var(--space-2)}
     .section-head .tag,.section-head>.report-slot{justify-self:start}

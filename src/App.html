@@ -588,9 +588,9 @@
       }
       const ids=[...totals.keys()].sort((a,b)=>totals.get(b)-totals.get(a)||a.localeCompare(b));
       const max=Math.max(1,...data.entities.flatMap(group=>Object.values(group.counts)));
-      const summary=`${integer(data.classified)} clasificadas de ${integer(data.total)} reseñas · ${data.window.start} a ${data.window.end}`;
+      const summary=`Reseñas clasificadas · ${integer(data.classified)} de ${integer(data.total)} · ${dateLabel(data.window.start)} a ${dateLabel(data.window.end)}`;
       const leading=ids[0];
-      target.innerHTML=`${leading?`<p class="heatmap-focus">Bloque más frecuente · ${U.esc(data.topics[leading])} · ${integer(totals.get(leading))} menciones por entidad</p>`:""}<div data-summary></div><div class="heatmap-controls"><label>Medida <select data-measure class="select-control"><option value="count">N.º de opiniones</option><option value="share">% de opiniones</option></select></label></div>
+      target.innerHTML=`${leading?`<p class="heatmap-focus">Bloque más frecuente · ${U.esc(data.topics[leading])} · ${integer(totals.get(leading))} ${totals.get(leading)===1?"mención":"menciones"} por entidad</p>`:""}<div data-summary></div><div class="heatmap-controls"><label>Medida <select data-measure class="select-control"><option value="count">N.º de opiniones</option><option value="share">% de opiniones</option></select></label></div>
         <div data-matrix class="heatmap-scroll"></div><div data-pages class="heatmap-pagination"></div>`;
       appendReviewCohort(target.querySelector("[data-summary]"),summary,scope);
       const table=target.querySelector("[data-matrix]"), pages=target.querySelector("[data-pages]"), measure=target.querySelector("[data-measure]");
