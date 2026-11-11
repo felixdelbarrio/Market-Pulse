@@ -317,16 +317,77 @@ function marketsReviewWindow_() {
 function getMarketsReviewPage(filters) {
   const { ss } = requireMarketsAdministrator_();
   const window = marketsReviewWindow_();
-  const rows = queryMarketsReviews_(ss, filters, window);
+  filters = normalizeMarketsReviewFilters_(filters);
+  return readMarketsReviewCache_(ss, 'page', filters, window, () => {
+    const rows = queryMarketsReviews_(ss, { ...filters, country: 'ALL' }, window);
+    return paginateMarketsReviews_(rows, { ...filters, topics: marketsReviewTopics_(ss) }, window);
+  });
+}
+
+function normalizeMarketsReviewFilters_(filters = {}) {
+  const country = filters.country || 'ALL', platform = filters.platform || 'ALL';
+  if (!/^(ALL|[A-Z]{2})$/.test(country) || !['ALL', 'iOS', 'Android', 'Huawei'].includes(platform)) {
+    throw new Error('Mercado o plataforma no válidos.');
+  }
+  for (const value of [filters.start, filters.end]) {
+    if (value && (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) ||
+        !Number.isFinite(Date.parse(value)) || new Date(value).toISOString().slice(0, 10) !== value)) {
+      throw new Error('Fecha no válida.');
+    }
+  }
+  if (filters.start && filters.end && filters.start > filters.end) throw new Error('Intervalo no válido.');
+  if (filters.period && !/^\d{4}-(0[1-9]|1[0-2])$/.test(filters.period)) throw new Error('Mes no válido.');
+  if (filters.topic && !/^(general|\d{2})$/.test(filters.topic)) throw new Error('Bloque no válido.');
+  if (filters.rating !== undefined && filters.rating !== '' && !/^[0-5]$/.test(filters.rating)) {
+    throw new Error('Número de estrellas no válido.');
+  }
+  return { ...filters, country, platform };
+}
+
+function paginateMarketsReviews_(rows, filters, window) {
+  const counts = Object.create(null);
+  const matching = [];
+  for (const row of rows) {
+    for (const country of row.countries) counts[country] = (counts[country] || 0) + 1;
+    if (filters.country === 'ALL') matching.push(row);
+    else {
+      const market = row.listings.find(item => item.country === filters.country);
+      if (market) matching.push({ ...row, app: market.app, entities: [market.entity], countries: [market.country] });
+    }
+  }
   const size = 25;
-  const page = Math.min(Math.max(0, Math.ceil(rows.length / size) - 1),
-    Math.max(0, Math.trunc(Number(filters?.page) || 0)));
-  return { page, size, total: rows.length, rows: rows.slice(page * size, (page + 1) * size), window };
+  const page = Math.min(Math.max(0, Math.ceil(matching.length / size) - 1),
+    Math.max(0, Math.trunc(Number(filters.page) || 0)));
+  return { page, size, total: matching.length, rows: matching.slice(page * size, (page + 1) * size),
+    counts, allMarkets: rows.length, topics: filters.topics, window };
 }
 
 function getMarketsReviewAnalytics(filters) {
   const { ss } = requireMarketsAdministrator_();
   const window = marketsReviewWindow_();
+  filters = normalizeMarketsReviewFilters_(filters);
+  return readMarketsReviewCache_(ss, 'analytics', filters, window, () => {
+    const topics = marketsReviewTopics_(ss);
+    const rows = queryMarketsReviews_(ss, { ...filters, app: '', segment: '' }, window);
+    return summarizeMarketsReviewAnalytics_(rows, topics, filters, window);
+  });
+}
+
+function readMarketsReviewCache_(ss, operation, filters, window, builder) {
+  const properties = PropertiesService.getScriptProperties().getProperties();
+  const versions = ['MARKETS_REVIEWS_GENERATION', 'MARKETS_FUNCTIONAL_REVISION'].map(key => properties[key] || '');
+  const scope = Object.keys(filters).sort().map(key => [key, filters[key]]);
+  const key = Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,
+    JSON.stringify(['review-v5', operation, ss.getId(), window.end, versions, scope, Math.floor(Date.now() / 300000)])));
+  return readMarketsWebCache_('market-review:' + key, builder);
+}
+
+function advanceMarketsReviewGeneration_(properties) {
+  try { properties.setProperty('MARKETS_REVIEWS_GENERATION', String(Date.now())); }
+  catch (error) { console.warn('No se pudo invalidar la caché de reseñas. ' + error.message); }
+}
+
+function marketsReviewTopics_(ss) {
   const catalog = ss.getSheetByName('FUNCTIONAL_CATALOG');
   const topics = { general: 'Generalista' };
   if (catalog && catalog.getLastRow() > 1) {
@@ -334,8 +395,7 @@ function getMarketsReviewAnalytics(filters) {
       if (/^\d{2}\./.test(id) && label) topics[id.slice(0, 2)] = label;
     }
   }
-  const rows = queryMarketsReviews_(ss, { ...filters, app: '', segment: '' }, window);
-  return summarizeMarketsReviewAnalytics_(rows, topics, filters || {}, window);
+  return topics;
 }
 
 function summarizeMarketsReviewAnalytics_(rows, topics, filters, window) {

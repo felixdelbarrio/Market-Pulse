@@ -17,7 +17,7 @@
   <div id="loader" class="loader" aria-live="polite"><div class="loader-inner"><div class="loader-mark"><span class="bbva-logo" role="img" aria-label="BBVA Banca de Empresas e Instituciones"></span></div><div class="loader-bar"></div><strong id="loader-title">Preparando Market Pulse…</strong><small id="loader-detail" class="hidden"></small><button id="loader-retry" class="loader-retry hidden" type="button">Reintentar</button></div></div>
   <div id="app" class="app-shell">
     <header class="topbar">
-      <div class="brand"><div class="brand-mark"><span class="bbva-logo" role="img" aria-label="BBVA Banca de Empresas e Instituciones"></span></div><div class="brand-divider"></div><div class="brand-product">Market Pulse</div></div>
+      <div class="brand"><div class="brand-mark"><span class="bbva-logo" role="img" aria-label="BBVA Banca de Empresas e Instituciones"></span></div><div class="brand-divider"></div><div class="brand-product">Market Pulse</div><span class="brand-bia" role="img" aria-label="bIA · Banca Inteligente y Autónoma"></span></div>
       <nav class="main-nav" aria-label="Secciones"><button class="nav-button active" data-view="overview" type="button">Resumen</button><button class="nav-button" data-view="benchmark" type="button">Benchmark</button><button class="nav-button" data-view="evolution" type="button">Evolución</button><button class="nav-button" data-view="alerts" type="button">Alertas</button><button id="analytics-nav" class="nav-button hidden" data-view="analytics" type="button">Analítica</button><button id="reviews-nav" class="nav-button hidden" data-view="reviews" type="button">Comentarios</button><button id="admin-nav" class="nav-button hidden" data-view="admin" type="button">Administración</button></nav>
       <button id="report-button" class="button button-secondary" type="button" title="Descargar informe completo" aria-label="Descargar informe completo"><span aria-hidden="true">↓</span><span>Descargar informe</span></button>
     </header>
@@ -137,13 +137,24 @@
       </section>
       <section id="view-reviews" class="view mp-next hidden">
         <div class="section-head"><div><h2>Comentarios</h2><p>Reseñas de App Store y Google Play de los últimos 365 días.</p></div></div>
-        <form id="review-filters" class="period-toolbar"><div class="period-controls">
+        <div id="review-markets" class="period-controls" aria-label="Mercados consultados"></div>
+        <button id="review-filter-open" type="button" class="alert-button secondary">Filtros</button>
+        <dialog id="review-filter-dialog" class="panel" aria-labelledby="review-filter-title">
+        <form id="review-filters" class="panel-body"><h3 id="review-filter-title">Filtros de comentarios</h3><div class="period-controls">
           <div class="control"><label for="review-app">Aplicación</label><select id="review-app" class="select-control"></select></div>
           <div class="control"><label for="review-segment">Sentimiento</label><select id="review-segment" class="select-control"></select></div>
           <div class="control"><label for="review-period">Mes</label><input id="review-period" class="select-control" type="month"></div>
           <label>Buscar <input id="review-search" class="select-control" type="search" maxlength="200"></label><button type="reset" class="alert-button secondary">Restaurar filtros iniciales</button>
+          <details><summary>Filtros avanzados</summary><div class="period-controls">
+            <label>Bloque <select id="review-topic" class="select-control"></select></label>
+            <label>Estrellas <select id="review-rating" class="select-control"><option value="">Todas</option><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select></label>
+            <label>Desde <input id="review-start" class="select-control" type="date"></label>
+            <label>Hasta <input id="review-end" class="select-control" type="date"></label>
+          </div></details>
+          <button id="review-show-all" type="button" class="alert-button secondary">Ver todo</button>
+          <button id="review-filter-close" type="button" class="alert-button secondary"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M13.131 12L21.365 20.234L20.234 21.365L12 13.131L3.76603 21.365L2.63503 20.234L10.869 12L2.63403 3.76603L3.76503 2.63503L11.999 10.869L20.234 2.63403L21.365 3.76503L13.131 11.999V12Z"/></svg> Cancelar</button>
           <button type="submit" class="alert-button primary">Aplicar filtros</button>
-        </div></form>
+        </div></form></dialog>
         <p id="review-filter-status" role="status"></p>
         <button id="review-return" type="button" class="alert-button secondary hidden">Volver a Analítica</button>
         <div id="review-results" class="admin-list" aria-live="polite"></div><div id="review-pagination" class="period-controls"></div>
@@ -153,7 +164,7 @@
         <div id="admin-loading" class="panel alert-loading">Validando permisos y preparando el diagnóstico…</div>
         <div id="admin-content" class="hidden">
           <div class="admin-toolbar"><div id="admin-tabs" class="admin-tabs" role="tablist" aria-label="Secciones de Administración"><button id="admin-tab-health" class="admin-tab active" data-admin-tab="health" type="button" role="tab" aria-selected="true" aria-controls="admin-panel-health">Salud</button><button id="admin-tab-performance" class="admin-tab" data-admin-tab="performance" type="button" role="tab" aria-selected="false" aria-controls="admin-panel-performance" tabindex="-1">Rendimiento</button><button id="admin-tab-usage" class="admin-tab" data-admin-tab="usage" type="button" role="tab" aria-selected="false" aria-controls="admin-panel-usage" tabindex="-1">Adopción</button><button id="admin-tab-runs" class="admin-tab" data-admin-tab="runs" type="button" role="tab" aria-selected="false" aria-controls="admin-panel-runs" tabindex="-1">Ejecuciones</button><button id="admin-tab-issues" class="admin-tab" data-admin-tab="issues" type="button" role="tab" aria-selected="false" aria-controls="admin-panel-issues" tabindex="-1">Captura</button><button id="admin-tab-subscribers" class="admin-tab" data-admin-tab="subscribers" type="button" role="tab" aria-selected="false" aria-controls="admin-panel-subscribers" tabindex="-1">Suscripciones</button><button id="admin-tab-language" class="admin-tab" data-admin-tab="language" type="button" role="tab" aria-selected="false" aria-controls="admin-panel-language" tabindex="-1">Idioma</button><button id="admin-tab-alerts" class="admin-tab" data-admin-tab="alerts" type="button" role="tab" aria-selected="false" aria-controls="admin-panel-alerts" tabindex="-1">Alertas</button></div><div class="admin-toolbar-actions"><button id="admin-recovery" class="alert-button primary" type="button">Recuperar ratings ahora</button><button id="admin-refresh" class="alert-button secondary" type="button">Actualizar datos</button></div></div>
-          <div id="admin-panel-health" class="admin-tab-panel" data-admin-panel="health" role="tabpanel" aria-labelledby="admin-tab-health"><div id="admin-kpis" class="kpi-grid"></div><section class="section panel"><div class="panel-head"><div><h3>Configuración operativa</h3><span id="admin-generated-at">—</span></div></div><div id="admin-system" class="admin-system-grid panel-body"></div></section></div>
+          <div id="admin-panel-health" class="admin-tab-panel" data-admin-panel="health" role="tabpanel" aria-labelledby="admin-tab-health"><div id="admin-kpis" class="kpi-grid"></div><section class="section panel"><div class="panel-head"><div><h3>Configuración operativa</h3><span id="admin-generated-at">—</span></div></div><div id="admin-jobs" class="admin-job-cards admin-system-grid panel-body" aria-label="Procesos operativos"></div><div id="admin-system" class="admin-system-grid panel-body"></div></section></div>
           <div id="admin-panel-performance" class="admin-tab-panel hidden" data-admin-panel="performance" role="tabpanel" aria-labelledby="admin-tab-performance">
             <section class="panel"><div class="panel-head"><div><h3>Rendimiento de la aplicación</h3><span>Muestras de las últimas 3.000 filas de telemetría</span></div></div><div id="admin-performance" class="panel-body"></div></section>
             <section class="panel"><div class="panel-head"><div><h3>Catálogo global de funcionalidades</h3><span id="review-catalog-status" role="status">Sincronización con el documento maestro de Drive</span></div><button id="review-catalog-sync" class="alert-button secondary" type="button">Sincronizar catálogo</button></div></section>

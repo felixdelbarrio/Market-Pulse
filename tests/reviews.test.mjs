@@ -6,6 +6,7 @@ import vm from "node:vm";
 const api = vm.createContext({ trimString_: value => String(value ?? "").trim() });
 vm.runInContext(fs.readFileSync(new URL("../src/54_Reviews.gs", import.meta.url), "utf8"), api);
 
+vm.runInContext(fs.readFileSync(new URL("../src/52_ReviewInsights.gs", import.meta.url), "utf8"), api);
 test("App Store reviews require the requested storefront and listing and follow its pagination", () => {
   const app = { platform: "iOS", countryCode: "TR", appId: "123", appKey: "IOS|TR|BANK" };
   const entry = {
@@ -87,7 +88,6 @@ test("Google Play pagination preserves provenance and deduplicates across storef
 });
 
 test("functional review evidence uses catalog IDs, context and exclusions", () => {
-  vm.runInContext(fs.readFileSync(new URL("../src/52_ReviewInsights.gs", import.meta.url), "utf8"), api);
   const rules = api.compileReviewRules_([["01.01", "Home", "Posición global"]]);
   const classify = value => Array.from(api.classifyReviewEvidence_(value, rules));
   assert.deepEqual(classify("No se actualiza la posición global"), ["01.01"]);
@@ -116,4 +116,40 @@ test("analytics shares the selected sentiment and separates the cumulative delta
   assert.ok(Math.abs(result.deltas[0].delta - 100 / 3) < 1e-8);
   assert.equal(result.examples[0].review.key, "generic");
   assert.equal(result.examples[1].review.key, "new");
+});
+
+test("market facets count shared reviews once per market and keep the exact listing", () => {
+  const row = { key: "one", app: "Spain app", countries: ["ES", "TR"], listings: [
+    { country: "ES", app: "Spain app", entity: "BBVA Empresas" },
+    { country: "TR", app: "Turkey app", entity: "BBVA Empresas" }
+  ] };
+  const result = api.paginateMarketsReviews_([row], { country: "TR", page: 4 }, {});
+  assert.equal(result.allMarkets, 1);
+  assert.equal(result.counts.ES, 1);
+  assert.equal(result.counts.TR, 1);
+  assert.equal(result.total, 1);
+  assert.equal(result.page, 0);
+  assert.equal(result.rows[0].app, "Turkey app");
+  assert.throws(() => api.normalizeMarketsReviewFilters_({ start: "2026-02-30" }), /Fecha no válida/);
+});
+
+test("review cache isolates scopes and invalidates when the data generation changes", () => {
+  const properties = {};
+  const entries = new Map();
+  Object.assign(api, {
+    PropertiesService: { getScriptProperties: () => ({ getProperties: () => properties }) },
+    Utilities: { DigestAlgorithm: { SHA_256: "SHA_256" }, computeDigest: (_, value) => value, base64EncodeWebSafe: value => value },
+    readMarketsWebCache_: (key, build) => {
+      if (!entries.has(key)) entries.set(key, build());
+      return entries.get(key);
+    }
+  });
+  let builds = 0;
+  const get = scope => api.readMarketsReviewCache_({ getId: () => "test" }, "page", scope,
+    { end: "2026-11-11" }, () => ++builds);
+  assert.equal(get({ country: "ES", page: 0 }), 1);
+  assert.equal(get({ page: 0, country: "ES" }), 1);
+  assert.equal(get({ page: 0, country: "TR" }), 2);
+  properties.MARKETS_REVIEWS_GENERATION = "new";
+  assert.equal(get({ country: "ES", page: 0 }), 3);
 });

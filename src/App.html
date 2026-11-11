@@ -113,8 +113,26 @@
     function syncViewControls(){const benchmark=state.view==="benchmark",privateView=state.view==="alerts"||state.view==="admin";$("benchmark-control").classList.toggle("hidden",!benchmark);$("filter-bar").classList.toggle("benchmark-mode",benchmark);$("filter-bar").setAttribute("aria-label",benchmark?"Filtros de benchmark":"Filtros globales");$("filter-wrap").classList.toggle("hidden",privateView);$("report-button").classList.toggle("hidden",privateView||["reviews","analytics"].includes(state.view))}
     function bindFilters(){
       bindOptional("review-catalog-sync","click",syncReviewCatalog);
-      bindOptional("review-filters","submit",event=>{event.preventDefault();reviewDrilldown=null;loadReviews()});
-      bindOptional("review-filters","reset",()=>queueMicrotask(()=>{reviewDrilldown=null;$("review-segment").value="DETRACTOR";loadReviews()}));
+      bindOptional("review-filter-open","click",openReviewFilters);
+      bindOptional("review-filter-close","click",()=>$("review-filter-dialog").close());
+      bindOptional("review-filters","submit",event=>{
+        event.preventDefault();
+        const next={...reviewScope(),reviewKey:""};
+        for(const [key,id] of Object.entries(reviewControls))next[key]=$(id).value;
+        if(next.start&&next.end&&next.start>next.end){
+          $("review-end").setCustomValidity("La fecha final debe ser posterior o igual a la inicial.");
+          $("review-end").reportValidity();
+          return;
+        }
+        reviewDrilldown=reviewDrilldown&&{scope:next,label:"Filtros ajustados"};
+        reviewSelection=next;
+        $("review-filter-dialog").close();
+        loadReviews();
+      });
+      bindOptional("review-end","input",event=>event.target.setCustomValidity(""));
+      bindOptional("review-start","input",()=>$("review-end").setCustomValidity(""));
+      bindOptional("review-filters","reset",event=>{event.preventDefault();resetReviewFilters("DETRACTOR")});
+      bindOptional("review-show-all","click",()=>resetReviewFilters(""));
       bindOptional("review-return","click",()=>activateView("analytics"));
       ["analytics-period","analytics-segment","analytics-entity"].forEach(id=>bindOptional(id,"change",loadAnalytics));
       $("evolution-app").addEventListener("change",event=>{state.evolutionApp=event.target.value;trackUsage("FILTER",state.view,"EVOLUTION_APP",state.evolutionApp);renderEvolution();renderPrintContext()});
@@ -142,7 +160,7 @@
     function preferenceKey(){return`markets-voc-preferences:${String(state.userContext?.email||"session").toLowerCase()}`}
     function restoreUserPreferences(){try{const saved=JSON.parse(localStorage.getItem(preferenceKey())||"{}");const countries=new Set(["ALL",...(state.meta?.countries||[]).map(item=>item.code)]);const platforms=new Set(["ALL",...D.config.platforms]);const segments=new Set(Object.keys(D.config.segmentLabels));if(countries.has(saved.country))state.country=saved.country;if(platforms.has(saved.platform))state.platform=saved.platform;if(segments.has(saved.benchmarkSegment))state.benchmarkSegment=saved.benchmarkSegment;if(/^\d{4}$/.test(saved.periodYear||""))state.periodYear=saved.periodYear;if(/^\d{2}$/.test(saved.periodMonth||""))state.periodMonth=saved.periodMonth}catch(ignored){}}
     function persistUserPreferences(){if(!state.meta)return;try{localStorage.setItem(preferenceKey(),JSON.stringify({country:state.country,platform:state.platform,benchmarkSegment:state.benchmarkSegment,periodYear:state.periodYear,periodMonth:state.periodMonth}))}catch(ignored){}}
-    function filtersChanged(){if(["reviews","analytics"].includes(state.view)){persistUserPreferences();if(state.view==="analytics"){ $("analytics-entity").value="";loadAnalytics() }else{reviewDrilldown=null;loadReviews()}return}state.periodYear="";state.periodMonth="";state.trendsLoading=true;persistUserPreferences();trackUsage("FILTER",state.view,"GLOBAL_SCOPE",`${state.country}|${state.platform}`);renderDashboard();scheduleTrends(120)}
+    function filtersChanged(){if(["reviews","analytics"].includes(state.view)){persistUserPreferences();if(state.view==="analytics"){ $("analytics-entity").value="";loadAnalytics() }else{reviewDrilldown=null;reviewSelection={...reviewScope(),...selection()};loadReviews()}return}state.periodYear="";state.periodMonth="";state.trendsLoading=true;persistUserPreferences();trackUsage("FILTER",state.view,"GLOBAL_SCOPE",`${state.country}|${state.platform}`);renderDashboard();scheduleTrends(120)}
     function scheduleTrends(delay){window.clearTimeout(state.trendTimer);state.trendTimer=window.setTimeout(loadTrends,delay)}
     function trendRequest(){return{countryCode:state.country==="ALL"?"":state.country,platform:state.platform==="ALL"?"":state.platform,segment:"ALL",months:18,bbvaOnly:state.country==="ALL"&&state.view!=="evolution"}}
     function trendKey(request){return[request.countryCode||"ALL",request.platform||"ALL",request.segment,request.bbvaOnly?"BBVA":"ALL",request.months].join("|")}
@@ -181,14 +199,30 @@
     function appLogo(row){const url=state.meta.logos?.[row.appKey];return`<span class="app-logo">${url?`<img src="${U.esc(url)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">`:""}<b>${U.esc(initials(D.appName(row)))}</b></span>`}
 
     let reviewsRequest=0;
-    function syncReviewAppOptions(){
-      const filter=$("review-app");
-      const apps=[...new Set(D.selectionRows(state.snapshot,selection(),"ALL").filter(row=>row.platform!=="Huawei").map(D.appName))].sort((a,b)=>a.localeCompare(b));
-      const app=apps.includes(filter.value)?filter.value:"";
-      filter.innerHTML=U.option("","Todas",!app)+apps.map(name=>U.option(name,name,name===app)).join("");
-      return app;
+    const reviewControls={app:"review-app",period:"review-period",segment:"review-segment",search:"review-search",
+      topic:"review-topic",rating:"review-rating",start:"review-start",end:"review-end"};
+    let reviewDrilldown=null, analyticsRequest=0, reviewSegments, reviewSelection=null, reviewTopics={};
+    const reviewScope=()=>reviewDrilldown?.scope||reviewSelection||{...selection(),segment:"DETRACTOR"};
+    function resetReviewFilters(segment){
+      reviewDrilldown=null;
+      reviewSelection={...selection(),segment};
+      $("review-filter-dialog").close();
+      loadReviews();
     }
-    let reviewDrilldown=null, analyticsRequest=0, reviewSegments;
+    async function openReviewFilters(){
+      const dialog=$("review-filter-dialog"), scope=reviewScope();
+      const apps=[...new Set(D.selectionRows(state.snapshot,scope,"ALL").filter(row=>row.platform!=="Huawei").map(D.appName))];
+      if(scope.app&&!apps.includes(scope.app))apps.push(scope.app);
+      $("review-app").innerHTML=U.option("","Todas",!scope.app)+apps.sort().map(name=>U.option(name,name,name===scope.app)).join("");
+      $("review-topic").innerHTML=U.option("","Todos",!scope.topic)+Object.entries(reviewTopics)
+        .map(([id,label])=>U.option(id,label,id===scope.topic)).join("");
+      try{await prepareReviewSegments($("review-segment"))}
+      catch(error){$("review-filter-status").textContent=error.message;return}
+      if(state.view!=="reviews"||dialog.open)return;
+      for(const [key,id] of Object.entries(reviewControls))$(id).value=scope[key]||"";
+      $("review-end").setCustomValidity("");
+      dialog.showModal();
+    }
     async function prepareReviewSegments(control){
       if(control.options.length)return;
       reviewSegments ||= callServer("reviews:segments").catch(error=>{reviewSegments=null;throw error});
@@ -201,22 +235,24 @@
       activateView("reviews");
     }
     async function loadReviews(page=0){
-      const token=++reviewsRequest, results=$("review-results"), app=syncReviewAppOptions();
+      const token=++reviewsRequest, results=$("review-results");
       const segment=$("review-segment"), pagination=$("review-pagination");
       results.innerHTML=U.loading();
       pagination.replaceChildren();
       try{
         await prepareReviewSegments(segment);
         if(token!==reviewsRequest||state.view!=="reviews")return;
-        const scope=reviewDrilldown?.scope || {...selection(),app,period:$("review-period").value,
-          segment:segment.value,search:$("review-search").value};
+        const scope=reviewScope();
         $("review-return").classList.toggle("hidden",!reviewDrilldown);
         $("review-filter-status").textContent=[reviewDrilldown?.label,
           scope.country==="ALL"?"Todos los mercados":countryLabel(scope.country),
           scope.platform==="ALL"?"Todas las plataformas":scope.platform,scope.app,scope.period].filter(Boolean).join(" · ");
         const data=await callServer("review:page",{...scope,language:appLanguage,page});
         if(token!==reviewsRequest||state.view!=="reviews")return;
-        results.innerHTML=data.rows.map(renderReviewCard).join("")||U.empty("Sin comentarios","No hay reseñas para esta selección.");
+        reviewTopics=data.topics||{};
+        renderReviewMarkets(data,scope);
+        renderReviewChips(scope);
+        results.innerHTML=data.rows.map(row=>renderReviewCard(row,reviewTopics)).join("")||U.empty("Sin comentarios","No hay reseñas para esta selección.");
         if(!data.total)return;
         pagination.innerHTML=`<button type="button" data-step="-1" ${data.page===0?"disabled":""}>Anterior</button>
           <span>${integer(data.total)} reseñas · Página ${data.page+1} de ${Math.ceil(data.total/data.size)}</span>
@@ -224,14 +260,52 @@
         pagination.onclick=event=>{const step=event.target.closest("[data-step]")?.dataset.step;if(step)loadReviews(data.page+Number(step))};
       }catch(error){if(token===reviewsRequest&&state.view==="reviews")results.textContent=error.message}
     }
-    function renderReviewCard(row){
+    function renderReviewMarkets(data,scope){
+      const target=$("review-markets");
+      target.replaceChildren();
+      for(const [code,count] of [["ALL",data.allMarkets],...Object.entries(data.counts).sort()]){
+        const label=code==="ALL"?"Todos los mercados":countryLabel(code);
+        const button=document.createElement("button");
+        button.type="button";
+        button.className="alert-button secondary";
+        button.textContent=`${label} · ${integer(count)}`;
+        button.setAttribute("aria-pressed",String(scope.country===code));
+        button.onclick=()=>{
+          reviewSelection={...scope,country:code};
+          if(reviewDrilldown)reviewDrilldown={scope:reviewSelection,label:"Filtros ajustados"};
+          loadReviews();
+        };
+        target.append(button);
+      }
+    }
+    function renderReviewChips(scope){
+      const target=$("review-filter-status");
+      for(const [key,id] of Object.entries(reviewControls)){
+        if(!scope[key])continue;
+        const value=key==="topic"?reviewTopics[scope[key]]||scope[key]:key==="segment"?
+          [...$("review-segment").options].find(option=>option.value===scope[key])?.textContent||scope[key]:scope[key];
+        const button=document.createElement("button");
+        button.type="button";
+        button.className="alert-button secondary";
+        button.textContent=`${value} ×`;
+        button.setAttribute("aria-label",`Quitar filtro ${value}`);
+        button.onclick=()=>{
+          reviewSelection={...scope,[key]:""};
+          if(reviewDrilldown)reviewDrilldown={scope:reviewSelection,label:"Filtros ajustados"};
+          loadReviews();
+        };
+        target.append(" ",button);
+      }
+    }
+    function renderReviewCard(row,topics={}){
       const markets=row.countries.map(countryLabel).join(", ");
+      const blocks=(row.blocks.length?row.blocks:["general"]).map(id=>topics[id]).filter(Boolean).join(" · ");
       return `<article class="incident"><strong>${U.esc(row.app)} · ${U.esc(row.platform)} · ${fmt(row.rating,0)}/5</strong>
         <time>${U.esc(dateLabel(row.date))}</time><p>Mercado consultado · ${U.esc(markets)}${row.platform==="Android"?" · Storefront sin verificar":""}</p>
         ${row.title?`<h4>${U.esc(row.title)}</h4>`:""}<p>${U.esc(row.text)}</p>
         ${row.translated?`<details><summary>Ver original</summary><p>${U.esc(row.original)}</p></details>`:""}
         ${row.url?`<a href="${U.esc(row.url)}" target="_blank" rel="noopener noreferrer">Abrir en Google Play</a>`:""}
-        <small>Autor y respuesta del desarrollador sin datos verificables</small></article>`;
+        ${blocks?`<p>${U.esc(blocks)}</p>`:""}<small>Autor y respuesta del desarrollador sin datos verificables</small></article>`;
     }
     async function loadAnalytics(){
       const token=++analyticsRequest, target=$("review-heatmap"), segment=$("analytics-segment"), entity=$("analytics-entity");
@@ -251,9 +325,24 @@
         const allStars={...scope,segment:""};
         renderReviewBalance($("review-balance"),data,allStars);
         $("review-deltas").textContent=scope.period?"Selecciona la ventana de 365 días para comparar saldos.":"Cambio del saldo al incorporar los últimos 30 días.";
+        if(!scope.period&&!data.deltas.length)$("review-deltas").append(" Muestra insuficiente para comparar bloques.");
         for(const item of data.deltas){
-          const label=`${item.label} · ${signed(item.delta)} pp · ${fmt(item.before,1)} pp (n=${item.earlyTotal}) → ${fmt(item.after,1)} pp (n=${item.total})`;
-          appendReviewCohort($("review-deltas"),label,{...allStars,app:local,topic:item.id});
+          const row=document.createElement("article"), heading=document.createElement("h4"), bar=document.createElement("div");
+          heading.textContent=`${item.label} · ${signed(item.delta)} pp`;
+          bar.className="review-delta-bar";
+          bar.setAttribute("aria-hidden","true");
+          const fill=document.createElement("span");
+          const width=Math.abs(item.delta)/4;
+          fill.style.width=`${width}%`;
+          fill.style.left=`${item.delta<0?50-width:50}%`;
+          fill.classList.toggle("negative",item.delta<0);
+          bar.append(fill);
+          row.append(heading,bar);
+          const cohort={...allStars,app:local,topic:item.id};
+          const earlyEnd=new Date(Date.parse(data.window.recent)-86400000).toISOString().slice(0,10);
+          appendReviewCohort(row,`335 días · ${fmt(item.before,1)} pp · ${item.earlyTotal} reseñas`,{...cohort,end:earlyEnd});
+          appendReviewCohort(row,`365 días · ${fmt(item.after,1)} pp · ${item.total} reseñas`,cohort);
+          $("review-deltas").append(row);
         }
         const examples=$("review-examples");
         examples.textContent=data.examples.length?"Ejemplos seleccionados por similitud textual dentro de cada bloque.":"Sin ejemplos para este ámbito.";
@@ -417,7 +506,22 @@
     function handleAdminTabKeydown(event){if(!["ArrowLeft","ArrowRight","Home","End"].includes(event.key))return;const tabs=[...document.querySelectorAll(".admin-tab")],current=Math.max(0,tabs.indexOf(document.activeElement));let next=event.key==="Home"?0:event.key==="End"?tabs.length-1:event.key==="ArrowRight"?(current+1)%tabs.length:(current-1+tabs.length)%tabs.length;event.preventDefault();activateAdminTab(tabs[next].dataset.adminTab,true)}
     async function loadAdmin(force=false){if(!state.userContext?.isAdmin)return;if(state.adminLoading||state.adminLoaded&&!force){if(state.adminLoaded)renderAdmin();return}state.adminLoading=true;$("admin-loading").classList.remove("hidden");$("admin-content").classList.add("hidden");try{state.adminCenter=await callServer("admin:get");state.adminLoaded=true;renderAdmin()}catch(error){$("admin-loading").textContent=error?.message||String(error);showError(error)}finally{state.adminLoading=false}}
     function statusBadge(value){const text=String(value||"—"),tone=/^(OK|ACTIVE|VERIFIED|SENT)$/i.test(text)?"ok":/PARTIAL|WARN|PENDING/i.test(text)?"warn":/ERROR|FAIL|DENIED|DISABLED/i.test(text)?"bad":"";return`<span class="admin-status ${tone}">${U.esc(text)}</span>`}
-    function renderAdmin(){const center=state.adminCenter;if(!center)return;$("admin-loading").classList.add("hidden");$("admin-content").classList.remove("hidden");$("admin-generated-at").textContent=`Generado ${dateTimeLabel(center.generatedAt)} · ${center.administrator}`;$("admin-kpis").innerHTML=U.metrics([{label:"Suscripciones activas",value:String(center.summary.activeSubscribers),foot:`${center.summary.pausedSubscribers} pausadas`,accent:true},{label:"Ejecuciones visibles",value:String(center.summary.recentRuns),foot:"Ventana operativa reciente"},{label:"Incidencias recientes",value:String(center.summary.recentIssues),foot:"FETCH_LOG distinto de OK",valueClass:center.summary.recentIssues?"delta-down":"delta-up"},{label:"Eventos de alerta",value:String(center.summary.recentAlertEvents),foot:"Auditoría reciente"}]);renderAdminSystem(center.system);renderAdminUsage(center.usage||{});renderAdminRuns(center.recentRuns||[]);renderAdminIssues(center.fetchIssues||[]);renderAdminSubscriberFilters();renderAdminSubscribers(center.subscribers||[]);renderAdminAlerts(center.recentAlerts||[]);activateAdminTab(state.adminTab)}
+    function renderAdmin(){const center=state.adminCenter;if(!center)return;$("admin-loading").classList.add("hidden");$("admin-content").classList.remove("hidden");$("admin-generated-at").textContent=`Generado ${dateTimeLabel(center.generatedAt)} · ${center.administrator}`;$("admin-kpis").innerHTML=U.metrics([{label:"Suscripciones activas",value:String(center.summary.activeSubscribers),foot:`${center.summary.pausedSubscribers} pausadas`,accent:true},{label:"Ejecuciones visibles",value:String(center.summary.recentRuns),foot:"Ventana operativa reciente"},{label:"Incidencias recientes",value:String(center.summary.recentIssues),foot:"FETCH_LOG distinto de OK",valueClass:center.summary.recentIssues?"delta-down":"delta-up"},{label:"Eventos de alerta",value:String(center.summary.recentAlertEvents),foot:"Auditoría reciente"}]);renderAdminSystem(center.system);renderAdminJobs(center.system,center.recentRuns||[]);renderAdminUsage(center.usage||{});renderAdminRuns(center.recentRuns||[]);renderAdminIssues(center.fetchIssues||[]);renderAdminSubscriberFilters();renderAdminSubscribers(center.subscribers||[]);renderAdminAlerts(center.recentAlerts||[]);activateAdminTab(state.adminTab)}
+    function renderAdminJobs(system,runs){
+      const latest=runs[0];
+      const done=latest?latest.appsOk+latest.appsNoRating+latest.appsError:0;
+      const progress=latest?.appsTotal>0&&done<=latest.appsTotal
+        ? `<progress class="admin-job-progress" value="${done}" max="${latest.appsTotal}" aria-label="Cobertura registrada de la última carga"></progress><span>${done} / ${latest.appsTotal} aplicaciones</span>`
+        : "";
+      const cards=[
+        {name:"Carga diaria de ratings",schedule:system.dailySchedule,status:latest?.status||"Sin ejecución registrada",progress},
+        {name:"Monitor de salud",schedule:system.healthSchedule,status:system.healthMonitorEnabled?"Habilitado":"Deshabilitado"},
+        {name:"Newsletter mensual",schedule:system.newsletterSchedule,status:system.newsletterDeliveryEnabled?"Habilitada":"Deshabilitada"}
+      ];
+      $("admin-jobs").innerHTML=cards.map(card=>`<article><strong>${U.esc(card.name)}</strong>
+        <p class="admin-job-schedule">${U.esc(card.schedule)} · ${U.esc(system.timeZone)}</p>
+        <span>${U.esc(card.status)}</span>${card.progress||""}</article>`).join("");
+    }
     function renderAdminSystem(system){const items=[{label:"Backend / Web",value:`${system.codeVersion} / ${system.webVersion}`},{label:"URL canónica",value:system.webAppUrl?"Abrir Web App":"Sin despliegue activo",href:system.webAppUrl},{label:"Carga diaria",value:`${system.dailySchedule} · ${system.timeZone}`},{label:"Monitor de salud",value:system.healthMonitorEnabled?`Activo · ${system.healthSchedule}`:"Desactivado"},{label:"Newsletter mensual",value:system.newsletterDeliveryEnabled?`Activa · ${system.newsletterSchedule}`:"Desactivada"},{label:"Destinatario técnico",value:system.healthRecipient||"Sin configurar"},{label:"Envío de alertas",value:system.emailDeliveryEnabled?"Activo":"Desactivado"},{label:"Remitente",value:system.senderAddress||"Sin alias",meta:system.senderVerificationStatus||system.senderError},{label:"Administradores",value:(system.administratorEmails||[]).join(", ")||"Sin configurar"}];$("admin-system").innerHTML=items.map(item=>`<article><small>${U.esc(item.label)}</small>${item.href?`<a class="admin-system-link" href="${U.esc(item.href)}" target="_blank" rel="noopener noreferrer">${U.esc(item.value)}</a>`:`<strong>${U.esc(item.value)}</strong>`}${item.meta?`<span>${U.esc(item.meta)}</span>`:""}</article>`).join("")}
     function usageViewLabel(value){return({overview:"Resumen",benchmark:"Benchmark",evolution:"Evolución",alerts:"Alertas",admin:"Administración"})[String(value||"").toLowerCase()]||value||"—"}
     function usageActionLabel(value){return({GLOBAL_SCOPE:"Cambio de mercado/plataforma",BENCHMARK_SEGMENT:"Cambio de segmento",PERIOD_YEAR:"Filtro de año",PERIOD_MONTH:"Filtro de mes",OPEN_VIEW:"Apertura de sección",ADMIN_TAB:"Navegación de administración",ALERTS_SAVE:"Guardar alertas",ALERTS_RESET:"Restaurar alertas",ALERTS_TEST:"Probar alertas",SUBSCRIBER_SAVE:"Gestionar suscripción",RATING_RECOVERY:"Recuperación manual",REPORT_DOWNLOAD:"Descarga de informe",CLIENT_ERROR:"Error de interfaz",RUNTIME_ERROR:"Error de ejecución",PROMISE_REJECTION:"Operación interrumpida",SUBSCRIBER_ERROR:"Error al gestionar suscripción"})[value]||String(value||"").replaceAll("_"," ").toLowerCase()}

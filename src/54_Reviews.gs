@@ -150,7 +150,10 @@ function collectMarketsReviews_() {
             rows.forEach((row, i) => known.set(row[0], { index: nextRow + i, updated: row[6], original: row[10] }));
             added += rows.length;
           }
-          if (pending.size || updated > previousUpdates) SpreadsheetApp.flush();
+          if (pending.size || updated > previousUpdates) {
+            SpreadsheetApp.flush();
+            advanceMarketsReviewGeneration_(properties);
+          }
           if (!result.more) break;
         }
       } catch (error) {
@@ -187,6 +190,7 @@ function translateMarketsReviews_() {
           values[index] || LanguageApp.translate(String(original), '', language));
         sheet.getRange(first + i, 12, 1, 3).setValues([result.map(marketsReviewLiteral_)]);
         SpreadsheetApp.flush();
+        advanceMarketsReviewGeneration_(properties);
         translated++;
       }
       properties.setProperty(key, String(first + i + 1));
@@ -239,6 +243,7 @@ function queryMarketsReviews_(ss, filters, window) {
         : String(row[6]).slice(0, 10);
       if (window && ((filters.start && date < filters.start) || (filters.end && date > filters.end) || !/^\d{4}-\d{2}-\d{2}$/.test(date) || date < window.start || date > window.end ||
           !MARKETS_DEFAULT_REVIEW_SEGMENTS.some(group => group.stars.includes(row[7])))) return [];
+      if (window && filters.rating !== undefined && filters.rating !== '' && row[7] !== Number(filters.rating)) return [];
       if (segment && (typeof row[7] !== 'number' || !segment.stars.includes(row[7]))) return [];
       const android = row[3] === 'Android';
       if (filters.platform !== 'ALL' && row[3] !== filters.platform) return [];
@@ -259,8 +264,9 @@ function queryMarketsReviews_(ss, filters, window) {
       seen.add(key);
       const url = android ? 'https://play.google.com/store/apps/details?id=' + encodeURIComponent(row[4]) +
         '&reviewId=' + encodeURIComponent(row[5]) : '';
-      return [{ key, entities: [...new Set(apps.map(app => app.isBbva ? 'BBVA Empresas' : app.appName))],
-        blocks: [...new Set(ids.map(id => id.slice(0, 2)))], app: apps[0].appName, countries: [...new Set(apps.map(app => app.countryCode))],
+      return [{ key, listings: apps.map(app => ({ country: app.countryCode, app: app.appName, entity: app.isBbva ? 'BBVA Empresas' : app.appName })),
+        entities: [...new Set(apps.map(app => app.isBbva ? 'BBVA Empresas' : app.appName))],
+        blocks: [...new Set(ids.map(id => id.slice(0, 2)).filter(id => !window || knownBlocks.has(id)))], app: apps[0].appName, countries: [...new Set(apps.map(app => app.countryCode))],
         platform: row[3], date, rating: row[7], version: String(row[8]),
         title: row[9], original: row[10], text: row[languageColumn] || row[10], url,
         capturedAt: row[14] ? String(row[14]).slice(0, 10) : '',

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import { createHmac } from "node:crypto";
 import test from "node:test";
 import vm from "node:vm";
 
@@ -608,4 +609,41 @@ test("the alert center validates only the sheets it consumes", () => {
   assert.equal(result.user.email, "felix.delbarrio@bbva.com");
   assert.deepEqual(checked, ["CONTROL", "ALERT_SUBSCRIPTIONS", "ALERT_LOG"]);
   assert.equal(checked.includes("RUN_LOG"), false);
+});
+
+test("alert feedback tokens bind the vote to the recipient and deduplicate across choices", () => {
+  let active = "recipient@bbva.com";
+  const writes = [];
+  const sheet = {
+    getLastRow: () => writes.length,
+    getRange: (row) => ({
+      setValues(values) { writes[row - 1] = values[0]; },
+      createTextFinder(id) { return { matchEntireCell: () => ({ findNext: () => writes.find(item => item[0] === id) }) }; }
+    })
+  };
+  Object.assign(context, {
+    currentMarketsUserEmail_: () => active,
+    PropertiesService: { getScriptProperties: () => ({ getProperty: () => "a".repeat(32) }) },
+    LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock() {} }) },
+    openMarketsSpreadsheet_: () => ({ getSheetByName: () => sheet }),
+    SpreadsheetApp: { flush() {} }
+  });
+  Object.assign(context.Utilities, {
+    computeHmacSha256Signature: (value, secret) => createHmac("sha256", secret).update(value).digest(),
+    base64EncodeWebSafe: value => value.toString("base64url")
+  });
+  const id = "1".repeat(32);
+  const links = context.marketsAlertFeedbackLinks_(active, id);
+  const token = vote => new URL(links[vote]).searchParams.get("alertFeedback");
+  assert.doesNotMatch(links.positive, /recipient|%40/);
+  assert.match(context.renderMarketsAlertFeedbackFooter_(links), /¿Te ha resultado útil/);
+  assert.throws(() => context.saveMarketsAlertFeedback(token("positive").replace(".positive.", ".negative.")), /no corresponde/);
+  active = "another@bbva.com";
+  assert.throws(() => context.saveMarketsAlertFeedback(token("positive")), /no corresponde/);
+  active = "recipient@bbva.com";
+  assert.equal(context.saveMarketsAlertFeedback(token("positive")).recorded, true);
+  assert.equal(context.saveMarketsAlertFeedback(token("negative")).recorded, true);
+  assert.equal(writes.length, 2);
+  assert.deepEqual(Array.from(writes[1].slice(0, 2)), [id, "positive"]);
+  assert.equal(context.parseMarketsAlertFeedback_(token("positive").replace(/\.\d{10}\./, ".1000000000.")), null);
 });
