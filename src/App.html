@@ -10,6 +10,9 @@
       "Sentimiento de brechas y ejemplos":["Sentiment for gaps and examples","Farklar ve örnekler için duygu"],
       "Pulso mensual de {app}":["Monthly pulse for {app}","{app} aylık görünümü"],
       "Pulso mensual":["Monthly pulse","Aylık görünüm"],
+      "Detalle por geografía":["Breakdown by geography","Coğrafyaya göre ayrıntılar"],
+      "Ficha compartida":["Shared listing","Paylaşılan mağaza kaydı"],
+      "Las reseñas de fichas compartidas de Google Play se incluyen en el análisis global.":["Reviews from shared Google Play listings are included in global analysis.","Paylaşılan Google Play kayıtlarının yorumları genel analize dahil edilir."],
       "Análisis anual":["Annual analysis","Yıllık analiz"],
       "Análisis mensual":["Monthly analysis","Aylık analiz"],
       "Año en curso":["Current year","İçinde bulunulan yıl"],
@@ -378,15 +381,22 @@
       const end=`${parts.year}-${parts.month}-${parts.day}`;
       return {start:reviewDay(end,-365),end};
     }
-    const allReviews=()=>({country:"ALL",platform:"ALL",...reviewDates(),segment:""});
-    const reviewCountries=()=>Object.keys(D.config.countries).sort((a,b)=>D.config.countries[a].localeCompare(D.config.countries[b],"es"));
+    function reviewCountries(){
+      const configured=state.meta?.countries.map(item=>item.code);
+      const countries=configured?.length?configured:Object.keys(D.config.countries);
+      return [...countries].sort((a,b)=>countryLabel(a).localeCompare(countryLabel(b),locale()));
+    }
+    function defaultCommentCountry(){
+      const countries=reviewCountries(), market=browserMarket();
+      return countries.includes(market)?market:countries.includes("ES")?"ES":countries[0];
+    }
     function initialComments(){
       const {end}=reviewDates();
       const [year,month]=end.split("-").map(Number);
       const days=new Date(Date.UTC(year,month,0)).getUTCDate();
-      return {country:browserMarket(),platform:"ALL",start:reviewDay(end,1-days),end,segment:"",app:"BBVA Empresas"};
+      return {country:defaultCommentCountry(),platform:"ALL",start:reviewDay(end,1-days),end,segment:"",app:"BBVA Empresas"};
     }
-    const allComments=()=>({...allReviews(),country:reviewScope().country,app:""});
+    const allComments=()=>({country:reviewScope().country,platform:"ALL",...reviewDates(),segment:"",app:""});
     const initialSubscribers=()=>({query:"",countries:["ANY"],platforms:["ANY"],status:"ALL"});
     let reviewDrilldown=null, analyticsRequest=0, reviewSegments, reviewSelection=null, reviewTopics={};
     const defaultAnalyticsEntity="BBVA Empresas";
@@ -402,17 +412,8 @@
     let heatmapMeasure="share";
     const reviewScope=()=>reviewDrilldown?.scope||reviewSelection||initialComments();
 
-    function prepareReviewScope(prefix){
-      const market=$(`${prefix}-country`), platform=$(`${prefix}-platform`);
-      market.innerHTML=U.option("ALL","Todas")+reviewCountries()
-        .map(code=>U.option(code,countryLabel(code),false)).join("");
-      platform.innerHTML=["ALL",...D.config.platforms].map(key=>U.option(key,D.config.platformLabels[key],false)).join("");
-      if(prefix==="review" && reviewScope().country!=="ALL") market.value=reviewScope().country;
-      const {end}=reviewDates();
-      for(const name of ["start","end"])$(`${prefix}-${name}`).max=end;
-    }
-    function validateReviewDates(prefix,{start,end}){
-      $(`${prefix}-end`).setCustomValidity(start&&end&&start>end?"La fecha final debe ser posterior o igual a la inicial.":"");
+    function validateReviewDates({start,end}){
+      $("review-end").setCustomValidity(start&&end&&start>end?"La fecha final debe ser posterior o igual a la inicial.":"");
     }
     function bindRadarFilters(){
       const create=(root,options)=>window.MarketRadarFilters.create(root,{translate,...options});
@@ -441,7 +442,7 @@
       radarFilters.reviews=create($("review-filters"),{
         ...common, initial:initialComments, all:allComments, applied:reviewScope, prepare:prepareReviewFilterOptions,
         alwaysChips:["platform","app","segment","topic","rating"], omitChips:["country"],
-        validate:values=>validateReviewDates("review",values),
+        validate:validateReviewDates,
         draftChanged:(field,values)=>{
           if(field==="country"||field==="platform"){
             prepareReviewApps(values,false);
@@ -480,6 +481,8 @@
     }
     function updateReviewScope(next,resetCohort=false){
       const current=reviewScope();
+      if(!reviewCountries().includes(next.country))next={...next,country:current.country};
+      if(next.country!==current.country&&next.reviewKey)next={...next,reviewKey:""};
       if(next.app&&next.app!=="BBVA Empresas"&&(next.country!==current.country||next.platform!==current.platform)
           &&!reviewApps(next).includes(next.app))next={...next,app:""};
       reviewDrilldown=!resetCohort&&reviewDrilldown?{scope:next,label:"Filtros ajustados"}:null;
@@ -497,7 +500,10 @@
         .map(name=>U.option(name,name,name===scope.app)).join("");
     }
     function prepareReviewFilterOptions(){
-      prepareReviewScope("review");
+      $("review-country").innerHTML=reviewCountries().map(code=>U.option(code,countryLabel(code))).join("");
+      $("review-platform").innerHTML=["ALL",...D.config.platforms].map(key=>U.option(key,D.config.platformLabels[key])).join("");
+      const {end}=reviewDates();
+      for(const name of ["start","end"])$(`review-${name}`).max=end;
       prepareReviewApps(reviewScope(),true);
       $("review-topic").innerHTML=U.option("","Todos",false)+Object.entries(reviewTopics)
         .map(([id,label])=>U.option(id,label,false)).join("");
@@ -510,7 +516,11 @@
         groups.map(group=>U.option(group.id,group.label,false)).join("");
     }
     function openReviewCohort(scope,label){
-      reviewDrilldown={scope:{...scope},label};
+      const territorial=reviewCountries().includes(scope.country);
+      reviewDrilldown=territorial?{scope:{...scope},label}:{
+        scope:{...scope,country:reviewScope().country,reviewKey:""},
+        label:translate("Detalle por geografía")
+      };
       activateView("reviews");
     }
     async function loadReviews(page=0){
@@ -547,8 +557,8 @@
       const previousScroll=target.scrollLeft;
       let selected;
       target.replaceChildren();
-      for(const code of ["ALL",...reviewCountries()]){
-        const count=code==="ALL"?data.allMarkets:data.counts[code], label=code==="ALL"?"Todas":countryLabel(code);
+      for(const code of reviewCountries()){
+        const count=data.counts[code], label=countryLabel(code);
         const button=document.createElement("button");
         button.type="button";
         button.className="geography-tab";
@@ -599,7 +609,7 @@
       return `<article class="review-card review-${sentiment}">
         <header class="review-card-head"><span class="review-stars" aria-label="${U.esc(translate("{rating} de 5 estrellas",{rating:row.rating}))}">${stars}</span>
           <div class="review-identity">${platformIcon?`<img src="${platformIcon}" alt="${U.esc(row.platform)}">`:""}${entityLogo(entity,country,row.platform)}
-          ${row.countries.length===1?geographyFlag(country,countryLabel(country)):""}</div></header>
+          ${country?geographyFlag(country,countryLabel(country)):row.sharedListing?"<small>Ficha compartida</small>":""}</div></header>
         <div><span data-review-content>${link}</span> · <strong data-review-content>${U.esc(entity)}</strong> <time datetime="${U.esc(row.date)}">${U.esc(dateLabel(row.date))}</time></div>
         ${row.title?`<h4 data-review-content>${U.esc(row.title)}</h4>`:""}<p data-review-content>${U.esc(row.text)}</p>
         ${row.translated?`<details><summary>Ver original</summary><p data-review-content>${U.esc(row.original)}</p></details>`:""}
@@ -951,7 +961,7 @@
       renderMonthlyMatrix(month);
       renderNewReviewImpact(month);
     }
-    function renderSeriesSummary(series,period){if(!series.length){$("annual-series").innerHTML=U.empty("Sin series","No hay movimientos para este periodo.");return}$("annual-series").innerHTML=series.map((item,index)=>{const points=[...item.points].filter(point=>D.finite(point.value)&&point.month<=period).sort((a,b)=>a.month.localeCompare(b.month)),current=points.at(-1),previous=points.at(-2),change=current&&previous?current.value-previous.value:null,color=T.chart.palette[index%T.chart.palette.length];return`<article class="series-card"><i class="series-dot" style="background:${color}"></i><div><strong>${U.esc(item.label)}</strong><span>${fmt(current?.value,2)} · ${current?monthLabel(current.month):"sin dato"}</span></div><b class="${change>0?"delta-up":change<0?"delta-down":""}">${signed(change)}</b></article>`}).join("")}
+    function renderSeriesSummary(series,period){$("annual-series").innerHTML=series.map((item,index)=>{const points=[...item.points].filter(point=>D.finite(point.value)&&point.month<=period).sort((a,b)=>a.month.localeCompare(b.month)),current=points.at(-1),previous=points.at(-2),change=current&&previous?current.value-previous.value:null,color=T.chart.palette[index%T.chart.palette.length];return`<article class="series-card"><i class="series-dot" style="background:${color}"></i><div><strong>${U.esc(item.label)}</strong><span>${fmt(current?.value,2)} · ${current?monthLabel(current.month):"sin dato"}</span></div><b class="${change>0?"delta-up":change<0?"delta-down":""}">${signed(change)}</b></article>`}).join("")}
 
     async function loadAlerts(force=false){if(state.alertsLoading||state.alertsLoaded&&!force){if(state.alertsLoaded)renderAlerts();return}state.alertsLoading=true;$("alerts-loading").classList.remove("hidden");$("alerts-content").classList.add("hidden");try{state.alertCenter=await callServer("alerts:get");state.alertDraft=JSON.parse(JSON.stringify(state.alertCenter.preferences));const market=browserMarket();if(!state.alertDraft.persisted&&market!=="ALL")state.alertDraft.countries=[market];state.alertsLoaded=true;renderAlerts()}catch(error){showError(error);$("alerts-loading").textContent=error?.message||String(error)}finally{state.alertsLoading=false}}
     function renderAlerts(){const center=state.alertCenter,draft=state.alertDraft;if(!center||!draft)return;$("alerts-loading").classList.add("hidden");$("alerts-content").classList.remove("hidden");$("alert-user-email").textContent=center.user.email;$("alert-system-copy").textContent=center.system.privacy;$("alert-active").checked=Boolean(draft.active);$("newsletter-enabled").checked=Boolean(draft.newsletterEnabled);$("alert-master-copy").textContent=draft.active?"Tus alertas están activas":"Las alertas están en pausa";$("newsletter-master-copy").textContent=draft.newsletterEnabled?"Recibirás el resumen ejecutivo el día 1":"La newsletter mensual está desactivada";$("alert-mail-status").textContent=center.system.emailDeliveryEnabled?"Envío global activo":"Envío global desactivado";$("alert-mail-orb").classList.toggle("bad",!center.system.emailDeliveryEnabled);$("alert-schedule").textContent=center.system.schedule;$("alert-delivery-scope").textContent=center.system.deliveryScope;$("review-rule-card").classList.toggle("hidden",!center.system.reviewDataAvailable);$("review-enabled").checked=Boolean(draft.reviewShareEnabled);$("review-warning").value=draft.reviewWarningPct;$("review-critical").value=draft.reviewCriticalPct;["daily","mtd","ytd"].forEach(period=>{$(period+"-enabled").checked=Boolean(draft[period+"DropEnabled"]);$(period+"-warning").value=draft[period+"WarningDrop"];$(period+"-critical").value=draft[period+"CriticalDrop"]});$("repeat-enabled").checked=Boolean(draft.repeatWhileBreached);$("crossover-enabled").checked=Boolean(draft.crossoverEnabled);$("crossover-direction").value=draft.crossoverDirection;$("alert-test-button").disabled=!center.system.emailDeliveryEnabled;const warning=$("alert-config-warning");warning.textContent=center.system.configWarning||"";warning.classList.toggle("hidden",!center.system.configWarning);renderAlertScopes();renderAlertActivity(center.recentEvents||[]);syncAlertRuleInputs();$("alert-save-state").textContent=draft.persisted?`Guardado ${draft.updatedAt?dateTimeLabel(draft.updatedAt):"para tu cuenta"}`:"Valores recomendados · activa y guarda cuando quieras"}

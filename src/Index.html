@@ -172,7 +172,13 @@
           </form>
         </div>
         </div>
-        <section class="panel"><div class="panel-head"><h3>Rating al cierre del mes</h3><span class="panel-meta">Escala 1–5</span></div><div id="annual-chart" class="chart-wrap"></div><div id="annual-series" class="series-summary panel-body"></div></section>
+        <section class="panel">
+          <div class="panel-head"><h3>Rating al cierre del mes</h3><span class="panel-meta">Escala 1–5</span></div>
+          <div class="annual-chart-layout">
+            <div id="annual-chart" class="chart-wrap"></div>
+            <aside id="annual-series" class="series-summary" aria-label="Entidades de seguimiento" tabindex="0"></aside>
+          </div>
+        </section>
         <section class="panel"><div class="panel-head"><h3>Mapa de calor por bloque</h3></div><div id="review-heatmap" class="panel-body" aria-live="polite"></div></section>
         <section class="panel">
           <div class="panel-head"><h3>Indicadores del periodo</h3></div>
@@ -204,6 +210,7 @@
         </div>
         </div>
         <div id="review-markets" class="geography-tabs" role="group" aria-label="Geografías"></div>
+        <p class="review-chart-note">Las reseñas de fichas compartidas de Google Play se incluyen en el análisis global.</p>
         <p id="review-filter-status" role="status"></p>
         <div id="review-results" class="admin-list" aria-live="polite"></div><div id="review-pagination" class="period-controls"></div>
       </section>

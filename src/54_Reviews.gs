@@ -278,11 +278,11 @@ function readMarketsReviewsForWeb_(filters) {
   return queryMarketsReviews_(openMarketsSpreadsheet_(), filters).slice(0, 100);
 }
 
-function queryMarketsReviews_(ss, filters, window, includeTranslations = false) {
+function queryMarketsReviews_(ss, filters, window, includeTranslations = false, apps = readAppCatalog_(ss)) {
   filters = filters || {};
   const segment = MARKETS_DEFAULT_REVIEW_SEGMENTS.find(group => group.id === filters.segment);
   if (filters.segment && !segment) throw new Error('Segmento de comentarios desconocido.');
-  const catalog = new Map(readAppCatalog_(ss).map(app => [app.appKey, app]));
+  const catalog = new Map(apps.map(app => [app.appKey, app]));
   const sheet = ss.getSheetByName('MARKET_REVIEWS');
   if (!sheet || sheet.getLastRow() < 2) return [];
   marketsReviewSheet_(ss);
@@ -293,17 +293,25 @@ function queryMarketsReviews_(ss, filters, window, includeTranslations = false) 
   const knownBlocks = new Set(entries.filter(([id, label]) => /^\d{2}\./.test(id) && label).map(([id]) => id.slice(0, 2)));
   const rules = window ? compileReviewRules_(entries) : topic ? reviewTopicRules_(ss) : null;
   const languageColumn = { es: 11, en: 12, tr: 13 }[filters.language] || 11;
-  const androidListings = new Map([...catalog.values()].filter(app => app.platform === 'Android')
+  const androidListings = new Map(apps.filter(app => app.platform === 'Android')
     .map(app => [app.packageName + '|' + app.countryCode, app]));
+  const stored = sheet.getRange(2, 1, sheet.getLastRow() - 1, marketsReviewWidth_(sheet)).getValues();
   const packageCountries = new Map();
-  for (const app of androidListings.values()) {
-    const countries = packageCountries.get(app.packageName) || new Set();
-    countries.add(app.countryCode);
-    packageCountries.set(app.packageName, countries);
+  function recordMarket(packageName, country) {
+    if (!/^[A-Z]{2}$/.test(country)) return;
+    if (!packageCountries.has(packageName)) packageCountries.set(packageName, new Set());
+    packageCountries.get(packageName).add(country);
+  }
+  for (const app of androidListings.values()) recordMarket(app.packageName, app.countryCode);
+  // Los escaparates consultados son evidencia de distribución, no del país del autor.
+  // Conserva la condición multipaís aunque cambie el catálogo o se filtre por fechas.
+  for (const row of stored) {
+    if (row[3] !== 'Android' || packageCountries.get(row[4])?.size > 1) continue;
+    for (const country of String(row[2]).split(',')) recordMarket(row[4], country);
   }
   const seen = new Set();
   const search = normalizeReviewEvidence_(String(filters.search || "").slice(0, 200));
-  return sheet.getRange(2, 1, sheet.getLastRow() - 1, marketsReviewWidth_(sheet)).getValues()
+  return stored
     .flatMap(row => {
       const date = row[6] instanceof Date
         ? Utilities.formatDate(row[6], MARKETS_CONFIG.timeZone, 'yyyy-MM-dd')
@@ -315,6 +323,8 @@ function queryMarketsReviews_(ss, filters, window, includeTranslations = false) 
       const android = row[3] === 'Android';
       if (filters.platform !== 'ALL' && row[3] !== filters.platform) return [];
       if (filters.period && !date.startsWith(filters.period)) return [];
+      const sharedListing = android && packageCountries.get(row[4])?.size > 1;
+      if (sharedListing && (filters.country !== 'ALL' || filters.territorialOnly)) return [];
       const countries = String(row[2]).split(',').filter(country => filters.country === 'ALL' || country === filters.country);
       const apps = countries.map(country => android ? androidListings.get(row[4] + '|' + country) : catalog.get(row[1]))
         .filter(app => app && (android || (app.countryCode === row[2] && app.platform === row[3] &&
@@ -335,11 +345,11 @@ function queryMarketsReviews_(ss, filters, window, includeTranslations = false) 
       const { author, helpful, reply, replyDate, replyAuthor } = marketsReviewMetadata_(row);
       return [{ key, listings: apps.map(app => ({ country: app.countryCode, app: app.appName, entity: app.isBbva ? 'BBVA Empresas' : app.appName })),
         entities: [...new Set(apps.map(app => app.isBbva ? 'BBVA Empresas' : app.appName))],
-        blocks: [...new Set(ids.map(id => id.slice(0, 2)).filter(id => !window || knownBlocks.has(id)))], app: apps[0].appName, countries: [...new Set(apps.map(app => app.countryCode))],
+        blocks: [...new Set(ids.map(id => id.slice(0, 2)).filter(id => !window || knownBlocks.has(id)))], app: apps[0].appName, countries: sharedListing ? [] : [apps[0].countryCode],
         platform: row[3], date, rating: row[7], version: String(row[8]),
         title: row[9], original: row[10], text: row[languageColumn] || row[10], url,
         author, helpful, reply, replyDate, replyAuthor,
-        sharedListing: android && packageCountries.get(row[4])?.size > 1,
+        sharedListing,
         updatedAt: row[6] instanceof Date ? row[6].toISOString() : String(row[6]),
         ...(includeTranslations ? { translations: { es: row[11], en: row[12], tr: row[13] } } : {}),
         capturedAt: row[14] ? String(row[14]).slice(0, 10) : '',

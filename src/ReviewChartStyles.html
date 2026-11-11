@@ -1,4 +1,15 @@
 <style>
+.annual-chart-layout{display:grid;grid-template-columns:minmax(0,1fr) min(var(--sidebar-width),42%);align-items:start}
+.annual-chart-layout:has(.series-summary:empty){grid-template-columns:minmax(0,1fr)}
+.annual-chart-layout .chart-wrap svg{min-height:0}
+.annual-chart-layout .series-summary{max-block-size:var(--chart-height);overflow:auto}
+.annual-chart-layout .series-summary:empty{display:none}
+.annual-chart-layout .series-card{grid-template-columns:var(--space-1) minmax(0,1fr) auto;overflow-wrap:anywhere}
+@media(max-width:780px){
+  .annual-chart-layout .series-summary,.annual-chart-layout .series-card{padding:var(--space-1)}
+  .annual-chart-layout .series-card{grid-template-columns:var(--space-1) minmax(0,1fr)}
+  .annual-chart-layout .series-card>b{grid-column:2}
+}
 /* News Radar chart styles scoped to the monthly balance card. */
 #review-balance-panel .trend-chart svg{width:100%;display:block;overflow:visible}
 #review-balance-panel .trend-chart svg text{fill:var(--color-primary-text-secondary);font-size:var(--text-s);font-family:var(--font-body)}
@@ -14,7 +25,7 @@
 #review-balance-panel{position:relative;padding:var(--space-3);background:var(--color-primary-bg-alternative);border:var(--stroke) solid var(--color-primary-border);border-radius:var(--radius-container);box-shadow:none;color:var(--color-primary-text-main);font:400 var(--text-m)/var(--line-m) var(--font-body)}
 #review-balance-panel h3{margin:0;font:700 var(--text-xl)/var(--line-xl) var(--font-heading)}
 #review-balance-panel .eyebrow{margin:0;color:var(--color-primary-text-secondary);font-size:var(--text-s);font-weight:500}
-#review-balance-panel .chart-period,#review-balance-panel .review-chart-note{font-size:var(--text-s);color:var(--color-primary-text-secondary)}
+#review-balance-panel .chart-period,.review-chart-note{font-size:var(--text-s);color:var(--color-primary-text-secondary)}
 #review-balance-panel .chart-area{fill:var(--color-primary-accent-01);fill-opacity:.2}
 #review-balance-panel .chart-tooltip{z-index:2}
 #review-balance-panel [hidden]{display:none!important}
