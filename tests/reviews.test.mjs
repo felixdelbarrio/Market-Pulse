@@ -96,7 +96,7 @@ test("functional review evidence uses catalog IDs, context and exclusions", () =
   assert.deepEqual(classify("No funciona"), []);
 });
 
-test("analytics shares the selected sentiment and separates the cumulative delta cohort", () => {
+test("analytics keeps the heatmap sentiment and compares recent blocks with the global prior balance", () => {
   const review = (key, date, rating, blocks) => ({
     key, date, rating, blocks, entities: ["BBVA Empresas"], title: "Transferencia bancaria", original: key
   });
@@ -111,11 +111,25 @@ test("analytics shares the selected sentiment and separates the cumulative delta
   assert.equal(result.entities[0].counts["03"], 5);
   assert.equal(result.entities[0].counts.general, 1);
   assert.equal(result.monthly[0].total, 7);
-  assert.equal(result.deltas[0].earlyTotal, 5);
-  assert.equal(result.deltas[0].total, 6);
-  assert.ok(Math.abs(result.deltas[0].delta - 100 / 3) < 1e-8);
+  assert.equal(result.monthly[0].balance, 100 * (1 - 6) / 7);
+  assert.equal(result.baseline.total, 5);
+  assert.equal(result.baseline.balance, -100);
+  assert.equal(result.baseline.end, "2026-10-11");
+  assert.deepEqual(JSON.parse(JSON.stringify(result.deltas)), [
+    {id:"general",label:"Generalista",total:1,promoters:0,detractors:1,weight:50,balance:-100,gap:0},
+    {id:"03",label:"Transferencias",total:1,promoters:1,detractors:0,weight:50,balance:100,gap:200}
+  ]);
   assert.equal(result.examples[0].review.key, "generic");
   assert.equal(result.examples[1].review.key, "new");
+});
+
+test("recent block statistics do not invent a historical baseline or sum duplicated reviews into the denominator", () => {
+  const rows = [{date:"2026-10-12",rating:3,entities:["Entidad"],blocks:["01","02"],title:"Una reseña",original:"Detalle"}];
+  const result = api.summarizeMarketsReviewAnalytics_(rows, {"01":"Uno","02":"Dos"}, {entity:"Entidad"},
+    {start:"2026-10-12",recent:"2026-10-12",end:"2026-11-10"});
+  assert.equal(result.baseline,null);
+  assert.equal(result.recentTotal,1);
+  assert.deepEqual(Array.from(result.deltas,row=>[row.weight,row.gap]),[[100,null],[100,null]]);
 });
 
 test("market facets count shared reviews once per market and keep the exact listing", () => {

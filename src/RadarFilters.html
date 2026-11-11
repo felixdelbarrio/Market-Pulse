@@ -77,7 +77,7 @@ window.MarketRadarFilters = (() => {
         button.setAttribute("role", "option");
         button.setAttribute("aria-selected", String(option.selected));
         button.disabled = option.disabled;
-        if (select.name === "countries") {
+        if (["country","countries"].includes(select.name)) {
           const image = flag(option.value, option.textContent);
           if (image) {
             image.setAttribute("aria-hidden", "true");
@@ -147,7 +147,7 @@ window.MarketRadarFilters = (() => {
     return {refresh, details};
   }
 
-  function create(root, {applied, initial, all, commit, prepare, validate, choose, labelValue}) {
+  function create(root, {applied, initial, all, commit, prepare, validate, choose, labelValue, fixedChips = [], draftChanged}) {
     const form = root.querySelector("form");
     const fields = [...form.elements].filter(field => field.name);
     const labels = Object.fromEntries(fields.map(field => [field.name,field.labels[0].firstChild.textContent.trim()]));
@@ -184,7 +184,7 @@ window.MarketRadarFilters = (() => {
 
       for (const field of fields) {
         const key = field.name, value = values[key];
-        if (same(value,clear[key])) continue;
+        if (!fixedChips.includes(key) && same(value,clear[key])) continue;
         const readable = (Array.isArray(value) ? value : [value]).map(item =>
           labelValue?.(key,item) || (field.options && [...field.options].find(option => option.value === item)?.textContent) || item
         ).join(", ");
@@ -195,9 +195,15 @@ window.MarketRadarFilters = (() => {
       previousChips = signature;
       chips.replaceChildren();
       for (const [key,readable] of entries) {
-        const button = document.createElement("button");
-        button.type = "button";
+        const fixed = fixedChips.includes(key);
+        const button = document.createElement(fixed ? "span" : "button");
         button.className = "filter-chip";
+        if (fixed) {
+          button.textContent = labels[key] + ": " + readable;
+          chips.append(button);
+          continue;
+        }
+        button.type = "button";
         button.setAttribute("aria-label", "Quitar filtro " + labels[key]);
         const text = document.createElement("span"), cross = document.createElement("span");
         text.textContent = labels[key] + ": " + readable;
@@ -246,6 +252,7 @@ window.MarketRadarFilters = (() => {
     dialog.querySelector("[data-restore]").addEventListener("click", () => apply(initial(),"restore"));
     dialog.querySelector("[data-all]").addEventListener("click", () => apply(defaults(),"all"));
     if (validate) form.addEventListener("input", () => validate(read()));
+    if (draftChanged) form.addEventListener("change", event => draftChanged(event.target.name,read()));
     form.addEventListener("submit", event => {
       event.preventDefault();
       const values = read();
