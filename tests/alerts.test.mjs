@@ -405,7 +405,7 @@ test("BBVA alert email uses the official image slot, brand system and safe conte
   assert.match(html, /Datos obtenidos el 21\/07\/2026/);
   assert.doesNotMatch(html, /Markets Data Studio/i);
   assert.doesNotMatch(html, /Tu pulso de mercado requiere atención/);
-  assert.doesNotMatch(html, /<script>/);
+  assert.doesNotMatch(html, /<script(?:\s|\/?>)/i);
   assert.match(html, /Android &lt;script&gt;/);
   assert.equal(context.marketsAlertEmailSubject_(events), "[Market Pulse] Alertas personalizadas · 2 cambios en ratings");
   const plainText = context.renderMarketsAlertPlainText_(events, "felix.delbarrio@bbva.com");

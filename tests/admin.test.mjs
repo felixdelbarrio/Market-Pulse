@@ -73,34 +73,13 @@ test("admin client exposes subscriber maintenance and manual rating recovery", (
   assert.doesNotMatch(app, /function adminScopeValue|split\(\/\[;,\]\//);
   assert.match(index, /id="admin-subscriber-search"/);
   assert.match(index, /id="admin-subscriber-status"/);
-  assert.match(index, /id="admin-filter-country-pills"/);
-  assert.match(index, /id="admin-filter-platform-pills"/);
-  assert.match(index, /id="admin-subscriber-filter-clear"/);
+  assert.match(index, /id="admin-filter-countries"[^>]*multiple/);
+  assert.match(index, /id="admin-filter-platforms"[^>]*multiple/);
   assert.match(index, /id="admin-subscriber-results"[^>]*aria-live="polite"/);
-  assert.match(app, /function adminSubscriberFilterRows/);
-  assert.match(app, /function handleAdminSubscriberFilterScope/);
-  assert.match(app, /function clearAdminSubscriberFilters/);
-  assert.match(app, /if\(selected\.includes\("ALL"\)\)return configured\.includes\("ALL"\)/);
-  assert.match(app, /if\(selected\.includes\("ANY"\)\)return true/);
-  assert.match(app, /if\(configured\.includes\("ALL"\)\)return false/);
-  assert.match(app, /selected\.some\(value=>configured\.includes\(value\)\)/);
-  assert.match(app, /value:"ANY",label:"Sin filtrar"/);
   assert.match(index, /id="admin-newsletter-enabled"/);
-  assert.match(app, /const bindOptional=\(id,event,handler\)=>\$\(id\)\?\.addEventListener/);
-  assert.match(app, /function adminSubscriberFiltersMarkup/);
   assert.match(app, /function adminSubscriberScopeMarkup/);
   assert.match(app, /function ensureAdminSubscriberUi/);
-  assert.match(app, /function bindNavigation\(\)\{ensureAdminSubscriberUi\(\)/);
-  assert.match(app, /if\(list&&!\$\("admin-subscriber-search"\)\)/);
-  assert.match(app, /admin-subscriber-countries/);
   assert.match(app, /fieldset\.innerHTML=adminSubscriberScopeMarkup\(\)/);
-  [
-    "admin-subscriber-search", "admin-subscriber-status", "admin-subscriber-filter-clear",
-    "admin-filter-country-pills", "admin-filter-platform-pills"
-  ].forEach(id => {
-    assert.match(app, new RegExp(`bindOptional\\(${JSON.stringify(id)}`));
-    assert.doesNotMatch(app, new RegExp(`\\$\\(${JSON.stringify(id)}\\)\\.addEventListener`));
-  });
   assert.match(index, /id="admin-panel-usage"/);
   assert.match(app, /function renderAdminUsage/);
   assert.match(app, /recordMarketsUsageEvents\(batch\)/);
