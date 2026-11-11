@@ -317,7 +317,7 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(app, /MarketsReport\.render/);
   assert.match(app, /const request=trendRequest\(\)/);
   assert.match(app, /view:state\.view,selection:\{\.\.\.selection\(\),app:state\.view==="evolution"\?state\.evolutionApp:""\},periodYear:state\.periodYear,periodMonth:state\.periodMonth/);
-  assert.match(app, /report-button"\)\.classList\.toggle\("hidden",privateView\|\|state\.view==="reviews"\)/);
+  assert.match(app, /report-button"\)\.classList\.toggle\("hidden",privateView\|\|\["reviews","analytics"\]\.includes\(state\.view\)\)/);
   const report = fs.readFileSync(new URL("../src/Report.html", import.meta.url), "utf8");
   const reportStyles = fs.readFileSync(new URL("../src/ReportStyles.html", import.meta.url), "utf8");
   assert.match(report, /La voz del mercado/);
@@ -364,7 +364,7 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.doesNotMatch(app, /function adminScopeValue/);
   assert.match(app, /function activateAdminTab/);
   assert.match(app, /function handleAdminTabKeydown/);
-  assert.match(app, /if\(\(view==="admin"\|\|view==="reviews"\)&&!state\.userContext\?\.isAdmin\)return/);
+  assert.match(app, /if\(\(\["admin","reviews","analytics"\]\.includes\(view\)\)&&!state\.userContext\?\.isAdmin\)return/);
   assert.match(app, /getMarketsAdminDashboard\(\)/);
   assert.match(app, /localStorage\.setItem\(preferenceKey\(\)/);
   assert.match(app, /localStorage\.getItem\(preferenceKey\(\)/);

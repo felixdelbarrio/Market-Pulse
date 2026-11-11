@@ -505,12 +505,15 @@ function marketsAlertEmailMessage_(recipient, events, inlineImages, sender) {
   const normalizedRecipient = normalizeMarketsAlertEmail_(recipient);
   const subject = marketsAlertEmailSubject_(events);
   const plainText = renderMarketsAlertPlainText_(events, normalizedRecipient);
-  const html = renderMarketsAlertEmail_(events, normalizedRecipient);
+  const token = Utilities.getUuid().replace(/-/g, '');
+  let feedback = null;
+  try { feedback = marketsAlertFeedbackLinks_(normalizedRecipient, token); }
+  catch (error) { console.warn('No se pudo preparar la valoración de alertas. ' + error.message); }
+  const html = renderMarketsAlertEmail_(events, normalizedRecipient, feedback);
   const image = inlineImages && inlineImages.bbvaLogo;
   if (!image || typeof image.getBytes !== 'function') {
     throw new Error('No se ha podido incorporar el logotipo oficial de BBVA al correo.');
   }
-  const token = Utilities.getUuid().replace(/-/g, '');
   const relatedBoundary = 'bbva_related_' + token;
   const alternativeBoundary = 'bbva_alternative_' + token;
   const crlf = '\r\n';
@@ -676,7 +679,7 @@ function renderMarketsAlertPlainText_(events, recipient) {
     '\nGestiona tus alertas desde Market Pulse.\nAbrir con la cuenta corporativa: ' + loginUrl + '\nURL directa: ' + appUrl;
 }
 
-function renderMarketsAlertEmail_(events, recipient) {
+function renderMarketsAlertEmail_(events, recipient, feedback) {
   const isTest = marketsAlertIsTest_(events);
   const noSignals = marketsAlertPreviewHasNoSignals_(events);
   const critical = (events || []).filter(function (event) { return event.severity === 'CRITICAL'; }).length;
@@ -707,7 +710,7 @@ function renderMarketsAlertEmail_(events, recipient) {
     '<tr><td width="100%" style="padding:14px 28px 8px;">' + cards + '</td></tr>' +
     '<tr><td width="100%" style="padding:18px 28px 30px;">' + cta + '<p style="margin:18px 0 0;color:#46536D;font-size:12px;line-height:18px;">Este correo es privado y contiene únicamente señales configuradas para tu cuenta. Las preferencias de otros usuarios nunca son visibles.</p><p style="margin:7px 0 0;color:#ADB8C2;font-size:10px;line-height:15px;">Datos obtenidos el ' + escapeMarketsAlertHtml_(marketsAlertDataDateLabel_(events)) + ' · backend ' + escapeMarketsAlertHtml_(MARKETS_CONFIG.codeVersion) + ' / web ' + escapeMarketsAlertHtml_(marketsAlertWebVersion_()) + '.</p></td></tr>' +
     '<tr><td width="100%" style="padding:16px 28px;background:#070E46;color:#85C8FF;font-size:11px;line-height:17px;"><strong style="color:#FFFFFF;">Market Pulse</strong><br>BBVA Banca de Empresas e Instituciones · Ratings y valoraciones públicas.</td></tr>' +
-    '</table></td></tr></table></body></html>';
+    renderMarketsAlertFeedbackFooter_(feedback) + '</table></td></tr></table></body></html>';
 }
 
 function marketsAlertIsTest_(events) {
@@ -902,4 +905,75 @@ function buildMarketsAlertInlineImages_() {
 function escapeMarketsAlertHtml_(value) {
   return trimString_(value).replace(/&/g, '&amp;').replace(/</g, '&lt;')
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function renderMarketsAlertFeedbackFooter_(feedback) {
+  const link = (vote, label) => '<a style="color:#001391;font-weight:700;" href="' +
+    escapeMarketsAlertHtml_(feedback[vote]) + '">' + label + '</a>';
+  return '<tr><td style="padding:16px 28px;color:#46536D;font-size:12px;line-height:18px;">' +
+    'Impulsado por <strong>bIA · Banca Inteligente y Autónoma</strong><br>BBVA Banca de Empresas e Instituciones' +
+    (feedback ? '<p>¿Te ha resultado útil?<br>' + link('positive', 'Sí, me resultó útil') + ' &nbsp; ' +
+      link('negative', 'No me resultó útil') + '</p>' : '') + '</td></tr>';
+}
+
+function marketsAlertFeedbackLinks_(recipient, messageId) {
+  const secret = PropertiesService.getScriptProperties().getProperty('MARKETS_ALERT_FEEDBACK_SECRET');
+  if (!secret || secret.length < 32) return null;
+  const expiry = Math.floor(Date.now() / 1000) + 30 * 86400;
+  return Object.fromEntries(['positive', 'negative'].map(vote => {
+    const payload = [messageId, expiry, vote].join('.');
+    const signature = signMarketsAlertFeedback_(payload, recipient, secret);
+    return [vote, marketsWebAppUrl_() + '?alertFeedback=' + encodeURIComponent(payload + '.' + signature)];
+  }));
+}
+
+function signMarketsAlertFeedback_(payload, recipient, secret) {
+  return Utilities.base64EncodeWebSafe(Utilities.computeHmacSha256Signature(payload + '|' + recipient, secret))
+    .replace(/=+$/, '');
+}
+
+function parseMarketsAlertFeedback_(token) {
+  const match = /^([a-f0-9]{32})\.(\d{10})\.(positive|negative)\.([A-Za-z0-9_-]{43})$/.exec(String(token || ''));
+  if (!match || Number(match[2]) <= Math.floor(Date.now() / 1000)) return null;
+  return { id: match[1], expiry: Number(match[2]), vote: match[3], signature: match[4] };
+}
+
+function saveMarketsAlertFeedback(token) {
+  const recipient = currentMarketsUserEmail_();
+  const request = parseMarketsAlertFeedback_(token);
+  const secret = PropertiesService.getScriptProperties().getProperty('MARKETS_ALERT_FEEDBACK_SECRET');
+  if (!request || !secret || secret.length < 32) throw new Error('Valoración no válida o caducada.');
+  const payload = [request.id, request.expiry, request.vote].join('.');
+  const expected = signMarketsAlertFeedback_(payload, recipient, secret);
+  let different = 0;
+  for (let i = 0; i < expected.length; i++) different |= expected.charCodeAt(i) ^ request.signature.charCodeAt(i);
+  if (different) throw new Error('La valoración no corresponde a la cuenta conectada.');
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(5000)) throw new Error('La valoración está ocupada. Inténtalo de nuevo.');
+  try {
+    const ss = openMarketsSpreadsheet_();
+    const headers = ['message_id', 'vote', 'recorded_at'];
+    let sheet = ss.getSheetByName('ALERT_FEEDBACK');
+    if (!sheet) sheet = ss.insertSheet('ALERT_FEEDBACK');
+    if (sheet.getLastRow() === 0) sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    const last = sheet.getLastRow();
+    if (last > 1 && sheet.getRange(2, 1, last - 1, 1).createTextFinder(request.id).matchEntireCell(true).findNext()) {
+      return { recorded: true };
+    }
+    sheet.getRange(last + 1, 1, 1, headers.length).setValues([[request.id, request.vote, new Date()]]);
+    SpreadsheetApp.flush();
+    return { recorded: true };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function renderMarketsAlertFeedbackPage_(token) {
+  const request = parseMarketsAlertFeedback_(token);
+  if (!request) return HtmlService.createHtmlOutput('<p>El enlace de valoración ha caducado o no es válido.</p>');
+  const page = HtmlService.createTemplateFromFile('AlertFeedback');
+  page.token = token;
+  page.choice = request.vote === 'positive' ? 'Sí, me resultó útil' : 'No me resultó útil';
+  return page.evaluate().setTitle('Valorar alerta de Market Pulse')
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1');
 }

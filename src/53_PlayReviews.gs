@@ -144,6 +144,7 @@ function storePlayReviews_(sheet, properties, known, listing, reviews, summary) 
     start = end;
   }
   SpreadsheetApp.flush();
+  advanceMarketsReviewGeneration_(properties);
   changes.forEach((item, key) => {
     if (known.has(key)) summary.updated++;
     else summary.added++;

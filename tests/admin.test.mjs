@@ -105,3 +105,20 @@ test("admin client exposes subscriber maintenance and manual rating recovery", (
   assert.match(app, /function renderAdminUsage/);
   assert.match(app, /recordMarketsUsageEvents\(batch\)/);
 });
+
+test("review job cards report only clock triggers visible to their owner", () => {
+  vm.runInContext(fs.readFileSync(new URL("../src/54_Reviews.gs", import.meta.url), "utf8"), context);
+  context.Session = { getEffectiveUser: () => ({ getEmail: () => "owner@bbva.com" }) };
+  context.ScriptApp = {
+    EventType: { CLOCK: "clock" },
+    getProjectTriggers: () => [
+      { getEventType: () => "clock", getHandlerFunction: () => "collectMarketsReviews_" },
+      { getEventType: () => "edit", getHandlerFunction: () => "translateMarketsReviews_" }
+    ]
+  };
+  const jobs = context.marketsAdminReviewJobs_("owner@bbva.com");
+  assert.deepEqual(Array.from(jobs, job => [job.schedule, job.installed]), [
+    ["08:05", true], ["08:35", false], ["09:05", false]
+  ]);
+  assert.ok(context.marketsAdminReviewJobs_("other@bbva.com").every(job => job.installed === null));
+});

@@ -8,7 +8,7 @@
     const bindOptional=(id,event,handler)=>$(id)?.addEventListener(event,handler);
     const interfaceCopy={
       "Resumen":["Overview","Özet"],"Benchmark":["Benchmark","Karşılaştırma"],"Evolución":["Trends","Trendler"],
-      "Alertas":["Alerts","Uyarılar"],"Comentarios":["Reviews","Yorumlar"],"Administración":["Administration","Yönetim"],
+      "Alertas":["Alerts","Uyarılar"],"Analítica":["Analytics","Analitik"],"Comentarios":["Reviews","Yorumlar"],"Administración":["Administration","Yönetim"],
       "Idioma":["Language","Dil"],"Idioma de la aplicación":["Application language","Uygulama dili"],
       "Idioma de la interfaz":["Interface language","Arayüz dili"],
       "La selección se aplica a esta pestaña.":["The selection applies to this tab.","Seçim bu sekme için geçerlidir."],
@@ -94,7 +94,7 @@
     function initializeApp(){try{initializeLanguage();window.addEventListener("error",event=>trackUsage("ERROR",state.view,"RUNTIME_ERROR",event.message));window.addEventListener("unhandledrejection",event=>trackUsage("ERROR",state.view,"PROMISE_REJECTION",event.reason?.message||event.reason));bindNavigation();bindFilters();bindInteractions();document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="hidden")flushUsage()});const viewportChanged=()=>{if(state.meta&&state.view==="evolution")renderEvolution()};if(typeof mobileViewport.addEventListener==="function")mobileViewport.addEventListener("change",viewportChanged);else if(typeof mobileViewport.addListener==="function")mobileViewport.addListener(viewportChanged);$("dialog-close").innerHTML=U.icon("close");$("admin-subscriber-close").innerHTML=U.icon("close");$("loader-retry").addEventListener("click",loadBootstrap);loadBootstrap()}catch(error){showStartupFailure(error)}}
 
     function serverTimeoutMs(method){return method==="admin:ratings:recover"?360000:method==="admin:newsletter:test"?120000:method==="bootstrap"?20000:method==="admin:get"?30000:20000}
-    function callServer(method,argument){const started=performance.now();return new Promise((resolve,reject)=>{if(!window.google?.script?.run)return reject(new Error("El dashboard debe abrirse desde el despliegue de Apps Script."));let settled=false;const finish=callback=>value=>{if(settled)return;settled=true;window.clearTimeout(timer);trackUsage("PERFORMANCE",state.view,method,`RPC ${Math.round(performance.now()-started)} ${callback===resolve?"OK":"ERROR"}`);callback(value)};const timer=window.setTimeout(()=>finish(reject)(new Error("Market Pulse no ha respondido a tiempo. Reintenta la carga.")),serverTimeoutMs(method));const runner=google.script.run.withSuccessHandler(finish(resolve)).withFailureHandler(finish(error=>reject(new Error(error?.message||error))));if(method==="bootstrap")runner.getMarketsDashboardBootstrap();else if(method==="user:context")runner.getMarketsUserContext();else if(method==="admin:get")runner.getMarketsAdminDashboard();else if(method==="admin:subscriber:save")runner.saveMarketsAdminSubscriber(argument.email,argument.preferences);else if(method==="admin:newsletter:test")runner.sendMarketsAdminNewsletterTestEmail(argument);else if(method==="admin:ratings:recover")runner.requestMarketsAdminRatingRecovery();else if(method==="reviews:segments")runner.getMarketsReviewSegments();else if(method==="reviews")runner.getMarketsReviews(argument);else if(method==="review:insights")runner.getMarketsReviewInsights(argument);else if(method==="review:configure")runner.configureMarketsReviewInsights();else if(method==="performance")runner.getMarketsPerformance();else if(method==="trends")runner.getMarketsDashboardTrends(argument);else if(method==="alerts:get")runner.getMarketsAlertPreferences();else if(method==="alerts:save")runner.saveMarketsAlertPreferences(argument);else if(method==="alerts:reset")runner.resetMarketsAlertPreferences();else if(method==="alerts:test")runner.sendMarketsAlertTestEmail();else finish(reject)(new Error("Operacion no soportada: "+method))})}
+    function callServer(method,argument){const started=performance.now();return new Promise((resolve,reject)=>{if(!window.google?.script?.run)return reject(new Error("El dashboard debe abrirse desde el despliegue de Apps Script."));let settled=false;const finish=callback=>value=>{if(settled)return;settled=true;window.clearTimeout(timer);trackUsage("PERFORMANCE",state.view,method,`RPC ${Math.round(performance.now()-started)} ${callback===resolve?"OK":"ERROR"}`);callback(value)};const timer=window.setTimeout(()=>finish(reject)(new Error("Market Pulse no ha respondido a tiempo. Reintenta la carga.")),serverTimeoutMs(method));const runner=google.script.run.withSuccessHandler(finish(resolve)).withFailureHandler(finish(error=>reject(new Error(error?.message||error))));if(method==="bootstrap")runner.getMarketsDashboardBootstrap();else if(method==="user:context")runner.getMarketsUserContext();else if(method==="admin:get")runner.getMarketsAdminDashboard();else if(method==="admin:subscriber:save")runner.saveMarketsAdminSubscriber(argument.email,argument.preferences);else if(method==="admin:newsletter:test")runner.sendMarketsAdminNewsletterTestEmail(argument);else if(method==="admin:ratings:recover")runner.requestMarketsAdminRatingRecovery();else if(method==="reviews:segments")runner.getMarketsReviewSegments();else if(method==="reviews")runner.getMarketsReviews(argument);else if(method==="review:page")runner.getMarketsReviewPage(argument);else if(method==="review:analytics")runner.getMarketsReviewAnalytics(argument);else if(method==="review:configure")runner.configureMarketsReviewInsights();else if(method==="performance")runner.getMarketsPerformance();else if(method==="trends")runner.getMarketsDashboardTrends(argument);else if(method==="alerts:get")runner.getMarketsAlertPreferences();else if(method==="alerts:save")runner.saveMarketsAlertPreferences(argument);else if(method==="alerts:reset")runner.resetMarketsAlertPreferences();else if(method==="alerts:test")runner.sendMarketsAlertTestEmail();else finish(reject)(new Error("Operacion no soportada: "+method))})}
     function validateBootstrap(data){if(!data||!data.meta||!Array.isArray(data.snapshot)||!Array.isArray(data.trends))throw new Error("El servidor ha devuelto una respuesta incompleta. Actualiza el despliegue de Market Pulse.");return data}
     async function loadBootstrap(){if(state.bootstrapLoading)return;state.bootstrapLoading=true;const loader=$("loader");loader.classList.remove("done","failed");$("loader-title").textContent="Preparando Market Pulse…";$("loader-detail").classList.add("hidden");$("loader-retry").classList.add("hidden");try{const data=validateBootstrap(await callServer("bootstrap"));state.meta=data.meta;state.userContext=data.userContext||{email:"",isAdmin:false};state.snapshot=data.snapshot;state.trends=data.trends;state.consolidated=data.consolidated||null;state.trendsLoading=false;state.trendCache.set("ALL|ALL|ALL|BBVA|18",state.trends);state.country=browserMarket();restoreUserPreferences();buildControls();configureAdminNavigation();renderHero();renderDashboard();startUsageTracking();if(state.country!=="ALL"||state.platform!=="ALL")scheduleTrends(0);$("footer-version").textContent=`Contrato ${data.meta.codeVersion} · Web ${data.meta.webVersion||"1"}`;loader.classList.add("done")}catch(error){showStartupFailure(error)}finally{state.bootstrapLoading=false}}
     function showStartupFailure(error){const loader=$("loader");if(!loader)return;loader.classList.remove("done");loader.classList.add("failed");$("loader-title").textContent="No hemos podido iniciar Market Pulse";$("loader-detail").textContent=error?.message||String(error);$("loader-detail").classList.remove("hidden");$("loader-retry").classList.remove("hidden")}
@@ -109,13 +109,32 @@
     function adminSubscriberScopeMarkup(){return`<legend>Ámbito de la suscripción</legend><p class="admin-scope-intro">Selecciona “Todos” o combina únicamente los mercados y plataformas que debe recibir esta cuenta.</p><div class="admin-scope-grid"><section class="admin-scope-card" aria-labelledby="admin-country-scope-title"><header><div><strong id="admin-country-scope-title">Mercados</strong><span>Uno, varios o todos</span></div><b id="admin-country-scope-summary" aria-live="polite">Todos</b></header><div id="admin-country-pills" class="admin-scope-pills" role="group" aria-labelledby="admin-country-scope-title"></div></section><section class="admin-scope-card" aria-labelledby="admin-platform-scope-title"><header><div><strong id="admin-platform-scope-title">Plataformas</strong><span>Una, varias o todas</span></div><b id="admin-platform-scope-summary" aria-live="polite">Todas</b></header><div id="admin-platform-pills" class="admin-scope-pills" role="group" aria-labelledby="admin-platform-scope-title"></div></section></div>`}
     function ensureAdminSubscriberUi(){const list=$("admin-subscribers");if(list&&!$("admin-subscriber-search")){const wrapper=document.createElement("div");wrapper.innerHTML=adminSubscriberFiltersMarkup();list.before(wrapper.firstElementChild)}if(!$("admin-country-pills")){const legacy=$("admin-subscriber-countries")||$("admin-subscriber-platforms"),body=$("admin-subscriber-form")?.querySelector(".admin-subscriber-form-body"),fieldset=legacy?.closest("fieldset");if(fieldset){fieldset.className="admin-scope-fieldset";fieldset.innerHTML=adminSubscriberScopeMarkup()}else if(body){const scope=document.createElement("fieldset"),first=body.querySelector("fieldset");scope.className="admin-scope-fieldset";scope.innerHTML=adminSubscriberScopeMarkup();if(first)first.before(scope);else body.append(scope)}}}
     function bindNavigation(){ensureAdminSubscriberUi();document.querySelectorAll(".nav-button").forEach(button=>button.addEventListener("click",()=>activateView(button.dataset.view)));document.querySelectorAll(".admin-tab").forEach(button=>button.addEventListener("click",()=>activateAdminTab(button.dataset.adminTab,true)));$("admin-tabs").addEventListener("keydown",handleAdminTabKeydown);$("admin-refresh").addEventListener("click",()=>loadAdmin(true));$("admin-recovery").addEventListener("click",requestAdminRatingRecovery);$("admin-add-subscriber").addEventListener("click",()=>openAdminSubscriber());$("admin-subscriber-form").addEventListener("submit",saveAdminSubscriber);$("admin-subscriber-close").addEventListener("click",closeAdminSubscriber);$("admin-subscriber-cancel").addEventListener("click",closeAdminSubscriber);$("admin-subscriber-dialog").addEventListener("click",handleAdminScopeClick);bindOptional("admin-subscriber-search","input",handleAdminSubscriberSearch);bindOptional("admin-subscriber-status","change",handleAdminSubscriberStatus);bindOptional("admin-subscriber-filter-clear","click",clearAdminSubscriberFilters);bindOptional("admin-filter-country-pills","click",handleAdminSubscriberFilterScope);bindOptional("admin-filter-platform-pills","click",handleAdminSubscriberFilterScope);$("admin-subscribers").addEventListener("click",event=>{const newsletter=event.target.closest("[data-admin-test-newsletter]");if(newsletter){testAdminNewsletter(newsletter.dataset.adminTestNewsletter,newsletter);return}const button=event.target.closest("[data-admin-edit-subscriber]");if(button)openAdminSubscriber(button.dataset.adminEditSubscriber)});syncViewControls()}
-    function activateView(view){if((view==="admin"||view==="reviews")&&!state.userContext?.isAdmin)return;const changed=state.view!==view;state.view=view;document.querySelectorAll(".nav-button").forEach(item=>item.classList.toggle("active",item.dataset.view===view));document.querySelectorAll(".view").forEach(item=>item.classList.toggle("hidden",item.id!==`view-${view}`));syncViewControls();if(changed)trackUsage("VIEW",view,"OPEN_VIEW");if(view==="overview")renderOverview();if(view==="benchmark")renderBenchmark();if(view==="evolution"||changed&&view==="overview"){state.trendsLoading=true;renderDashboard();scheduleTrends(0)}if(view==="alerts")loadAlerts();if(view==="admin")loadAdmin();if(view==="reviews")loadReviews();renderPrintContext()}
-    function syncViewControls(){const benchmark=state.view==="benchmark",privateView=state.view==="alerts"||state.view==="admin";$("benchmark-control").classList.toggle("hidden",!benchmark);$("filter-bar").classList.toggle("benchmark-mode",benchmark);$("filter-bar").setAttribute("aria-label",benchmark?"Filtros de benchmark":"Filtros globales");$("filter-wrap").classList.toggle("hidden",privateView);$("report-button").classList.toggle("hidden",privateView||state.view==="reviews")}
+    function activateView(view){if((["admin","reviews","analytics"].includes(view))&&!state.userContext?.isAdmin)return;const changed=state.view!==view;state.view=view;document.querySelectorAll(".nav-button").forEach(item=>item.classList.toggle("active",item.dataset.view===view));document.querySelectorAll(".view").forEach(item=>item.classList.toggle("hidden",item.id!==`view-${view}`));syncViewControls();if(changed)trackUsage("VIEW",view,"OPEN_VIEW");if(view==="overview")renderOverview();if(view==="benchmark")renderBenchmark();if(view==="evolution"||changed&&view==="overview"){state.trendsLoading=true;renderDashboard();scheduleTrends(0)}if(view==="alerts")loadAlerts();if(view==="admin")loadAdmin();if(view==="reviews")loadReviews();if(view==="analytics")loadAnalytics();renderPrintContext()}
+    function syncViewControls(){const benchmark=state.view==="benchmark",privateView=state.view==="alerts"||state.view==="admin";$("benchmark-control").classList.toggle("hidden",!benchmark);$("filter-bar").classList.toggle("benchmark-mode",benchmark);$("filter-bar").setAttribute("aria-label",benchmark?"Filtros de benchmark":"Filtros globales");$("filter-wrap").classList.toggle("hidden",privateView);$("report-button").classList.toggle("hidden",privateView||["reviews","analytics"].includes(state.view))}
     function bindFilters(){
       bindOptional("review-catalog-sync","click",syncReviewCatalog);
-      ["review-app","review-period","review-segment"].forEach(id=>bindOptional(id,"change",loadReviews));
-      bindOptional("review-filters","submit",event=>{event.preventDefault();loadReviews()});
-      bindOptional("review-filters","reset",()=>queueMicrotask(loadReviews));
+      bindOptional("review-filter-open","click",openReviewFilters);
+      bindOptional("review-filter-close","click",()=>$("review-filter-dialog").close());
+      bindOptional("review-filters","submit",event=>{
+        event.preventDefault();
+        const next={...reviewScope(),reviewKey:""};
+        for(const [key,id] of Object.entries(reviewControls))next[key]=$(id).value;
+        if(next.start&&next.end&&next.start>next.end){
+          $("review-end").setCustomValidity("La fecha final debe ser posterior o igual a la inicial.");
+          $("review-end").reportValidity();
+          return;
+        }
+        reviewDrilldown=reviewDrilldown&&{scope:next,label:"Filtros ajustados"};
+        reviewSelection=next;
+        $("review-filter-dialog").close();
+        loadReviews();
+      });
+      bindOptional("review-end","input",event=>event.target.setCustomValidity(""));
+      bindOptional("review-start","input",()=>$("review-end").setCustomValidity(""));
+      bindOptional("review-filters","reset",event=>{event.preventDefault();resetReviewFilters("DETRACTOR")});
+      bindOptional("review-show-all","click",()=>resetReviewFilters(""));
+      bindOptional("review-return","click",()=>activateView("analytics"));
+      ["analytics-period","analytics-segment","analytics-entity"].forEach(id=>bindOptional(id,"change",loadAnalytics));
       $("evolution-app").addEventListener("change",event=>{state.evolutionApp=event.target.value;trackUsage("FILTER",state.view,"EVOLUTION_APP",state.evolutionApp);renderEvolution();renderPrintContext()});
       $("benchmark-weighted").addEventListener("change",event=>{state.benchmarkWeighted=event.target.checked;renderBenchmark();renderPrintContext()});
       $("country-filter").addEventListener("change",event=>{state.country=event.target.value;syncGlobalControlState();filtersChanged()});
@@ -136,12 +155,12 @@
       $("platform-switch").querySelectorAll("button").forEach(button=>button.addEventListener("click",()=>{state.platform=button.dataset.platform;$("platform-switch").querySelectorAll("button").forEach(item=>{const active=item===button;item.classList.toggle("active",active);item.setAttribute("aria-pressed",String(active))});filtersChanged()}));syncGlobalControlState();
     }
     function syncGlobalControlState(){$("segment-filter").disabled=false;$("segment-filter").title="Selecciona el benchmark competitivo"}
-    function configureAdminNavigation(){["admin-nav","reviews-nav"].forEach(id=>$(id).classList.toggle("hidden",!state.userContext?.isAdmin))}
+    function configureAdminNavigation(){["admin-nav","reviews-nav","analytics-nav"].forEach(id=>$(id).classList.toggle("hidden",!state.userContext?.isAdmin))}
     function browserMarket(){return D.browserMarket(navigator.language,Intl.DateTimeFormat().resolvedOptions().timeZone,state.meta.countries.map(item=>item.code))}
     function preferenceKey(){return`markets-voc-preferences:${String(state.userContext?.email||"session").toLowerCase()}`}
     function restoreUserPreferences(){try{const saved=JSON.parse(localStorage.getItem(preferenceKey())||"{}");const countries=new Set(["ALL",...(state.meta?.countries||[]).map(item=>item.code)]);const platforms=new Set(["ALL",...D.config.platforms]);const segments=new Set(Object.keys(D.config.segmentLabels));if(countries.has(saved.country))state.country=saved.country;if(platforms.has(saved.platform))state.platform=saved.platform;if(segments.has(saved.benchmarkSegment))state.benchmarkSegment=saved.benchmarkSegment;if(/^\d{4}$/.test(saved.periodYear||""))state.periodYear=saved.periodYear;if(/^\d{2}$/.test(saved.periodMonth||""))state.periodMonth=saved.periodMonth}catch(ignored){}}
     function persistUserPreferences(){if(!state.meta)return;try{localStorage.setItem(preferenceKey(),JSON.stringify({country:state.country,platform:state.platform,benchmarkSegment:state.benchmarkSegment,periodYear:state.periodYear,periodMonth:state.periodMonth}))}catch(ignored){}}
-    function filtersChanged(){if(state.view==="reviews"){persistUserPreferences();syncReviewAppOptions();return}state.periodYear="";state.periodMonth="";state.trendsLoading=true;persistUserPreferences();trackUsage("FILTER",state.view,"GLOBAL_SCOPE",`${state.country}|${state.platform}`);renderDashboard();scheduleTrends(120)}
+    function filtersChanged(){if(["reviews","analytics"].includes(state.view)){persistUserPreferences();if(state.view==="analytics"){ $("analytics-entity").value="";loadAnalytics() }else{reviewDrilldown=null;reviewSelection={...reviewScope(),...selection()};loadReviews()}return}state.periodYear="";state.periodMonth="";state.trendsLoading=true;persistUserPreferences();trackUsage("FILTER",state.view,"GLOBAL_SCOPE",`${state.country}|${state.platform}`);renderDashboard();scheduleTrends(120)}
     function scheduleTrends(delay){window.clearTimeout(state.trendTimer);state.trendTimer=window.setTimeout(loadTrends,delay)}
     function trendRequest(){return{countryCode:state.country==="ALL"?"":state.country,platform:state.platform==="ALL"?"":state.platform,segment:"ALL",months:18,bbvaOnly:state.country==="ALL"&&state.view!=="evolution"}}
     function trendKey(request){return[request.countryCode||"ALL",request.platform||"ALL",request.segment,request.bbvaOnly?"BBVA":"ALL",request.months].join("|")}
@@ -180,91 +199,251 @@
     function appLogo(row){const url=state.meta.logos?.[row.appKey];return`<span class="app-logo">${url?`<img src="${U.esc(url)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">`:""}<b>${U.esc(initials(D.appName(row)))}</b></span>`}
 
     let reviewsRequest=0;
-    function syncReviewAppOptions(){
-      const filter=$("review-app");
-      const apps=[...new Set(D.selectionRows(state.snapshot,selection(),"ALL").filter(row=>row.platform!=="Huawei").map(D.appName))].sort((a,b)=>a.localeCompare(b));
-      const app=apps.includes(filter.value)?filter.value:"";
-      filter.innerHTML=U.option("","Todas",!app)+apps.map(name=>U.option(name,name,name===app)).join("");
-      return app;
+    const reviewControls={app:"review-app",period:"review-period",segment:"review-segment",search:"review-search",
+      topic:"review-topic",rating:"review-rating",start:"review-start",end:"review-end"};
+    let reviewDrilldown=null, analyticsRequest=0, reviewSegments, reviewSelection=null, reviewTopics={};
+    const reviewScope=()=>reviewDrilldown?.scope||reviewSelection||{...selection(),segment:"DETRACTOR"};
+    function resetReviewFilters(segment){
+      reviewDrilldown=null;
+      reviewSelection={...selection(),segment};
+      $("review-filter-dialog").close();
+      loadReviews();
     }
-    async function loadReviews(){
-      const token=++reviewsRequest, results=$("review-results"), app=syncReviewAppOptions();
-      $("review-filter-status").textContent=[state.country==="ALL"?"Todos los mercados":countryLabel(state.country),
-        state.platform==="ALL"?"Todas las plataformas":state.platform,app,$("review-period").value].filter(Boolean).join(" · ");
-      $("review-heatmap").innerHTML="";
-      if(state.platform==="Huawei"){
-        results.innerHTML=U.empty("Fuente sin cobertura","Las reseñas están disponibles para iOS y Android.");
-        return;
-      }
+    async function openReviewFilters(){
+      const dialog=$("review-filter-dialog"), scope=reviewScope();
+      const apps=[...new Set(D.selectionRows(state.snapshot,scope,"ALL").filter(row=>row.platform!=="Huawei").map(D.appName))];
+      if(scope.app&&!apps.includes(scope.app))apps.push(scope.app);
+      $("review-app").innerHTML=U.option("","Todas",!scope.app)+apps.sort().map(name=>U.option(name,name,name===scope.app)).join("");
+      $("review-topic").innerHTML=U.option("","Todos",!scope.topic)+Object.entries(reviewTopics)
+        .map(([id,label])=>U.option(id,label,id===scope.topic)).join("");
+      try{await prepareReviewSegments($("review-segment"))}
+      catch(error){$("review-filter-status").textContent=error.message;return}
+      if(state.view!=="reviews"||dialog.open)return;
+      for(const [key,id] of Object.entries(reviewControls))$(id).value=scope[key]||"";
+      $("review-end").setCustomValidity("");
+      dialog.showModal();
+    }
+    async function prepareReviewSegments(control){
+      if(control.options.length)return;
+      reviewSegments ||= callServer("reviews:segments").catch(error=>{reviewSegments=null;throw error});
+      const groups=await reviewSegments;
+      if(!control.options.length)control.innerHTML=U.option("","Ver todo",false)+
+        groups.map(group=>U.option(group.id,group.label,group.id==="DETRACTOR")).join("");
+    }
+    function openReviewCohort(scope,label){
+      reviewDrilldown={scope,label};
+      activateView("reviews");
+    }
+    async function loadReviews(page=0){
+      const token=++reviewsRequest, results=$("review-results");
+      const segment=$("review-segment"), pagination=$("review-pagination");
       results.innerHTML=U.loading();
-      loadReviewHeatmap({...selection(),app,period:$("review-period").value},token);
+      pagination.replaceChildren();
       try{
-        const language=appLanguage;
-        const segmentFilter=$("review-segment");
-        if(segmentFilter&&!segmentFilter.options.length){
-          const segments=await callServer("reviews:segments");
-          if(token!==reviewsRequest||state.view!=="reviews")return;
-          segmentFilter.innerHTML=segments.map(group=>U.option(group.id,group.label,group.id==="DETRACTOR")).join("");
-        }
-        const rows=await callServer("reviews",{...selection(),app,period:$("review-period").value,language,...(segmentFilter?{segment:segmentFilter.value}:{})});
-        if(token!==reviewsRequest)return;
-        results.innerHTML=rows.map(row=>`<article class="incident"><strong>${U.esc(row.app)} · ${U.esc(row.platform)} · ${fmt(row.rating,0)}/5</strong><time>${U.esc(dateLabel(row.date))}</time><p>${row.url?`<a href="${U.esc(row.url)}" target="_blank" rel="noopener noreferrer">Google Play · scraping web</a> · Mercado consultado: ${U.esc(row.countries.map(countryLabel).join(", "))} · País de la reseña: sin verificar${row.capturedAt?` · Captura: ${U.esc(dateLabel(row.capturedAt))}`:""}`:`App Store · ${U.esc(row.countries.map(countryLabel).join(", "))}`}</p>${row.title?`<p><strong>${U.esc(row.title)}</strong></p>`:""}<p>${U.esc(row.text)}</p>${row.translated?`<details><summary>Ver original</summary><p>${U.esc(row.original)}</p></details>`:""}</article>`).join("")||U.empty("Sin comentarios","No hay reseñas para esta selección.");
-      }catch(error){if(token===reviewsRequest)results.textContent=error.message}
+        await prepareReviewSegments(segment);
+        if(token!==reviewsRequest||state.view!=="reviews")return;
+        const scope=reviewScope();
+        $("review-return").classList.toggle("hidden",!reviewDrilldown);
+        $("review-filter-status").textContent=[reviewDrilldown?.label,
+          scope.country==="ALL"?"Todos los mercados":countryLabel(scope.country),
+          scope.platform==="ALL"?"Todas las plataformas":scope.platform,scope.app,scope.period].filter(Boolean).join(" · ");
+        const data=await callServer("review:page",{...scope,language:appLanguage,page});
+        if(token!==reviewsRequest||state.view!=="reviews")return;
+        reviewTopics=data.topics||{};
+        renderReviewMarkets(data,scope);
+        renderReviewChips(scope);
+        results.innerHTML=data.rows.map(row=>renderReviewCard(row,reviewTopics)).join("")||U.empty("Sin comentarios","No hay reseñas para esta selección.");
+        if(!data.total)return;
+        pagination.innerHTML=`<button type="button" data-step="-1" ${data.page===0?"disabled":""}>Anterior</button>
+          <span>${integer(data.total)} reseñas · Página ${data.page+1} de ${Math.ceil(data.total/data.size)}</span>
+          <button type="button" data-step="1" ${(data.page+1)*data.size>=data.total?"disabled":""}>Siguiente</button>`;
+        pagination.onclick=event=>{const step=event.target.closest("[data-step]")?.dataset.step;if(step)loadReviews(data.page+Number(step))};
+      }catch(error){if(token===reviewsRequest&&state.view==="reviews")results.textContent=error.message}
     }
-    async function loadReviewHeatmap(filters,token){
-      const target=$("review-heatmap");
-      target.innerHTML=U.loading("Calculando quejas por funcionalidad");
-      try{
-        const data=await callServer("review:insights",filters);
-        if(token!==reviewsRequest)return;
-        if(!data.configured){target.innerHTML=U.empty("Catálogo pendiente","Sincroniza el catálogo desde Administración.");return}
-        renderReviewMatrix(target,data,filters,token);
-      }catch(error){if(token===reviewsRequest)target.textContent=error.message}
-    }
-    function renderReviewMatrix(target,data,filters,token){
-      target.innerHTML=`<p>${integer(data.classified)} de ${integer(data.complaints)} reseñas de 1 a 3 estrellas clasificadas.</p>
-        <div class="period-controls">
-          <label>Eje <select class="select-control" data-axis><option value="entities">Entidad</option><option value="markets">Mercado consultado</option></select></label>
-          <label>Nivel <select class="select-control" data-level><option value="block">Bloque funcional</option><option value="feature">Funcionalidad / Suboperativa</option></select></label>
-          <label>Medida <select class="select-control" data-measure><option value="count">Volumen</option><option value="share">% del grupo</option></select></label>
-        </div><div class="admin-table-wrap" data-matrix></div><div class="period-controls" data-pages></div>
-        <section data-detail aria-live="polite"></section>`;
-      const axis=target.querySelector("[data-axis]"), level=target.querySelector("[data-level]"),
-        measure=target.querySelector("[data-measure]"), table=target.querySelector("[data-matrix]"),
-        pages=target.querySelector("[data-pages]"), detail=target.querySelector("[data-detail]");
-      let rowPage=0, columnPage=0, detailRequest=0;
-      function render(){
-        const groups=data.groups[axis.value], totals=new Map();
-        for(const group of groups)for(const [id,count] of Object.entries(group.counts)){
-          if((id.length===2)===(level.value==="block"))totals.set(id,(totals.get(id)||0)+count);
-        }
-        const ids=[...totals.keys()].sort((a,b)=>totals.get(b)-totals.get(a)||a.localeCompare(b));
-        const rows=groups.slice(rowPage*8,rowPage*8+8), columns=ids.slice(columnPage*5,columnPage*5+5);
-        const label=group=>axis.value==="markets"?countryLabel(group.label):group.label;
-        const value=(group,id)=>measure.value==="share"?100*(group.counts[id]||0)/group.total:group.counts[id]||0;
-        let max=1;
-        for(const group of groups)for(const id of ids)max=Math.max(max,value(group,id));
-        table.innerHTML=columns.length?`<table class="admin-table review-matrix"><caption>Quejas por ${axis.value==="markets"?"mercado consultado":"entidad"}. Selecciona una celda para ver las reseñas.</caption>
-          <thead><tr><th scope="col">${axis.value==="markets"?"Mercado":"Entidad"}</th>${columns.map(id=>`<th scope="col">${U.esc(data.topics[id])}</th>`).join("")}</tr></thead>
-          <tbody>${rows.map((group,row)=>`<tr><th scope="row">${U.esc(label(group))}<small> · ${integer(group.total)} reseñas</small></th>${columns.map(id=>{
-            const count=group.counts[id]||0, shown=measure.value==="share"?fmt(value(group,id),1)+" %":integer(count);
-            return `<td class="review-heat-cell" style="--heat:${Math.round(75*value(group,id)/max)}%">${count?`<button type="button" data-cell="${row}|${id}" aria-label="${U.esc(label(group)+" · "+data.topics[id]+" · "+count+" reseñas")}">${shown}</button>`:shown}</td>`;
-          }).join("")}</tr>`).join("")}</tbody></table>`:U.empty("Sin coincidencias","No hay quejas clasificadas para este nivel.");
-        pages.innerHTML=[["Grupos",rowPage,groups.length,8,"row"],["Categorías",columnPage,ids.length,5,"column"]].map(([label,index,total,size,key])=>
-          `<span>${label} ${total?index+1:0}/${Math.ceil(total/size)}</span><button type="button" class="alert-button secondary" data-page="${key}|-1" aria-label="${label}: anterior" ${index===0?"disabled":""}>‹</button><button type="button" class="alert-button secondary" data-page="${key}|1" aria-label="${label}: siguiente" ${(index+1)*size>=total?"disabled":""}>›</button>`).join("");
-        table.onclick=async event=>{
-          const button=event.target.closest("[data-cell]");
-          if(!button)return;
-          const [row,id]=button.dataset.cell.split("|"), group=rows[Number(row)], request=++detailRequest;
-          const scope=axis.value==="markets"?{country:group.label}:{app:group.label};
-          const title=label(group)+" · "+data.topics[id];
-          detail.innerHTML=U.loading("Cargando reseñas de la celda");
-          try{
-            const items=await callServer("reviews",{...filters,...scope,topic:id,language:appLanguage});
-            if(request!==detailRequest||token!==reviewsRequest)return;
-            detail.innerHTML=`<h4>${U.esc(title)}</h4><p>${integer(items.length)} reseñas recientes</p>${items.map(item=>`<article class="incident"><strong>${U.esc(item.app)} · ${integer(item.rating)}/5</strong><time>${U.esc(dateLabel(item.date))}</time><p>${U.esc(item.text)}</p>${item.url?`<a href="${U.esc(item.url)}" target="_blank" rel="noopener noreferrer">Google Play · scraping web</a>`:""}</article>`).join("")}`;
-          }catch(error){if(request===detailRequest&&token===reviewsRequest)detail.textContent=error.message}
+    function renderReviewMarkets(data,scope){
+      const target=$("review-markets");
+      target.replaceChildren();
+      for(const [code,count] of [["ALL",data.allMarkets],...Object.entries(data.counts).sort()]){
+        const label=code==="ALL"?"Todos los mercados":countryLabel(code);
+        const button=document.createElement("button");
+        button.type="button";
+        button.className="alert-button secondary";
+        button.textContent=`${label} · ${integer(count)}`;
+        button.setAttribute("aria-pressed",String(scope.country===code));
+        button.onclick=()=>{
+          reviewSelection={...scope,country:code};
+          if(reviewDrilldown)reviewDrilldown={scope:reviewSelection,label:"Filtros ajustados"};
+          loadReviews();
         };
+        target.append(button);
+      }
+    }
+    function renderReviewChips(scope){
+      const target=$("review-filter-status");
+      for(const [key,id] of Object.entries(reviewControls)){
+        if(!scope[key])continue;
+        const value=key==="topic"?reviewTopics[scope[key]]||scope[key]:key==="segment"?
+          [...$("review-segment").options].find(option=>option.value===scope[key])?.textContent||scope[key]:scope[key];
+        const button=document.createElement("button");
+        button.type="button";
+        button.className="alert-button secondary";
+        button.textContent=`${value} ×`;
+        button.setAttribute("aria-label",`Quitar filtro ${value}`);
+        button.onclick=()=>{
+          reviewSelection={...scope,[key]:""};
+          if(reviewDrilldown)reviewDrilldown={scope:reviewSelection,label:"Filtros ajustados"};
+          loadReviews();
+        };
+        target.append(" ",button);
+      }
+    }
+    function renderReviewCard(row,topics={}){
+      const markets=row.countries.map(countryLabel).join(", ");
+      const blocks=(row.blocks.length?row.blocks:["general"]).map(id=>topics[id]).filter(Boolean).join(" · ");
+      return `<article class="incident"><strong>${U.esc(row.app)} · ${U.esc(row.platform)} · ${fmt(row.rating,0)}/5</strong>
+        <time>${U.esc(dateLabel(row.date))}</time><p>Mercado consultado · ${U.esc(markets)}${row.platform==="Android"?" · Storefront sin verificar":""}</p>
+        ${row.title?`<h4>${U.esc(row.title)}</h4>`:""}<p>${U.esc(row.text)}</p>
+        ${row.translated?`<details><summary>Ver original</summary><p>${U.esc(row.original)}</p></details>`:""}
+        ${row.url?`<a href="${U.esc(row.url)}" target="_blank" rel="noopener noreferrer">Abrir en Google Play</a>`:""}
+        ${blocks?`<p>${U.esc(blocks)}</p>`:""}<small>Autor y respuesta del desarrollador sin datos verificables</small></article>`;
+    }
+    async function loadAnalytics(){
+      const token=++analyticsRequest, target=$("review-heatmap"), segment=$("analytics-segment"), entity=$("analytics-entity");
+      target.innerHTML=U.loading();
+      for(const id of ["review-balance","review-deltas","review-examples","review-recent"])$(id).replaceChildren();
+      try{
+        await prepareReviewSegments(segment);
+        if(token!==analyticsRequest||state.view!=="analytics")return;
+        const scope={...selection(),segment:segment.value,period:$("analytics-period").value};
+        const data=await callServer("review:analytics",{...scope,entity:entity.value});
+        if(token!==analyticsRequest||state.view!=="analytics")return;
+        const local=data.entityOptions.includes(entity.value)?entity.value:"";
+        entity.innerHTML=U.option("","Todas",!local)+data.entityOptions.map(name=>U.option(name,name,name===local)).join("");
+        scope.start=data.window.start;
+        scope.end=data.window.end;
+        renderReviewMatrix(target,data,scope);
+        const allStars={...scope,segment:""};
+        renderReviewBalance($("review-balance"),data,allStars);
+        $("review-deltas").textContent=scope.period?"Selecciona la ventana de 365 días para comparar saldos.":"Cambio del saldo al incorporar los últimos 30 días.";
+        if(!scope.period&&!data.deltas.length)$("review-deltas").append(" Muestra insuficiente para comparar bloques.");
+        for(const item of data.deltas){
+          const row=document.createElement("article"), heading=document.createElement("h4"), bar=document.createElement("div");
+          heading.textContent=`${item.label} · ${signed(item.delta)} pp`;
+          bar.className="review-delta-bar";
+          bar.setAttribute("aria-hidden","true");
+          const fill=document.createElement("span");
+          const width=Math.abs(item.delta)/4;
+          fill.style.width=`${width}%`;
+          fill.style.left=`${item.delta<0?50-width:50}%`;
+          fill.classList.toggle("negative",item.delta<0);
+          bar.append(fill);
+          row.append(heading,bar);
+          const cohort={...allStars,app:local,topic:item.id};
+          const earlyEnd=new Date(Date.parse(data.window.recent)-86400000).toISOString().slice(0,10);
+          appendReviewCohort(row,`335 días · ${fmt(item.before,1)} pp · ${item.earlyTotal} reseñas`,{...cohort,end:earlyEnd});
+          appendReviewCohort(row,`365 días · ${fmt(item.after,1)} pp · ${item.total} reseñas`,cohort);
+          $("review-deltas").append(row);
+        }
+        const examples=$("review-examples");
+        examples.textContent=data.examples.length?"Ejemplos seleccionados por similitud textual dentro de cada bloque.":"Sin ejemplos para este ámbito.";
+        for(const {block,review} of data.examples){
+          examples.insertAdjacentHTML("beforeend",renderReviewCard(review));
+          appendReviewCohort(examples,`Abrir reseña · ${data.topics[block]}`,{...allStars,app:local,reviewKey:review.key});
+        }
+        $("review-recent").textContent="El origen de datos no acredita identidades recurrentes ni respuestas del desarrollador.";
+        appendReviewCohort($("review-recent"),`${integer(data.recentTotal)} reseñas únicas`,{...allStars,app:local,start:data.window.recent});
+      }catch(error){if(token===analyticsRequest&&state.view==="analytics")target.textContent=error.message}
+    }
+    function renderReviewBalance(target,data,scope){
+      target.innerHTML='<p>Saldo en puntos porcentuales sobre todas las estrellas del mes. Una línea interrumpida indica un mes sin datos.</p>';
+      if(!data.monthly.length)return;
+      const filter=document.createElement("select"), plot=document.createElement("div"), details=document.createElement("div");
+      filter.className="select-control";
+      filter.setAttribute("aria-label","Aislar entidad en saldo mensual");
+      filter.innerHTML=U.option("","Todas las entidades",true)+data.entityOptions.map(name=>U.option(name,name,false)).join("");
+      const months=[];
+      const cursor=new Date((scope.period?scope.period:data.window.start.slice(0,7))+"-01T00:00:00Z");
+      const last=scope.period||data.window.end.slice(0,7);
+      while(cursor.toISOString().slice(0,7)<=last){
+        months.push(cursor.toISOString().slice(0,7));
+        cursor.setUTCMonth(cursor.getUTCMonth()+1);
+      }
+      const score=point=>100*(point.promoters-point.detractors)/point.total;
+      const x=index=>45+index*630/Math.max(1,months.length-1), y=value=>120-value;
+      function render(){
+        const entities=filter.value?[filter.value]:data.entityOptions;
+        const series=entities.map((entity,index)=>{
+          const points=new Map(data.monthly.filter(point=>point.entity===entity).map(point=>[point.month,point]));
+          const path=[], dots=[];
+          let connected=false;
+          months.forEach((month,column)=>{
+            const point=points.get(month);
+            if(!point){connected=false;return}
+            const px=x(column), py=y(score(point));
+            path.push(`${connected?"L":"M"}${px} ${py}`);
+            connected=true;
+            dots.push(`<circle cx="${px}" cy="${py}" r="4"><title>${U.esc(entity)} · ${month} · ${fmt(score(point),1)} pp · ${point.total} reseñas</title></circle>`);
+          });
+          const color=T.chart.palette[index%T.chart.palette.length];
+          return `<g fill="${color}"><path d="${path.join(" ")}" fill="none" stroke="${color}" stroke-width="2"/>${dots.join("")}</g>`;
+        });
+        plot.innerHTML=`<svg viewBox="0 0 720 250" role="img" aria-label="Saldo mensual entre menos cien y cien puntos porcentuales">
+          ${[100,0,-100].map(value=>`<text x="4" y="${y(value)+4}" fill="currentColor" font-size="12">${value}</text><path d="M40 ${y(value)}H685" stroke="currentColor" opacity=".2"/>`).join("")}
+          ${series.join("")}<text x="40" y="242" fill="currentColor" font-size="12">${months[0]}</text>
+          <text x="635" y="242" fill="currentColor" font-size="12">${months.at(-1)}</text></svg>`;
+        details.replaceChildren();
+        for(const point of data.monthly.filter(item=>entities.includes(item.entity)).sort((a,b)=>a.month.localeCompare(b.month)||a.entity.localeCompare(b.entity))){
+          const label=`${point.entity} · ${point.month} · ${fmt(score(point),1)} pp · ${point.promoters} promotoras / ${point.detractors} detractoras / ${point.total} reseñas`;
+          appendReviewCohort(details,label,{...scope,app:point.entity,period:point.month});
+        }
+      }
+      filter.onchange=render;
+      const list=document.createElement("details"), caption=document.createElement("summary");
+      caption.textContent="Ver denominadores y abrir reseñas";
+      list.append(caption,details);
+      target.append(filter,plot,list);
+      render();
+    }
+    function appendReviewCohort(target,label,scope){
+      const button=document.createElement("button");
+      button.type="button";
+      button.className="alert-button secondary";
+      button.textContent=label;
+      button.onclick=()=>openReviewCohort(scope,label);
+      target.append(button);
+    }
+    function renderReviewMatrix(target,data,scope){
+      const totals=new Map();
+      for(const group of data.entities)for(const [id,count] of Object.entries(group.counts)){
+        totals.set(id,(totals.get(id)||0)+count);
+      }
+      const ids=[...totals.keys()].sort((a,b)=>totals.get(b)-totals.get(a)||a.localeCompare(b));
+      const max=Math.max(1,...data.entities.flatMap(group=>Object.values(group.counts)));
+      const summary=`${integer(data.classified)} clasificadas de ${integer(data.total)} reseñas · ${data.window.start} a ${data.window.end}`;
+      target.innerHTML=`<div data-summary></div><label>Medida <select data-measure class="select-control"><option value="count">N.º de opiniones</option><option value="share">% de opiniones</option></select></label>
+        <div data-matrix class="admin-table-wrap"></div><div data-pages class="period-controls"></div>`;
+      appendReviewCohort(target.querySelector("[data-summary]"),summary,scope);
+      const table=target.querySelector("[data-matrix]"), pages=target.querySelector("[data-pages]"), measure=target.querySelector("[data-measure]");
+      let rowPage=0,columnPage=0;
+      function render(){
+        const rows=data.entities.slice(rowPage*12,rowPage*12+12), columns=ids.slice(columnPage*8,columnPage*8+8);
+        table.innerHTML=columns.length?`<table class="admin-table review-matrix">
+          <thead><tr><th scope="col">Entidad</th>${columns.map(id=>`<th scope="col">${U.esc(data.topics[id])}</th>`).join("")}</tr></thead>
+          <tbody>${rows.map((group,index)=>`<tr><th scope="row">${U.esc(group.label)} <small>${integer(group.total)} reseñas</small></th>${columns.map(id=>{
+            const count=group.counts[id]||0, share=Math.round(100*count/group.total);
+            const percent=measure.value==="share", shown=percent?`${share} %`:integer(count);
+            const heat=Math.ceil(4*count/(percent?group.total:max))*18;
+            const label=`${group.label} · ${data.topics[id]} · ${count} reseñas · ${share} %`;
+            return `<td class="review-heat-cell" data-topic="${U.esc(data.topics[id])}" style="--heat:${heat}%">${count?`<button type="button" data-cell="${index}|${id}" title="${U.esc(label)}" aria-label="${U.esc(label)}">${shown}</button>`:shown}</td>`;
+          }).join("")}</tr>`).join("")}</tbody></table>`:U.empty("Sin reseñas","No hay opiniones para este ámbito.");
+        table.onclick=event=>{
+          const cell=event.target.closest("[data-cell]");
+          if(!cell)return;
+          const [index,id]=cell.dataset.cell.split("|");
+          openReviewCohort({...scope,app:rows[index].label,topic:id},cell.getAttribute("aria-label"));
+        };
+        pages.innerHTML=[["Entidades",rowPage,data.entities.length,12,"row"],["Bloques",columnPage,ids.length,8,"column"]].map(([label,index,total,size,key])=>
+          `<span>${label} ${total?index+1:0}/${Math.ceil(total/size)}</span><button type="button" data-page="${key}|-1" aria-label="${label}: anterior" ${index===0?"disabled":""}>‹</button><button type="button" data-page="${key}|1" aria-label="${label}: siguiente" ${(index+1)*size>=total?"disabled":""}>›</button>`).join("");
       }
       pages.onclick=event=>{
         const button=event.target.closest("[data-page]");
@@ -273,9 +452,7 @@
         if(key==="row")rowPage+=Number(step);else columnPage+=Number(step);
         render();
       };
-      [axis,level,measure].forEach(control=>control.addEventListener("change",()=>{
-        rowPage=columnPage=0;detailRequest++;detail.innerHTML="";render();
-      }));
+      measure.onchange=render;
       render();
     }
     async function syncReviewCatalog(event){
@@ -329,7 +506,24 @@
     function handleAdminTabKeydown(event){if(!["ArrowLeft","ArrowRight","Home","End"].includes(event.key))return;const tabs=[...document.querySelectorAll(".admin-tab")],current=Math.max(0,tabs.indexOf(document.activeElement));let next=event.key==="Home"?0:event.key==="End"?tabs.length-1:event.key==="ArrowRight"?(current+1)%tabs.length:(current-1+tabs.length)%tabs.length;event.preventDefault();activateAdminTab(tabs[next].dataset.adminTab,true)}
     async function loadAdmin(force=false){if(!state.userContext?.isAdmin)return;if(state.adminLoading||state.adminLoaded&&!force){if(state.adminLoaded)renderAdmin();return}state.adminLoading=true;$("admin-loading").classList.remove("hidden");$("admin-content").classList.add("hidden");try{state.adminCenter=await callServer("admin:get");state.adminLoaded=true;renderAdmin()}catch(error){$("admin-loading").textContent=error?.message||String(error);showError(error)}finally{state.adminLoading=false}}
     function statusBadge(value){const text=String(value||"—"),tone=/^(OK|ACTIVE|VERIFIED|SENT)$/i.test(text)?"ok":/PARTIAL|WARN|PENDING/i.test(text)?"warn":/ERROR|FAIL|DENIED|DISABLED/i.test(text)?"bad":"";return`<span class="admin-status ${tone}">${U.esc(text)}</span>`}
-    function renderAdmin(){const center=state.adminCenter;if(!center)return;$("admin-loading").classList.add("hidden");$("admin-content").classList.remove("hidden");$("admin-generated-at").textContent=`Generado ${dateTimeLabel(center.generatedAt)} · ${center.administrator}`;$("admin-kpis").innerHTML=U.metrics([{label:"Suscripciones activas",value:String(center.summary.activeSubscribers),foot:`${center.summary.pausedSubscribers} pausadas`,accent:true},{label:"Ejecuciones visibles",value:String(center.summary.recentRuns),foot:"Ventana operativa reciente"},{label:"Incidencias recientes",value:String(center.summary.recentIssues),foot:"FETCH_LOG distinto de OK",valueClass:center.summary.recentIssues?"delta-down":"delta-up"},{label:"Eventos de alerta",value:String(center.summary.recentAlertEvents),foot:"Auditoría reciente"}]);renderAdminSystem(center.system);renderAdminUsage(center.usage||{});renderAdminRuns(center.recentRuns||[]);renderAdminIssues(center.fetchIssues||[]);renderAdminSubscriberFilters();renderAdminSubscribers(center.subscribers||[]);renderAdminAlerts(center.recentAlerts||[]);activateAdminTab(state.adminTab)}
+    function renderAdmin(){const center=state.adminCenter;if(!center)return;$("admin-loading").classList.add("hidden");$("admin-content").classList.remove("hidden");$("admin-generated-at").textContent=`Generado ${dateTimeLabel(center.generatedAt)} · ${center.administrator}`;$("admin-kpis").innerHTML=U.metrics([{label:"Suscripciones activas",value:String(center.summary.activeSubscribers),foot:`${center.summary.pausedSubscribers} pausadas`,accent:true},{label:"Ejecuciones visibles",value:String(center.summary.recentRuns),foot:"Ventana operativa reciente"},{label:"Incidencias recientes",value:String(center.summary.recentIssues),foot:"FETCH_LOG distinto de OK",valueClass:center.summary.recentIssues?"delta-down":"delta-up"},{label:"Eventos de alerta",value:String(center.summary.recentAlertEvents),foot:"Auditoría reciente"}]);renderAdminSystem(center.system);renderAdminJobs(center.system,center.recentRuns||[]);renderAdminUsage(center.usage||{});renderAdminRuns(center.recentRuns||[]);renderAdminIssues(center.fetchIssues||[]);renderAdminSubscriberFilters();renderAdminSubscribers(center.subscribers||[]);renderAdminAlerts(center.recentAlerts||[]);activateAdminTab(state.adminTab)}
+    function renderAdminJobs(system,runs){
+      const latest=runs[0];
+      const done=latest?latest.appsOk+latest.appsNoRating+latest.appsError:0;
+      const progress=latest?.appsTotal>0&&done<=latest.appsTotal
+        ? `<progress class="admin-job-progress" value="${done}" max="${latest.appsTotal}" aria-label="Cobertura registrada de la última carga"></progress><span>${done} / ${latest.appsTotal} aplicaciones</span>`
+        : "";
+      const cards=[
+        {name:"Carga diaria de ratings",schedule:system.dailySchedule,status:latest?.status||"Sin ejecución registrada",progress},
+        {name:"Monitor de salud",schedule:system.healthSchedule,status:system.healthMonitorEnabled?"Habilitado":"Deshabilitado"},
+        {name:"Newsletter mensual",schedule:system.newsletterSchedule,status:system.newsletterDeliveryEnabled?"Habilitada":"Deshabilitada"},
+        ...(system.reviewJobs||[]).map(job=>({name:job.label,schedule:`Ventana diaria · ${job.schedule}`,timeZone:job.timeZone,
+          status:job.installed===null?"Activador sin verificar":job.installed?"Activador instalado":"Sin activador instalado"}))
+      ];
+      $("admin-jobs").innerHTML=cards.map(card=>`<article><strong>${U.esc(card.name)}</strong>
+        <p class="admin-job-schedule">${U.esc(card.schedule)} · ${U.esc(card.timeZone||system.timeZone)}</p>
+        <span>${U.esc(card.status)}</span>${card.progress||""}</article>`).join("");
+    }
     function renderAdminSystem(system){const items=[{label:"Backend / Web",value:`${system.codeVersion} / ${system.webVersion}`},{label:"URL canónica",value:system.webAppUrl?"Abrir Web App":"Sin despliegue activo",href:system.webAppUrl},{label:"Carga diaria",value:`${system.dailySchedule} · ${system.timeZone}`},{label:"Monitor de salud",value:system.healthMonitorEnabled?`Activo · ${system.healthSchedule}`:"Desactivado"},{label:"Newsletter mensual",value:system.newsletterDeliveryEnabled?`Activa · ${system.newsletterSchedule}`:"Desactivada"},{label:"Destinatario técnico",value:system.healthRecipient||"Sin configurar"},{label:"Envío de alertas",value:system.emailDeliveryEnabled?"Activo":"Desactivado"},{label:"Remitente",value:system.senderAddress||"Sin alias",meta:system.senderVerificationStatus||system.senderError},{label:"Administradores",value:(system.administratorEmails||[]).join(", ")||"Sin configurar"}];$("admin-system").innerHTML=items.map(item=>`<article><small>${U.esc(item.label)}</small>${item.href?`<a class="admin-system-link" href="${U.esc(item.href)}" target="_blank" rel="noopener noreferrer">${U.esc(item.value)}</a>`:`<strong>${U.esc(item.value)}</strong>`}${item.meta?`<span>${U.esc(item.meta)}</span>`:""}</article>`).join("")}
     function usageViewLabel(value){return({overview:"Resumen",benchmark:"Benchmark",evolution:"Evolución",alerts:"Alertas",admin:"Administración"})[String(value||"").toLowerCase()]||value||"—"}
     function usageActionLabel(value){return({GLOBAL_SCOPE:"Cambio de mercado/plataforma",BENCHMARK_SEGMENT:"Cambio de segmento",PERIOD_YEAR:"Filtro de año",PERIOD_MONTH:"Filtro de mes",OPEN_VIEW:"Apertura de sección",ADMIN_TAB:"Navegación de administración",ALERTS_SAVE:"Guardar alertas",ALERTS_RESET:"Restaurar alertas",ALERTS_TEST:"Probar alertas",SUBSCRIBER_SAVE:"Gestionar suscripción",RATING_RECOVERY:"Recuperación manual",REPORT_DOWNLOAD:"Descarga de informe",CLIENT_ERROR:"Error de interfaz",RUNTIME_ERROR:"Error de ejecución",PROMISE_REJECTION:"Operación interrumpida",SUBSCRIBER_ERROR:"Error al gestionar suscripción"})[value]||String(value||"").replaceAll("_"," ").toLowerCase()}
