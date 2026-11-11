@@ -330,9 +330,10 @@ test("translation repair reaches historical gaps and preserves successful cells 
   const calls = [];
   let fail = true, generations = 0;
   const sheet = { getLastRow: () => 2, getRange: (_row, column) => ({
-    getValues: () => [row.slice()], setValues: ([values]) => row.splice(column - 1, values.length, ...values)
+    getValues: () => [row.slice(column - 1)], setValues: ([values]) => row.splice(column - 1, values.length, ...values)
   }) };
   Object.assign(runtime, {
+    marketsReviewRecoveryMonth_: value => value.slice(0,7),
     requireMarketsReviewOwner_: () => ({ss:{}}), marketsReviewSheet_: () => sheet, openMarketsSpreadsheet_: () => ({}),
     LockService: { getUserLock: () => ({tryLock:()=>true, releaseLock(){}}) },
     PropertiesService: { getScriptProperties: () => ({

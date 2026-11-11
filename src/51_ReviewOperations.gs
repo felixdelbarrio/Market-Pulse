@@ -153,3 +153,145 @@ function advanceMarketsReviewJob_(job, pipeline) {
       throw new Error('Etapa de reseñas desconocida.');
   }
 }
+
+const MARKETS_REVIEW_RECOVERY_KEY = 'MARKETS_REVIEW_SELECTIVE_RECOVERY';
+const MARKETS_REVIEW_RECOVERY_LIMITS = Object.freeze({ Android: 20, iOS: 10 });
+
+function marketsReviewRecoveryListings_(ss) {
+  const catalog = readAppCatalog_(ss);
+  const android = new Map();
+  for (const app of catalog) {
+    if (app.platform !== 'Android' || !/^[A-Z]{2}$/.test(app.countryCode) ||
+        !/^[a-z][a-z0-9_]*(\.[a-z0-9_]+)+$/i.test(app.packageName)) continue;
+    const listing = app.packageName + '|' + app.countryCode;
+    android.set(listing, android.has(listing) ? null : app);
+  }
+  return [...marketsIosReviewListings_(catalog), ...[...android.values()].filter(Boolean)];
+}
+
+function marketsReviewRecoveryState_(properties) {
+  const state = safeJsonParse_(properties.getProperty(MARKETS_REVIEW_RECOVERY_KEY));
+  if (!state) return null;
+  const { cursor, seen, ...visible } = state;
+  return visible;
+}
+
+function getMarketsReviewRecoveryOptions() {
+  const { ss } = requireMarketsReviewOwner_();
+  return {
+    listings: marketsReviewRecoveryListings_(ss).map(({ appKey, appName, countryCode, platform }) =>
+      ({ appKey, appName, countryCode, platform })),
+    state: marketsReviewRecoveryState_(PropertiesService.getScriptProperties())
+  };
+}
+
+function marketsReviewRecoveryScope_(ss, scope) {
+  const month = scope?.month;
+  if (typeof month !== 'string' || !/^20\d{2}-(0[1-9]|1[0-2])$/.test(month) ||
+      month > Utilities.formatDate(new Date(), MARKETS_CONFIG.timeZone, 'yyyy-MM')) {
+    throw new Error('Selecciona un mes válido.');
+  }
+  const app = marketsReviewRecoveryListings_(ss).find(listing => listing.appKey === scope?.appKey);
+  if (!app) throw new Error('El escaparate no es válido o no se puede identificar de forma unívoca.');
+  return { app, month };
+}
+
+function marketsReviewRecoveryMonth_(value) {
+  return value instanceof Date ? Utilities.formatDate(value, MARKETS_CONFIG.timeZone, 'yyyy-MM') : String(value).slice(0, 7);
+}
+
+function getMarketsReviewCoverage(scope) {
+  const { ss } = requireMarketsReviewOwner_();
+  const { app, month } = marketsReviewRecoveryScope_(ss, scope);
+  const sheet = marketsReviewSheet_(ss);
+  const listing = String(app.platform === 'Android' ? app.packageName : app.appId);
+  const adjacent = offset => new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5)) - 1 + offset, 1)).toISOString().slice(0, 7);
+  const months = [adjacent(-1), month, adjacent(1)];
+  const counts = new Map(months.map(key => [key, new Set()]));
+  const height = sheet.getLastRow() - 1;
+  const rows = height > 0 ? sheet.getRange(2, 3, height, 5).getValues() : [];
+  for (const [markets, platform, store, reviewId, date] of rows) {
+    if (reviewId && platform === app.platform && String(store) === listing && String(markets).split(',').includes(app.countryCode)) {
+      counts.get(marketsReviewRecoveryMonth_(date))?.add(String(reviewId));
+    }
+  }
+  const values = months.map(key => ({ month: key, count: counts.get(key).size }));
+  return { values, status: values[1].count ? 'Observadas' :
+    values[0].count && values[2].count ? 'Posible hueco' : 'Sin reseñas observadas' };
+}
+
+/** Una página por acción: no toca los cursores del supervisor ni ejecuta alertas. */
+function runMarketsReviewRecovery(scope) {
+  const { ss } = requireMarketsReviewOwner_();
+  const { app, month } = marketsReviewRecoveryScope_(ss, scope);
+  const properties = PropertiesService.getScriptProperties();
+  const lock = LockService.getUserLock();
+  if (!lock.tryLock(1000)) return { deferred: true };
+  try {
+    const android = app.platform === 'Android';
+    const pageLimit = MARKETS_REVIEW_RECOVERY_LIMITS[app.platform];
+    const previous = safeJsonParse_(properties.getProperty(MARKETS_REVIEW_RECOVERY_KEY));
+    const sameScope = previous?.appKey === app.appKey && previous.month === month;
+    if (!sameScope && previous && !previous.complete) {
+      throw new Error('Termina la recuperación abierta o ciérrala antes de seleccionar otro periodo.');
+    }
+    const state = sameScope ? previous : { appKey: app.appKey, month, pages: 0, added: 0, updated: 0,
+      unchanged: 0, failures: 0, cursor: android ? '' : 1, seen: [], complete: false, pageLimit };
+    if (state.complete || state.retryAt > Date.now()) return marketsReviewRecoveryState_(properties);
+    const pausedUntil = android ? Number(properties.getProperty('MARKETS_PLAY_REVIEW_PAUSE')) : 0;
+    if (pausedUntil > Date.now()) return { deferred: true, retryAt: pausedUntil };
+    try {
+      const page = android ? fetchPlayReviewPage_(app, state.cursor) : fetchMarketsIosReviewPage_(app, state.cursor);
+      const selected = page.rows.filter(row => marketsReviewRecoveryMonth_(android ? row.date : row[6]) === month);
+      const result = { added: 0, updated: 0 };
+      if (selected.length) {
+        const sheet = marketsReviewSheet_(ss), width = marketsReviewWidth_(sheet), height = sheet.getLastRow() - 1;
+        const rows = height > 0 ? sheet.getRange(2, 1, height, width).getValues() : [];
+        const known = new Map(rows.map((row, index) => [row[0], { row, index: index + 2 }]));
+        if (android) storePlayReviews_(sheet, properties, known, app, selected, result, width);
+        else storeMarketsIosReviews_(sheet, properties, known, selected, result, width);
+        const unique = new Set(selected.map(row => android ? row.id : row[0]));
+        state.unchanged += Math.max(0, unique.size - result.added - result.updated);
+      }
+      state.added += result.added;
+      state.updated += result.updated;
+      state.pages++;
+      state.retryAt = 0;
+      const next = android ? page.next : page.more ? state.cursor + 1 : null;
+      if (android && state.cursor) state.seen.push(marketsReviewDigest_(state.cursor).slice(0, 12));
+      if (!next) state.reason = 'source_end';
+      else if (state.pages >= pageLimit) state.reason = 'page_limit';
+      else if (android && (!/^[\x21-\x7e]{1,7800}$/.test(next) ||
+          state.seen.includes(marketsReviewDigest_(next).slice(0, 12)))) state.reason = 'invalid_cursor';
+      else state.cursor = next;
+      state.complete = Boolean(state.reason);
+      if (state.complete) state.cursor = null;
+    } catch (error) {
+      state.failures++;
+      state.retryAt = Date.now() + (error.rateLimited ? 3600000 : 60000 * 2 ** Math.min(state.failures, 5));
+      if (error.rateLimited) properties.setProperty('MARKETS_PLAY_REVIEW_PAUSE', String(state.retryAt));
+      if (android && state.cursor && /HTTP (400|404)$/.test(error.message)) {
+        state.reason = 'invalid_cursor';
+        state.complete = true;
+        state.cursor = null;
+      }
+      console.warn('Recuperación selectiva: ' + error.message);
+    }
+    properties.setProperty(MARKETS_REVIEW_RECOVERY_KEY, JSON.stringify(state));
+    return marketsReviewRecoveryState_(properties);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function closeMarketsReviewRecovery() {
+  requireMarketsReviewOwner_();
+  const lock = LockService.getUserLock();
+  if (!lock.tryLock(1000)) return { deferred: true };
+  try {
+    PropertiesService.getScriptProperties().deleteProperty(MARKETS_REVIEW_RECOVERY_KEY);
+    return { closed: true };
+  } finally {
+    lock.releaseLock();
+  }
+}

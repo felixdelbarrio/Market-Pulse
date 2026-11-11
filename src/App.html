@@ -281,8 +281,8 @@
 
     function initializeApp(){try{window.addEventListener("error",event=>trackUsage("ERROR",state.view,"RUNTIME_ERROR",event.message));window.addEventListener("unhandledrejection",event=>trackUsage("ERROR",state.view,"PROMISE_REJECTION",event.reason?.message||event.reason));$("view-benchmark").querySelector(".global-controls-slot").append($("global-controls").content);$("view-benchmark").querySelector(".report-slot").append($("report-control").content);bindNavigation();bindFilters();bindInteractions();initializeLanguage();document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="hidden")flushUsage()});const viewportChanged=()=>{if(state.meta&&state.view==="evolution")renderEvolution();if(state.view==="evolution")renderBalanceEntity?.()};if(typeof mobileViewport.addEventListener==="function")mobileViewport.addEventListener("change",viewportChanged);else if(typeof mobileViewport.addListener==="function")mobileViewport.addListener(viewportChanged);$("dialog-close").innerHTML=U.icon("close");$("admin-subscriber-close").innerHTML=U.icon("close");$("loader-retry").addEventListener("click",loadBootstrap);loadBootstrap()}catch(error){showStartupFailure(error)}}
 
-    function serverTimeoutMs(method){return method==="admin:ratings:recover"?360000:method==="admin:newsletter:test"?120000:method==="bootstrap"?20000:method==="admin:get"?30000:20000}
-    function callServer(method,argument){const started=performance.now();return new Promise((resolve,reject)=>{if(!window.google?.script?.run)return reject(new Error("El dashboard debe abrirse desde el despliegue de Apps Script."));let settled=false;const finish=callback=>value=>{if(settled)return;settled=true;window.clearTimeout(timer);trackUsage("PERFORMANCE",state.view,method,`RPC ${Math.round(performance.now()-started)} ${callback===resolve?"OK":"ERROR"}`);callback(value)};const timer=window.setTimeout(()=>finish(reject)(new Error("Market Pulse no ha respondido a tiempo. Reintenta la carga.")),serverTimeoutMs(method));const runner=google.script.run.withSuccessHandler(finish(resolve)).withFailureHandler(finish(error=>reject(new Error(error?.message||error))));if(method==="bootstrap")runner.getMarketsDashboardBootstrap();else if(method==="user:context")runner.getMarketsUserContext();else if(method==="admin:get")runner.getMarketsAdminDashboard();else if(method==="admin:subscriber:save")runner.saveMarketsAdminSubscriber(argument.email,argument.preferences);else if(method==="admin:newsletter:test")runner.sendMarketsAdminNewsletterTestEmail(argument);else if(method==="admin:reviews:restart")runner.requestMarketsReviewPipeline();else if(method==="admin:ratings:recover")runner.requestMarketsAdminRatingRecovery();else if(method==="reviews:segments")runner.getMarketsReviewSegments();else if(method==="reviews")runner.getMarketsReviews(argument);else if(method==="review:page")runner.getMarketsReviewPage(argument);else if(method==="review:analytics")runner.getMarketsReviewAnalytics(argument);else if(method==="review:configure")runner.configureMarketsReviewInsights();else if(method==="performance")runner.getMarketsPerformance();else if(method==="trends")runner.getMarketsDashboardTrends(argument);else if(method==="alerts:get")runner.getMarketsAlertPreferences();else if(method==="alerts:save")runner.saveMarketsAlertPreferences(argument);else if(method==="alerts:reset")runner.resetMarketsAlertPreferences();else if(method==="alerts:test")runner.sendMarketsAlertTestEmail();else finish(reject)(new Error("Operacion no soportada: "+method))})}
+    function serverTimeoutMs(method){return method==="admin:ratings:recover"?360000:method==="admin:newsletter:test"?120000:method==="bootstrap"?20000:method.startsWith("admin:reviews:")?60000:method==="admin:get"?30000:20000}
+    function callServer(method,argument){const started=performance.now();return new Promise((resolve,reject)=>{if(!window.google?.script?.run)return reject(new Error("El dashboard debe abrirse desde el despliegue de Apps Script."));let settled=false;const finish=callback=>value=>{if(settled)return;settled=true;window.clearTimeout(timer);trackUsage("PERFORMANCE",state.view,method,`RPC ${Math.round(performance.now()-started)} ${callback===resolve?"OK":"ERROR"}`);callback(value)};const timer=window.setTimeout(()=>finish(reject)(new Error("Market Pulse no ha respondido a tiempo. Reintenta la carga.")),serverTimeoutMs(method));const runner=google.script.run.withSuccessHandler(finish(resolve)).withFailureHandler(finish(error=>reject(new Error(error?.message||error))));if(method==="bootstrap")runner.getMarketsDashboardBootstrap();else if(method==="user:context")runner.getMarketsUserContext();else if(method==="admin:get")runner.getMarketsAdminDashboard();else if(method==="admin:subscriber:save")runner.saveMarketsAdminSubscriber(argument.email,argument.preferences);else if(method==="admin:newsletter:test")runner.sendMarketsAdminNewsletterTestEmail(argument);else if(method==="admin:reviews:restart")runner.requestMarketsReviewPipeline();else if(method==="admin:reviews:options")runner.getMarketsReviewRecoveryOptions();else if(method==="admin:reviews:coverage")runner.getMarketsReviewCoverage(argument);else if(method==="admin:reviews:recover")runner.runMarketsReviewRecovery(argument);else if(method==="admin:reviews:close")runner.closeMarketsReviewRecovery();else if(method==="admin:ratings:recover")runner.requestMarketsAdminRatingRecovery();else if(method==="reviews:segments")runner.getMarketsReviewSegments();else if(method==="reviews")runner.getMarketsReviews(argument);else if(method==="review:page")runner.getMarketsReviewPage(argument);else if(method==="review:analytics")runner.getMarketsReviewAnalytics(argument);else if(method==="review:configure")runner.configureMarketsReviewInsights();else if(method==="performance")runner.getMarketsPerformance();else if(method==="trends")runner.getMarketsDashboardTrends(argument);else if(method==="alerts:get")runner.getMarketsAlertPreferences();else if(method==="alerts:save")runner.saveMarketsAlertPreferences(argument);else if(method==="alerts:reset")runner.resetMarketsAlertPreferences();else if(method==="alerts:test")runner.sendMarketsAlertTestEmail();else finish(reject)(new Error("Operacion no soportada: "+method))})}
     function validateBootstrap(data){if(!data||!data.meta||!Array.isArray(data.snapshot)||!Array.isArray(data.trends))throw new Error("El servidor ha devuelto una respuesta incompleta. Actualiza el despliegue de Market Pulse.");return data}
     async function loadBootstrap(){if(state.bootstrapLoading)return;state.bootstrapLoading=true;const loader=$("loader");loader.classList.remove("done","failed");$("loader-title").textContent="Preparando Market Pulse…";$("loader-detail").classList.add("hidden");$("loader-retry").classList.add("hidden");try{const data=validateBootstrap(await callServer("bootstrap"));state.meta=data.meta;state.userContext=data.userContext||{email:"",isAdmin:false};if(Array.isArray(data.reviewSegments))reviewSegments=Promise.resolve(data.reviewSegments);state.snapshot=data.snapshot;state.trends=data.trends;state.consolidated=data.consolidated||null;state.trendsLoading=false;state.trendCache.set("ALL|ALL|ALL|BBVA|18",state.trends);state.country=browserMarket();buildControls();configureAdminNavigation();renderRunStatus();renderDashboard();startUsageTracking();if(state.country!=="ALL"||state.platform!=="ALL")scheduleTrends(0);$("footer-version").textContent=`Contrato ${data.meta.codeVersion} · Web ${data.meta.webVersion||"1"}`;loader.classList.add("done")}catch(error){showStartupFailure(error)}finally{state.bootstrapLoading=false}}
     function showStartupFailure(error){const loader=$("loader");if(!loader)return;loader.classList.remove("done");loader.classList.add("failed");$("loader-title").textContent="No hemos podido iniciar Market Pulse";$("loader-detail").textContent=error?.message||String(error);$("loader-detail").classList.remove("hidden");$("loader-retry").classList.remove("hidden")}
@@ -316,6 +316,9 @@
     function bindFilters(){
       bindOptional("review-catalog-sync","click",syncReviewCatalog);
       bindOptional("admin-review-restart","click",restartReviewPipeline);
+      bindOptional("admin-review-recovery","toggle",loadReviewRecoveryOptions);
+      bindOptional("admin-review-recovery-form","submit",submitReviewRecovery);
+      bindOptional("admin-review-recovery-close","click",closeReviewRecovery);
       $("review-enabled").addEventListener("change",syncAlertRuleInputs);
       bindRadarFilters();
       bindEvolutionFilters();
@@ -994,9 +997,64 @@
       }catch(error){$("admin-review-status").textContent=error.message}
       finally{button.disabled=false}
     }
+    let reviewRecoveryLoaded=false,reviewRecoveryBusy=false;
+    function setReviewRecoveryBusy(busy){
+      reviewRecoveryBusy=busy;
+      $("admin-review-recovery-form").querySelectorAll("button, input, select").forEach(control=>control.disabled=busy||!reviewRecoveryLoaded);
+    }
+    function renderReviewRecovery(result){
+      const close=$("admin-review-recovery-close"), target=$("admin-review-recovery-result");
+      if(!result){close.classList.add("hidden");target.textContent="";return}
+      if(result.deferred){target.textContent=result.retryAt?`Escaparate en pausa hasta ${dateTimeLabel(new Date(result.retryAt).toISOString())}.`:"La captura de reseñas está en curso. Vuelve a intentarlo.";return}
+      close.classList.remove("hidden");
+      const reason={source_end:"Fin de las páginas disponibles",page_limit:"Límite de páginas alcanzado",invalid_cursor:"La tienda no devolvió una continuación válida"}[result.reason];
+      const progress=`${result.pages} / ${result.pageLimit} páginas · ${result.added} nuevas · ${result.updated} actualizadas · ${result.unchanged} ya existentes · ${result.failures} incidencias`;
+      const retry=result.retryAt>Date.now()&&!result.complete?`Reintento a partir de ${dateTimeLabel(new Date(result.retryAt).toISOString())}`:"";
+      target.textContent=[result.month,progress,reason,retry].filter(Boolean).join(" · ");
+    }
+    async function loadReviewRecoveryOptions(event){
+      if(!event.currentTarget.open||reviewRecoveryLoaded||reviewRecoveryBusy)return;
+      const target=$("admin-review-recovery-result");
+      setReviewRecoveryBusy(true);
+      try{
+        const {listings,state:previous}=await callServer("admin:reviews:options");
+        const ordered=[...listings].sort((a,b)=>countryLabel(a.countryCode).localeCompare(countryLabel(b.countryCode))||a.appName.localeCompare(b.appName)||a.platform.localeCompare(b.platform));
+        $("admin-review-recovery-listing").innerHTML=ordered.map(item=>U.option(item.appKey,`${countryLabel(item.countryCode)} · ${item.appName} · ${item.platform}`,previous?.appKey===item.appKey)).join("");
+        $("admin-review-recovery-month").value=previous?.month||state.meta.dataDate.slice(0,7);
+        reviewRecoveryLoaded=ordered.length>0;
+        renderReviewRecovery(previous);
+        if(!ordered.length)target.textContent="No hay escaparates disponibles para recuperar.";
+      }catch(error){target.textContent=error.message}
+      finally{setReviewRecoveryBusy(false)}
+    }
+    async function submitReviewRecovery(event){
+      event.preventDefault();
+      if(reviewRecoveryBusy||!reviewRecoveryLoaded)return;
+      const scope={appKey:$("admin-review-recovery-listing").value,month:$("admin-review-recovery-month").value};
+      const recover=event.submitter?.value==="recover";
+      const target=$(recover?"admin-review-recovery-result":"admin-review-coverage");
+      target.textContent=recover?"Consultando una página de la tienda…":"Consultando la cobertura…";
+      setReviewRecoveryBusy(true);
+      try{
+        const result=await callServer(recover?"admin:reviews:recover":"admin:reviews:coverage",scope);
+        if(recover){$("admin-review-coverage").textContent="";renderReviewRecovery(result)}
+        else target.textContent=`${result.status} · ${result.values.map(item=>`${item.month}: ${integer(item.count)}`).join(" · ")}`;
+      }catch(error){target.textContent=error.message}
+      finally{setReviewRecoveryBusy(false)}
+    }
+    async function closeReviewRecovery(){
+      if(reviewRecoveryBusy)return;
+      setReviewRecoveryBusy(true);
+      try{
+        const result=await callServer("admin:reviews:close");
+        if(result.closed)renderReviewRecovery(null);else renderReviewRecovery(result);
+      }catch(error){$("admin-review-recovery-result").textContent=error.message}
+      finally{setReviewRecoveryBusy(false)}
+    }
     function renderAdminJobs(system,runs){
       const pipeline=system.reviewPipeline;
       $("admin-review-restart").classList.toggle("hidden",!pipeline?.canRestart);
+      $("admin-review-recovery").classList.toggle("hidden",!pipeline?.canRestart);
       const latest=runs[0];
       const done=latest?latest.appsOk+latest.appsNoRating+latest.appsError:0;
       const progress=latest?.appsTotal>0&&done<=latest.appsTotal
@@ -1026,7 +1084,7 @@
     function renderUsagePeople(id,rows){if(!rows.length){$(id).innerHTML=U.empty("Sin usuarios medidos","La clasificación aparecerá con los primeros accesos.");return}$(id).innerHTML=`<table class="admin-table"><thead><tr><th>Usuario</th><th>Días</th><th>Sesiones</th><th>Vistas</th><th>Último uso</th></tr></thead><tbody>${rows.map(row=>`<tr><td>${U.esc(row.email)}</td><td>${integer(row.activeDays)}</td><td>${integer(row.sessions)}</td><td>${integer(row.views)}</td><td>${U.esc(dateTimeLabel(row.lastSeenAt))}${row.errors?`<small class="delta-down">${integer(row.errors)} incidencias</small>`:""}</td></tr>`).join("")}</tbody></table>`}
     function renderUsageIncidents(rows){if(!rows.length){$("admin-usage-incidents").innerHTML=U.empty("Sin incidencias de experiencia","No se han registrado errores en la interfaz.");return}$("admin-usage-incidents").innerHTML=rows.map(row=>`<article class="admin-list-item usage-incident"><div><strong>${U.esc(row.email)}</strong><span>${U.esc(`${usageViewLabel(row.view)} · ${usageActionLabel(row.action)}`)}</span><span>${U.esc(row.detail||"Sin detalle")}</span></div><div>${statusBadge("ERROR")}<time>${U.esc(dateTimeLabel(row.timestamp))}</time></div></article>`).join("")}
     function renderAdminRuns(rows){if(!rows.length){$("admin-runs").innerHTML=U.empty("Sin ejecuciones","RUN_LOG todavía no contiene actividad.");return}$("admin-runs").innerHTML=`<table class="admin-table"><thead><tr><th>Inicio</th><th>Estado</th><th>Apps</th><th>Errores</th><th>Filas</th><th>Duración</th><th>Alertas</th></tr></thead><tbody>${rows.map(row=>`<tr><td>${U.esc(dateTimeLabel(row.startedAt))}<small>${U.esc(row.runId)}</small></td><td>${statusBadge(row.status)}</td><td>${integer(row.appsOk)} / ${integer(row.appsTotal)}</td><td>${integer(row.appsError)}</td><td>${integer(row.rowsUpserted)}</td><td>${D.finite(row.durationMs)?fmt(row.durationMs/1000,1)+" s":"—"}</td><td>${integer(row.emailsSent)}<small>${U.esc(row.deliveryStatus||"")}</small></td></tr>`).join("")}</tbody></table>`}
-    function renderAdminIssues(rows){if(!rows.length){$("admin-issues").innerHTML=U.empty("Sin incidencias recientes","Las capturas de la ventana revisada terminaron correctamente.");return}$("admin-issues").innerHTML=rows.map(row=>`<article class="admin-list-item"><div><strong>${U.esc(`${countryLabel(row.countryCode)} ${countryLabel(row.countryCode)} · ${row.appKey}`)}</strong><span>${U.esc(row.detail||"Sin detalle")}</span></div><div><span>${U.esc(row.platform)}</span>${statusBadge(row.status)}<time>${U.esc(dateTimeLabel(row.fetchedAt))}</time></div></article>`).join("")}
+    function renderAdminIssues(rows){if(!rows.length){$("admin-issues").innerHTML=U.empty("Sin incidencias recientes","Las capturas de la ventana revisada terminaron correctamente.");return}$("admin-issues").innerHTML=rows.map(row=>`<article class="admin-list-item"><div><strong>${U.esc(`${countryLabel(row.countryCode)} · ${row.appKey}`)}</strong><span>${U.esc(row.detail||"Sin detalle")}</span></div><div><span>${U.esc(row.platform)}</span>${statusBadge(row.status)}<time>${U.esc(dateTimeLabel(row.fetchedAt))}</time></div></article>`).join("")}
     function adminFilterScopeOptions(kind){
       const options=adminScopeOptions(kind).map(item=>kind==="country"&&item.value!=="ALL"?
         {...item,label:countryLabel(item.value)}:item);

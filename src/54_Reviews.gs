@@ -132,23 +132,12 @@ function collectMarketsReviews_(limit = Infinity) {
   try {
     const ss = openMarketsSpreadsheet_(), sheet = marketsReviewSheet_(ss);
     const width = marketsReviewWidth_(sheet);
-    const listings = new Map();
-    readAppCatalog_(ss).filter(app => app.platform === 'iOS' && /^[A-Z]{2}$/.test(app.countryCode) &&
-      /^\d+$/.test(app.appId)).forEach(app => {
-      const listing = app.countryCode + '|' + app.appId;
-      if (!listings.has(listing)) listings.set(listing, []);
-      listings.get(listing).push(app);
-    });
-    const ambiguous = [...listings.values()].filter(group => group.length > 1).length;
-    if (ambiguous) console.warn('Escaparates iOS ambiguos excluidos: ' + ambiguous);
-    const apps = [...listings.values()].filter(group => group.length === 1).map(group => group[0])
-      .sort((a, b) => a.appKey.localeCompare(b.appKey));
+    const apps = marketsIosReviewListings_(readAppCatalog_(ss));
     const lastRow = sheet.getLastRow();
     const stored = lastRow > 1 ? sheet.getRange(2, 1, lastRow - 1, width).getValues() : [];
     const known = new Map(stored.map((row, index) => [row[0], {
       index: index + 2, row
     }]));
-    const translationKey = 'MARKETS_REVIEWS_TRANSLATION_ROW';
     const properties = PropertiesService.getScriptProperties(), cursorKey = 'MARKETS_REVIEWS_CURSOR';
     const [cursor, cursorPage] = JSON.parse(properties.getProperty(cursorKey) || '["",1]');
     const start = Math.max(0, apps.findIndex(app => app.appKey === cursor));
@@ -168,54 +157,11 @@ function collectMarketsReviews_(limit = Infinity) {
             console.log(JSON.stringify(summary));
             return summary;
           }
-          const response = UrlFetchApp.fetch(marketsReviewFeedUrl_(app, page), {
-            muteHttpExceptions: true, followRedirects: false
-          });
-          if (response.getResponseCode() !== 200) throw new Error('HTTP ' + response.getResponseCode());
-          const result = parseMarketsReviewFeed_(app, page, response.getContentText());
-          const pending = new Map();
-          const previousUpdates = updated;
-          const captured = new Date().toISOString();
-          for (const row of result.rows) {
-            row[14] = captured;
-            const previous = known.get(row[0]);
-            if (!previous) {
-              if (!pending.has(row[0]) || Date.parse(row[6]) > Date.parse(pending.get(row[0])[6])) {
-                pending.set(row[0], row.slice(0, width));
-              }
-              continue;
-            }
-            const newer = Date.parse(row[6]) > Date.parse(previous.row[6]);
-            const textChanged = newer && row[10] !== previous.row[10];
-            const merged = width === MARKETS_REVIEW_METADATA_COLUMN ? mergeMarketsReviewMetadata_(
-              marketsReviewMetadata_(previous.row), marketsReviewMetadata_(row)) : '';
-            if (!newer && (!merged || merged === previous.row[15])) continue;
-            if (textChanged) {
-              const nextTranslation = Number(properties.getProperty(translationKey)) || 2;
-              properties.setProperty(translationKey, String(Math.min(nextTranslation, previous.index)));
-            }
-            const updatedRow = newer ? row.slice(0, width) : previous.row.slice();
-            if (newer && !textChanged) updatedRow.splice(11, 3, ...previous.row.slice(11, 14));
-            updatedRow[14] = captured;
-            if (width === MARKETS_REVIEW_METADATA_COLUMN) updatedRow[15] = merged;
-            const update = updatedRow.slice(6);
-            sheet.getRange(previous.index, 7, 1, update.length).setValues([update.map(marketsReviewLiteral_)]);
-            known.set(row[0], { index: previous.index, row: updatedRow });
-            updated++;
-          }
-          if (pending.size) {
-            const nextRow = sheet.getLastRow() + 1;
-            const rows = [...pending.values()];
-            ensureSheetCapacity_(sheet, nextRow + rows.length - 1, width);
-            sheet.getRange(nextRow, 1, rows.length, width)
-              .setValues(rows.map(row => row.map(marketsReviewLiteral_)));
-            rows.forEach((row, i) => known.set(row[0], { index: nextRow + i, row }));
-            added += rows.length;
-          }
-          if (pending.size || updated > previousUpdates) {
-            SpreadsheetApp.flush();
-            advanceMarketsReviewGeneration_(properties);
-          }
+          const result = fetchMarketsIosReviewPage_(app, page);
+          const summary = { added: 0, updated: 0 };
+          storeMarketsIosReviews_(sheet, properties, known, result.rows, summary, width);
+          added += summary.added;
+          updated += summary.updated;
           if (!result.more) break;
         }
         if (retry && !(retry.after > Date.now())) properties.deleteProperty(retryKey);
@@ -236,24 +182,120 @@ function collectMarketsReviews_(limit = Infinity) {
   }
 }
 
-/** Auditoría o reparación de un lote histórico, priorizando escaparates turcos. */
+function marketsIosReviewListings_(catalog) {
+  const listings = new Map();
+  catalog.filter(app => app.platform === 'iOS' && /^[A-Z]{2}$/.test(app.countryCode) &&
+    /^\d+$/.test(app.appId)).forEach(app => {
+    const listing = app.countryCode + '|' + app.appId;
+    if (!listings.has(listing)) listings.set(listing, []);
+    listings.get(listing).push(app);
+  });
+  const ambiguous = [...listings.values()].filter(group => group.length > 1).length;
+  if (ambiguous) console.warn('Escaparates iOS ambiguos excluidos: ' + ambiguous);
+  return [...listings.values()].filter(group => group.length === 1).map(group => group[0])
+    .sort((a, b) => a.appKey.localeCompare(b.appKey));
+}
+
+function fetchMarketsIosReviewPage_(app, page) {
+  const response = UrlFetchApp.fetch(marketsReviewFeedUrl_(app, page), {
+    muteHttpExceptions: true, followRedirects: false
+  });
+  if (response.getResponseCode() !== 200) throw new Error('HTTP ' + response.getResponseCode());
+  return parseMarketsReviewFeed_(app, page, response.getContentText());
+}
+
+function storeMarketsIosReviews_(sheet, properties, known, reviews, summary, width) {
+  const translationKey = 'MARKETS_REVIEWS_TRANSLATION_ROW';
+  const previousUpdates = summary.updated;
+  const pending = new Map();
+  const captured = new Date().toISOString();
+  for (const row of reviews) {
+    row[14] = captured;
+    const previous = known.get(row[0]);
+    if (!previous) {
+      if (!pending.has(row[0]) || Date.parse(row[6]) > Date.parse(pending.get(row[0])[6])) {
+        pending.set(row[0], row.slice(0, width));
+      }
+      continue;
+    }
+    const newer = Date.parse(row[6]) > Date.parse(previous.row[6]);
+    const textChanged = newer && row[10] !== previous.row[10];
+    const merged = width === MARKETS_REVIEW_METADATA_COLUMN ? mergeMarketsReviewMetadata_(
+      marketsReviewMetadata_(previous.row), marketsReviewMetadata_(row)) : '';
+    if (!newer && (!merged || merged === previous.row[15])) continue;
+    if (textChanged) {
+      const nextTranslation = Number(properties.getProperty(translationKey)) || 2;
+      properties.setProperty(translationKey, String(Math.min(nextTranslation, previous.index)));
+    }
+    const updatedRow = newer ? row.slice(0, width) : previous.row.slice();
+    if (newer && !textChanged) updatedRow.splice(11, 3, ...previous.row.slice(11, 14));
+    updatedRow[14] = captured;
+    if (width === MARKETS_REVIEW_METADATA_COLUMN) updatedRow[15] = merged;
+    const update = updatedRow.slice(6);
+    sheet.getRange(previous.index, 7, 1, update.length).setValues([update.map(marketsReviewLiteral_)]);
+    known.set(row[0], { index: previous.index, row: updatedRow });
+    summary.updated++;
+  }
+  if (pending.size) {
+    const nextRow = sheet.getLastRow() + 1;
+    const rows = [...pending.values()];
+    ensureSheetCapacity_(sheet, nextRow + rows.length - 1, width);
+    sheet.getRange(nextRow, 1, rows.length, width)
+      .setValues(rows.map(row => row.map(marketsReviewLiteral_)));
+    rows.forEach((row, i) => known.set(row[0], { index: nextRow + i, row }));
+    summary.added += rows.length;
+  }
+  if (pending.size || summary.updated > previousUpdates) {
+    SpreadsheetApp.flush();
+    advanceMarketsReviewGeneration_(properties);
+  }
+}
+
+/** Auditoría de sólo lectura: devuelve recuentos, nunca textos ni autores. */
 function auditMarketsReviewTranslations() {
-  const result = processMarketsReviewTranslations_(true, true);
-  console.log(JSON.stringify(result));
-  return result;
+  const { ss } = requireMarketsReviewOwner_();
+  const lock = LockService.getUserLock();
+  if (!lock.tryLock(1000)) return { deferred: true };
+  try {
+    const sheet = marketsReviewSheet_(ss), height = sheet.getLastRow() - 1;
+    const rows = height > 0 ? sheet.getRange(2, 2, height, 13).getValues() : [];
+    const groups = new Map(), totals = new Map();
+    const increment = (map, scope, original, values) => {
+      const key = JSON.stringify(scope);
+      if (!map.has(key)) map.set(key, { scope, total: 0, emptyOriginal: 0, pending: 0, missing: [0,0,0], identical: [0,0,0] });
+      const group = map.get(key);
+      group.total++;
+      group.emptyOriginal += Number(!original);
+      group.pending += Number(Boolean(original) && values.some(value => !value));
+      values.forEach((value, i) => { group.missing[i] += Number(!value); group.identical[i] += Number(Boolean(original) && value === original); });
+    };
+    for (const row of rows) {
+      const [app, markets, platform, , , date, , , , original, ...values] = row;
+      const turkey = String(markets).split(',').includes('TR');
+      increment(totals, [turkey ? 'TR' : 'otros', platform], original, values);
+      if (turkey) increment(groups, ['TR', platform, marketsReviewRecoveryMonth_(date), app], original, values);
+    }
+    const summary = [...totals.values()];
+    const result = { checked: rows.length, pending: summary.reduce((sum, group) => sum + group.pending, 0),
+      languages: ['es', 'en', 'tr'], totals: summary, groups: [...groups.values()] };
+    console.log(JSON.stringify({ checked: result.checked, pending: result.pending, languages: result.languages, totals: summary }));
+    return result;
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function repairMarketsReviewTranslations() {
-  const result = processMarketsReviewTranslations_(true, false);
+  const result = processMarketsReviewTranslations_(true);
   console.log(JSON.stringify(result));
   return result;
 }
 
 function translateMarketsReviews_() {
-  return processMarketsReviewTranslations_(false, false);
+  return processMarketsReviewTranslations_(false);
 }
 
-function processMarketsReviewTranslations_(historical, preview) {
+function processMarketsReviewTranslations_(historical) {
   const ss = historical ? requireMarketsReviewOwner_().ss : openMarketsSpreadsheet_();
   const lock = LockService.getUserLock();
   if (!lock.tryLock(1000)) return { deferred: true };
@@ -263,32 +305,23 @@ function processMarketsReviewTranslations_(historical, preview) {
     const key = historical ? 'MARKETS_TRANSLATION_HISTORY_CURSOR' : 'MARKETS_REVIEWS_TRANSLATION_ROW';
     const cursor = historical ? JSON.parse(properties.getProperty(key) || '{"row":2,"turkey":true}') :
       { row: Number(properties.getProperty(key)) || 2, turkey: false };
-    const previewRow = Number(properties.getProperty('MARKETS_TRANSLATION_AUDIT_ROW')) || 2;
-    const first = preview ? previewRow : cursor.row;
-    const rows = last >= first ? sheet.getRange(first, 1, Math.min(100, last - first + 1), 14).getValues() : [];
+    const first = cursor.row;
+    // Historical scans can skip healthy rows faster without spending additional translation calls.
+    const scanLimit = historical ? 1500 : 100;
+    const rows = last >= first ? sheet.getRange(first, 1, Math.min(scanLimit, last - first + 1), 14).getValues() : [];
     const deadline = Date.now() + 235000;
     const languages = ['es', 'en', 'tr'];
-    const groups = new Map();
-    let translated = 0, failed = 0, pending = 0, checked = first - 2, failedRow = null;
+    let translated = 0, failed = 0, pending = 0, checked = first - 2, attempted = 0, failedRow = null;
     try {
       for (const row of rows) {
-        if (Date.now() >= deadline) break;
+        if (Date.now() >= deadline || attempted >= 100) break;
         const index = checked + 2;
         checked++;
         const turkey = String(row[2]).split(',').includes('TR');
         const [original, ...values] = row.slice(10, 14);
-        if (preview) {
-          const date = row[6] instanceof Date ? Utilities.formatDate(row[6], MARKETS_CONFIG.timeZone, 'yyyy-MM') : String(row[6]).slice(0, 7);
-          const scope = JSON.stringify([turkey ? 'TR' : 'otros', row[3], date, row[1]]);
-          const group = groups.get(scope) || { scope: JSON.parse(scope), total: 0, emptyOriginal: 0, missing: [0,0,0], identical: [0,0,0] };
-          group.total++;
-          group.emptyOriginal += Number(!original);
-          values.forEach((value,i) => { group.missing[i] += Number(!value); group.identical[i] += Number(Boolean(original) && value === original); });
-          groups.set(scope, group);
-        }
-        if (!original || values.every(Boolean) || (!preview && cursor.turkey && !turkey)) continue;
+        if (!original || values.every(Boolean) || (cursor.turkey && !turkey)) continue;
         pending++;
-        if (preview) continue;
+        attempted++;
         let rowFailed = false;
         const result = values.map((value,i) => {
           if (value) return value;
@@ -311,8 +344,7 @@ function processMarketsReviewTranslations_(historical, preview) {
       }
     }
     const end = checked >= last - 1;
-    if (preview) properties.setProperty('MARKETS_TRANSLATION_AUDIT_ROW', String(end ? 2 : checked + 2));
-    else if (historical) properties.setProperty(key, JSON.stringify({
+    if (historical) properties.setProperty(key, JSON.stringify({
       row: end ? 2 : checked + 2, turkey: end ? !cursor.turkey : cursor.turkey,
       hadFailures: !end && (Boolean(cursor.hadFailures) || pending > 0)
     }));
@@ -330,8 +362,7 @@ function processMarketsReviewTranslations_(historical, preview) {
     }
     if (failed) console.warn('Filas de traducción pendientes de reintento: ' + failed);
     return { translated, checked, eligible: Math.max(0, last - 1), failed, pending,
-      complete: end && (preview || (!cursor.turkey && !cursor.hadFailures && pending === 0)),
-      ...(preview ? { languages, groups: [...groups.values()] } : {}) };
+      complete: end && !cursor.turkey && !cursor.hadFailures && pending === 0 };
   } finally {
     lock.releaseLock();
   }
