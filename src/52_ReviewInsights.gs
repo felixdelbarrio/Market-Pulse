@@ -476,7 +476,7 @@ function getMarketsReviewAnalytics(filters) {
     window.end = [today, shiftReviewDay_(new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 10), -1)].sort()[0];
     if (window.start >= start) window.start = (year - 1) + '-01-01';
   }
-  filters.entity ||= MARKETS_REVIEW_ENTITY;
+  filters.entity = filters.entity || MARKETS_REVIEW_ENTITY;
   const language = filters.language || 'es';
   delete filters.language;
   const data = readMarketsReviewCache_(ss, 'analytics', filters, window, () => {
