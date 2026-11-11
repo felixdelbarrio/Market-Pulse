@@ -435,7 +435,7 @@ function queryMarketsReviews_(ss, filters, window, includeTranslations = false, 
       identities.set(identity, { row, markets: String(row[2]), key: row[0], matches: row[0] === filters.reviewKey });
     } else {
       previous.markets += ',' + row[2];
-      previous.matches ||= row[0] === filters.reviewKey;
+      previous.matches = previous.matches || row[0] === filters.reviewKey;
       if (String(row[0]) < String(previous.key)) previous.key = row[0];
       if (Date.parse(row[6]) > Date.parse(previous.row[6])) previous.row = row;
     }
