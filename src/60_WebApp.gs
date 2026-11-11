@@ -15,10 +15,15 @@ var MARKETS_WEB = Object.freeze({
 });
 
 /** Publica el dashboard bajo el control de acceso del despliegue de Apps Script. */
-function doGet() {
-  return HtmlService.createTemplateFromFile('Index').evaluate()
+function doGet(event) {
+  if (event?.parameter?.alertFeedback) return renderMarketsAlertFeedbackPage_(event.parameter.alertFeedback);
+  const page = HtmlService.createTemplateFromFile('Index').evaluate()
     .setTitle('Market Pulse · BBVA Banca de Empresas e Instituciones')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover');
+  // HtmlService renders the browser tab outside the app's iframe.
+  try { page.setFaviconUrl(includeMarketsWebPartial_('RadarFavicon').trim()); }
+  catch (error) { console.warn('No se pudo configurar el favicon local: ' + error.message); }
+  return page;
 }
 
 /** Compone los modulos de presentacion sin introducir peticiones HTTP adicionales. */

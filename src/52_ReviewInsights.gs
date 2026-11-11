@@ -306,3 +306,177 @@ function reviewTopicRules_(ss) {
     ? compileReviewRules_(catalog.getRange(2, 1, catalog.getLastRow() - 1, 3).getDisplayValues())
     : new Map();
 }
+
+function marketsReviewWindow_() {
+  const end = Utilities.formatDate(new Date(), MARKETS_CONFIG.timeZone, 'yyyy-MM-dd');
+  const day = Date.parse(end + 'T00:00:00Z');
+  const offset = days => new Date(day - days * 86400000).toISOString().slice(0, 10);
+  return { start: offset(364), recent: offset(29), end };
+}
+
+function getMarketsReviewPage(filters) {
+  const { ss } = requireMarketsAdministrator_();
+  const window = marketsReviewWindow_();
+  filters = normalizeMarketsReviewFilters_(filters);
+  return readMarketsReviewCache_(ss, 'page', filters, window, () => {
+    const rows = queryMarketsReviews_(ss, { ...filters, country: 'ALL' }, window);
+    return paginateMarketsReviews_(rows, { ...filters, topics: marketsReviewTopics_(ss) }, window);
+  });
+}
+
+function normalizeMarketsReviewFilters_(filters = {}) {
+  const country = filters.country || 'ALL', platform = filters.platform || 'ALL';
+  if (!/^(ALL|[A-Z]{2})$/.test(country) || !['ALL', 'iOS', 'Android', 'Huawei'].includes(platform)) {
+    throw new Error('Mercado o plataforma no válidos.');
+  }
+  for (const value of [filters.start, filters.end]) {
+    if (value && (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) ||
+        !Number.isFinite(Date.parse(value)) || new Date(value).toISOString().slice(0, 10) !== value)) {
+      throw new Error('Fecha no válida.');
+    }
+  }
+  if (filters.start && filters.end && filters.start > filters.end) throw new Error('Intervalo no válido.');
+  if (filters.period && !/^\d{4}-(0[1-9]|1[0-2])$/.test(filters.period)) throw new Error('Mes no válido.');
+  if (filters.topic && !/^(general|\d{2})$/.test(filters.topic)) throw new Error('Bloque no válido.');
+  if (filters.rating !== undefined && filters.rating !== '' && !/^[0-5]$/.test(filters.rating)) {
+    throw new Error('Número de estrellas no válido.');
+  }
+  return { ...filters, country, platform };
+}
+
+function paginateMarketsReviews_(rows, filters, window) {
+  const counts = Object.create(null);
+  const matching = [];
+  for (const row of rows) {
+    for (const country of row.countries) counts[country] = (counts[country] || 0) + 1;
+    if (filters.country === 'ALL') matching.push(row);
+    else {
+      const market = row.listings.find(item => item.country === filters.country);
+      if (market) matching.push({ ...row, app: market.app, entities: [market.entity], countries: [market.country] });
+    }
+  }
+  const size = 25;
+  const page = Math.min(Math.max(0, Math.ceil(matching.length / size) - 1),
+    Math.max(0, Math.trunc(Number(filters.page) || 0)));
+  return { page, size, total: matching.length, rows: matching.slice(page * size, (page + 1) * size),
+    counts, allMarkets: rows.length, topics: filters.topics, window };
+}
+
+function getMarketsReviewAnalytics(filters) {
+  const { ss } = requireMarketsAdministrator_();
+  const window = marketsReviewWindow_();
+  filters = normalizeMarketsReviewFilters_(filters);
+  return readMarketsReviewCache_(ss, 'analytics', filters, window, () => {
+    const topics = marketsReviewTopics_(ss);
+    const rows = queryMarketsReviews_(ss, { ...filters, app: '', segment: '' }, window);
+    return summarizeMarketsReviewAnalytics_(rows, topics, filters, window);
+  });
+}
+
+function readMarketsReviewCache_(ss, operation, filters, window, builder) {
+  const properties = PropertiesService.getScriptProperties().getProperties();
+  const versions = ['MARKETS_REVIEWS_GENERATION', 'MARKETS_FUNCTIONAL_REVISION'].map(key => properties[key] || '');
+  const scope = Object.keys(filters).sort().map(key => [key, filters[key]]);
+  const key = Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,
+    JSON.stringify(['review-v5', operation, ss.getId(), window.end, versions, scope, Math.floor(Date.now() / 300000)])));
+  return readMarketsWebCache_('market-review:' + key, builder);
+}
+
+function advanceMarketsReviewGeneration_(properties) {
+  try { properties.setProperty('MARKETS_REVIEWS_GENERATION', String(Date.now())); }
+  catch (error) { console.warn('No se pudo invalidar la caché de reseñas. ' + error.message); }
+}
+
+function marketsReviewTopics_(ss) {
+  const catalog = ss.getSheetByName('FUNCTIONAL_CATALOG');
+  const topics = { general: 'Generalista' };
+  if (catalog && catalog.getLastRow() > 1) {
+    for (const [id, label] of catalog.getRange(2, 1, catalog.getLastRow() - 1, 2).getDisplayValues()) {
+      if (/^\d{2}\./.test(id) && label) topics[id.slice(0, 2)] = label;
+    }
+  }
+  return topics;
+}
+
+function summarizeMarketsReviewAnalytics_(rows, topics, filters, window) {
+  const segment = MARKETS_DEFAULT_REVIEW_SEGMENTS.find(group => group.id === filters.segment);
+  if (filters.segment && !segment) throw new Error('Segmento de comentarios desconocido.');
+  const selected = rows.filter(row => !segment || segment.stars.includes(row.rating));
+  const blocksOf = row => {
+    const blocks = row.blocks.filter(id => Object.hasOwn(topics, id));
+    return blocks.length ? blocks : ['general'];
+  };
+  const groups = new Map();
+  const monthly = new Map();
+  const local = rows.filter(row => !filters.entity || row.entities.includes(filters.entity));
+  const net = rating => MARKETS_DEFAULT_REVIEW_SEGMENTS[2].stars.includes(rating) ? 1
+    : MARKETS_DEFAULT_REVIEW_SEGMENTS[0].stars.includes(rating) ? -1 : 0;
+  for (const row of selected) {
+    for (const entity of row.entities) {
+      const group = groups.get(entity) || { label: entity, total: 0, counts: {} };
+      group.total++;
+      for (const block of blocksOf(row)) group.counts[block] = (group.counts[block] || 0) + 1;
+      groups.set(entity, group);
+    }
+  }
+  for (const row of rows) {
+    const month = row.date.slice(0, 7);
+    for (const entity of row.entities) {
+      const key = JSON.stringify([entity, month]);
+      const point = monthly.get(key) || { entity, month, total: 0, promoters: 0, detractors: 0 };
+      point.total++;
+      point.promoters += Number(net(row.rating) === 1);
+      point.detractors += Number(net(row.rating) === -1);
+      monthly.set(key, point);
+    }
+  }
+  const deltas = Object.entries(topics).filter(([id]) => id !== 'general' && !filters.period)
+    .map(([id, label]) => {
+      const full = local.filter(row => row.blocks.includes(id));
+      const early = full.filter(row => row.date < window.recent);
+      if (early.length < 5 || early.length === full.length) return null;
+      const balance = cohort => 100 * cohort.reduce((sum, row) => sum + net(row.rating), 0) / cohort.length;
+      const before = balance(early), after = balance(full);
+      return { id, label, before, after, delta: after - before, earlyTotal: early.length, total: full.length };
+    }).filter(Boolean).sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta) || a.id.localeCompare(b.id)).slice(0, 3);
+  const recent = local.filter(row => row.date >= window.recent);
+  const examples = [];
+  const used = new Set();
+  for (const block of ['general', ...deltas.map(item => item.id)]) {
+    const example = selectMarketsReviewExample_(recent.filter(row => blocksOf(row).includes(block)), used);
+    if (!example) continue;
+    used.add(normalizeReviewEvidence_([example.title, example.original].join(' ')));
+    examples.push({ block, review: example });
+  }
+  return { window, topics, examples, total: selected.length, classified: selected.filter(row => blocksOf(row)[0] !== 'general').length,
+    entities: [...groups.values()].sort((a, b) => Number(b.label === 'BBVA Empresas') - Number(a.label === 'BBVA Empresas') ||
+      b.total - a.total || a.label.localeCompare(b.label)), entityOptions: [...new Set(rows.flatMap(row => row.entities))].sort(),
+    monthly: [...monthly.values()], deltas, recentTotal: recent.length };
+}
+
+
+function selectMarketsReviewExample_(rows, used) {
+  const documents = new Map();
+  const frequency = new Map();
+  const stop = new Set('para como este esta esto pero porque desde hasta sobre with this that from have your bir için ama olan'.split(' '));
+  for (const row of rows) {
+    const text = normalizeReviewEvidence_([row.title, row.original].join(' '));
+    if (!text || used.has(text) || documents.has(text)) continue;
+    const terms = new Set(text.split(' ').filter(word => word.length > 2 && !stop.has(word) && !/\d/.test(word)));
+    if (!terms.size) continue;
+    documents.set(text, { row, terms });
+    for (const term of terms) frequency.set(term, (frequency.get(term) || 0) + 1);
+  }
+  const count = documents.size;
+  const centroid = new Map();
+  const vectors = [];
+  for (const { row, terms } of documents.values()) {
+    const vector = [...terms].map(term => [term, Math.log((count + 1) / (frequency.get(term) + 1)) + 1]);
+    const length = Math.sqrt(vector.reduce((sum, [, value]) => sum + value * value, 0));
+    const unit = vector.map(([term, value]) => [term, value / length]);
+    for (const [term, value] of unit) centroid.set(term, (centroid.get(term) || 0) + value / count);
+    vectors.push({ row, unit });
+  }
+  return vectors.map(({ row, unit }) => ({ row, score: unit.reduce((sum, [term, value]) => sum + value * centroid.get(term), 0) }))
+    .sort((a, b) => b.score - a.score || a.row.key.localeCompare(b.row.key))[0]?.row;
+}

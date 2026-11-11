@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
+import { clientScript } from "./client-script.mjs";
 import { gzipSync, gunzipSync } from "node:zlib";
 
 const sources = ["../src/99_Core.gs", "../src/35_Dashboard.gs", "../src/60_WebApp.gs"]
@@ -291,12 +292,10 @@ test("store URL sanitizer rejects native schemes and foreign domains", () => {
 });
 
 test("modular client JavaScript compiles and Index composes every layer", () => {
-  const names = ["DesignSystem", "Domain", "Components", "Charts", "Report", "App"];
+  const names = ["DesignSystem", "Domain", "Components", "Charts", "Report", "RadarFilterAssets", "RadarFilters", "App"];
   names.forEach(name => {
     const html = fs.readFileSync(new URL(`../src/${name}.html`, import.meta.url), "utf8");
-    const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)];
-    assert.ok(scripts.length, `${name} script not found`);
-    scripts.forEach(match => assert.doesNotThrow(() => new Function(match[1]), `${name} must compile`));
+    assert.doesNotThrow(() => new Function(clientScript(html)), `${name} must compile`);
   });
   const index = fs.readFileSync(new URL("../src/Index.html", import.meta.url), "utf8");
   const app = fs.readFileSync(new URL("../src/App.html", import.meta.url), "utf8");
@@ -317,7 +316,7 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(app, /MarketsReport\.render/);
   assert.match(app, /const request=trendRequest\(\)/);
   assert.match(app, /view:state\.view,selection:\{\.\.\.selection\(\),app:state\.view==="evolution"\?state\.evolutionApp:""\},periodYear:state\.periodYear,periodMonth:state\.periodMonth/);
-  assert.match(app, /report-button"\)\.classList\.toggle\("hidden",privateView\|\|state\.view==="reviews"\)/);
+  assert.match(app, /report-button"\)\.classList\.toggle\("hidden",privateView\|\|\["reviews","analytics"\]\.includes\(state\.view\)\)/);
   const report = fs.readFileSync(new URL("../src/Report.html", import.meta.url), "utf8");
   const reportStyles = fs.readFileSync(new URL("../src/ReportStyles.html", import.meta.url), "utf8");
   assert.match(report, /La voz del mercado/);
@@ -364,7 +363,7 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.doesNotMatch(app, /function adminScopeValue/);
   assert.match(app, /function activateAdminTab/);
   assert.match(app, /function handleAdminTabKeydown/);
-  assert.match(app, /if\(\(view==="admin"\|\|view==="reviews"\)&&!state\.userContext\?\.isAdmin\)return/);
+  assert.match(app, /if\(\(\["admin","reviews","analytics"\]\.includes\(view\)\)&&!state\.userContext\?\.isAdmin\)return/);
   assert.match(app, /getMarketsAdminDashboard\(\)/);
   assert.match(app, /localStorage\.setItem\(preferenceKey\(\)/);
   assert.match(app, /localStorage\.getItem\(preferenceKey\(\)/);
@@ -445,7 +444,7 @@ test("each downloadable report reproduces its current view and period", () => {
   vm.createContext(browser);
   ["DesignSystem", "Domain", "Components", "Charts", "Report"].forEach(name => {
     const html = fs.readFileSync(new URL(`../src/${name}.html`, import.meta.url), "utf8");
-    [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].forEach(match => vm.runInContext(match[1], browser));
+    vm.runInContext(clientScript(html), browser);
   });
   const snapshot = [
     { appKey: "BBVA", appName: "BBVA", platform: "Android", countryCode: "MX", country: "México", segment: "BANK", isBbva: true, rating: 4.8, delta30d: 0.1, ratingCount: 1200, ratingCountDelta30d: 40, rankingComplete: true, fresh: true, volumeKey: "BBVA", volumeScope: "MARKET" },
@@ -490,7 +489,7 @@ test("each downloadable report reproduces its current view and period", () => {
 
 test("client domain deduplicates shared Android volumes and excludes competitors", () => {
   const html = fs.readFileSync(new URL("../src/Domain.html", import.meta.url), "utf8");
-  const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+  const script = clientScript(html);
   const browser = {};
   browser.window = browser;
   vm.createContext(browser);
@@ -531,7 +530,7 @@ test("client domain deduplicates shared Android volumes and excludes competitors
 
 test("monthly summary matrix respects filters and marks shared Android volume as unavailable", () => {
   const html = fs.readFileSync(new URL("../src/Domain.html", import.meta.url), "utf8");
-  const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+  const script = clientScript(html);
   const browser = {};
   browser.window = browser;
   vm.createContext(browser);
@@ -568,7 +567,7 @@ test("monthly summary matrix respects filters and marks shared Android volume as
 
 test("new-review impact reproduces the GEMA month-rating calculation and protects unreliable scopes", () => {
   const html = fs.readFileSync(new URL("../src/Domain.html", import.meta.url), "utf8");
-  const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+  const script = clientScript(html);
   const browser = {};
   browser.window = browser;
   vm.createContext(browser);
@@ -605,7 +604,7 @@ test("new-review impact reproduces the GEMA month-rating calculation and protect
 
 test("new-review impact rejects the real rounded Mexico and Turkey closes but accepts preserved source precision", () => {
   const html = fs.readFileSync(new URL("../src/Domain.html", import.meta.url), "utf8");
-  const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+  const script = clientScript(html);
   const browser = {};
   browser.window = browser;
   vm.createContext(browser);
@@ -652,7 +651,7 @@ test("new-review impact rejects the real rounded Mexico and Turkey closes but ac
 
 test("new-review impact never blends Android, iOS or Huawei and deduplicates a shared Android listing", () => {
   const html = fs.readFileSync(new URL("../src/Domain.html", import.meta.url), "utf8");
-  const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+  const script = clientScript(html);
   const browser = {};
   browser.window = browser;
   vm.createContext(browser);
@@ -689,7 +688,7 @@ test("new-review impact never blends Android, iOS or Huawei and deduplicates a s
 
 test("evolution includes all apps by default and supports filtering by app", () => {
   const html = fs.readFileSync(new URL("../src/Domain.html", import.meta.url), "utf8");
-  const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+  const script = clientScript(html);
   const browser = {};
   browser.window = browser;
   vm.createContext(browser);
@@ -719,7 +718,7 @@ test("evolution includes all apps by default and supports filtering by app", () 
 
 test("summary comparison uses BBVA by geography and banks within one country", () => {
   const html = fs.readFileSync(new URL("../src/Domain.html", import.meta.url), "utf8");
-  const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+  const script = clientScript(html);
   const browser = {};
   browser.window = browser;
   vm.createContext(browser);
@@ -753,7 +752,7 @@ test("all-markets benchmark keeps every market on one page", () => {
 
 test("evolution KPIs use BBVA closes for the selected period", () => {
   const html = fs.readFileSync(new URL("../src/Domain.html", import.meta.url), "utf8");
-  const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+  const script = clientScript(html);
   const browser = {};
   browser.window = browser;
   vm.createContext(browser);
@@ -783,7 +782,7 @@ test("evolution KPIs use BBVA closes for the selected period", () => {
 
  test("weighted domain aggregation prioritizes catalog, includes Huawei and deduplicates shared volume", () => {
   const browser={};browser.window=browser;vm.createContext(browser);
-  vm.runInContext(fs.readFileSync(new URL("../src/Domain.html",import.meta.url),"utf8").match(/<script>([\s\S]*?)<\/script>/)[1],browser);
+  vm.runInContext(clientScript(fs.readFileSync(new URL("../src/Domain.html",import.meta.url),"utf8")),browser);
   const D=browser.MarketsDomain;
   const rows=[{appKey:"a",volumeKey:"shared",volumeScope:"SHARED_LISTING",rating:4,ratingCount:900},{appKey:"b",volumeKey:"shared",volumeScope:"SHARED_LISTING",rating:4,ratingCount:900},{appKey:"h",platform:"Huawei",rating:2,ratingCount:100}];
   assert.equal(D.weightedMean(rows,r=>r.rating,true),3.8);
