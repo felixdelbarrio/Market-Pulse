@@ -18,11 +18,12 @@ window.MarketRadarFilters = (() => {
     return image;
   }
   function searchable(select, choose) {
-    const details = document.createElement("details");
+    const details = document.createElement("div");
     const label = select.labels[0].firstChild.textContent.trim();
     details.className = "searchable-select";
-    details.innerHTML = '<summary></summary><input type="search" placeholder="Buscar opciones"><div class="select-options" role="listbox" tabindex="-1"></div><p class="small muted" hidden>Sin coincidencias</p>';
-    const [summary, search, list, empty] = details.children;
+    details.innerHTML = '<button class="select-trigger" type="button"></button><div class="select-popup" popover="manual"><input type="search" placeholder="Buscar opciones"><div class="select-options" role="listbox" tabindex="-1"></div><p class="small muted" hidden>Sin coincidencias</p></div>';
+    const [summary, popup] = details.children;
+    const [search, list, empty] = popup.children;
     list.id = select.id + "-options";
     if (select.multiple) list.setAttribute("aria-multiselectable", "true");
     list.setAttribute("aria-label", label);
@@ -45,7 +46,37 @@ window.MarketRadarFilters = (() => {
       summary.focus();
     });
 
-    let active;
+    let active, opened = false;
+    function position() {
+      const anchor = summary.getBoundingClientRect();
+      const viewport = document.documentElement;
+      if (!anchor.width || anchor.bottom < 0 || anchor.top > viewport.clientHeight) return close(false);
+      const below = viewport.clientHeight - anchor.bottom;
+      const above = anchor.top;
+      const upward = below < popup.scrollHeight && above > below;
+      popup.style.left = anchor.left + "px";
+      popup.style.width = anchor.width + "px";
+      popup.style.maxHeight = Math.max(0, upward ? above : below) + "px";
+      popup.style.top = upward ? "auto" : anchor.bottom + "px";
+      popup.style.bottom = upward ? viewport.clientHeight - anchor.top + "px" : "auto";
+    }
+    function outside(event) {
+      if (!details.contains(event.target)) close(false);
+    }
+    function open() {
+      if (opened) return;
+      opened = true;
+      for (const control of [summary,search]) control.setAttribute("aria-expanded", "true");
+      popup.showPopover();
+      filter();
+      position();
+      if (!opened) return;
+      (search.hidden ? list : search).focus({preventScroll:true});
+      window.addEventListener("resize", position);
+      window.addEventListener("scroll", position, true);
+      document.addEventListener("pointerdown", outside);
+      document.addEventListener("focusin", outside);
+    }
     const visible = () => [...list.children].filter(option => !option.hidden && !option.disabled);
     function highlight(option) {
       active?.classList.remove("is-focused");
@@ -92,10 +123,20 @@ window.MarketRadarFilters = (() => {
         return button;
       }));
       filter();
+      if (opened) position();
     }
-    function close() {
-      details.open = false;
-      summary.focus();
+    function close(restoreFocus = false) {
+      if (!opened) return;
+      opened = false;
+      popup.hidePopover();
+      for (const control of [summary,search]) control.setAttribute("aria-expanded", "false");
+      window.removeEventListener("resize", position);
+      window.removeEventListener("scroll", position, true);
+      document.removeEventListener("pointerdown", outside);
+      document.removeEventListener("focusin", outside);
+      search.value = "";
+      highlight(null);
+      if (restoreFocus) summary.focus({preventScroll:true});
     }
     list.addEventListener("click", event => {
       const item = event.target.closest("[data-index]");
@@ -106,7 +147,7 @@ window.MarketRadarFilters = (() => {
         for (const candidate of select.options) candidate.selected = values.includes(candidate.value);
       } else select.value = option.value;
       select.dispatchEvent(new Event("change", {bubbles:true}));
-      if (!select.multiple) close();
+      if (!select.multiple) close(true);
       else (search.hidden ? list : search).focus();
     });
     list.addEventListener("pointerover", event => {
@@ -115,43 +156,33 @@ window.MarketRadarFilters = (() => {
     });
     select.addEventListener("change", refresh);
     search.addEventListener("input", filter);
-    details.addEventListener("toggle", () => {
-      for (const control of [summary,search]) control.setAttribute("aria-expanded", String(details.open));
-      if (details.open) {
-        if (!active) filter();
-        (search.hidden ? list : search).focus();
-      } else {
-        search.value = "";
-        highlight(null);
-      }
-    });
+    summary.addEventListener("click", () => opened ? close() : open());
     details.addEventListener("keydown", event => {
-      if (event.key === "Escape" && details.open) {
+      if (event.key === "Escape" && opened) {
         event.preventDefault();
         event.stopPropagation();
-        close();
+        close(true);
       } else if (["ArrowDown","ArrowUp","Home","End"].includes(event.key)) {
         event.preventDefault();
-        const wasOpen = details.open;
-        if (!wasOpen) {
-          details.open = true;
-          filter();
-        }
+        const wasOpen = opened;
+        if (!wasOpen) open();
         const options = visible(), index = options.indexOf(active), step = event.key === "ArrowUp" ? -1 : 1;
         const next = event.key === "Home" ? 0 : event.key === "End" ? options.length - 1 :
           !wasOpen ? (step === 1 ? 0 : options.length - 1) : (index + step + options.length) % options.length;
         highlight(options[next]);
         active?.scrollIntoView({block:"nearest"});
-        if (!wasOpen) (search.hidden ? list : search).focus();
-      } else if (event.key === "Enter" && details.open && event.target !== summary) {
+      } else if (event.key === "Enter" && opened && event.target !== summary) {
         event.preventDefault();
         active?.click();
       }
     });
-    return {refresh, details};
+    return {refresh, close, enable: enabled => {
+      summary.disabled = !enabled;
+      if (!enabled) close();
+    }};
   }
 
-  function create(root, {applied, initial, all, commit, prepare, validate, choose, labelValue, fixedChips = [], alwaysChips = [], omitChips = [], draftChanged}) {
+  function create(root, {applied, initial, all, commit, prepare, validate, choose, labelValue, translate = value => value, fixedChips = [], alwaysChips = [], omitChips = [], draftChanged}) {
     const form = root.querySelector("form");
     const fields = [...form.elements].filter(field => field.name);
     const labels = Object.fromEntries(fields.map(field => [field.name,field.labels[0].firstChild.textContent.trim()]));
@@ -194,7 +225,7 @@ window.MarketRadarFilters = (() => {
         ).join(", ");
         entries.push([key,readable]);
       }
-      const signature = JSON.stringify(entries);
+      const signature = JSON.stringify(entries.map(([key,readable]) => [translate(labels[key]),translate(readable)]));
       if (signature === previousChips) return;
       previousChips = signature;
       chips.replaceChildren();
@@ -203,14 +234,14 @@ window.MarketRadarFilters = (() => {
         const button = document.createElement(fixed ? "span" : "button");
         button.className = "filter-chip";
         if (fixed) {
-          button.textContent = labels[key] + ": " + readable;
+          button.textContent = translate(labels[key]) + ": " + translate(readable);
           chips.append(button);
           continue;
         }
         button.type = "button";
-        button.setAttribute("aria-label", "Quitar filtro " + labels[key]);
+        button.setAttribute("aria-label", translate("Quitar filtro {filter}",{filter:translate(labels[key])}));
         const text = document.createElement("span"), cross = document.createElement("span");
-        text.textContent = labels[key] + ": " + readable;
+        text.textContent = translate(labels[key]) + ": " + translate(readable);
         cross.textContent = "×";
         cross.setAttribute("aria-hidden", "true");
         button.append(text,cross);
@@ -243,16 +274,13 @@ window.MarketRadarFilters = (() => {
     const close = () => dialog.close();
     dialog.querySelector("[data-close]").addEventListener("click", close);
     dialog.addEventListener("click", event => {
-      // Close after the click: collapsing a combo on pointerdown can move the sticky actions.
-      const path = event.composedPath();
-      for (const {details} of combos) if (!path.includes(details)) details.open = false;
       if (event.target === dialog) {
         const bounds = dialog.getBoundingClientRect();
         if (event.clientX < bounds.left || event.clientX > bounds.right ||
             event.clientY < bounds.top || event.clientY > bounds.bottom) close();
       }
     });
-    dialog.addEventListener("close", () => combos.forEach(({details}) => { details.open = false; }));
+    dialog.addEventListener("close", () => combos.forEach(combo => combo.close()));
     dialog.querySelector("[data-restore]").addEventListener("click", () => apply(initial(),"restore"));
     dialog.querySelector("[data-all]").addEventListener("click", () => apply(defaults(),"all"));
     if (validate) form.addEventListener("input", () => validate(read()));
