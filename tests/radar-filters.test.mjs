@@ -7,14 +7,14 @@ import { clientScript } from './client-script.mjs';
 const read = name => fs.readFileSync(new URL(`../src/${name}.html`, import.meta.url), 'utf8');
 
 function filterBindings({ crypto, sessionStorage } = {}) {
-  const bindings = {}, calls = [], controls = new Map();
+  const bindings = {}, calls = [], controls = new Map(), handlers = new Map();
   const context = vm.createContext({
     navigator: { language: 'es' },
     sessionStorage,
     document: {
       addEventListener() {},
       getElementById(id) {
-        if (!controls.has(id)) controls.set(id, { id });
+        if (!controls.has(id)) controls.set(id, { id, addEventListener(type, callback) { handlers.set(id + ":" + type, callback); } });
         return controls.get(id);
       }
     },
@@ -34,7 +34,7 @@ function filterBindings({ crypto, sessionStorage } = {}) {
   });
   const script = clientScript(read('App')).replace(/\}\)\(\);\s*$/, `
     loadReviews = () => calls.push({ page: 0, ...reviewScope() });
-    loadAnalytics = () => calls.push({ ...selection(), ...analyticsSelection });
+    loadAnalytics = (localOnly=false) => calls.push({ ...analyticsScope(), entity: analyticsEntity, localOnly });
     renderAdminSubscribers = rows => calls.push(adminSubscriberFilterRows(rows).map(row => row.email));
     globalThis.setup = ({scope, cohort, rows}) => {
       Object.assign(state,scope);
@@ -46,35 +46,45 @@ function filterBindings({ crypto, sessionStorage } = {}) {
     globalThis.setBalanceRender = () => renderBalanceEntity = () => calls.push("balance-only");
   })();`);
   vm.runInContext(script, context);
-  return { bindings, calls, setup: context.setup, setBalanceRender: context.setBalanceRender, sessionId: context.sessionId };
+  return { bindings, calls, handlers, setup: context.setup, setBalanceRender: context.setBalanceRender, sessionId: context.sessionId };
 }
 
 const copy = value => JSON.parse(JSON.stringify(value));
 
-test('review chips, restore and show all restart pagination within the current market and platform', () => {
+test('review chips preserve drill-down context and restore and show all reset the scope', () => {
   const { bindings, calls, setup } = filterBindings();
-  setup({scope:{country:'ALL',platform:'ALL'},cohort:{country:'ES',platform:'iOS',segment:'NEUTRAL',topic:'01',reviewKey:'a'}});
+  const dates = {start:'2026-08-01',end:'2026-09-01'};
+  setup({scope:{country:'MX',platform:'Android'},cohort:{...dates,country:'ES',platform:'iOS',segment:'NEUTRAL',topic:'01',reviewKey:'a'}});
   const reviews = bindings['review-filters'];
+  const initial = reviews.initial(), all = reviews.all();
   reviews.commit({...reviews.applied(),topic:''});
-  reviews.commit(reviews.initial(),'restore');
-  reviews.commit(reviews.all(),'all');
+  reviews.commit(initial,'restore');
+  reviews.commit(all,'all');
+  assert.equal((Date.parse(initial.end)-Date.parse(initial.start))/86400000,365);
+  assert.deepEqual(copy(reviews.fixedChips),['start','end']);
   assert.deepEqual(copy(calls), [
-    {page:0,country:'ES',platform:'iOS',segment:'NEUTRAL',topic:'',reviewKey:'a'},
-    {page:0,country:'ES',platform:'iOS',segment:'DETRACTOR',reviewKey:''},
-    {page:0,country:'ES',platform:'iOS',segment:'',reviewKey:''}
+    {page:0,...dates,country:'ES',platform:'iOS',segment:'NEUTRAL',topic:'',reviewKey:'a'},
+    {page:0,...initial,reviewKey:''},
+    {page:0,...all,reviewKey:''}
   ]);
+  assert.equal(initial.country,'MX');
+  assert.equal(initial.platform,'Android');
+  assert.equal(all.country,'ALL');
+  assert.equal(all.segment,'');
 });
 
-test('the balance entity stays local and the analytics query keeps the selected context', () => {
-  const { bindings, calls, setup, setBalanceRender } = filterBindings();
+test('entity controls affect only their own chart or local panels and context changes reset them', () => {
+  const { bindings, calls, handlers, setup, setBalanceRender } = filterBindings();
   setup({scope:{country:'MX',platform:'Android'}});
   setBalanceRender();
-  const analytics = bindings['analytics-filters'];
-  analytics.commit({...analytics.applied(),balanceEntity:'Banco Central'});
-  analytics.commit({...analytics.applied(),period:'2026-10'});
+  const analytics = bindings['analytics-filters'], initial = analytics.initial();
+  handlers.get('analytics-balance-entity:change')({target:{value:'Banco Central'}});
+  handlers.get('analytics-entity:change')({target:{value:'Banco Central'}});
+  analytics.commit({...analytics.applied(),country:'ES',start:'2026-10-01'});
   assert.deepEqual(copy(calls), [
     'balance-only',
-    {country:'MX',platform:'Android',segment:'DETRACTOR',balanceEntity:'Banco Central',period:'2026-10'}
+    {...initial,entity:'Banco Central',localOnly:true},
+    {...initial,country:'ES',start:'2026-10-01',entity:'',localOnly:false}
   ]);
 });
 
@@ -112,4 +122,19 @@ test('telemetry replaces legacy insecure identifiers and reuses the secure ident
   assert.equal(sessionId(), stored);
   assert.equal(generated, 1);
   assert.equal(filterBindings().sessionId(), '');
+});
+
+test('monthly balance does not bridge missing months and the legend matches the series color', () => {
+  const window = { MarketsUI: { esc: String } };
+  vm.runInNewContext(clientScript(read('Charts')), { window });
+  const { reviewBalance, reviewBalanceLegend } = window.MarketsCharts;
+  const chart = reviewBalance(['2026-07','2026-08','2026-09'], [{entity:'Banco Central',values:[0,null,40]}],
+    {monthLabel:String,fmt:String,width:400});
+  const [, path, color] = chart.match(/<path d="([^"]+)" stroke="([^"]+)" class="chart-line"/);
+  assert.equal(path.split('M').length - 1,2);
+  assert.doesNotMatch(path,/L/);
+  assert.match(chart,/2026-08 · Sin datos/);
+  const legend = reviewBalanceLegend([{entity:'Banco Central',total:19}],'Banco Central',String);
+  assert.ok(legend.includes('background:' + color));
+  assert.match(legend,/aria-pressed="true"/);
 });

@@ -1,0 +1,83 @@
+<style>
+/* News Radar chart styles scoped to the monthly balance card. */
+#review-balance-panel{
+  --color-primary-bg-action:#001391;
+  --color-primary-bg-action-pressed:#070e46;
+  --color-primary-bg-alternative:#ffffff;
+  --color-primary-bg-surface:#f7f8f8;
+  --color-primary-text-main:#070e46;
+  --color-primary-text-secondary:#46536d;
+  --color-primary-border:#e2e6ea;
+  --color-primary-accent-01:#85c8ff;
+  --color-primary-accent-02:#8be1e9;
+  --color-primary-ui-system-focus:#0c6dff;
+  --space-1:8px;
+  --space-2:16px;
+  --space-3:24px;
+  --radius-container:16px;
+  --radius-component:8px;
+  --font-body:'Benton Sans BBVA', Arial, sans-serif;
+  --font-heading:'Tiempos Headline', Georgia, serif;
+  --text-s:12px;
+  --text-m:15px;
+  --line-m:24px;
+  --text-xl:24px;
+  --line-xl:40px;
+  --stroke:1px;
+  --focus-width:2px;
+  --chart-series-1:var(--color-primary-bg-action);
+  --chart-series-2:var(--color-primary-ui-system-focus);
+  --chart-series-3:var(--color-primary-text-secondary);
+  --chart-series-4:var(--color-primary-accent-01);
+  --chart-series-5:var(--color-primary-accent-02);
+  --chart-series-6:var(--color-primary-bg-action-pressed);
+  --shadow-panel:0 4px 24px color-mix(in srgb, var(--color-primary-bg-action-pressed) 4%, transparent);
+  --chart-stroke:3px;
+  --focus-offset:4px;
+  --map-aside-min-width:180px;
+  --color-primary-bg-hover:color-mix(in srgb, var(--color-primary-border) 60%, var(--color-primary-bg-surface));
+}
+#review-balance-panel .trend-chart svg{width:100%;display:block;overflow:visible}
+#review-balance-panel .trend-chart svg text{fill:var(--color-primary-text-secondary);font-size:var(--text-s);font-family:var(--font-body)}
+#review-balance-panel .chart-grid{stroke:var(--color-primary-border);stroke-dasharray:4 6;stroke-width:var(--stroke)}
+#review-balance-panel .chart-line{fill:none;stroke-width:var(--chart-stroke);stroke-linecap:round;stroke-linejoin:round}
+#review-balance-panel .chart-point{cursor:crosshair;stroke:var(--color-primary-bg-alternative);stroke-width:var(--stroke)}
+#review-balance-panel .chart-point:hover,#review-balance-panel .chart-point:focus{stroke:var(--color-primary-bg-action);stroke-width:var(--focus-width);outline:0}
+#review-balance-panel .chart-line,#review-balance-panel .chart-area,#review-balance-panel .chart-grid{pointer-events:none}
+#review-balance-panel .chart-band{fill:transparent;pointer-events:all}
+#review-balance-panel .chart-band.is-highlighted,#review-balance-panel .chart-band:focus-visible{fill:var(--color-primary-bg-hover);outline:0}
+#review-balance-panel .chart-tooltip{position:absolute;top:0;left:0;max-width:min(100%,32rem);padding:var(--space-1) var(--space-2);border:var(--stroke) solid var(--color-primary-border);border-radius:var(--radius-component);background:var(--color-primary-bg-alternative);color:var(--color-primary-text-main);box-shadow:var(--shadow-panel);font-size:var(--text-s);pointer-events:none}
+#review-balance-panel .panel-header{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--space-2);margin-bottom:var(--space-3)}
+#review-balance-panel{position:relative;padding:var(--space-3);background:var(--color-primary-bg-alternative);border:var(--stroke) solid var(--color-primary-border);border-radius:var(--radius-container);box-shadow:none;color:var(--color-primary-text-main);font:400 var(--text-m)/var(--line-m) var(--font-body)}
+#review-balance-panel h3{margin:0;font:700 var(--text-xl)/var(--line-xl) var(--font-heading)}
+#review-balance-panel .eyebrow{margin:0;color:var(--color-primary-text-secondary);font-size:var(--text-s);font-weight:500}
+#review-balance-panel .chart-period,#review-balance-panel .review-chart-note{font-size:var(--text-s);color:var(--color-primary-text-secondary)}
+#review-balance-panel .chart-area{fill:var(--color-primary-accent-01);fill-opacity:.2}
+#review-balance-panel .chart-tooltip{z-index:2}
+#review-balance-panel [hidden]{display:none!important}
+:is(#review-balance-panel,#review-gap-panel) .review-chart-control{display:grid;gap:var(--space-1);max-width:100%;font-size:var(--font-size-xs)}
+#review-balance-panel .review-chart-control{width:max-content}
+#review-gap-panel .review-gap-plot{width:100%;overflow-x:auto;margin-block:var(--space-3)}
+#review-gap-panel .review-gap-plot svg{display:block;width:100%;min-width:720px}
+#review-gap-panel .review-gap-plot text{fill:var(--color-text);font-size:13px}
+#review-gap-panel .gap-grid,#review-gap-panel .gap-zero{stroke:var(--color-border)}
+#review-gap-panel .gap-zero{stroke:var(--color-text-secondary)}
+#review-gap-panel .gap-background{fill:var(--color-surface-muted)}
+#review-gap-panel .gap-negative{fill:var(--color-danger)}
+#review-gap-panel .gap-positive{fill:var(--color-success)}
+#review-gap-panel caption{text-align:left;padding:var(--space-1)}
+#review-gap-panel th button{font:inherit;text-align:left}
+@media(max-width:767px){#review-balance-panel{padding:var(--space-2)}#review-balance-panel .panel-header{flex-wrap:wrap}}
+#review-balance-panel .map-layout{display:grid;grid-template-columns:minmax(0,1fr) var(--map-aside-min-width);gap:var(--space-3);align-items:start}
+#review-balance-panel .geo-list{display:flex;flex-direction:column;max-height:260px;min-height:0}
+#review-balance-panel .geo-list .geo-entities{overflow-y:auto;min-height:0}
+#review-balance-panel .geo-list .eyebrow{font-size:var(--text-s);color:var(--color-primary-text-secondary);margin-bottom:var(--space-2)}
+#review-balance-panel .geo-row{width:100%;display:grid;grid-template-columns:1fr auto;gap:var(--space-1);text-align:left;background:transparent;border:0;color:var(--color-primary-text-main);padding:var(--space-1) 0;font-size:var(--text-s)}
+#review-balance-panel .geo-count{font-weight:500}
+#review-balance-panel .geo-track{grid-column:span 2;display:block;height:var(--focus-offset);background:var(--color-primary-border);border-radius:var(--radius-component);overflow:hidden}
+#review-balance-panel .geo-track>span{display:block;height:100%;background:var(--color-primary-bg-action);border-radius:inherit}
+#review-balance-panel .geo-row:is(:hover,:focus-visible,[aria-pressed=true]){color:var(--color-primary-bg-action);background:var(--color-primary-bg-hover)}
+#review-balance-panel .identity-label{display:inline-flex;align-items:center;gap:var(--space-1);overflow-wrap:anywhere}
+#review-balance-panel .identity-label i{width:var(--space-1);height:var(--space-1);border-radius:50%;flex:none}
+@media(max-width:767px){#review-balance-panel .map-layout{grid-template-columns:1fr}#review-balance-panel .geo-entities{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 var(--space-2)}}
+</style>

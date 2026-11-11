@@ -13,6 +13,7 @@
   <?!= includeMarketsWebPartial_('DesignSystem'); ?>
   <?!= includeMarketsWebPartial_('ReportStyles'); ?>
   <?!= includeMarketsWebPartial_('RadarFilterStyles'); ?>
+  <?!= includeMarketsWebPartial_('ReviewChartStyles'); ?>
   <?!= includeMarketsWebPartial_('RadarFilterAssets'); ?>
   <link rel="icon" type="image/png" sizes="32x32" href="<?!= includeMarketsWebPartial_('RadarFavicon').trim(); ?>">
 </head>
@@ -131,14 +132,24 @@
         <div id="analytics-filters" class="radar-filters">
           <form class="filter-panel" hidden>
             <div class="filter-field"><label for="analytics-segment">Sentimiento</label><select id="analytics-segment" name="segment"></select></div>
-            <label>Mes<input id="analytics-period" name="period" type="month"></label>
-            <div class="filter-field"><label for="analytics-entity">Entidad en deltas y ejemplos</label><select id="analytics-entity" name="entity"><option value="">Todas</option></select></div>
-            <div class="filter-field"><label for="analytics-balance-entity">Entidad en saldo mensual</label><select id="analytics-balance-entity" name="balanceEntity"><option value="">Todas</option></select></div>
+            <div class="filter-field"><label for="analytics-country">Mercado</label><select id="analytics-country" name="country"></select></div>
+            <div class="filter-field"><label for="analytics-platform">Plataforma</label><select id="analytics-platform" name="platform"></select></div>
+            <div class="filter-dates">
+              <label>Desde<input id="analytics-start" name="start" type="date" required></label>
+              <label>Hasta<input id="analytics-end" name="end" type="date" required></label>
+            </div>
           </form>
         </div>
         <section class="panel"><div class="panel-head"><h3>Mapa de calor por bloque</h3></div><div id="review-heatmap" class="panel-body" aria-live="polite"></div></section>
-        <section class="panel"><div class="panel-head"><h3>Saldo mensual de promotores y detractores</h3></div><div id="review-balance" class="panel-body"></div></section>
-        <section class="panel"><div class="panel-head"><h3>Deltas acumulados por bloque</h3></div><div id="review-deltas" class="panel-body"></div></section>
+        <section id="review-balance-panel" class="panel trend-panel">
+          <div class="panel-header"><div><p class="eyebrow">EVOLUCIÓN POR ENTIDAD</p><h3>Saldo mensual de promotores y detractores</h3></div><span id="review-balance-period" class="chart-period"></span></div>
+          <label class="review-chart-control">Entidad en saldo mensual<select id="analytics-balance-entity" class="select-control"></select></label>
+          <div id="review-balance"></div>
+        </section>
+        <section id="review-gap-panel" class="panel">
+          <div class="panel-head"><h3>Brecha de saldo por bloque</h3><label class="review-chart-control">Entidad en brechas y ejemplos<select id="analytics-entity" class="select-control"></select></label></div>
+          <div id="review-deltas" class="panel-body"></div>
+        </section>
         <section class="panel"><div class="panel-head"><h3>Ejemplos de los últimos 30 días</h3></div><div id="review-examples" class="panel-body"></div></section>
         <section class="panel"><div class="panel-head"><h3>Últimos 30 días</h3></div><div id="review-recent" class="panel-body"></div></section>
       </section>
@@ -148,15 +159,17 @@
           <form class="filter-panel" hidden>
             <div class="filter-field"><label for="review-app">Aplicación</label><select id="review-app" name="app"></select></div>
             <div class="filter-field"><label for="review-segment">Sentimiento</label><select id="review-segment" name="segment"></select></div>
-            <label>Mes<input id="review-period" name="period" type="month"></label>
+            <div class="filter-field"><label for="review-country">Mercado</label><select id="review-country" name="country"></select></div>
+            <div class="filter-field"><label for="review-platform">Plataforma</label><select id="review-platform" name="platform"></select></div>
+            <div class="filter-dates">
+              <label>Desde<input id="review-start" name="start" type="date" required></label>
+              <label>Hasta<input id="review-end" name="end" type="date" required></label>
+            </div>
             <label>Buscar<input id="review-search" name="search" type="search" maxlength="200"></label>
             <details class="filter-advanced"><summary>Filtros avanzados</summary>
               <div class="filter-field"><label for="review-topic">Bloque</label><select id="review-topic" name="topic"></select></div>
               <div class="filter-field"><label for="review-rating">Estrellas</label><select id="review-rating" name="rating"><option value="">Todas</option><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select></div>
-              <div class="filter-dates">
-                <label>Desde<input id="review-start" name="start" type="date"></label>
-                <label>Hasta<input id="review-end" name="end" type="date"></label>
-              </div>
+
             </details>
           </form>
         </div>
