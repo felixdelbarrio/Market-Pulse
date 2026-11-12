@@ -470,7 +470,7 @@ test("the persistent snapshot requires the matching schema and generations", () 
   api.readMarketsWebCache_ = (_key,build)=>build();
   api.readMarketsPersistentCache_ = () => ({ schema, end: window.end, versions: ["1", "", catalogVersion], values: { "page:ES:es": staticPage } });
   assert.equal(api.readMarketsReviewCache_(ss, "page", filters, window, () => null), null);
-  schema = 5;
+  schema = 6;
   assert.equal(api.readMarketsReviewCache_(ss, "page", filters, window, () => null), staticPage);
   generation = "2";
   assert.equal(api.readMarketsReviewCache_(ss, "page", filters, window, () => null), null);
@@ -534,7 +534,7 @@ test("monthly sentiment filters gaps and examples while balance and baseline kee
 test("compact review source keeps counts, repeat authors and full records eligible for cards", () => {
   const common = { entities: ["BBVA Empresas"], blocks: ["01"], author:"Ana", reply: "Gracias", original: "Transferencia pendiente" };
   const rows = [
-    { ...common, key: "old", date: "2026-01-03", rating: 2, helpful: 0 },
+    { ...common, author: "Otra persona", key: "old", date: "2026-01-03", rating: 2, helpful: 0 },
     { ...common, key: "helpful", date: "2026-01-04", rating: 2, helpful: 10 },
     { ...common, key: "recent", date: "2026-11-01", rating: 2, helpful: 0 }
   ];
@@ -546,4 +546,27 @@ test("compact review source keeps counts, repeat authors and full records eligib
   assert.equal(compact[2], rows[2]);
   const summarize = data => api.summarizeMarketsReviewAnalytics_(data, { "01": "Transferencias" }, filters, window);
   assert.deepEqual(summarize(compact), summarize(rows));
+});
+
+test("country-wide annual analytics counts each review once and retains the leading authors' latest cards", () => {
+  const rows = [
+    ["previous", "2025-12-01", "Ana", ["Banco B"]],
+    ["first", "2026-01-01", "Ana", ["Banco A"]],
+    ["second", "2026-01-02", "Ana", ["Banco A", "Banco B"]],
+    ["third", "2026-01-03", "Ana", ["Banco B"]],
+    ["fourth", "2026-01-04", " Ana ", ["Banco B"]],
+    ["other", "2026-02-01", "Luis", ["Banco A"]]
+  ].map(([key, date, author, entities]) => ({ key, date, author, entities, original: key, rating: 5, blocks: [] }));
+  const window = { start: "2026-01-01", recent: "2026-01-01", end: "2026-11-12" };
+  const compact = api.compactMarketsReviewAnalyticsRows_(rows, window.end);
+  const summarize = entity => api.buildMarketsReviewAnalytics_(compact, {}, { entity, year: "2026", segment: "DETRACTOR" }, window).annual;
+  const all = summarize("ALL");
+  assert.equal(all.total, 5);
+  assert.equal(all.previousTotal, 1);
+  assert.equal(all.promoters, 5);
+  assert.equal(all.topAuthors[0].count, 4);
+  assert.deepEqual(Array.from(all.topAuthors[0].reviews, row => row.original), ["fourth", "third", "second"]);
+  assert.deepEqual(Array.from(summarize("Banco A").topAuthors[0].reviews, row => row.original), ["second", "first"]);
+  assert.equal(summarize("Banco B").total, 3);
+  assert.equal(compact.at(-1).original, undefined);
 });
