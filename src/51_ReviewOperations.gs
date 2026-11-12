@@ -39,7 +39,8 @@ function requestMarketsReviewPipeline() {
     }
     const properties = PropertiesService.getScriptProperties();
     const pipeline = readMarketsReviewPipeline_(properties);
-    if (pipeline && pipeline.stage < pipeline.jobs.length && pipeline.jobs[pipeline.stage].status !== 'Revisar') {
+    if (pipeline && (pipeline.leaseUntil > Date.now() ||
+        (pipeline.stage < pipeline.jobs.length && pipeline.jobs[pipeline.stage].status !== 'Revisar'))) {
       return { queued: false };
     }
     const day = Utilities.formatDate(new Date(), MARKETS_CONFIG.timeZone, 'yyyy-MM-dd');
@@ -54,24 +55,34 @@ function superviseMarketsReviews_() {
   const properties = PropertiesService.getScriptProperties();
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(1000)) return;
-  let pipeline, job;
+  let pipeline, job, background;
   try {
     const now = new Date();
     const day = Utilities.formatDate(now, MARKETS_CONFIG.timeZone, 'yyyy-MM-dd');
     pipeline = readMarketsReviewPipeline_(properties);
     const previousFinished = !pipeline || pipeline.stage >= pipeline.jobs.length || pipeline.jobs[pipeline.stage].status === 'Revisar';
-    if (pipeline?.day !== day && previousFinished) {
-      if (Utilities.formatDate(now, MARKETS_CONFIG.timeZone, 'HHmm') < '0800') return;
+    if (pipeline?.day !== day && previousFinished &&
+        Utilities.formatDate(now, MARKETS_CONFIG.timeZone, 'HHmm') >= '0800' &&
+        !(pipeline?.leaseUntil > now.getTime())) {
       pipeline = newMarketsReviewPipeline_(day);
     }
+    if (!pipeline || pipeline.leaseUntil > now.getTime()) return;
     job = pipeline.jobs[pipeline.stage];
-    if (!job || job.status === 'Revisar' || pipeline.leaseUntil > now.getTime()) return;
+    if (!job) {
+      background = true;
+      const translation = pipeline.jobs.find(item => item.id === 'translate');
+      const retryAt = Number(properties.getProperty(MARKETS_TRANSLATION_QUOTA_RETRY_KEY)) || 0;
+      const publication = pipeline.jobs.find(item => item.id === 'publish');
+      job = pipeline.translationSnapshotPending && publication.status !== 'Revisar' ? publication
+        : translation.pending && now.getTime() >= retryAt ? translation : null;
+    }
+    if (!job || job.status === 'Revisar') return;
     if (pipeline.leaseUntil) {
       job.retries++;
       job.error = 'La ejecución anterior agotó el tiempo disponible.';
       if (job.retries >= 3) {
         job.status = 'Revisar';
-        if (job.id === 'translate' || job.id === 'publish') pipeline.stage++;
+        if (!background && (job.id === 'translate' || job.id === 'publish')) pipeline.stage++;
         delete pipeline.leaseUntil;
         properties.setProperty(MARKETS_REVIEW_PIPELINE_KEY, JSON.stringify(pipeline));
         return;
@@ -86,26 +97,28 @@ function superviseMarketsReviews_() {
     lock.releaseLock();
   }
   try {
-    const complete = advanceMarketsReviewJob_(job, pipeline);
+    const complete = advanceMarketsReviewJob_(job, pipeline, background);
     job.retries = 0;
     delete job.error;
+    if (background && job.id === 'translate' && job.batchTranslated) pipeline.translationSnapshotPending = true;
+    if (background && job.id === 'publish' && complete) delete pipeline.translationSnapshotPending;
     if (complete) {
       job.status = job.failures || job.pending ? 'Parcial' : 'Completado';
       job.finishedAt = new Date().toISOString();
-      pipeline.stage++;
+      if (!background) pipeline.stage++;
     }
   } catch (error) {
     job.retries++;
     job.status = job.retries >= 3 ? 'Revisar' : 'Reintento pendiente';
     job.error = errorToString_(error).slice(0, 250);
     console.warn(job.label + ': ' + job.error);
-    if (job.status === 'Revisar' && (job.id === 'translate' || job.id === 'publish')) pipeline.stage++;
+    if (!background && job.status === 'Revisar' && (job.id === 'translate' || job.id === 'publish')) pipeline.stage++;
   }
   delete pipeline.leaseUntil;
   properties.setProperty(MARKETS_REVIEW_PIPELINE_KEY, JSON.stringify(pipeline));
 }
 
-function advanceMarketsReviewJob_(job, pipeline) {
+function advanceMarketsReviewJob_(job, pipeline, background) {
   switch (job.id) {
     case 'ios':
     case 'android': {
@@ -121,16 +134,19 @@ function advanceMarketsReviewJob_(job, pipeline) {
     }
     case 'translate': {
       const result = translateMarketsReviews_();
+      job.batchTranslated = result.translated || 0;
       if (result.deferred) return false;
+      if (result.eligible !== undefined) {
+        job.done = result.checked;
+        job.total = result.eligible;
+        job.updated += result.translated;
+        job.failures = result.failed;
+        job.pending = result.pending;
+      } else if (result.quotaLimited) {
+        job.pending = Math.max(job.pending || 0, 1);
+      }
       job.batches = (job.batches || 0) + 1;
-      job.done = result.checked;
-      job.total = result.eligible;
-      job.updated += result.translated;
-      job.failures += result.failed || 0;
-      if (result.complete) return true;
-      if (job.batches < 4) return false;
-      job.pending = Math.max(job.total - job.done, result.pending || 0);
-      return true;
+      return result.complete || result.quotaLimited || background || job.batches >= 4;
     }
     case 'publish': {
       const result = publishMarketsReviewSnapshot_();

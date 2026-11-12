@@ -205,7 +205,6 @@ function fetchMarketsIosReviewPage_(app, page) {
 }
 
 function storeMarketsIosReviews_(sheet, properties, known, reviews, summary, width) {
-  const translationKey = 'MARKETS_REVIEWS_TRANSLATION_ROW';
   const previousUpdates = summary.updated;
   const pending = new Map();
   const captured = new Date().toISOString();
@@ -223,10 +222,6 @@ function storeMarketsIosReviews_(sheet, properties, known, reviews, summary, wid
     const merged = width === MARKETS_REVIEW_METADATA_COLUMN ? mergeMarketsReviewMetadata_(
       marketsReviewMetadata_(previous.row), marketsReviewMetadata_(row)) : '';
     if (!newer && (!merged || merged === previous.row[15])) continue;
-    if (textChanged) {
-      const nextTranslation = Number(properties.getProperty(translationKey)) || 2;
-      properties.setProperty(translationKey, String(Math.min(nextTranslation, previous.index)));
-    }
     const updatedRow = newer ? row.slice(0, width) : previous.row.slice();
     if (newer && !textChanged) updatedRow.splice(11, 3, ...previous.row.slice(11, 14));
     updatedRow[14] = captured;
@@ -295,47 +290,54 @@ function translateMarketsReviews_() {
   return processMarketsReviewTranslations_(false);
 }
 
+const MARKETS_TRANSLATION_QUOTA_RETRY_KEY = 'MARKETS_TRANSLATION_QUOTA_RETRY_AT';
+const MARKETS_TRANSLATION_QUOTA_RETRY_MS = 60 * 60 * 1000;
+
 function processMarketsReviewTranslations_(historical) {
   const ss = historical ? requireMarketsReviewOwner_().ss : openMarketsSpreadsheet_();
   const lock = LockService.getUserLock();
   if (!lock.tryLock(1000)) return { deferred: true };
   try {
-    const sheet = marketsReviewSheet_(ss), last = sheet.getLastRow();
     const properties = PropertiesService.getScriptProperties();
-    const key = historical ? 'MARKETS_TRANSLATION_HISTORY_CURSOR' : 'MARKETS_REVIEWS_TRANSLATION_ROW';
-    const cursor = historical ? JSON.parse(properties.getProperty(key) || '{"row":2,"turkey":true}') :
-      { row: Number(properties.getProperty(key)) || 2, turkey: false };
-    const first = cursor.row;
-    // Historical scans can skip healthy rows faster without spending additional translation calls.
-    const scanLimit = historical ? 1500 : 100;
-    const rows = last >= first ? sheet.getRange(first, 1, Math.min(scanLimit, last - first + 1), 14).getValues() : [];
+    const retryAt = Number(properties.getProperty(MARKETS_TRANSLATION_QUOTA_RETRY_KEY)) || 0;
+    if (retryAt > Date.now()) return { quotaLimited: true, retryAt };
+    const sheet = marketsReviewSheet_(ss), eligible = Math.max(0, sheet.getLastRow() - 1);
+    // La fecha de la reseña (no su posición) define la prioridad, incluso tras una recuperación histórica.
+    const rows = eligible ? sheet.getRange(2, 7, eligible, 8).getValues() : [];
+    const queue = [];
+    rows.forEach(([date, , , , original, ...values], offset) => {
+      if (original && values.some(value => !value)) queue.push({
+        index: offset + 2, time: Date.parse(date) || 0, original, values
+      });
+    });
+    queue.sort((a, b) => b.time - a.time || b.index - a.index);
     const deadline = Date.now() + 235000;
     const languages = ['es', 'en', 'tr'];
-    let translated = 0, failed = 0, pending = 0, checked = first - 2, attempted = 0, failedRow = null;
+    let translated = 0, failed = 0, pending = queue.length, nextRetry = 0;
     try {
-      for (const row of rows) {
-        if (Date.now() >= deadline || attempted >= 100) break;
-        const index = checked + 2;
-        checked++;
-        const turkey = String(row[2]).split(',').includes('TR');
-        const [original, ...values] = row.slice(10, 14);
-        if (!original || values.every(Boolean) || (cursor.turkey && !turkey)) continue;
-        pending++;
-        attempted++;
-        let rowFailed = false;
-        const result = values.map((value,i) => {
-          if (value) return value;
-          try { return LanguageApp.translate(String(original), '', languages[i]) || ''; }
-          catch (error) { rowFailed = true; return ''; }
-        });
+      for (const {index, original, values} of queue.slice(0, 100)) {
+        if (Date.now() >= deadline) break;
+        const result = values.slice();
+        for (let i = 0; i < languages.length; i++) {
+          if (result[i]) continue;
+          try {
+            result[i] = LanguageApp.translate(String(original), '', languages[i]) || '';
+          } catch (error) {
+            // LanguageApp no ofrece una consulta de saldo: la siguiente llamada actúa como sonda.
+            if (/quota|cuota|too many times|limit exceeded/i.test(errorToString_(error))) {
+              nextRetry = Date.now() + MARKETS_TRANSLATION_QUOTA_RETRY_MS;
+              properties.setProperty(MARKETS_TRANSLATION_QUOTA_RETRY_KEY, String(nextRetry));
+              break;
+            }
+          }
+        }
         if (result.some((value,i) => value !== values[i])) {
           sheet.getRange(index, 12, 1, 3).setValues([result.map(marketsReviewLiteral_)]);
           translated++;
         }
-        if (rowFailed || result.some(value => !value)) {
-          failed++;
-          if (failedRow === null) failedRow = index;
-        } else pending--;
+        if (result.every(Boolean)) pending--;
+        else if (!nextRetry) failed++;
+        if (nextRetry) break;
       }
     } finally {
       if (translated) {
@@ -343,26 +345,9 @@ function processMarketsReviewTranslations_(historical) {
         advanceMarketsReviewGeneration_(properties);
       }
     }
-    const end = checked >= last - 1;
-    if (historical) properties.setProperty(key, JSON.stringify({
-      row: end ? 2 : checked + 2, turkey: end ? !cursor.turkey : cursor.turkey,
-      hadFailures: !end && (Boolean(cursor.hadFailures) || pending > 0)
-    }));
-    else {
-      const retryKey = 'MARKETS_TRANSLATION_RETRY';
-      const retry = JSON.parse(properties.getProperty(retryKey) || 'null');
-      const attempts = failedRow === null ? 0 : (retry?.row === failedRow ? retry.attempts : 0) + 1;
-      if (failedRow !== null && attempts < 3) {
-        properties.setProperty(retryKey, JSON.stringify({row: failedRow, attempts}));
-        properties.setProperty(key, String(failedRow));
-      } else {
-        if (retry) properties.deleteProperty(retryKey);
-        properties.setProperty(key, String(checked + 2));
-      }
-    }
     if (failed) console.warn('Filas de traducción pendientes de reintento: ' + failed);
-    return { translated, checked, eligible: Math.max(0, last - 1), failed, pending,
-      complete: end && !cursor.turkey && !cursor.hadFailures && pending === 0 };
+    return { translated, checked: eligible - pending, eligible, failed, pending,
+      quotaLimited: Boolean(nextRetry), retryAt: nextRetry, complete: pending === 0 };
   } finally {
     lock.releaseLock();
   }

@@ -319,7 +319,7 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(app, /MarketsReport\.render/);
   assert.match(app, /const request=trendRequest\(\)/);
   assert.match(app, /view:state\.view,selection:\{\.\.\.selection\(\),app:state\.view==="evolution"\?state\.evolutionApp:""\},periodYear:state\.periodYear,periodMonth:state\.periodMonth/);
-  assert.match(app, /report-button"\)\.classList\.toggle\("hidden",privateView\|\|\["reviews","analytics"\]\.includes\(state\.view\)\)/);
+  assert.match(app, /report-button"\)\.classList\.toggle\("hidden",!slot\)/);
   const report = fs.readFileSync(new URL("../src/Report.html", import.meta.url), "utf8");
   const reportStyles = fs.readFileSync(new URL("../src/ReportStyles.html", import.meta.url), "utf8");
   assert.match(report, /La voz del mercado/);
@@ -344,9 +344,9 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(app, /target=\"_blank\"/);
   assert.match(app, /rel=\"noopener noreferrer\"/);
   assert.match(app, /function renderRankRow/);
-  assert.match(index, /<label for="country-filter">Geografía<\/label>/);
-  assert.match(index, /<label>Plataforma<\/label>/);
-  assert.match(index, /id="benchmark-control" class="control hidden"/);
+  assert.doesNotMatch(index, /id="(?:country-filter|platform-control|benchmark-weighted)"/);
+  assert.match(index, /id="benchmark-filters"[\s\S]+name="segment"[\s\S]+name="ranking"[\s\S]+id="benchmark-markets"/);
+  assert.match(index, /id="evolution-filters"[\s\S]+id="evolution-markets"/);
   assert.match(index, /<label for="segment-filter">Tipo de entidad<\/label>/);
   assert.match(index, /id="evolution-filters"[\s\S]+name="app"[\s\S]+name="year"[\s\S]+name="month"/);
   assert.deepEqual([...index.matchAll(/<button[^>]+data-view="([^"]+)"/g)].map(match => match[1]),
@@ -743,11 +743,10 @@ test("summary comparison uses BBVA by geography and banks within one country", (
 
 test("all-markets benchmark keeps every market on one page", () => {
   const app = fs.readFileSync(new URL("../src/App.html", import.meta.url), "utf8");
-  assert.match(app, /function renderBenchmark\(\).*D\.selectionRows\(state\.snapshot,selection\(\),state\.benchmarkSegment,true\)/);
+  assert.match(app, /function renderBenchmark\(\)[\s\S]+D\.selectionRows\(state\.snapshot,selection\(\),state\.benchmarkSegment,true\)/);
+  assert.match(app, /Object\.keys\(groups\)\.sort\(\)\.map/);
+  assert.match(app, /alwaysChips:\["segment","ranking"\]/);
   assert.doesNotMatch(app, /vista agregada está reservada|Selecciona un mercado · BBVA Empresas/);
-  assert.match(app, /segment-filter"\)\.disabled=false/);
-  assert.match(app, /function syncViewControls\(\).*state\.view==="benchmark"/);
-  assert.match(app, /benchmark-control"\)\.classList\.toggle\("hidden",!benchmark\)/);
 });
 
 test("evolution KPIs use BBVA closes for the selected period", () => {

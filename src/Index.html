@@ -46,11 +46,6 @@
 </svg><span>Administración</span></button>
     </nav>
 
-    <template id="global-controls"><div id="filter-wrap" class="filter-wrap"><section id="filter-bar" class="filter-bar radar-filters" aria-label="Filtros globales">
-      <div class="control"><label for="country-filter">Geografía</label><select id="country-filter" name="country" class="select-control"><option value="ALL">Todos los mercados</option></select></div>
-      <div id="platform-control" class="control"><label>Plataforma</label><div id="platform-switch" class="platform-switch" role="group" aria-label="Plataforma"></div></div>
-      <div id="benchmark-control" class="control hidden"><label for="segment-filter">Tipo de entidad</label><select id="segment-filter" class="select-control"><option value="BANK">Solo bancos</option><option value="FINTECH">Fintech y Neobancos</option><option value="ALL">Todo el mercado</option></select></div>
-    </section></div></template>
 
     <main>
       <template id="report-control"><button id="report-button" class="button report-action" type="button" title="Descargar informe completo" aria-label="Descargar informe completo"><span aria-hidden="true">↓</span><span>Descargar informe</span></button></template>
@@ -59,15 +54,21 @@
         <div class="section-head"><div><span class="section-kicker">Benchmark, de aplicaciones para Banca de Empresas, en Android / iOS / Huawei</span><h2><svg class="icon" aria-hidden="true" focusable="false" width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
 <path d="M20.8 21.0898H11.2V14.6898H12.8V19.4898H19.2V10.2738L12 4.5138L4.79995 10.2738V19.4898H6.39995V21.0898H3.19995V10.0818C3.19995 9.7148 3.36395 9.3738 3.64995 9.1448L11.25 3.0648C11.691 2.7118 12.308 2.7118 12.749 3.0648L20.349 9.1448C20.635 9.3738 20.799 9.7158 20.799 10.0818L20.8 21.0898Z"/>
 <path d="M8.7999 21.1898C9.29696 21.1898 9.6999 20.7868 9.6999 20.2898C9.6999 19.7927 9.29696 19.3898 8.7999 19.3898C8.30285 19.3898 7.8999 19.7927 7.8999 20.2898C7.8999 20.7868 8.30285 21.1898 8.7999 21.1898Z"/>
-</svg>Resumen</h2><p>Ranking actual, de la aplicación GEMA, frente a los competidores en los distintos markets</p></div><div class="report-slot"></div><p id="benchmark-context" class="data-freshness"></p><div class="global-controls-slot"></div></div>
-        <label id="benchmark-weighted-control" class="evolution-scope-toggle"><span>Media ponderada</span><span class="mini-switch"><input id="benchmark-weighted" type="checkbox" role="switch"><i aria-hidden="true"></i></span></label><div id="benchmark-grid" class="benchmark-grid"></div>
+</svg>Resumen</h2><p>Ranking actual, de la aplicación GEMA, frente a los competidores en los distintos markets</p></div><div class="report-slot"></div><p id="benchmark-context" class="data-freshness"></p><div id="benchmark-filters" class="radar-filters">
+          <form class="filter-panel" hidden>
+            <div class="filter-field"><label for="segment-filter">Tipo de entidad</label><select id="segment-filter" name="segment"><option value="BANK">Solo bancos</option><option value="FINTECH">Fintech y Neobancos</option><option value="ALL">Todo el mercado</option></select></div>
+            <div class="filter-field"><label for="ranking-filter">Ranking</label><select id="ranking-filter" name="ranking"><option value="MARKET">Por market</option><option value="WEIGHTED">Ponderado</option></select></div>
+          </form>
+        </div></div>
+        <div id="benchmark-markets" class="geography-tabs" role="group" aria-label="Geografías"></div>
+        <div id="benchmark-grid" class="benchmark-grid"></div>
       </section>
 
       <section id="view-evolution" class="view hidden">
         <div class="section-head"><div><span class="section-kicker">Evolución de las aplicaciones en los markets</span><h2><svg class="icon" aria-hidden="true" focusable="false" width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
 <path d="M20.8 20.8H3.19995V3.19995H4.79995V14.869L10.4 9.26895L13.6 12.469L19.414 6.65495C19.647 6.42195 19.995 6.35295 20.299 6.47895C20.604 6.60495 20.8 6.89995 20.8 7.22895V20.8ZM4.79995 19.2H19.2V9.13095L13.6 14.731L10.4 11.531L4.79995 17.131V19.2Z"/>
 </svg>Análisis mensual</h2><p>Analiza la evolución mensual de las valoraciones y opiniones sobre los canales digitales de banca de empresas e instituciones. Compara entidades financieras, identifica tendencias y variaciones en los principales indicadores y profundiza en los factores que impulsan la satisfacción de los usuarios.</p></div><div class="report-slot"></div>
-        <p class="data-freshness"></p><div class="global-controls-slot"></div>
+        <p class="data-freshness"></p>
         <div id="evolution-filters" class="radar-filters">
           <form class="filter-panel" hidden>
             <div class="filter-field"><label for="evolution-app">Aplicación</label><select id="evolution-app" name="app"></select></div>
@@ -76,13 +77,14 @@
           </form>
         </div>
         </div>
+        <div id="evolution-markets" class="geography-tabs" role="group" aria-label="Geografías"></div>
         <section class="section panel monthly-pulse-panel"><div class="panel-head"><div><h3 id="monthly-pulse-title">Pulso mensual de BBVA Empresas</h3><span>Histórico hasta el cierre seleccionado · rating y opiniones por plataforma</span></div><span id="monthly-matrix-meta" class="panel-meta">Últimos cierres</span></div><div id="monthly-matrix" class="monthly-matrix-wrap"></div><div class="monthly-matrix-note"><span><b>Lectura:</b> la variación solo aparece cuando existe movimiento real.</span><span id="monthly-shared-note" class="hidden"><b>N/D:</b> listing Android compartido sin desglose fiable por geografía.</span></div></section>
         <section class="section panel new-review-panel" aria-labelledby="new-review-title"><div class="panel-head"><div><span class="section-kicker">Voz nueva del mes</span><h3 id="new-review-title">Qué nota dejan las nuevas opiniones</h3><span>Calidad del feedback recibido y su efecto observable en el rating acumulado.</span></div><span id="new-review-meta" class="panel-meta">Cierre seleccionado</span></div><div id="new-review-impact" class="new-review-impact"></div><div class="new-review-note"><strong>Cómo leerlo</strong><span>Para cada ficha se despeja la nota de las nuevas opiniones usando sus dos cierres acumulados consecutivos. Una ficha Android compartida solo se calcula en el alcance multipaís y una sola vez; nunca se atribuye a una geografía concreta. Si falta volumen, continuidad o precisión, se muestra N/D.</span></div></section>
         <section id="review-balance-panel" class="section panel trend-panel">
           <div class="panel-header"><div><p class="eyebrow">EVOLUCIÓN POR ENTIDAD</p><h3>% Promotores - % Detractores</h3></div><span id="review-balance-period" class="chart-period"></span></div>
           <div class="radar-filters monthly-sentiment">
             <label for="monthly-review-country">Geografía de reseñas</label>
-            <select id="monthly-review-country"><option value="">Geografía seleccionada</option><option value="UNKNOWN">Sin geografía</option></select>
+            <select id="monthly-review-country"><option value="">Geografía seleccionada</option><option value="UNKNOWN">No atribuible</option></select>
           </div>
           <div id="review-balance"></div>
         </section>
@@ -210,7 +212,7 @@
         </div>
         </div>
         <div id="review-markets" class="geography-tabs" role="group" aria-label="Geografías"></div>
-        <p class="review-chart-note">Sin geografía reúne comentarios cuya geografía no puede determinarse con suficiente fiabilidad. El país visible indica el escaparate observado.</p>
+        <p class="review-chart-note">No atribuible reúne comentarios cuya geografía no puede determinarse con suficiente fiabilidad. El país visible indica el escaparate observado.</p>
         <p id="review-filter-status" role="status"></p>
         <div id="review-results" class="admin-list" aria-live="polite"></div><div id="review-pagination" class="review-pagination"></div>
       </section>

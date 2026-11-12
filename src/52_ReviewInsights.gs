@@ -285,6 +285,7 @@ function reviewTopicRules_(ss) {
 const MARKETS_REVIEW_ENTITY = 'BBVA Empresas';
 const MARKETS_REVIEW_SNAPSHOT_SCHEMA = 5;
 const MARKETS_REVIEW_HELPFUL_MIN = 5;
+const MARKETS_REVIEW_PAGE_SIZE = 25;
 
 function marketsReviewWindow_(filters = {}) {
   const today = Utilities.formatDate(new Date(), MARKETS_CONFIG.timeZone, 'yyyy-MM-dd');
@@ -337,6 +338,7 @@ function marketsReviewSnapshotScope_(operation, filters, window) {
 }
 
 function publishMarketsReviewSnapshot_() {
+  const warmDeadline = Date.now() + 240000;
   const ss = openMarketsSpreadsheet_();
   const properties = PropertiesService.getScriptProperties();
   const catalog = readAppCatalog_(ss), catalogVersion = marketsReviewCatalogVersion_(catalog);
@@ -350,25 +352,32 @@ function publishMarketsReviewSnapshot_() {
   const annualWindow = marketsAnnualReviewWindow_(analyticsWindow);
   const commentWindow = marketsReviewWindow_({ start: marketsDefaultCommentStart_(end) });
   const topics = marketsReviewTopics_(ss);
-  const rows = queryMarketsReviews_(ss, { country: 'ALL', platform: 'ALL' }, analyticsWindow, true, catalog);
-  const byCountry = new Map();
-  const comments = [];
-  for (const row of rows) {
+  const year = end.slice(0, 4), analysisMonth = end.slice(0, 7);
+  const earliest = [analyticsWindow.start, (Number(year) - 1) + '-01-01'].sort()[0];
+  const allRows = queryMarketsReviews_(ss, { country: 'ALL', platform: 'ALL' },
+    { ...analyticsWindow, start: earliest }, true, catalog);
+  const rows = allRows.filter(row => row.date >= analyticsWindow.start);
+  const byCountry = new Map(), commentRows = new Map(), counts = Object.create(null);
+  for (const row of allRows) {
     if (row.countries.length !== 1) continue;
     const [country] = row.countries;
     if (!byCountry.has(country)) byCountry.set(country, []);
     byCountry.get(country).push(row);
-    if (row.date >= commentWindow.start && row.entities.includes(MARKETS_REVIEW_ENTITY)) comments.push(row);
+    if (row.date < commentWindow.start || !row.entities.includes(MARKETS_REVIEW_ENTITY)) continue;
+    counts[country] = (counts[country] || 0) + 1;
+    if (!commentRows.has(country)) commentRows.set(country, []);
+    const firstPage = commentRows.get(country);
+    if (firstPage.length < MARKETS_REVIEW_PAGE_SIZE) firstPage.push(row);
   }
   const values = {};
   for (const country of ['ALL', ...MARKETS_WEB.countryCodes, 'UNKNOWN']) {
-    const scoped = country === 'ALL' ? rows : byCountry.get(country) || [];
+    const scoped = country === 'ALL' ? rows : (byCountry.get(country) || []).filter(row => row.date >= analyticsWindow.start);
     const analytics = summarizeMarketsReviewAnalytics_(scoped, topics, { segment: 'DETRACTOR', entity: MARKETS_REVIEW_ENTITY }, analyticsWindow, annualWindow);
     values['analytics:' + country] = analytics;
     if (country === 'ALL') continue;
     for (const language of ['es', 'en', 'tr']) {
-      const page = paginateMarketsReviews_(comments, { country, topics }, commentWindow);
-      page.rows = page.rows.map(({ translations, ...row }) => {
+      const page = { page: 0, size: MARKETS_REVIEW_PAGE_SIZE, total: counts[country] || 0, counts, topics, window: commentWindow };
+      page.rows = (commentRows.get(country) || []).map(({ translations, ...row }) => {
         const translated = translations[language];
         return { ...row, text: translated || row.original, translated: Boolean(translated && translated !== row.original) };
       });
@@ -380,6 +389,20 @@ function publishMarketsReviewSnapshot_() {
   }
   const result = tryWriteMarketsPersistentCache_('review-snapshot', { end, versions, values, schema: MARKETS_REVIEW_SNAPSHOT_SCHEMA }, end);
   if (!result.ok) throw new Error(result.error);
+  // Precalienta los mismos parámetros que usan las vistas iniciales. Si una
+  // respuesta supera el tamaño de CacheService, se conserva el fallback normal.
+  const cache = CacheService.getScriptCache();
+  for (const country of ['ALL', ...MARKETS_WEB.countryCodes, 'UNKNOWN']) {
+    const scoped = country === 'ALL' ? allRows : byCountry.get(country) || [];
+    if (Date.now() >= warmDeadline) break;
+    for (const dateFilter of [{ year }, { analysisMonth }]) {
+      const filters = normalizeMarketsReviewFilters_({ country, ...dateFilter, segment: 'DETRACTOR', entity: MARKETS_REVIEW_ENTITY });
+      const window = marketsReviewAnalyticsWindow_(filters, end);
+      const rowsForView = filters.year ? scoped : scoped.filter(row => row.date >= window.start && row.date <= window.end);
+      const data = buildMarketsReviewAnalytics_(rowsForView, topics, filters, window);
+      writeMarketsWebCache_(cache, marketsReviewCacheKey_(ss, 'analytics', filters, window, versions), data);
+    }
+  }
   return { complete: true, published: Object.keys(values).length };
 }
 
@@ -448,7 +471,7 @@ function paginateMarketsReviews_(rows, filters, window) {
     counts[country] = (counts[country] || 0) + 1;
     if (country === filters.country) matching.push(row);
   }
-  const size = 25;
+  const size = MARKETS_REVIEW_PAGE_SIZE;
   const page = Math.min(Math.max(0, Math.ceil(matching.length / size) - 1),
     Math.max(0, Math.trunc(Number(filters.page) || 0)));
   return { page, size, total: matching.length, rows: matching.slice(page * size, (page + 1) * size),
@@ -459,8 +482,30 @@ function getMarketsReviewAnalytics(filters) {
   currentMarketsUserEmail_();
   const ss = openMarketsSpreadsheet_();
   filters = normalizeMarketsReviewFilters_(filters);
+  const window = marketsReviewAnalyticsWindow_(filters, marketsReviewWindow_().end);
+  filters.entity = filters.entity || MARKETS_REVIEW_ENTITY;
+  const language = filters.language || 'es';
+  delete filters.language;
+  const data = readMarketsReviewCache_(ss, 'analytics', filters, window, catalog => {
+    const topics = marketsReviewTopics_(ss);
+    const annual = filters.year ? { start: window.start, end: window.end } : marketsAnnualReviewWindow_(window);
+    const start = filters.year ? (Number(filters.year) - 1) + '-01-01' : [annual.start, window.start].sort()[0];
+    const rows = queryMarketsReviews_(ss, { ...filters, app: '', segment: '', start }, { start, end: window.end }, true, catalog);
+    return buildMarketsReviewAnalytics_(rows, topics, filters, window);
+  });
+  function localizeReview({ translations, ...review }) {
+    const translated = translations?.[language];
+    return { ...review, text: translated || review.original, translated: Boolean(translated && translated !== review.original) };
+  }
+  return {
+    ...data,
+    examples: data.examples.map(({ block, review }) => ({ block, review: localizeReview(review) })),
+    annual: { ...data.annual, topHelpful: data.annual.topHelpful.map(localizeReview) }
+  };
+}
+
+function marketsReviewAnalyticsWindow_(filters, today) {
   const window = marketsReviewWindow_(filters);
-  const today = marketsReviewWindow_().end;
   if (filters.year) {
     window.start = filters.year + '-01-01';
     window.end = [today, filters.year + '-12-31'].sort()[0];
@@ -474,42 +519,34 @@ function getMarketsReviewAnalytics(filters) {
     window.end = [today, shiftReviewDay_(new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 10), -1)].sort()[0];
     if (window.start >= start) window.start = (year - 1) + '-01-01';
   }
-  filters.entity = filters.entity || MARKETS_REVIEW_ENTITY;
-  const language = filters.language || 'es';
-  delete filters.language;
-  const data = readMarketsReviewCache_(ss, 'analytics', filters, window, catalog => {
-    const topics = marketsReviewTopics_(ss);
-    const annual = filters.year ? { start: window.start, end: window.end } : marketsAnnualReviewWindow_(window);
-    const previous = filters.year ? { start: (Number(filters.year) - 1) + '-01-01', end: (Number(filters.year) - 1) + '-12-31' } : null;
-    const start = previous?.start || (annual.start < window.start ? annual.start : window.start);
-    const rows = queryMarketsReviews_(ss, { ...filters, app: '', segment: '', start }, { start, end: window.end }, true, catalog);
-    const result = summarizeMarketsReviewAnalytics_(rows, topics, filters, window, annual);
-    if (previous) {
-      const priorRows = rows.filter(row => row.date >= previous.start && row.date <= previous.end);
-      result.annual.previousTotal = priorRows.length ? priorRows.filter(row => row.entities.includes(filters.entity)).length : null;
-    }
-    return result;
-  });
-  function localizeReview({ translations, ...review }) {
-    const translated = translations?.[language];
-    return { ...review, text: translated || review.original, translated: Boolean(translated && translated !== review.original) };
+  return window;
+}
+
+function buildMarketsReviewAnalytics_(rows, topics, filters, window) {
+  const annual = filters.year ? { start: window.start, end: window.end } : marketsAnnualReviewWindow_(window);
+  const result = summarizeMarketsReviewAnalytics_(rows, topics, filters, window, annual);
+  if (filters.year) {
+    const previousYear = String(Number(filters.year) - 1);
+    const priorRows = rows.filter(row => row.date.startsWith(previousYear + '-'));
+    result.annual.previousTotal = priorRows.length ? priorRows.filter(row => row.entities.includes(filters.entity)).length : null;
   }
-  return {
-    ...data,
-    examples: data.examples.map(({ block, review }) => ({ block, review: localizeReview(review) })),
-    annual: { ...data.annual, topHelpful: data.annual.topHelpful.map(localizeReview) }
-  };
+  return result;
+}
+
+function marketsReviewCacheKey_(ss, operation, filters, window, versions) {
+  const scope = Object.keys(filters).sort().map(key => [key, filters[key]]);
+  return 'market-review:' + marketsReviewDigest_(['review', MARKETS_REVIEW_SNAPSHOT_SCHEMA, operation,
+    ss.getId(), window.start, window.end, versions, scope]);
 }
 
 function readMarketsReviewCache_(ss, operation, filters, window, builder) {
   const properties = PropertiesService.getScriptProperties().getProperties();
   const catalog = readAppCatalog_(ss);
   const versions = marketsReviewVersions_(properties, marketsReviewCatalogVersion_(catalog));
-  const scope = Object.keys(filters).sort().map(key => [key, filters[key]]);
-  const key = marketsReviewDigest_(['review', MARKETS_REVIEW_SNAPSHOT_SCHEMA, operation, ss.getId(), window.start, window.end, versions, scope]);
+  const key = marketsReviewCacheKey_(ss, operation, filters, window, versions);
   const started = Date.now();
   let source = 'cache';
-  const value = readMarketsWebCache_('market-review:' + key, () => {
+  const value = readMarketsWebCache_(key, () => {
     source = 'sheet';
     const snapshotScope = marketsReviewSnapshotScope_(operation, filters, window);
     if (snapshotScope) {

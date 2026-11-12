@@ -1,6 +1,6 @@
 /** Web app de lectura para el dashboard de ratings. */
 var MARKETS_WEB = Object.freeze({
-  version: '2026.11.11.53',
+  version: '2026.11.12.54',
   // Solo debe cambiar si cambia el formato serializado. Un cambio visual no
   // puede obligar al primer usuario a reconstruir la cache desde Sheets.
   cacheSchemaVersion: '2026.10.21.41',
@@ -601,9 +601,17 @@ function refreshMarketsDashboardCache_(ss, catalog) {
   const trendPersistence = tryWriteMarketsPersistentCache_('trends', allTrends, revision);
   try { cache.removeAll(marketsInteractiveTrendCacheKeys_(bootstrap.snapshot)); } catch (ignored) {}
   writeMarketsWebCache_(cache, marketsBootstrapCacheKey_(), bootstrap);
-  const trends = filterDashboardTrendsForWeb_(allTrends,
-    normalizeDashboardTrendRequest_(defaultMarketsTrendRequest_()));
+  const trends = bootstrap.trends;
   writeMarketsWebCache_(cache, marketsTrendCacheKey_(defaultMarketsTrendRequest_()), trends);
+  const countries = groupDashboardTrendsForWeb_(allTrends);
+  const months = uniqueStrings_(allTrends.map(row => row.month)).sort();
+  const cutoff = months[Math.max(0, months.length - MARKETS_WEB.defaultTrendMonths)] || '';
+  for (const [countryCode, rows] of countries) {
+    const request = { countryCode, segment: 'ALL', bbvaOnly: false };
+    writeMarketsWebCache_(cache, marketsTrendCacheKey_({ ...request, months: MARKETS_WEB.maxTrendMonths }), rows);
+    writeMarketsWebCache_(cache, marketsTrendCacheKey_({ ...request, months: MARKETS_WEB.defaultTrendMonths }),
+      rows.filter(row => row.month >= cutoff));
+  }
   return {
     date: bootstrap.meta.dataDate,
     snapshotRows: bootstrap.snapshot.length,
@@ -616,13 +624,26 @@ function refreshMarketsDashboardCache_(ss, catalog) {
   };
 }
 
+function groupDashboardTrendsForWeb_(rows) {
+  const groups = new Map([['', rows]]);
+  for (const row of rows) {
+    if (!groups.has(row.countryCode)) groups.set(row.countryCode, []);
+    groups.get(row.countryCode).push(row);
+  }
+  return groups;
+}
+
 function marketsInteractiveTrendCacheKeys_(snapshot) {
   const snapshotCountries = uniqueStrings_((snapshot || []).map(function (row) { return row.countryCode; }));
-  const countries = [''].concat(snapshotCountries.length ? snapshotCountries : MARKETS_WEB.countryCodes);
+  const countries = uniqueStrings_(MARKETS_WEB.countryCodes.concat(snapshotCountries));
+  countries.unshift('');
   const platforms = ['', 'Android', 'iOS', 'Huawei'];
   const segments = ['BANK', 'FINTECH', 'ALL'];
   const keys = [];
   countries.forEach(function (countryCode) {
+    for (const months of [MARKETS_WEB.defaultTrendMonths, MARKETS_WEB.maxTrendMonths]) {
+      keys.push(marketsTrendCacheKey_({ countryCode, segment: 'ALL', months }));
+    }
     platforms.forEach(function (platform) {
       segments.forEach(function (segment) {
         keys.push(marketsTrendCacheKey_({
