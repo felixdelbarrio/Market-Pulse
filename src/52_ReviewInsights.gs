@@ -388,13 +388,16 @@ function publishMarketsReviewSnapshot_() {
     return { complete: false, published: 0 };
   }
   const result = tryWriteMarketsPersistentCache_('review-snapshot', { end, versions, values, schema: MARKETS_REVIEW_SNAPSHOT_SCHEMA }, end);
-  if (!result.ok) throw new Error(result.error);
   // Precalienta los mismos parámetros que usan las vistas iniciales. Si una
   // respuesta supera el tamaño de CacheService, se conserva el fallback normal.
   const cache = CacheService.getScriptCache();
   for (const country of ['ALL', ...MARKETS_WEB.countryCodes, 'UNKNOWN']) {
     const scoped = country === 'ALL' ? allRows : byCountry.get(country) || [];
     if (Date.now() >= warmDeadline) break;
+    const sourceRange = { start: (Number(year) - 1) + '-01-01', end };
+    const query = { country, platform: 'ALL', start: sourceRange.start };
+    const sourceKey = marketsReviewAnalyticsSourceKey_(ss, query, sourceRange, versions);
+    writeMarketsWebCache_(cache, sourceKey, { rows: scoped.filter(row => row.date >= sourceRange.start), topics }, 12);
     for (const dateFilter of [{ year }, { analysisMonth }]) {
       const filters = normalizeMarketsReviewFilters_({ country, ...dateFilter, segment: 'DETRACTOR', entity: MARKETS_REVIEW_ENTITY });
       const window = marketsReviewAnalyticsWindow_(filters, end);
@@ -403,10 +406,12 @@ function publishMarketsReviewSnapshot_() {
       writeMarketsWebCache_(cache, marketsReviewCacheKey_(ss, 'analytics', filters, window, versions), data);
     }
   }
+  if (!result.ok) throw new Error(result.error);
   return { complete: true, published: Object.keys(values).length };
 }
 
 function getMarketsReviewPage(filters) {
+  const requestStarted = Date.now();
   currentMarketsUserEmail_();
   filters = normalizeMarketsReviewFilters_(filters);
   if (filters.country === 'ALL') throw new Error('Selecciona una geografía para consultar los comentarios.');
@@ -417,7 +422,8 @@ function getMarketsReviewPage(filters) {
   }
   const window = marketsReviewWindow_(filters);
   if (filters.start && filters.start < window.start) window.start = filters.start;
-  return readMarketsReviewCache_(ss, 'page', filters, window, catalog => {
+  const timing = {};
+  const page = readMarketsReviewCache_(ss, 'page', filters, window, catalog => {
     const deferBlocks = !filters.topic;
     const query = { ...filters, country: 'ALL', deferBlocks };
     const paging = { ...filters, topics: marketsReviewTopics_(ss) };
@@ -433,7 +439,8 @@ function getMarketsReviewPage(filters) {
       console.log(JSON.stringify({ operation: 'review-page-classify', classified: page.rows.length, durationMs: Date.now() - started }));
     }
     return page;
-  });
+  }, timing);
+  return { ...page, timing: { ...timing, durationMs: Date.now() - requestStarted } };
 }
 
 /** Descarga la selección completa con los mismos filtros y permisos que Comentarios. */
@@ -494,6 +501,7 @@ function paginateMarketsReviews_(rows, filters, window) {
 }
 
 function getMarketsReviewAnalytics(filters) {
+  const requestStarted = Date.now();
   currentMarketsUserEmail_();
   const ss = openMarketsSpreadsheet_();
   filters = normalizeMarketsReviewFilters_(filters);
@@ -501,19 +509,32 @@ function getMarketsReviewAnalytics(filters) {
   filters.entity = filters.entity || MARKETS_REVIEW_ENTITY;
   const language = filters.language || 'es';
   delete filters.language;
-  const data = readMarketsReviewCache_(ss, 'analytics', filters, window, catalog => {
-    const topics = marketsReviewTopics_(ss);
+  const timing = {};
+  const data = readMarketsReviewCache_(ss, 'analytics', filters, window, (catalog, versions) => {
     const annual = filters.year ? { start: window.start, end: window.end } : marketsAnnualReviewWindow_(window);
     const start = filters.year ? (Number(filters.year) - 1) + '-01-01' : [annual.start, window.start].sort()[0];
-    const rows = queryMarketsReviews_(ss, { ...filters, app: '', segment: '', start }, { start, end: window.end }, true, catalog);
-    return buildMarketsReviewAnalytics_(rows, topics, filters, window);
-  });
+    const sourceStart = [start, (Number(window.end.slice(0, 4)) - 1) + '-01-01'].sort()[0];
+    const range = { start: sourceStart, end: window.end };
+    const query = { country: filters.country, platform: filters.platform, start: sourceStart };
+    if (filters.end && filters.end < range.end) query.end = filters.end;
+    for (const field of ['period', 'rating', 'topic', 'reviewKey', 'search']) {
+      if (filters[field]) query[field] = filters[field];
+    }
+    const key = marketsReviewAnalyticsSourceKey_(ss, query, range, versions);
+    const { rows, topics } = readMarketsWebCache_(key, () => {
+      timing.source = 'sheet';
+      return { rows: queryMarketsReviews_(ss, query, range, true, catalog), topics: marketsReviewTopics_(ss) };
+    }, 12);
+    timing.source = timing.source || 'cache';
+    return buildMarketsReviewAnalytics_(rows.filter(row => row.date >= start), topics, filters, window);
+  }, timing);
   function localizeReview({ translations, ...review }) {
     const translated = translations?.[language];
     return { ...review, text: translated || review.original, translated: Boolean(translated && translated !== review.original) };
   }
   return {
     ...data,
+    timing: { ...timing, durationMs: Date.now() - requestStarted },
     examples: data.examples.map(({ block, review }) => ({ block, review: localizeReview(review) })),
     annual: { ...data.annual, topHelpful: data.annual.topHelpful.map(localizeReview) }
   };
@@ -548,18 +569,22 @@ function buildMarketsReviewAnalytics_(rows, topics, filters, window) {
   return result;
 }
 
+function marketsReviewAnalyticsSourceKey_(ss, query, range, versions) {
+  return marketsReviewCacheKey_(ss, 'analytics-source', query, range, versions);
+}
+
 function marketsReviewCacheKey_(ss, operation, filters, window, versions) {
   const scope = Object.keys(filters).sort().map(key => [key, filters[key]]);
   return 'market-review:' + marketsReviewDigest_(['review', MARKETS_REVIEW_SNAPSHOT_SCHEMA, operation,
     ss.getId(), window.start, window.end, versions, scope]);
 }
 
-function readMarketsReviewCache_(ss, operation, filters, window, builder) {
+function readMarketsReviewCache_(ss, operation, filters, window, builder, timing = {}) {
+  const started = Date.now();
   const properties = PropertiesService.getScriptProperties().getProperties();
   const catalog = readAppCatalog_(ss);
   const versions = marketsReviewVersions_(properties, marketsReviewCatalogVersion_(catalog));
   const key = marketsReviewCacheKey_(ss, operation, filters, window, versions);
-  const started = Date.now();
   let source = 'cache';
   const value = readMarketsWebCache_(key, () => {
     source = 'sheet';
@@ -570,9 +595,11 @@ function readMarketsReviewCache_(ss, operation, filters, window, builder) {
           JSON.stringify(snapshot.versions) === JSON.stringify(versions) &&
           Object.hasOwn(snapshot.values, snapshotScope)) { source = 'snapshot'; return snapshot.values[snapshotScope]; }
     }
-    return builder(catalog);
+    return builder(catalog, versions);
   });
-  console.log(JSON.stringify({ operation: 'review-' + operation, source, key, durationMs: Date.now() - started }));
+  timing.source = timing.source || source;
+  timing.durationMs = Date.now() - started;
+  console.log(JSON.stringify({ operation: 'review-' + operation, source: timing.source, key, durationMs: timing.durationMs }));
   return value;
 }
 

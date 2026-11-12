@@ -96,6 +96,7 @@ function superviseMarketsReviews_() {
   } finally {
     lock.releaseLock();
   }
+  const batchStarted = Date.now();
   try {
     const complete = advanceMarketsReviewJob_(job, pipeline, background);
     job.retries = 0;
@@ -114,6 +115,9 @@ function superviseMarketsReviews_() {
     console.warn(job.label + ': ' + job.error);
     if (!background && job.status === 'Revisar' && (job.id === 'translate' || job.id === 'publish')) pipeline.stage++;
   }
+  job.lastBatchMs = Date.now() - batchStarted;
+  job.totalBatchMs = (job.totalBatchMs || 0) + job.lastBatchMs;
+  job.measuredBatches = (job.measuredBatches || 0) + 1;
   delete pipeline.leaseUntil;
   properties.setProperty(MARKETS_REVIEW_PIPELINE_KEY, JSON.stringify(pipeline));
 }

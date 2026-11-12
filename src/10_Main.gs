@@ -22,8 +22,7 @@ function runDailyRatingMonitor() {
     const ratingSheet = ss.getSheetByName(MARKETS_CONFIG.sheets.ratings);
     const upserted = upsertRowsByKey_(ratingSheet, rows, MARKETS_CONFIG.headers.ratings.length);
     const lookback = toNonNegativeInteger_(control.RATING_LOOKBACK_DAYS) || 30;
-    rebuildRatingMetrics_(ss, lookback, catalog);
-    const ratings = readRatingObjects_(ss);
+    const ratings = rebuildRatingMetrics_(ss, lookback, catalog);
     const dashboard = rebuildDashboardDatasets_(ss, catalog, ratings,
       { referenceDate: referenceDate, results: results });
     const alerts = buildAndProcessAlerts_(ss, referenceDate, catalog, runId, control, ratings);

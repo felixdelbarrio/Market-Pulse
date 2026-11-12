@@ -51,7 +51,7 @@ function requireMarketsAdministrator_() {
   return { email: email, ss: ss, control: control };
 }
 
-function getMarketsAdminDashboard() {
+function getMarketsAdminDashboard(includeUsage = true) {
   const access = requireMarketsAdministrator_();
   const ss = access.ss;
   [
@@ -68,8 +68,8 @@ function getMarketsAdminDashboard() {
   const subscribers = readAllMarketsAlertPreferences_(ss);
   const issues = readRecentMarketsAdminFetchIssues_(ss, 40);
   const alerts = readRecentMarketsAdminAlertEvents_(ss, 30);
-  const usage = readMarketsUsageAnalytics_(ss,
-    trimString_(access.control.TIME_ZONE) || MARKETS_CONFIG.timeZone);
+  const usage = includeUsage ? readMarketsUsageAnalytics_(ss,
+    trimString_(access.control.TIME_ZONE) || MARKETS_CONFIG.timeZone) : null;
   return {
     generatedAt: new Date().toISOString(),
     administrator: access.email,
@@ -103,7 +103,7 @@ function getMarketsAdminDashboard() {
       recentRuns: runs.length,
       recentIssues: issues.length,
       recentAlertEvents: alerts.length,
-      usersThisMonth: usage.kpis.usersMonth
+      usersThisMonth: usage?.kpis.usersMonth ?? null
     },
     recentRuns: runs,
     fetchIssues: issues,
@@ -275,4 +275,9 @@ function adminDateTime_(value) {
 function adminNumber_(value) {
   const parsed = toFiniteNumber_(value);
   return parsed === null ? null : parsed;
+}
+
+function getMarketsAdminUsage() {
+  const { ss, control } = requireMarketsAdministrator_();
+  return readMarketsUsageAnalytics_(ss, trimString_(control.TIME_ZONE) || MARKETS_CONFIG.timeZone);
 }

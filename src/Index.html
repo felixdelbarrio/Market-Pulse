@@ -239,7 +239,9 @@
               <p id="admin-review-recovery-result" role="status"></p>
             </details><div id="admin-jobs" class="admin-job-cards admin-system-grid panel-body" aria-label="Procesos operativos"></div><div id="admin-system" class="admin-system-grid panel-body"></div></section></div>
           <div id="admin-panel-performance" class="admin-tab-panel hidden" data-admin-panel="performance" role="tabpanel" aria-labelledby="admin-tab-performance">
-            <section class="panel"><div class="panel-head"><div><h3>Rendimiento de la aplicación</h3><span>Muestras de las últimas 3.000 filas de telemetría</span></div></div><div id="admin-performance" class="panel-body"></div></section>
+            <section class="panel"><div class="panel-head"><div><h3>Rendimiento de la aplicación</h3><span id="admin-performance-sample">Muestras de las últimas 3.000 filas de telemetría</span></div><button id="admin-performance-refresh" class="alert-button secondary" type="button">Actualizar tiempos</button></div><div id="admin-performance" class="panel-body"></div></section>
+            <section class="panel"><div class="panel-head"><h3>Lotes de reseñas</h3></div><div id="admin-performance-jobs" class="panel-body"></div></section>
+            <section class="panel"><div class="panel-head"><h3>Capturas de ratings</h3></div><div id="admin-performance-ratings" class="panel-body"></div></section>
             <section class="panel"><div class="panel-head"><div><h3>Catálogo global de funcionalidades</h3><span id="review-catalog-status" role="status">Sincronización con el documento maestro de Drive</span></div><button id="review-catalog-sync" class="alert-button secondary" type="button">Sincronizar catálogo</button></div></section>
           </div>
           <div id="admin-panel-usage" class="admin-tab-panel hidden" data-admin-panel="usage" role="tabpanel" aria-labelledby="admin-tab-usage">
