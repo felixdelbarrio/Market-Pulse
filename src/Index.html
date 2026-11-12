@@ -80,10 +80,6 @@
         <section class="section panel new-review-panel" aria-labelledby="new-review-title"><div class="panel-head"><div><span class="section-kicker">Voz nueva del mes</span><h3 id="new-review-title">Qué nota dejan las nuevas opiniones</h3><span>Calidad del feedback recibido y su efecto observable en el rating acumulado.</span></div><span id="new-review-meta" class="panel-meta">Cierre seleccionado</span></div><div id="new-review-impact" class="new-review-impact"></div><div class="new-review-note"><strong>Cómo leerlo</strong><span>Para cada ficha se despeja la nota de las nuevas opiniones usando sus dos cierres acumulados consecutivos. Una ficha Android compartida solo se calcula en el alcance multipaís y una sola vez; nunca se atribuye a una geografía concreta. Si falta volumen, continuidad o precisión, se muestra N/D.</span></div></section>
         <section id="review-balance-panel" class="section panel trend-panel">
           <div class="panel-header"><div><p class="eyebrow">EVOLUCIÓN POR ENTIDAD</p><h3>% Promotores - % Detractores</h3></div><span id="review-balance-period" class="chart-period"></span></div>
-          <div class="radar-filters monthly-sentiment">
-            <label for="monthly-review-country">Geografía de reseñas</label>
-            <select id="monthly-review-country"><option value="">Geografía seleccionada</option><option value="UNKNOWN">No atribuible</option></select>
-          </div>
           <div id="review-balance"></div>
         </section>
         <div class="section radar-filters monthly-sentiment">
@@ -94,7 +90,7 @@
             <option value="NEUTRAL">Neutros</option>
           </select>
         </div>
-          <section id="review-gap-panel" class="panel">
+          <section id="review-gap-panel" class="panel" aria-busy="false">
             <div class="panel-head"><h3>Brecha de saldo por bloque</h3></div>
             <div id="review-deltas" class="panel-body" aria-live="polite"></div>
           </section>

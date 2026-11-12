@@ -385,7 +385,7 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(charts, /class="new-review-unavailable"/);
   assert.doesNotMatch(charts, /platformBadge/);
   assert.match(app, /const mobileViewport=window\.matchMedia\("\(max-width:780px\)"\)/);
-  assert.match(app, /monthlyRatingMatrix\(trends,state\.snapshot,\{\.\.\.selection\(\),app:state\.evolutionApp\|\|"ALL"\},period,mobileViewport\.matches\?3:6\)/);
+  assert.match(app, /monthlyRatingMatrix\(trends,state\.snapshot,\{\.\.\.selection\(\),app:state\.evolutionApp\},period,mobileViewport\.matches\?3:6\)/);
   assert.match(app, /const compactInteger=/);
   assert.doesNotMatch(charts, /Cierre mensual|<span>\/ 5<\/span>/);
   const components = fs.readFileSync(new URL("../src/Components.html", import.meta.url), "utf8");

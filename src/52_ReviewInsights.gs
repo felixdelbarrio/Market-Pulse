@@ -283,7 +283,7 @@ function reviewTopicRules_(ss) {
 }
 
 const MARKETS_REVIEW_ENTITY = 'BBVA Empresas';
-const MARKETS_REVIEW_SNAPSHOT_SCHEMA = 5;
+const MARKETS_REVIEW_SNAPSHOT_SCHEMA = 6;
 const MARKETS_REVIEW_HELPFUL_MIN = 5;
 const MARKETS_REVIEW_PAGE_SIZE = 25;
 
@@ -538,7 +538,8 @@ function getMarketsReviewAnalytics(filters) {
     ...data,
     timing: { ...timing, durationMs: Date.now() - requestStarted },
     examples: data.examples.map(({ block, review }) => ({ block, review: localizeReview(review) })),
-    annual: { ...data.annual, topHelpful: data.annual.topHelpful.map(localizeReview) }
+    annual: { ...data.annual, topHelpful: data.annual.topHelpful.map(localizeReview),
+      topAuthors: data.annual.topAuthors.map(({ reviews, ...author }) => ({ ...author, reviews: (reviews || []).map(localizeReview) })) }
   };
 }
 
@@ -566,16 +567,31 @@ function buildMarketsReviewAnalytics_(rows, topics, filters, window) {
   if (filters.year) {
     const previousYear = String(Number(filters.year) - 1);
     const priorRows = rows.filter(row => row.date.startsWith(previousYear + '-'));
-    result.annual.previousTotal = priorRows.length ? priorRows.filter(row => row.entities.includes(filters.entity)).length : null;
+    result.annual.previousTotal = priorRows.length ? priorRows.filter(row => filters.entity === 'ALL' || row.entities.includes(filters.entity)).length : null;
   }
   return result;
 }
 
-/** Preserve the full records eligible for examples or helpful-review cards. */
+/** Keep full records for examples, helpful reviews and recent cards of leading authors. */
 function compactMarketsReviewAnalyticsRows_(rows, end) {
   const examplesStart = shiftReviewDay_(end, -30);
+  const authorGroups = new Map();
+  for (const row of rows) {
+    if (!row.author?.trim()) continue;
+    for (const entity of ['ALL', ...row.entities]) {
+      const key = JSON.stringify([row.date.slice(0, 4), entity]);
+      if (!authorGroups.has(key)) authorGroups.set(key, new Map());
+      countMarketsReviewAuthor_(authorGroups.get(key), row);
+    }
+  }
+  const authorSamples = new Set();
+  for (const authors of authorGroups.values()) {
+    for (const { reviews } of topMarketsReviewAuthors_(authors)) {
+      for (const review of reviews) authorSamples.add(review);
+    }
+  }
   return rows.map(row => {
-    if (row.date >= examplesStart || (Number.isInteger(row.helpful) && row.helpful >= MARKETS_REVIEW_HELPFUL_MIN)) return row;
+    if (authorSamples.has(row) || row.date >= examplesStart || (Number.isInteger(row.helpful) && row.helpful >= MARKETS_REVIEW_HELPFUL_MIN)) return row;
     return { date: row.date, rating: row.rating, entities: row.entities, blocks: row.blocks,
       author: row.author, reply: row.reply?.trim() ? '1' : '' };
   });
@@ -713,7 +729,7 @@ function summarizeMarketsReviewAnalytics_(rows, topics, filters, window, annual 
   const leading = [...blockTotals].filter(([id]) => id !== 'general')
     .sort(([a, countA], [b, countB]) => countB - countA || a.localeCompare(b))[0];
   return { window, topics, examples, total: selected.length, leadingBlock: leading ? { id: leading[0], count: leading[1] } : null,
-    annual: summarizeAnnualMarketsReviews_(rows, filters.entity || MARKETS_REVIEW_ENTITY, annual, net),
+    annual: summarizeAnnualMarketsReviews_(rows, entity, annual, net, Boolean(filters.year)),
     entities: [...groups.values()].sort((a, b) => Number(b.label === 'BBVA Empresas') - Number(a.label === 'BBVA Empresas') ||
       b.total - a.total || a.label.localeCompare(b.label)), entityOptions: [...new Set(visible.flatMap(row => row.entities))].sort(),
     monthlyEntityOptions: [...new Set([...monthly.values()].map(point => point.entity))].sort(),
@@ -722,23 +738,42 @@ function summarizeMarketsReviewAnalytics_(rows, topics, filters, window, annual 
 }
 
 
-function summarizeAnnualMarketsReviews_(rows, entity, { start, end }, net) {
+function summarizeAnnualMarketsReviews_(rows, entity, { start, end }, net, includeAuthorReviews) {
   const summary = { start, end, total: 0, promoters: 0, detractors: 0, neutral: 0, helpful: 0, answered: 0 };
   const helpful = [], authors = new Map();
   for (const row of rows) {
-    if (row.date < start || row.date > end || !row.entities.includes(entity)) continue;
+    if (row.date < start || row.date > end || (entity !== 'ALL' && !row.entities.includes(entity))) continue;
     summary.total++;
     const score = net(row.rating);
     summary[score > 0 ? 'promoters' : score < 0 ? 'detractors' : 'neutral']++;
     if (Number.isInteger(row.helpful) && row.helpful >= MARKETS_REVIEW_HELPFUL_MIN) helpful.push(row);
     if (row.reply?.trim()) summary.answered++;
-    const author = row.author?.trim();
-    if (author) authors.set(author, (authors.get(author) || 0) + 1);
+    countMarketsReviewAuthor_(authors, row);
   }
   return { ...summary, helpful: helpful.length, helpfulMinimum: MARKETS_REVIEW_HELPFUL_MIN,
     topHelpful: helpful.sort((a, b) => b.helpful - a.helpful || b.date.localeCompare(a.date) || a.key.localeCompare(b.key)).slice(0, 3),
-    topAuthors: [...authors].sort(([a, countA], [b, countB]) => countB - countA || a.localeCompare(b))
-      .slice(0, 3).map(([author, count]) => ({ author, count })) };
+    topAuthors: topMarketsReviewAuthors_(authors).map(({ author, count, reviews }) =>
+      includeAuthorReviews ? { author, count, reviews } : { author, count }) };
+}
+
+const MARKETS_REVIEW_AUTHOR_SAMPLE_SIZE = 3;
+
+function countMarketsReviewAuthor_(authors, row) {
+  const author = row.author?.trim();
+  if (!author) return;
+  const entry = authors.get(author) || { author, count: 0, reviews: [] };
+  entry.count++;
+  if (row.key) {
+    entry.reviews.push(row);
+    entry.reviews.sort((a, b) => b.date.localeCompare(a.date) || a.key.localeCompare(b.key));
+    if (entry.reviews.length > MARKETS_REVIEW_AUTHOR_SAMPLE_SIZE) entry.reviews.pop();
+  }
+  authors.set(author, entry);
+}
+
+function topMarketsReviewAuthors_(authors) {
+  return [...authors.values()].sort((a, b) => b.count - a.count || a.author.localeCompare(b.author))
+    .slice(0, 3).map(entry => entry.count > 1 ? entry : { ...entry, reviews: [] });
 }
 
 function selectMarketsReviewExample_(rows, used) {
