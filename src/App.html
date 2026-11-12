@@ -4,6 +4,7 @@
     const D=window.MarketsDomain,U=window.MarketsUI,C=window.MarketsCharts,T=window.MarketsTheme;
     const mobileViewport=window.matchMedia("(max-width:780px)");
     const state={meta:null,userContext:null,snapshot:[],trends:[],consolidated:null,country:"ALL",benchmarkSegment:"BANK",evolutionApp:"BBVA Empresas",benchmarkWeighted:false,view:"benchmark",periodYear:"",periodMonth:"",trendsLoading:true,trendToken:0,trendCache:new Map(),bootstrapLoading:false,alertCenter:null,alertDraft:null,alertsLoading:false,alertsLoaded:false,adminCenter:null,adminLoading:false,adminLoaded:false,adminTab:"health",adminEditingEmail:"",adminSubscriberFilters:{query:"",countries:["ANY"],platforms:["ANY"],status:"ALL"},usageQueue:[],usageTimer:0,usageStarted:false};
+    const exportSheets={benchmark:new Map(),evolution:new Map(),analytics:new Map()};
     const $=id=>document.getElementById(id);
     const bindOptional=(id,event,handler)=>$(id)?.addEventListener(event,handler);
     const interfaceCopy={
@@ -100,7 +101,6 @@
       "Al menos {count} votos útiles":["At least {count} helpful votes","En az {count} yararlı oyu"],
       "Sin autores identificados.":["No identified reviewers.","Kimliği belli yorumcu yok."],
       "Sin reseñas con suficientes votos.":["No reviews with enough votes.","Yeterli oy alan yorum yok."],
-      "Sin ejemplos para este ámbito.":["No examples in this selection.","Bu seçimde örnek yok."],
       "Sin observaciones para este intervalo.":["No observations in this date range.","Bu tarih aralığında gözlem yok."],
       "Sin base histórica en este intervalo. Se muestran los saldos recientes sin brecha.":["No historical baseline in this range. Recent balances are shown without a gap.","Bu aralıkta geçmiş referans verisi yok. Yakın dönem dengeleri fark olmadan gösterilir."],
       "Sin reseñas en el periodo reciente.":["No reviews in the recent period.","Yakın dönemde yorum yok."],
@@ -176,7 +176,7 @@
       "Calidad del feedback recibido y su efecto observable en el rating acumulado.":["Quality of recent feedback and its observed effect on the cumulative rating.","Geri bildirimin niteliği ve birikimli puana gözlemlenen etkisi."],
       "Incidencias de la última carga":["Issues from the last collection","Son veri toplama sorunları"],
       "Sin incidencias":["No issues","Sorun yok"],
-      "Descargar informe completo":["Download full report","Raporun tamamını indir"],
+      "Descargar Excel":["Download Excel","Excel indir"],
       "Resumen":["Overview","Özet"],"Benchmark":["Benchmark","Karşılaştırma"],"Evolución":["Trends","Trendler"],
       "Alertas":["Alerts","Uyarılar"],"Analítica":["Analytics","Analitik"],"Comentarios":["Reviews","Yorumlar"],"Administración":["Administration","Yönetim"],
       "Idioma":["Language","Dil"],"Idioma de la aplicación":["Application language","Uygulama dili"],
@@ -197,7 +197,7 @@
       "Plataformas":["Platforms","Platformlar"],"Todos los mercados":["All markets","Tüm pazarlar"],
       "Todas":["All","Tümü"],"Todos":["All","Tümü"],"Aplicación":["Application","Uygulama"],"Mes":["Month","Ay"],
       "Aplicar filtros":["Apply filters","Filtreleri uygula"],"Limpiar filtros":["Clear filters","Filtreleri temizle"],
-      "Mapa de calor de quejas":["Complaint heatmap","Şikâyet ısı haritası"],"Descargar informe":["Download report","Raporu indir"],
+      "Mapa de calor de quejas":["Complaint heatmap","Şikâyet ısı haritası"],
       "Última ejecución":["Last run","Son çalıştırma"],"Pulso del mercado":["Market pulse","Pazar görünümü"],
       "Resumen ejecutivo":["Executive summary","Yönetici özeti"],"Visión del VoC por geografías":["Voice of the customer by market","Pazara göre müşteri sesi"],
       "Posición competitiva":["Competitive position","Rekabet konumu"],"Benchmark por mercado":["Benchmark by market","Pazara göre karşılaştırma"],
@@ -286,12 +286,12 @@
 
     document.addEventListener("DOMContentLoaded",initializeApp);
 
-    function initializeApp(){try{window.addEventListener("error",event=>trackUsage("ERROR",state.view,"RUNTIME_ERROR",event.message));window.addEventListener("unhandledrejection",event=>trackUsage("ERROR",state.view,"PROMISE_REJECTION",event.reason?.message||event.reason));$("view-benchmark").querySelector(".report-slot").append($("report-control").content);bindNavigation();bindFilters();bindInteractions();initializeLanguage();document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="hidden")flushUsage()});const viewportChanged=()=>{if(state.meta&&state.view==="evolution")renderEvolution();if(state.view==="evolution")renderBalanceEntity?.()};if(typeof mobileViewport.addEventListener==="function")mobileViewport.addEventListener("change",viewportChanged);else if(typeof mobileViewport.addListener==="function")mobileViewport.addListener(viewportChanged);$("dialog-close").innerHTML=U.icon("close");$("admin-subscriber-close").innerHTML=U.icon("close");$("loader-retry").addEventListener("click",loadBootstrap);loadBootstrap()}catch(error){showStartupFailure(error)}}
+    function initializeApp(){try{window.addEventListener("error",event=>trackUsage("ERROR",state.view,"RUNTIME_ERROR",event.message));window.addEventListener("unhandledrejection",event=>trackUsage("ERROR",state.view,"PROMISE_REJECTION",event.reason?.message||event.reason));$("view-benchmark").querySelector(".report-slot").append($("report-control").content);bindNavigation();bindFilters();bindInteractions();initializeLanguage();document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="hidden")flushUsage()});const viewportChanged=()=>{syncViewControls();if(state.meta&&state.view==="evolution")renderEvolution();if(state.view==="evolution")renderBalanceEntity?.()};if(typeof mobileViewport.addEventListener==="function")mobileViewport.addEventListener("change",viewportChanged);else if(typeof mobileViewport.addListener==="function")mobileViewport.addListener(viewportChanged);$("dialog-close").innerHTML=U.icon("close");$("admin-subscriber-close").innerHTML=U.icon("close");$("loader-retry").addEventListener("click",loadBootstrap);loadBootstrap()}catch(error){showStartupFailure(error)}}
 
-    function serverTimeoutMs(method){return method==="admin:ratings:recover"?360000:method==="admin:newsletter:test"?120000:method==="bootstrap"?20000:method.startsWith("admin:reviews:")?60000:method==="admin:get"?30000:20000}
-    function callServer(method,argument){const started=performance.now();return new Promise((resolve,reject)=>{if(!window.google?.script?.run)return reject(new Error("El dashboard debe abrirse desde el despliegue de Apps Script."));let settled=false;const finish=callback=>value=>{if(settled)return;settled=true;window.clearTimeout(timer);trackUsage("PERFORMANCE",state.view,method,`RPC ${Math.round(performance.now()-started)} ${callback===resolve?"OK":"ERROR"}`);callback(value)};const timer=window.setTimeout(()=>finish(reject)(new Error("Market Pulse no ha respondido a tiempo. Reintenta la carga.")),serverTimeoutMs(method));const runner=google.script.run.withSuccessHandler(finish(resolve)).withFailureHandler(finish(error=>reject(new Error(error?.message||error))));if(method==="bootstrap")runner.getMarketsDashboardBootstrap();else if(method==="user:context")runner.getMarketsUserContext();else if(method==="admin:get")runner.getMarketsAdminDashboard();else if(method==="admin:subscriber:save")runner.saveMarketsAdminSubscriber(argument.email,argument.preferences);else if(method==="admin:newsletter:test")runner.sendMarketsAdminNewsletterTestEmail(argument);else if(method==="admin:reviews:restart")runner.requestMarketsReviewPipeline();else if(method==="admin:reviews:options")runner.getMarketsReviewRecoveryOptions();else if(method==="admin:reviews:coverage")runner.getMarketsReviewCoverage(argument);else if(method==="admin:reviews:recover")runner.runMarketsReviewRecovery(argument);else if(method==="admin:reviews:close")runner.closeMarketsReviewRecovery();else if(method==="admin:ratings:recover")runner.requestMarketsAdminRatingRecovery();else if(method==="reviews:segments")runner.getMarketsReviewSegments();else if(method==="reviews")runner.getMarketsReviews(argument);else if(method==="review:page")runner.getMarketsReviewPage(argument);else if(method==="review:analytics")runner.getMarketsReviewAnalytics(argument);else if(method==="review:configure")runner.configureMarketsReviewInsights();else if(method==="performance")runner.getMarketsPerformance();else if(method==="trends")runner.getMarketsDashboardTrends(argument);else if(method==="alerts:get")runner.getMarketsAlertPreferences();else if(method==="alerts:save")runner.saveMarketsAlertPreferences(argument);else if(method==="alerts:reset")runner.resetMarketsAlertPreferences();else if(method==="alerts:test")runner.sendMarketsAlertTestEmail();else finish(reject)(new Error("Operacion no soportada: "+method))})}
+    function serverTimeoutMs(method){return method==="admin:ratings:recover"?360000:method==="admin:newsletter:test"?120000:method==="bootstrap"?20000:(method.startsWith("admin:reviews:")||method.startsWith("review:")||method==="trends")?60000:method==="admin:get"?30000:20000}
+    function callServer(method,argument){const started=performance.now();return new Promise((resolve,reject)=>{if(!window.google?.script?.run)return reject(new Error("El dashboard debe abrirse desde el despliegue de Apps Script."));let settled=false;const finish=callback=>value=>{if(settled)return;settled=true;window.clearTimeout(timer);trackUsage("PERFORMANCE",state.view,method,`RPC ${Math.round(performance.now()-started)} ${callback===resolve?"OK":"ERROR"}`);callback(value)};const timer=window.setTimeout(()=>finish(reject)(new Error("Market Pulse no ha respondido a tiempo. Reintenta la carga.")),serverTimeoutMs(method));const runner=google.script.run.withSuccessHandler(finish(resolve)).withFailureHandler(finish(error=>reject(new Error(error?.message||error))));if(method==="bootstrap")runner.getMarketsDashboardBootstrap();else if(method==="user:context")runner.getMarketsUserContext();else if(method==="admin:get")runner.getMarketsAdminDashboard();else if(method==="admin:subscriber:save")runner.saveMarketsAdminSubscriber(argument.email,argument.preferences);else if(method==="admin:newsletter:test")runner.sendMarketsAdminNewsletterTestEmail(argument);else if(method==="admin:reviews:restart")runner.requestMarketsReviewPipeline();else if(method==="admin:reviews:options")runner.getMarketsReviewRecoveryOptions();else if(method==="admin:reviews:coverage")runner.getMarketsReviewCoverage(argument);else if(method==="admin:reviews:recover")runner.runMarketsReviewRecovery(argument);else if(method==="admin:reviews:close")runner.closeMarketsReviewRecovery();else if(method==="admin:ratings:recover")runner.requestMarketsAdminRatingRecovery();else if(method==="reviews:segments")runner.getMarketsReviewSegments();else if(method==="reviews")runner.getMarketsReviews(argument);else if(method==="review:page")runner.getMarketsReviewPage(argument);else if(method==="review:export")runner.getMarketsReviewExport(argument);else if(method==="review:analytics")runner.getMarketsReviewAnalytics(argument);else if(method==="review:configure")runner.configureMarketsReviewInsights();else if(method==="performance")runner.getMarketsPerformance();else if(method==="trends")runner.getMarketsDashboardTrends(argument);else if(method==="alerts:get")runner.getMarketsAlertPreferences();else if(method==="alerts:save")runner.saveMarketsAlertPreferences(argument);else if(method==="alerts:reset")runner.resetMarketsAlertPreferences();else if(method==="alerts:test")runner.sendMarketsAlertTestEmail();else finish(reject)(new Error("Operacion no soportada: "+method))})}
     function validateBootstrap(data){if(!data||!data.meta||!Array.isArray(data.snapshot)||!Array.isArray(data.trends))throw new Error("El servidor ha devuelto una respuesta incompleta. Actualiza el despliegue de Market Pulse.");return data}
-    async function loadBootstrap(){if(state.bootstrapLoading)return;state.bootstrapLoading=true;const loader=$("loader");loader.classList.remove("done","failed");$("loader-title").textContent="Preparando Market Pulse…";$("loader-detail").classList.add("hidden");$("loader-retry").classList.add("hidden");try{const data=validateBootstrap(await callServer("bootstrap"));state.meta=data.meta;state.userContext=data.userContext||{email:"",isAdmin:false};if(Array.isArray(data.reviewSegments))reviewSegments=Promise.resolve(data.reviewSegments);state.snapshot=data.snapshot;benchmarkModels.clear();state.trends=data.trends;state.consolidated=data.consolidated||null;state.trendsLoading=false;state.trendCache.clear();state.trendCache.set("ALL|ALL|ALL|BBVA|18",state.trends);state.country=browserMarket();configureAdminNavigation();renderRunStatus();renderDashboard();startUsageTracking();$("footer-version").textContent=`Contrato ${data.meta.codeVersion} · Web ${data.meta.webVersion||"1"}`;loader.classList.add("done")}catch(error){showStartupFailure(error)}finally{state.bootstrapLoading=false}}
+    async function loadBootstrap(){if(state.bootstrapLoading)return;state.bootstrapLoading=true;const loader=$("loader");loader.classList.remove("done","failed");$("loader-title").textContent="Preparando Market Pulse…";$("loader-detail").classList.add("hidden");$("loader-retry").classList.add("hidden");try{const data=validateBootstrap(await callServer("bootstrap"));state.meta=data.meta;state.userContext=data.userContext||{email:"",isAdmin:false};if(Array.isArray(data.reviewSegments))reviewSegments=Promise.resolve(data.reviewSegments);state.snapshot=data.snapshot;benchmarkModels.clear();state.trends=data.trends;state.consolidated=data.consolidated||null;state.trendsLoading=false;state.trendCache.clear();state.trendCache.set("ALL|ALL|ALL|BBVA|18",state.trends);state.country=browserMarket();if(state.country==="ALL")state.country=data.meta.countries.find(item=>item.code==="ES")?.code||data.meta.countries[0]?.code;configureAdminNavigation();renderRunStatus();renderDashboard();startUsageTracking();$("footer-version").textContent=`Contrato ${data.meta.codeVersion} · Web ${data.meta.webVersion||"1"}`;loader.classList.add("done")}catch(error){showStartupFailure(error)}finally{state.bootstrapLoading=false}}
     function showStartupFailure(error){const loader=$("loader");if(!loader)return;loader.classList.remove("done");loader.classList.add("failed");$("loader-title").textContent="No hemos podido iniciar Market Pulse";$("loader-detail").textContent=error?.message||String(error);$("loader-detail").classList.remove("hidden");$("loader-retry").classList.remove("hidden")}
 
     let usageSession="";
@@ -318,9 +318,9 @@
     function adminSubscriberScopeMarkup(){return`<legend>Ámbito de la suscripción</legend><p class="admin-scope-intro">Selecciona “Todos” o combina únicamente los mercados y plataformas que debe recibir esta cuenta.</p><div class="admin-scope-grid"><section class="admin-scope-card" aria-labelledby="admin-country-scope-title"><header><div><strong id="admin-country-scope-title">Mercados</strong><span>Uno, varios o todos</span></div><b id="admin-country-scope-summary" aria-live="polite">Todos</b></header><div id="admin-country-pills" class="admin-scope-pills" role="group" aria-labelledby="admin-country-scope-title"></div></section><section class="admin-scope-card" aria-labelledby="admin-platform-scope-title"><header><div><strong id="admin-platform-scope-title">Plataformas</strong><span>Una, varias o todas</span></div><b id="admin-platform-scope-summary" aria-live="polite">Todas</b></header><div id="admin-platform-pills" class="admin-scope-pills" role="group" aria-labelledby="admin-platform-scope-title"></div></section></div>`}
     function ensureAdminSubscriberUi(){if(!$("admin-country-pills")){const legacy=$("admin-subscriber-countries")||$("admin-subscriber-platforms"),body=$("admin-subscriber-form")?.querySelector(".admin-subscriber-form-body"),fieldset=legacy?.closest("fieldset");if(fieldset){fieldset.className="admin-scope-fieldset";fieldset.innerHTML=adminSubscriberScopeMarkup()}else if(body){const scope=document.createElement("fieldset"),first=body.querySelector("fieldset");scope.className="admin-scope-fieldset";scope.innerHTML=adminSubscriberScopeMarkup();if(first)first.before(scope);else body.append(scope)}}}
     function bindNavigation(){ensureAdminSubscriberUi();document.querySelectorAll(".nav-button").forEach(button=>button.addEventListener("click",()=>activateView(button.dataset.view)));document.querySelectorAll(".admin-tab").forEach(button=>button.addEventListener("click",()=>activateAdminTab(button.dataset.adminTab,true)));$("admin-tabs").addEventListener("keydown",handleAdminTabKeydown);$("admin-refresh").addEventListener("click",()=>loadAdmin(true));$("admin-recovery").addEventListener("click",requestAdminRatingRecovery);$("admin-add-subscriber").addEventListener("click",()=>openAdminSubscriber());$("admin-subscriber-form").addEventListener("submit",saveAdminSubscriber);$("admin-subscriber-close").addEventListener("click",closeAdminSubscriber);$("admin-subscriber-cancel").addEventListener("click",closeAdminSubscriber);$("admin-subscriber-dialog").addEventListener("click",handleAdminScopeClick);$("admin-subscribers").addEventListener("click",event=>{const newsletter=event.target.closest("[data-admin-test-newsletter]");if(newsletter){testAdminNewsletter(newsletter.dataset.adminTestNewsletter,newsletter);return}const button=event.target.closest("[data-admin-edit-subscriber]");if(button)openAdminSubscriber(button.dataset.adminEditSubscriber)});syncViewControls()}
-    function activateView(view){if(view==="admin"&&!state.userContext?.isAdmin)return;const changed=state.view!==view;if(changed)radarFilters[state.view]?.close();state.view=view;document.querySelectorAll(".nav-button").forEach(item=>{const active=item.dataset.view===view;item.classList.toggle("active",active);if(active)item.setAttribute("aria-current","page");else item.removeAttribute("aria-current")});document.querySelectorAll(".view").forEach(item=>item.classList.toggle("hidden",item.id!==`view-${view}`));syncViewControls();if(changed)trackUsage("VIEW",view,"OPEN_VIEW");if(view==="benchmark")renderBenchmark();if(view==="evolution")loadTrends();if(view==="alerts")loadAlerts();if(view==="admin")loadAdmin();if(view==="reviews")loadReviews();if(view==="analytics")loadAnalytics();renderPrintContext()}
+    function activateView(view){if(view==="admin"&&!state.userContext?.isAdmin)return;const changed=state.view!==view;if(changed)radarFilters[state.view]?.close();state.view=view;document.querySelectorAll(".nav-button").forEach(item=>{const active=item.dataset.view===view;item.classList.toggle("active",active);if(active)item.setAttribute("aria-current","page");else item.removeAttribute("aria-current")});document.querySelectorAll(".view").forEach(item=>item.classList.toggle("hidden",item.id!==`view-${view}`));syncViewControls();if(changed)trackUsage("VIEW",view,"OPEN_VIEW");if(view==="benchmark")renderBenchmark();if(view==="evolution")loadTrends();if(view==="alerts")loadAlerts();if(view==="admin")loadAdmin();if(view==="reviews")loadReviews();if(view==="analytics")loadAnalytics()}
     function syncViewControls(){
-      const slot=$(`view-${state.view}`).querySelector(".report-slot");
+      const slot=mobileViewport.matches?null:$(`view-${state.view}`).querySelector(".report-slot");
       if(slot)slot.append($("report-button"));
       $("report-button").classList.toggle("hidden",!slot);
     }
@@ -350,7 +350,7 @@
       return D.browserMarket("",Intl.DateTimeFormat().resolvedOptions().timeZone,supported);
     }
     function renderDashboardMarkets(view){
-      renderGeographyTabs($(`${view}-markets`),["ALL",...state.meta.countries.map(item=>item.code)],state.country,code=>{
+      renderGeographyTabs($(`${view}-markets`),state.meta.countries.map(item=>item.code),state.country,code=>{
         if(code===state.country)return;
         state.country=code;state.periodYear="";state.periodMonth="";
         trackUsage("FILTER",view,"GLOBAL_SCOPE",code);
@@ -358,7 +358,7 @@
         else renderDashboard();
       });
     }
-    function trendRequest(){return{countryCode:state.country==="ALL"?"":state.country,platform:"",segment:"ALL",months:18,bbvaOnly:false}}
+    function trendRequest(){return{countryCode:state.country==="ALL"?"":state.country,platform:"",segment:"ALL",months:36,bbvaOnly:false}}
     function trendKey(request){return[request.countryCode||"ALL",request.platform||"ALL",request.segment,request.bbvaOnly?"BBVA":"ALL",request.months].join("|")}
     const trendRequests=new Map();
     function fetchTrends(request){
@@ -392,18 +392,22 @@
       }
     }
 
-    function renderDashboard(){if(state.view==="benchmark")renderBenchmark();else if(state.view==="evolution")renderEvolution();renderPrintContext()}
+    function renderDashboard(){if(state.view==="benchmark")renderBenchmark();else if(state.view==="evolution")renderEvolution()}
     function renderRunStatus(){document.querySelectorAll(".data-freshness").forEach(node=>{node.textContent=translate("Última recopilación · {date}",{date:dateLabel(state.meta.dataDate)})});const run=state.meta.latestRun||{},status=run.status||"SIN RUN",incidents=run.incidents||[];$("run-status").textContent=status==="OK"?"Datos actualizados":status==="PARTIAL"?"Actualización parcial":status;$("run-dot").className=`status-dot ${status==="OK"?"":status==="PARTIAL"?"warn":"bad"}`;$("run-date").textContent=`${dateTimeLabel(run.startedAt)} · ${run.appsOk??0}/${run.appsTotal??0} apps con rating`;$("incident-button").textContent=incidents.length?`${incidents.length} incidencia${incidents.length===1?"":"s"}`:"Sin incidencias";$("incident-button").disabled=!incidents.length;$("incident-list").innerHTML=incidents.map(item=>`<article class="incident"><strong>${U.esc(`${countryLabel(item.countryCode)} · ${item.platform} · ${item.status}`)}</strong><span>${U.esc([appNameFromKey(item.appKey),item.detail].filter(Boolean).join(" · "))}</span></article>`).join("")||U.empty("Sin incidencias","La última actualización terminó correctamente.")}
     const appNameFromKey=appKey=>{const row=state.snapshot.find(item=>item.appKey===appKey);return row?D.appName(row):""};
     const selectionContext=scope=>`${state.country==="ALL"?"Todos los mercados":countryLabel(state.country)} · ${D.config.platformLabels[selection().platform]} · ${scope}`;
-    const overviewContext=()=>selectionContext("BBVA Empresas");
-    const activeBenchmark=()=>state.country==="ALL"?"BBVA Empresas":D.config.segmentLabels[state.benchmarkSegment];
     const trendScope=()=>state.evolutionApp||"Todo el mercado";
     const evolutionContext=()=>selectionContext(trendScope());
 
     function marketLinkAttributes(item,code){const store=D.config.storeLabels[item.platform]||"market",country=countryLabel(code||item.countryCode);return` href="${U.esc(item.storeUrl)}" target="_blank" rel="noopener noreferrer" title="Abrir ficha web de ${U.esc(store)} para ${U.esc(country)}" aria-label="Abrir ${U.esc(store)} web: ${U.esc(D.appName(item))}, ${U.esc(country)}, rating ${fmt(item.rating,2)}"`}
-    function renderMonthlyMatrix(period){if(state.trendsLoading){$("monthly-shared-note").classList.add("hidden");$("monthly-matrix-meta").textContent="Actualizando cierres";$("monthly-matrix").innerHTML=U.loading("Preparando el pulso mensual","La serie se servirá desde la caché compartida.");return}const model=D.monthlyRatingMatrix(state.trends,state.snapshot,{...selection(),app:state.evolutionApp||"ALL"},period,mobileViewport.matches?3:6);$("monthly-shared-note").classList.toggle("hidden",!model.hasSharedAndroid);$("monthly-matrix-meta").textContent=model.periods.length?`${model.periods.length} cierres hasta ${monthLabel(model.periods.at(-1))} · ${D.config.platformLabels.ALL}`:"Sin cierres";$("monthly-matrix").innerHTML=C.monthlyMatrix(model,{format:fmt,integer,compactInteger,monthLabel,signed,showScopes:state.country==="ALL"})}
-    function renderNewReviewImpact(period){if(state.trendsLoading){$("new-review-meta").textContent="Actualizando cierres";$("new-review-impact").innerHTML=U.loading("Calculando la voz nueva del mes","Se validan volumen, continuidad y precisión antes de publicar el resultado.");return}const model=D.monthlyNewReviewImpact(state.trends,state.snapshot,{...selection(),app:state.evolutionApp||"ALL"},period);$("new-review-meta").textContent=model.previousPeriod?`${monthLabel(model.previousPeriod)} → ${monthLabel(model.period)} · ${D.config.platformLabels.ALL}`:"Sin base mensual";$("new-review-impact").innerHTML=C.newReviewImpact(model,{format:fmt,integer,monthLabel,signed,showScopes:state.country==="ALL"})}
+    function renderMonthlyMatrix(period,trends){if(state.trendsLoading){$("monthly-shared-note").classList.add("hidden");$("monthly-matrix-meta").textContent="Actualizando cierres";$("monthly-matrix").innerHTML=U.loading("Preparando el pulso mensual","La serie se servirá desde la caché compartida.");return}const model=D.monthlyRatingMatrix(trends,state.snapshot,{...selection(),app:state.evolutionApp||"ALL"},period,mobileViewport.matches?3:6);$("monthly-shared-note").classList.toggle("hidden",!model.hasSharedAndroid);$("monthly-matrix-meta").textContent=model.periods.length?`${model.periods.length} cierres hasta ${monthLabel(model.periods.at(-1))} · ${D.config.platformLabels.ALL}`:"Sin cierres";$("monthly-matrix").innerHTML=C.monthlyMatrix(model,{format:fmt,integer,compactInteger,monthLabel,signed,showScopes:state.country==="ALL"});
+      setExportSheet("evolution","Pulso mensual",state.country,[["Mes de cierre",period],["Aplicación",state.evolutionApp||"Todas"]],
+        ["Mes","Rating consolidado","Variación",...model.platforms.flatMap(platform=>[`Rating ${platform}`,`Opiniones ${platform}`])],
+        model.rows.flatMap(row=>row.cells.map(cell=>[cell.month,cell.rating,cell.delta,...cell.platforms.flatMap(item=>[item.rating,item.value])])))}
+    function renderNewReviewImpact(period,trends){if(state.trendsLoading){$("new-review-meta").textContent="Actualizando cierres";$("new-review-impact").innerHTML=U.loading("Calculando la voz nueva del mes","Se validan volumen, continuidad y precisión antes de publicar el resultado.");return}const model=D.monthlyNewReviewImpact(trends,state.snapshot,{...selection(),app:state.evolutionApp||"ALL"},period);$("new-review-meta").textContent=model.previousPeriod?`${monthLabel(model.previousPeriod)} → ${monthLabel(model.period)} · ${D.config.platformLabels.ALL}`:"Sin base mensual";$("new-review-impact").innerHTML=C.newReviewImpact(model,{format:fmt,integer,monthLabel,signed,showScopes:state.country==="ALL"});
+      setExportSheet("evolution","Voz nueva del mes",state.country,[["Mes de cierre",period],["Aplicación",state.evolutionApp||"Todas"]],
+        ["Aplicación (clave)","Plataforma","Rating anterior","Rating actual","Rating nuevas opiniones","Nuevas opiniones","Impacto"],
+        model.rows.filter(row=>row.available).map(row=>[row.appKey,row.platform,row.previousRating,row.currentRating,row.rating,row.newReviews,row.impact]))}
 
     const benchmarkModels=new Map();
     function renderBenchmark(){
@@ -420,13 +424,23 @@
             :platforms.map(platform=>renderPlatformBoard(platform,group.filter(row=>row.platform===platform),[platform])).join("");
           return `<article class="benchmark-country" aria-label="${U.esc(countryLabel(code))}">${state.country==="ALL"?`<h3 class="benchmark-market-label">${U.esc(countryLabel(code))}</h3>`:""}<div class="platform-boards" style="grid-template-columns:repeat(${weighted?1:platforms.length},minmax(0,1fr))">${content}</div></article>`;
         }).join("");
-        benchmarkModels.set(key,boards||U.empty("Benchmark sin datos","Selecciona otra geografía o benchmark."));
+        benchmarkModels.set(key,{boards:boards||U.empty("Benchmark sin datos","Selecciona otra geografía o benchmark."),groups});
       }
       $("benchmark-context").textContent=translate("Comparativa de ratings a {date}",{date:state.meta.dataDate?.split("-").reverse().join("-")||"—"});
-      $("benchmark-grid").innerHTML=benchmarkModels.get(key);
+      const {boards,groups}=benchmarkModels.get(key);
+      $("benchmark-grid").innerHTML=boards;
+      const group=groups[state.country]||[];
+      const filters=[["Fecha",state.meta.dataDate],["Tipo de entidad",D.config.segmentLabels[state.benchmarkSegment]],
+        ["Ranking",state.benchmarkWeighted?"Ponderado":"Por market"]];
+      exportSheets.benchmark.clear();
+      const boardsForExport=state.benchmarkWeighted?[["Ponderado",D.benchmarkWeightedRows(group)]]:
+        D.config.platforms.map(platform=>[platform,group.filter(row=>row.platform===platform)]);
+      for(const [name,rows] of boardsForExport)setExportSheet("benchmark",name,state.country,filters,
+        ["Posición","Aplicación","Rating","Variación a 30 días","Market"],
+        D.rankRows(rows).map(row=>[row.computedRank,D.appName(row),row.rating,row.delta30d,row.storeUrl]));
     }
     const renderPlatformBoard=(platform,rows,icons)=>`<section class="platform-board"><header class="platform-head"><strong>${icons.map(platformIcon).join("")}${U.esc(translate(platform))}</strong><span>${rows.length} apps</span></header><ol class="rank-list">${D.rankRows(rows).map(renderRankRow).join("")}</ol></section>`;
-    function renderRankRow(row){const linked=Boolean(row.storeUrl),tag=linked?"a":"div";return`<li class="rank-item"><${tag} class="rank-row${row.isBbva?" bbva":""}${linked?" market-link":""}"${linked?marketLinkAttributes(row,row.countryCode):""}><span class="rank-number">${row.computedRank}</span>${appLogo(row)}<div class="app-info"><strong>${U.esc(D.appName(row))}</strong><span>${row.isBbva?"BBVA Empresas":row.segment==="BANK"?"Banca":"Fintech / Neobanco"}</span></div><div class="rank-metric"><strong>${fmt(row.rating,2)}</strong><span class="${row.delta30d>0?"delta-up":row.delta30d<0?"delta-down":""}">${signed(row.delta30d)}</span></div>${linked?`<span class="rank-open" aria-hidden="true"><span>Market</span>${U.icon("right")}</span>`:""}</${tag}></li>`}
+    function renderRankRow(row){const linked=Boolean(row.storeUrl),tag=linked?"a":"div";return`<li class="rank-item"><${tag} class="rank-row${row.isBbva?" bbva":""}${linked?" market-link":""}"${linked?marketLinkAttributes(row,row.countryCode):""}><span class="rank-number">${row.computedRank}</span>${appLogo(row)}<div class="app-info"><strong>${U.esc(D.appName(row))}</strong><span>${row.isBbva?"BBVA Empresas":row.segment==="BANK"?"Banca":"Fintech / Neobanco"}</span></div><div class="rank-metric"><strong>${fmt(row.rating,2)}</strong><span class="${row.delta30d>0?"delta-up":row.delta30d<0?"delta-down":""}">${signed(row.delta30d)}</span></div>${linked?`<span class="rank-open" aria-hidden="true"><span>Market</span><b>↗</b></span>`:""}</${tag}></li>`}
     function appLogo(row){const url=state.meta.logos?.[row.appKey];return`<span class="app-logo">${url?`<img src="${U.esc(url)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">`:""}<b>${U.esc(initials(D.appName(row)))}</b></span>`}
 
     let reviewsRequest=0, reviewTotals;
@@ -592,6 +606,7 @@
     }
     async function loadReviews(page=0){
       const token=++reviewsRequest, results=$("review-results");
+      reviewsReady=false;
       const segment=$("review-segment"), pagination=$("review-pagination");
       radarFilters.reviews.enable(false);
       radarFilters.reviews.render();
@@ -611,6 +626,7 @@
         reviewTopics=data.topics||{};
         reviewTotals={key:countKey,counts:data.counts};
         renderReviewMarkets(data,scope);
+        reviewsReady=data.total>0;
         radarFilters.reviews.render();
         results.innerHTML=data.rows.map(row=>renderReviewCard(row,reviewTopics)).join("")||U.empty("Sin comentarios","No hay reseñas para esta selección.");
         if(data.total<=data.size)return;
@@ -618,7 +634,15 @@
           <span>${U.esc(translate("{count} reseñas · Página {page} de {pages}",{count:integer(data.total),page:data.page+1,pages:Math.ceil(data.total/data.size)}))}</span>
           ${(data.page+1)*data.size<data.total?'<button class="alert-button secondary" type="button" data-step="1">Siguiente</button>':""}`;
         pagination.onclick=event=>{const step=event.target.closest("[data-step]")?.dataset.step;if(step)loadReviews(data.page+Number(step))};
-      }catch(error){if(token===reviewsRequest&&state.view==="reviews")results.textContent=error.message}
+      }catch(error){
+        if(token!==reviewsRequest||state.view!=="reviews")return;
+        const retry=document.createElement("button");
+        retry.type="button";
+        retry.className="alert-button secondary";
+        retry.textContent=translate("Reintentar");
+        retry.onclick=()=>loadReviews(page);
+        results.replaceChildren(error.message,retry);
+      }
       finally{if(token===reviewsRequest)radarFilters.reviews.enable(Boolean(segment.options.length))}
     }
     function renderReviewMarkets(data,scope){
@@ -679,6 +703,10 @@
         ${row.reply?`<blockquote><strong>${U.esc(row.replyAuthor||entity)}</strong> ${row.replyDate?`<time datetime="${U.esc(row.replyDate)}">${U.esc(dateLabel(row.replyDate.slice(0,10)))}</time>`:""}<p>${U.esc(row.reply)}</p></blockquote>`:""}</article>`;
     }
     async function loadAnalytics(localOnly=false, heatmapOnly=false){
+      analyticsLoading=true;
+      const sheets=exportSheets.analytics;
+      if(!localOnly)sheets.delete("Mapa de calor");
+      if(!heatmapOnly){sheets.delete("Rating al cierre del mes");sheets.delete("Indicadores del periodo");sheets.delete("Reseñas más útiles");sheets.delete("Personas con más reseñas")}
       const token=++analyticsRequest, target=$("review-heatmap"), entityControl=$("analytics-entity");
       const scope=annualScope(), dates=annualDates(scope.year);
       annualAppControl.enable(false);
@@ -722,6 +750,7 @@
         if(!heatmapOnly)$("review-annual").textContent=error.message;
       }finally{
         if(token===analyticsRequest){
+          analyticsLoading=false;
           radarFilters.analytics.enable(true);
           if(sentiment)sentiment.disabled=false;
           annualAppControl.enable(Boolean(entityControl.options.length));
@@ -747,6 +776,11 @@
       const chart=C.lineChart(series,{...chartOptions(months.at(-1),"annual"),months,context:countryLabel(scope.country)});
       $("annual-chart").innerHTML=chart.svg;
       renderSeriesSummary(chart.series,months.at(-1));
+      if(chart.series.length){
+        const points=chart.series.map(item=>new Map(item.points.map(point=>[point.month,point.value])));
+        setExportSheet("analytics","Rating al cierre del mes",scope.country,[...exportDates(dates),["Aplicación",app]],
+          ["Mes",...chart.series.map(item=>item.label)],months.map(month=>[month,...points.map(values=>values.get(month))]),true);
+      }
     }
     async function loadMonthlyReviews(period){
       const current=reviewDates().end.slice(0,7);
@@ -755,25 +789,42 @@
       const key=JSON.stringify(scope);
       if(key===monthlyReviewKey)return;
       monthlyReviewKey=key;
+      monthlyReviewsLoading=true;
+      for(const name of ["Saldo de reseñas","Brechas","Ejemplos del mes"])exportSheets.evolution.delete(name);
       const token=++monthlyRequest, balance=$("review-balance"), gaps=$("review-deltas"), examples=$("review-examples");
       renderBalanceEntity=null;
       balance.innerHTML=U.loading();
       gaps.replaceChildren();
       examples.replaceChildren();
+      $("review-examples-panel").classList.add("hidden");
+      $("review-gap-panel").classList.add("hidden");
       try{
         const data=await callServer("review:analytics",scope);
         if(token!==monthlyRequest)return;
         const applied={country:scope.country,platform:scope.platform,start:data.window.start,end:data.window.end,segment:""};
         renderBalanceEntity=renderReviewBalance(balance,data,applied);
-        renderReviewGaps(gaps,data,{...applied,app:scope.entity==="ALL"?"":scope.entity,segment:scope.segment});
+        $("review-gap-panel").classList.toggle("hidden",!data.deltas.length);
+        if(data.deltas.length)renderReviewGaps(gaps,data,{...applied,app:scope.entity==="ALL"?"":scope.entity,segment:scope.segment});
         $("review-examples-title").textContent=analysisMonth===current?"Ejemplos del mes en curso":"Ejemplos del mes seleccionado";
-        examples.innerHTML=data.examples.map(({review})=>renderReviewCard(review,data.topics)).join("")||"<p>Sin ejemplos para este ámbito.</p>";
+        $("review-examples-panel").classList.toggle("hidden",!data.examples.length);
+        examples.innerHTML=data.examples.map(({review})=>renderReviewCard(review,data.topics)).join("");
+        const filters=[...exportDates(applied),["Mes",analysisMonth],["Aplicación",scope.entity]];
+        setExportSheet("evolution","Saldo de reseñas",scope.country,filters,
+          ["Mes","Entidad","Saldo (pp)","Promotoras","Detractoras","Reseñas"],
+          data.monthly.filter(row=>data.monthlyEntityOptions.includes(row.entity)).map(row=>[row.month,row.entity,row.balance,row.promoters,row.detractors,row.total]));
+        const recentFilters=[...exportDates({start:data.window.recent,end:applied.end}),["Mes",analysisMonth],
+          ["Aplicación",scope.entity],["Sentimiento",reviewFilterLabel("segment",scope.segment)]];
+        setExportSheet("evolution","Brechas",scope.country,recentFilters,
+          ["Bloque","Peso (%)","Reseñas","Detractoras","Promotoras (%)","Detractoras (%)","Saldo (pp)","Brecha (pp)"],
+          data.deltas.map(row=>[row.label,row.weight,row.total,row.detractors,100*row.promoters/row.total,100*row.detractors/row.total,row.balance,row.gap]));
+        setExportSheet("evolution","Ejemplos del mes",scope.country,recentFilters,reviewExportHeader,
+          data.examples.map(({review})=>reviewExportRow(review,data.topics)));
       }catch(error){
         if(token!==monthlyRequest)return;
         monthlyReviewKey="";
         balance.textContent=error.message;
         gaps.textContent=error.message;
-      }
+      }finally{if(token===monthlyRequest)monthlyReviewsLoading=false}
     }
     function renderAnnualReviews(target,{annual,topics},scope){
       const rows=D.trendRows(annualTrends,{country:scope.country,platform:"ALL",app:analyticsEntity});
@@ -786,23 +837,30 @@
       const difference=(a,b)=>D.finite(a)&&D.finite(b)?a-b:null;
       const metricDelta=value=>({foot:signed(value),footClass:value>0?"delta-up":value<0?"delta-down":""});
       const stats=[
-        {label:"Opiniones del año anterior",value:integer(annual.previousTotal)},
-        {label:"Opiniones del año seleccionado",value:integer(annual.total),...metricDelta(difference(annual.total,annual.previousTotal))},
+        {label:"Opiniones del año anterior",number:annual.previousTotal},
+        {label:"Opiniones del año seleccionado",number:annual.total,delta:difference(annual.total,annual.previousTotal)},
         ...(scope.country==="UNKNOWN"?[]:[
-          {label:"Rating al inicio del periodo",value:fmt(openingRating,2),foot:monthLabel(opening)},
-          {label:"Último rating publicado del periodo",value:fmt(closingRating,2),...metricDelta(difference(closingRating,openingRating))}
-        ])
+          {label:"Rating al inicio del periodo",number:openingRating,rating:true,foot:monthLabel(opening)},
+          {label:"Último rating publicado del periodo",number:closingRating,rating:true,delta:difference(closingRating,openingRating)}
+        ]),
+        ...[["Promotoras",annual.promoters],["Detractoras",annual.detractors],["Neutras",annual.neutral],
+          ["Reseñas útiles",annual.helpful],["Reseñas contestadas",annual.answered]].map(([label,number])=>({label,number}))
       ];
-      const cards=[
-        ["Promotoras",annual.promoters],["Detractoras",annual.detractors],
-        ["Neutras",annual.neutral],["Reseñas útiles",annual.helpful],["Reseñas contestadas",annual.answered]
-      ];
+      const authors=annual.topAuthors.filter(row=>row.count>1);
+      const filters=[...exportDates(annual),["Aplicación",analyticsEntity]];
+      setExportSheet("analytics","Indicadores del periodo",scope.country,filters,["Indicador","Valor","Variación","Cierre"],
+        annual.total||annual.previousTotal||D.finite(openingRating)||D.finite(closingRating)?
+          stats.map(({label,number,delta,foot})=>[label,number,delta,foot]):[]);
+      setExportSheet("analytics","Reseñas más útiles",scope.country,[...filters,["Votos útiles mínimos",annual.helpfulMinimum]],
+        reviewExportHeader,annual.topHelpful.map(review=>reviewExportRow(review,topics)));
+      setExportSheet("analytics","Personas con más reseñas",scope.country,filters,["Persona","Reseñas"],
+        authors.map(({author,count})=>[author,count]));
       target.innerHTML=`<p class="review-chart-note">${U.esc(dateLabel(annual.start))} – ${U.esc(dateLabel(annual.end))} · <span>Todas las estrellas</span></p>
-        <div class="kpi-grid">${U.metrics([...stats,...cards.map(([label,value])=>({label,value:integer(value)}))])}</div>
-        <h4>Reseñas más útiles</h4><p>${U.esc(translate("Al menos {count} votos útiles",{count:integer(annual.helpfulMinimum)}))}</p>
-        ${annual.topHelpful.map(review=>renderReviewCard(review,topics)).join("")||"<p>Sin reseñas con suficientes votos.</p>"}
-        <h4>Personas con más reseñas</h4>
-        ${annual.topAuthors.length?`<ol>${annual.topAuthors.map(({author,count})=>`<li>${U.esc(author)} · ${integer(count)}</li>`).join("")}</ol>`:"<p>Sin autores identificados.</p>"}`;
+        <div class="kpi-grid">${U.metrics(stats.map(({number,rating,delta,...item})=>({...item,value:rating?fmt(number,2):integer(number),
+          ...(delta!==undefined?metricDelta(delta):{})})))}</div>
+        ${annual.topHelpful.length?`<h4>Reseñas más útiles</h4><p>${U.esc(translate("Al menos {count} votos útiles",{count:integer(annual.helpfulMinimum)}))}</p>
+          ${annual.topHelpful.map(review=>renderReviewCard(review,topics)).join("")}`:""}
+        ${authors.length?`<h4>Personas con más reseñas</h4><ol>${authors.map(({author,count})=>`<li>${U.esc(author)} · ${integer(count)}</li>`).join("")}</ol>`:""}`;
     }
     function renderReviewGaps(target,data,scope){
       const {baseline,deltas,window:dates}=data;
@@ -816,7 +874,6 @@
       const note=document.createElement("p");
       note.textContent=translate("Periodo reciente: {dates}. Una reseña puede pertenecer a varios bloques; sus pesos pueden sumar más del 100 %.",{dates:recent});
       target.append(note);
-      if(!deltas.length){target.append("Sin reseñas en el periodo reciente.");return}
       if(baseline)appendReviewCohort(target,"Ver reseñas de la base histórica",{...scope,end:baseline.end,segment:""});
       target.insertAdjacentHTML("beforeend",C.reviewGaps(deltas,fmt,translate));
       const table=document.createElement("div");
@@ -926,6 +983,12 @@
             const content=`<span class="heat-cell-topic">${U.esc(data.topics[id])}</span><span>${shown}</span>`;
             return `<td>${count?`<button class="heat-cell heat-${heat}" type="button" data-cell="${index}|${id}" title="${U.esc(label)}" aria-label="${U.esc(label)}">${content}</button>`:`<span class="heat-cell heat-0">${content}</span>`}</td>`;
           }).join("")}</tr>`).join("")}</tbody></table>`:U.empty("Sin reseñas","No hay opiniones para este ámbito.");
+        setExportSheet("analytics","Mapa de calor",scope.country,
+          [...exportDates(scope),["Sentimiento",sentiment.selectedOptions[0]?.textContent],["Medida",measure.selectedOptions[0]?.textContent]],
+          ["Entidad","Reseñas",...ids.map(id=>data.topics[id])],ids.length?rows.map(group=>[group.label,group.total,...ids.map(id=>{
+            const count=group.counts[id]||0;
+            return measure.value==="share"?Math.round(100*count/group.total):count;
+          })]):[]);
         table.onclick=event=>{
           const cell=event.target.closest("[data-cell]");
           if(!cell)return;
@@ -959,8 +1022,11 @@
       try{const rows=await callServer("performance");target.innerHTML=rows.length?`<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Operación</th><th>RPC correctas</th><th>P95 RPC</th><th>Caché local</th><th>Errores</th></tr></thead><tbody>${rows.map(row=>`<tr><th scope="row">${U.esc(row.operation)}</th><td>${integer(row.calls)}</td><td>${row.p95===null?"—":integer(row.p95)+" ms"}</td><td>${integer(row.hits)}</td><td>${integer(row.errors)}</td></tr>`).join("")}</tbody></table></div>`:U.empty("Sin muestras de rendimiento","Los tiempos aparecen al usar la aplicación.")}
       catch(error){target.textContent=error.message}
     }
-    function activeTrendRows(){return D.trendRows(withPublishedRatings(state.trends,selection()),{...selection(),app:state.evolutionApp})}
+    function activeTrendRows(trends){return D.trendRows(trends,{...selection(),app:state.evolutionApp})}
     function renderChartsLoading(){
+      exportSheets.evolution.clear();
+      $("review-examples-panel").classList.add("hidden");
+      $("review-gap-panel").classList.add("hidden");
       monthlyReviewKey="";
       monthlyRequest++;
       renderBalanceEntity=null;
@@ -970,7 +1036,7 @@
     }
     function chartOptions(period="",idPrefix="markets"){return{period,idPrefix,format:fmt,monthLabel,context:evolutionContext()}}
     function evolutionApps(){
-      return [...new Set(D.selectionRows(state.snapshot,selection(),"ALL").map(D.appName))].sort((a,b)=>a.localeCompare(b,"es"));
+      return [...new Set([...D.selectionRows(state.snapshot,selection(),"ALL"),...D.trendRows(state.trends,{...selection(),app:""})].map(D.appName))].sort((a,b)=>a.localeCompare(b,"es"));
     }
     function evolutionPeriod(app,year,month){
       return D.periodModel(D.trendRows(withPublishedRatings(state.trends,selection()),{...selection(),app}),year,month);
@@ -997,7 +1063,7 @@
         },
         commit:({app,year,month})=>{
           state.evolutionApp=app;state.periodYear=year;state.periodMonth=month;
-          renderEvolution();renderPrintContext();
+          renderEvolution();
         }
       });
     }
@@ -1016,15 +1082,16 @@
         radarFilters.evolution.render();
         return;
       }
-      const rows=activeTrendRows(),period=syncPeriodControls(rows);
+      const publishedTrends=withPublishedRatings(state.trends,selection());
+      const period=syncPeriodControls(activeTrendRows(publishedTrends));
       evolutionRender={trends:state.trends,key:JSON.stringify([state.country,state.evolutionApp,state.periodYear,state.periodMonth,mobileViewport.matches,appLanguage])};
       radarFilters.evolution.render();
       radarFilters.evolution.enable(!state.trendsLoading);
       const month=period.period||reviewDates().end.slice(0,7);
       loadMonthlyReviews(month);
       $("monthly-pulse-title").textContent=state.evolutionApp?translate("Pulso mensual de {app}",{app:state.evolutionApp}):translate("Pulso mensual");
-      renderMonthlyMatrix(month);
-      renderNewReviewImpact(month);
+      renderMonthlyMatrix(month,publishedTrends);
+      renderNewReviewImpact(month,publishedTrends);
     }
     function renderSeriesSummary(series,period){$("annual-series").innerHTML=series.map((item,index)=>{const points=[...item.points].filter(point=>D.finite(point.value)&&point.month<=period).sort((a,b)=>a.month.localeCompare(b.month)),current=points.at(-1),previous=points.at(-2),change=current&&previous?current.value-previous.value:null,color=T.chart.palette[index%T.chart.palette.length];return`<article class="series-card"><i class="series-dot" style="background:${color}"></i><div><strong>${U.esc(item.label)}</strong><span>${fmt(current?.value,2)} · ${current?monthLabel(current.month):"sin dato"}</span></div><b class="${change>0?"delta-up":change<0?"delta-down":""}">${signed(change)}</b></article>`}).join("")}
 
@@ -1177,8 +1244,54 @@
     function showChartTooltip(point,event){const tooltip=$("chart-tooltip");tooltip.innerHTML=`<strong>${U.esc(point.dataset.label)}</strong>${U.esc(point.dataset.month)} · ${U.esc(point.dataset.value)}${state.country==="ALL"?" · BBVA Empresas":""}`;tooltip.classList.remove("hidden");positionTooltip(event.clientX,event.clientY)}
     function positionTooltip(x,y){const tooltip=$("chart-tooltip"),left=Math.min(window.innerWidth-tooltip.offsetWidth-12,x+13),top=Math.max(10,y-tooltip.offsetHeight-14);tooltip.style.left=`${left}px`;tooltip.style.top=`${top}px`}
     function hideChartTooltip(){$("chart-tooltip").classList.add("hidden")}
-    async function downloadReport(){const button=$("report-button"),label=button.innerHTML;button.disabled=true;button.innerHTML="<span>Preparando informe…</span>";try{const viewLabels={benchmark:"Resumen",evolution:"Análisis mensual"};if(!viewLabels[state.view])throw new Error("La vista actual no admite descarga de informe.");if(document.fonts?.ready)await document.fonts.ready;const reportTrends=await fetchTrends(trendRequest());const viewLabel=viewLabels[state.view],scopeLabel=`${state.country==="ALL"?"Todos los mercados":countryLabel(state.country)} · ${D.config.platformLabels[selection().platform]}`;MarketsReport.render({target:$("print-report"),meta:state.meta,snapshot:state.snapshot,trends:reportTrends||[],benchmarkSegment:state.benchmarkSegment,benchmarkWeighted:state.benchmarkWeighted,view:state.view,selection:{...selection(),app:state.view==="evolution"?state.evolutionApp:""},periodYear:state.periodYear,periodMonth:state.periodMonth,generatedAt:new Date()});trackUsage("ACTION",state.view,"REPORT_DOWNLOAD");document.title=`Market Pulse · ${viewLabel} · ${scopeLabel} · ${state.meta.dataDate}`;window.print()}catch(error){showError(error)}finally{button.disabled=false;button.innerHTML=label}}
-    function renderPrintContext(){$("print-context").textContent=`${overviewContext()} · Benchmark: ${activeBenchmark()} · Gráficas: ${trendScope()} · Evolución: ${state.periodYear&&state.periodMonth?monthLabel(`${state.periodYear}-${state.periodMonth}`):"último cierre"} · ${dateLabel(state.meta?.dataDate)} · generado ${dateTimeLabel(new Date().toISOString())}`}
+    const exportDates=({start,end})=>[["Desde",start],["Hasta",end]];
+    const reviewExportHeader=["Fecha","Aplicación","Plataforma","Escaparate","Estrellas","Autor","Título","Comentario",
+      "Texto original","Bloques funcionales","Votos útiles","Respuesta","Enlace"];
+    const reviewExportRow=(row,topics)=>[row.date,row.entities?.join(" · ")||row.app,row.platform,
+      row.storefronts?.map(countryLabel).join(" · "),row.rating,row.author,row.title,row.text,row.translated?row.original:"",
+      (row.blocks.length?row.blocks:["general"]).map(id=>topics[id]||id).join(" · "),row.helpful,row.reply,row.url];
+    let reviewsReady=false, analyticsLoading=false, monthlyReviewsLoading=false;
+    function setExportSheet(view,name,country,filters,header,rows,chart=false){
+      const sheets=exportSheets[view];
+      if(rows.length)sheets.set(name,{name,country,filters:[["Geografía",countryLabel(country)],...filters],header,rows,chart});
+      else sheets.delete(name);
+    }
+    async function downloadReport(){
+      const view=state.view, button=$("report-button");
+      if(mobileViewport.matches||button.disabled||!state.meta)return;
+      const label=button.innerHTML;
+      button.disabled=true;
+      button.textContent=translate("Preparando Excel…");
+      try{
+        const country=view==="reviews"?reviewScope().country:view==="analytics"?annualScope().country:state.country;
+        if(!country||country==="ALL")throw new Error("Selecciona una geografía para descargar Excel.");
+        if((view==="analytics"&&analyticsLoading)||(view==="evolution"&&(state.trendsLoading||monthlyReviewsLoading))){
+          throw new Error("Espera a que termine de cargar la selección.");
+        }
+        let sheets;
+        if(view==="reviews"){
+          if(!reviewsReady)throw new Error("No hay comentarios cargados para descargar.");
+          const scope={...reviewScope(),language:appLanguage};
+          const {rows,topics,window:dates}=await callServer("review:export",scope);
+          const filters=[["Geografía",countryLabel(country)],...exportDates(dates)];
+          for(const key of ["app","platform","segment","topic","rating","search","reviewKey"]){
+            if(scope[key])filters.push([({app:"Aplicación",platform:"Plataforma",segment:"Sentimiento",topic:"Bloque funcional",rating:"Estrellas",search:"Buscar",reviewKey:"Reseña"})[key],reviewFilterLabel(key,scope[key])||$(`review-${key}`)?.selectedOptions?.[0]?.textContent||scope[key]]);
+          }
+          sheets=[{name:"Comentarios",filters,header:reviewExportHeader,rows:rows.map(row=>reviewExportRow(row,topics))}];
+        }else{
+          sheets=[...(exportSheets[view]?.values()||[])].filter(sheet=>sheet.country===country);
+        }
+        const file=window.MarketsWorkbook.build(sheets);
+        const url=URL.createObjectURL(file), link=document.createElement("a");
+        link.href=url;
+        const title={benchmark:"Resumen",evolution:"Análisis mensual",analytics:"Análisis anual",reviews:"Comentarios"}[view];
+        link.download=`Market Pulse - ${title} - ${country}.xlsx`;
+        link.click();
+        window.setTimeout(()=>URL.revokeObjectURL(url),1000);
+        trackUsage("ACTION",view,"REPORT_DOWNLOAD");
+      }catch(error){showError(error)}
+      finally{button.disabled=false;button.innerHTML=label}
+    }
     function showToast(message,success=false){const toast=$("toast");toast.textContent=message;toast.classList.toggle("success",success);toast.classList.remove("hidden");window.setTimeout(()=>toast.classList.add("hidden"),7000)}
     function showError(error){const message=error?.message||String(error);trackUsage("ERROR",state.view,"CLIENT_ERROR",message);showToast(message,false)}
   })();

@@ -419,8 +419,11 @@ function getMarketsReviewPage(filters) {
   if (filters.start && filters.start < window.start) window.start = filters.start;
   return readMarketsReviewCache_(ss, 'page', filters, window, catalog => {
     const deferBlocks = !filters.topic;
-    const rows = queryMarketsReviews_(ss, { ...filters, country: 'ALL', deferBlocks }, window, false, catalog);
-    const page = paginateMarketsReviews_(rows, { ...filters, topics: marketsReviewTopics_(ss) }, window);
+    const query = { ...filters, country: 'ALL', deferBlocks };
+    const paging = { ...filters, topics: marketsReviewTopics_(ss) };
+    const page = deferBlocks && !filters.search
+      ? queryMarketsReviews_(ss, query, window, false, catalog, paging)
+      : paginateMarketsReviews_(queryMarketsReviews_(ss, query, window, false, catalog), paging, window);
     if (deferBlocks && page.rows.length) {
       const started = Date.now();
       const { rules, knownBlocks } = marketsReviewClassification_(ss);
@@ -431,6 +434,18 @@ function getMarketsReviewPage(filters) {
     }
     return page;
   });
+}
+
+/** Descarga la selección completa con los mismos filtros y permisos que Comentarios. */
+function getMarketsReviewExport(filters) {
+  currentMarketsUserEmail_();
+  filters = normalizeMarketsReviewFilters_(filters);
+  if (filters.country === 'ALL') throw new Error('Selecciona una geografía para descargar los comentarios.');
+  const ss = openMarketsSpreadsheet_();
+  const window = marketsReviewWindow_(filters);
+  if (filters.start && filters.start < window.start) window.start = filters.start;
+  const rows = queryMarketsReviews_(ss, filters, window);
+  return { rows, topics: marketsReviewTopics_(ss), window };
 }
 
 function normalizeMarketsReviewFilters_(filters) {

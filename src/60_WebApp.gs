@@ -1,6 +1,6 @@
 /** Web app de lectura para el dashboard de ratings. */
 var MARKETS_WEB = Object.freeze({
-  version: '2026.11.12.54',
+  version: '2026.11.12.56',
   // Solo debe cambiar si cambia el formato serializado. Un cambio visual no
   // puede obligar al primer usuario a reconstruir la cache desde Sheets.
   cacheSchemaVersion: '2026.10.21.41',
@@ -291,14 +291,37 @@ function buildAllDashboardTrendsForWeb_(ss, months) {
   assertCurrentSheetContract_(sheet, MARKETS_CONFIG.headers.trends, headers.map(trimString_));
   const indexes = indexHeaders_(headers);
   const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, width).getValues();
-  const monthKeys = uniqueStrings_(rows.map(function (row) { return webMonthKey_(row[indexes.period_month]); }))
-    .sort();
+  const monthByTimestamp = new Map();
+  const monthForRow = row => {
+    const value = row[indexes.period_month];
+    const key = value instanceof Date ? value.getTime() : value;
+    if (!monthByTimestamp.has(key)) monthByTimestamp.set(key, webMonthKey_(value));
+    return monthByTimestamp.get(key);
+  };
+  const monthKeys = uniqueStrings_(rows.map(monthForRow)).sort();
   const cutoff = monthKeys[Math.max(0, monthKeys.length - months)] || '';
-  const storeMetadata = buildStoreMetadataByAppKeyForWeb_(readAppCatalog_(ss));
-  return rows.filter(function (row) {
-    const month = webMonthKey_(row[indexes.period_month]);
-    return month && month >= cutoff && trimString_(row[indexes.app_key]);
-  }).map(function (row) { return mapTrendRowForWeb_(row, indexes, storeMetadata[trimString_(row[indexes.app_key])]); });
+  const catalog = readAppCatalog_(ss, true);
+  const catalogByKey = new Map(catalog.map(app => [app.appKey, app]));
+  const storeMetadata = buildStoreMetadataByAppKeyForWeb_(catalog);
+  const historicalNames = new Map();
+  for (const row of rows) {
+    const key = trimString_(row[indexes.app_key]);
+    const name = trimString_(row[indexes.app_name]);
+    const month = monthForRow(row);
+    if (key && name && month && (!historicalNames.has(key) || historicalNames.get(key).month <= month)) {
+      historicalNames.set(key, { name, month });
+    }
+  }
+  return rows.flatMap(row => {
+    const month = monthForRow(row);
+    const appKey = trimString_(row[indexes.app_key]);
+    if (!month || month < cutoff || !appKey) return [];
+    const trend = mapTrendRowForWeb_(row, indexes, storeMetadata[appKey], month);
+    trend.appName = catalogByKey.get(appKey)?.appName || historicalNames.get(appKey)?.name || trend.appName;
+    // For an orphaned Android key the historical listing scope cannot be verified.
+    if (trend.platform === 'Android' && !storeMetadata[appKey]) trend.ratingCountEom = null;
+    return [trend];
+  });
 }
 
 function filterDashboardTrendsForWeb_(allTrends, normalized) {
@@ -317,11 +340,11 @@ function matchesMarketsSegment_(row, segment) {
   return segment === 'ALL' || row.segment === segment || (segment === 'FINTECH' && row.isBbva);
 }
 
-function mapTrendRowForWeb_(row, indexes, catalogStoreMetadata) {
+function mapTrendRowForWeb_(row, indexes, catalogStoreMetadata, month = webMonthKey_(row[indexes.period_month])) {
   const metadata = catalogStoreMetadata || {};
   const appKey = trimString_(row[indexes.app_key]);
   return {
-    month: webMonthKey_(row[indexes.period_month]),
+    month: month,
     platform: trimString_(row[indexes.platform]),
     countryCode: trimString_(row[indexes.country_code]),
     country: trimString_(row[indexes.country]),

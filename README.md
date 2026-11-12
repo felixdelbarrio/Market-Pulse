@@ -81,7 +81,7 @@ La interfaz no utiliza logotipos ni símbolos visuales de Android, iOS o Huawei.
 
 ## Informe ejecutivo
 
-**Descargar informe** no imprime las pantallas del dashboard. Genera un entregable Market Pulse condicionado por la vista y los filtros activos. `Resumen` incluye lectura ejecutiva, panorama geografico, comparativa actual por plataforma y detalle; siempre utiliza el último cierre disponible. `Benchmark` exporta el ranking completo de todas las aplicaciones visibles, no solo BBVA y el líder. `Evolucion` conserva mercado, plataforma y periodo e incorpora el Pulso mensual hasta el mes elegido. En `Alertas` y `Administracion` la descarga analitica se oculta para no mezclar datos de mercado con informacion privada; una vista no soportada nunca se sustituye silenciosamente por Resumen. El informe no incluye una seccion de metodologia. El renderer usa la familia corporativa BBVABentonSans con fallback seguro, Tiempos Headline para titulares y el lockup oficial BBVA Banca de Empresas e Instituciones extraído de la plantilla corporativa en `BrandIdentity`; pagina las tablas antes de imprimir para que ninguna fila o grafico quede cortado.
+**Descargar Excel** exporta en escritorio la geografía y los filtros aplicados en Resumen, Análisis mensual, Análisis anual o Comentarios. Cada sección con datos ocupa una pestaña, incluidos los cierres anuales con su gráfico. Comentarios incluye todos los resultados filtrados en una sola pestaña.
 
 ## Alertas privadas
 

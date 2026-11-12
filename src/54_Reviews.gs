@@ -381,13 +381,14 @@ function marketsReviewBlocks_(ids, knownBlocks) {
   return [...new Set(ids.map(id => id.slice(0, 2)).filter(id => !knownBlocks || knownBlocks.has(id)))];
 }
 
-function queryMarketsReviews_(ss, filters, window, includeTranslations = false, apps = readAppCatalog_(ss)) {
+function queryMarketsReviews_(ss, filters, window, includeTranslations = false, apps = readAppCatalog_(ss), paging = null) {
   filters = filters || {};
   const segment = MARKETS_DEFAULT_REVIEW_SEGMENTS.find(group => group.id === filters.segment);
   if (filters.segment && !segment) throw new Error('Segmento de comentarios desconocido.');
   const catalog = new Map(apps.map(app => [app.appKey, app]));
   const sheet = ss.getSheetByName('MARKET_REVIEWS');
-  if (!sheet || sheet.getLastRow() < 2) return [];
+  const lastRow = sheet?.getLastRow() || 0;
+  if (lastRow < 2) return paging ? paginateMarketsReviews_([], paging, window) : [];
   marketsReviewSheet_(ss);
   const topic = /^(?:\d{2})(?:\.(?:\d{2}|xx))?$/.test(filters.topic) ? filters.topic : "";
   const classification = (window && !filters.deferBlocks) || filters.includeTopics ? marketsReviewClassification_(ss) : null;
@@ -402,8 +403,11 @@ function queryMarketsReviews_(ss, filters, window, includeTranslations = false, 
     iosListings.set(key, iosListings.has(key) ? null : app);
   }
   const readStarted = Date.now();
-  const stored = sheet.getRange(2, 1, sheet.getLastRow() - 1, marketsReviewWidth_(sheet)).getValues();
-  const readMs = Date.now() - readStarted;
+  const width = marketsReviewWidth_(sheet);
+  const indexOnly = Boolean(paging && !paging.fullRead);
+  const indexWidth = MARKETS_REVIEW_HEADERS.indexOf('rating') + 1;
+  const stored = sheet.getRange(2, 1, lastRow - 1, indexOnly ? indexWidth : width).getValues();
+  let readMs = Date.now() - readStarted;
   const byPackage = new Map();
   for (const app of androidListings.values()) {
     if (!byPackage.has(app.packageName)) byPackage.set(app.packageName, []);
@@ -412,32 +416,38 @@ function queryMarketsReviews_(ss, filters, window, includeTranslations = false, 
   let classified = 0;
   const started = Date.now();
   const identities = new Map();
-  for (const row of stored) {
+  for (const [offset, row] of stored.entries()) {
     if (!row[0]) continue;
     const identity = row[4] && row[5] ? JSON.stringify([row[3], row[4], row[5]]) : String(row[0]);
     const previous = identities.get(identity);
     if (!previous) {
-      identities.set(identity, { row, markets: String(row[2]), key: row[0], matches: row[0] === filters.reviewKey });
+      identities.set(identity, { row, rowNumber: offset + 2, markets: String(row[2]), key: row[0], matches: row[0] === filters.reviewKey });
     } else {
       previous.markets += ',' + row[2];
       previous.matches = previous.matches || row[0] === filters.reviewKey;
       if (String(row[0]) < String(previous.key)) previous.key = row[0];
-      if (Date.parse(row[6]) > Date.parse(previous.row[6])) previous.row = row;
+      if (Date.parse(row[6]) > Date.parse(previous.row[6])) {
+        previous.row = row;
+        previous.rowNumber = offset + 2;
+      }
     }
   }
   const search = normalizeReviewEvidence_(String(filters.search || "").slice(0, 200));
-  const results = Array.from(identities.values())
-    .flatMap(({ row, markets, key, matches }) => {
+  const localDate = typeof Intl === 'object' && new Intl.DateTimeFormat('sv-SE', {
+    timeZone: MARKETS_CONFIG.timeZone, year: 'numeric', month: '2-digit', day: '2-digit'
+  });
+  const candidates = Array.from(identities.values())
+    .flatMap(({ row, rowNumber, markets, key, matches }) => {
       if (filters.reviewKey && !matches) return [];
-      const date = row[6] instanceof Date
-        ? Utilities.formatDate(row[6], MARKETS_CONFIG.timeZone, 'yyyy-MM-dd')
-        : String(row[6]).slice(0, 10);
+      if (filters.platform !== 'ALL' && row[3] !== filters.platform) return [];
       if (!Number.isInteger(row[7]) || row[7] < 1 || row[7] > 5) return [];
+      const date = row[6] instanceof Date
+        ? (Number.isFinite(row[6].getTime()) ? (localDate ? localDate.format(row[6]) : webDateKey_(row[6])) : '')
+        : String(row[6]).slice(0, 10);
       if (window && ((filters.start && date < filters.start) || (filters.end && date > filters.end) || !/^\d{4}-\d{2}-\d{2}$/.test(date) || date < window.start || date > window.end)) return [];
       if (window && filters.rating !== undefined && filters.rating !== '' && row[7] !== Number(filters.rating)) return [];
       if (segment && (typeof row[7] !== 'number' || !segment.stars.includes(row[7]))) return [];
       const android = row[3] === 'Android';
-      if (filters.platform !== 'ALL' && row[3] !== filters.platform) return [];
       if (filters.period && !date.startsWith(filters.period)) return [];
       if (filters.maxRating && row[7] > filters.maxRating) return [];
       const storefronts = [...new Set(markets.split(',').map(code => code.trim()).filter(code => /^[A-Z]{2}$/.test(code)))].sort();
@@ -455,6 +465,22 @@ function queryMarketsReviews_(ss, filters, window, includeTranslations = false, 
       }
       const apps = candidates.filter(app => !filters.app || (app.isBbva ? 'BBVA Empresas' : app.appName) === filters.app);
       if (!apps.length && (filters.app || candidates.length || !['Android', 'iOS'].includes(row[3]) || !row[4])) return [];
+      return [{ row, rowNumber, key, date, countries: [country], android, storefronts, attributionMethod, sharedListing, apps }];
+    });
+  let page;
+  if (paging) {
+    candidates.sort(compareMarketsReviewRows_);
+    page = paginateMarketsReviews_(candidates, paging, window);
+    if (indexOnly && page.rows.length) {
+      const startedTextRead = Date.now();
+      if (!hydrateMarketsReviewPage_(sheet, width, page.rows)) {
+        return queryMarketsReviews_(ss, filters, window, includeTranslations, apps, { ...paging, fullRead: true });
+      }
+      readMs += Date.now() - startedTextRead;
+    }
+  }
+  const results = (page?.rows || candidates).flatMap(({ row, key, date, countries, android, storefronts, attributionMethod, sharedListing, apps }) => {
+      const [country] = countries;
       const original = [row[9], row[10]].join(' ');
       if (search && !normalizeReviewEvidence_(original).includes(search)) return [];
       if (rules) classified++;
@@ -480,8 +506,33 @@ function queryMarketsReviews_(ss, filters, window, includeTranslations = false, 
         capturedAt: row[14] ? String(row[14]).slice(0, 10) : '',
         translated: Boolean(row[languageColumn] && row[languageColumn] !== row[10]) }];
     })
-    .sort((a, b) => b.date.localeCompare(a.date) || a.key.localeCompare(b.key));
+    .sort(compareMarketsReviewRows_);
   console.log(JSON.stringify({ operation: 'review-query', readMs, durationMs: Date.now() - started + readMs,
-    read: stored.length, classified, returned: results.length }));
-  return results;
+    read: stored.length, indexOnly, classified, returned: results.length }));
+  return page ? { ...page, rows: results } : results;
+}
+
+function compareMarketsReviewRows_(a, b) {
+  return b.date.localeCompare(a.date) || a.key.localeCompare(b.key);
+}
+
+/** Recupera como máximo cuatro intervalos, separados por los huecos más grandes. */
+function hydrateMarketsReviewPage_(sheet, width, rows) {
+  const ordered = rows.slice().sort((a, b) => a.rowNumber - b.rowNumber);
+  const splits = new Set(ordered.slice(1).map((row, index) => ({ index: index + 1, gap: row.rowNumber - ordered[index].rowNumber }))
+    .filter(item => item.gap > 16).sort((a, b) => b.gap - a.gap).slice(0, 3).map(item => item.index));
+  let first = 0;
+  for (let end = 1; end <= ordered.length; end++) {
+    if (end < ordered.length && !splits.has(end)) continue;
+    const startRow = ordered[first].rowNumber;
+    const values = sheet.getRange(startRow, 1, ordered[end - 1].rowNumber - startRow + 1, width).getValues();
+    for (const candidate of ordered.slice(first, end)) {
+      const current = values[candidate.rowNumber - startRow];
+      // A capture can update a row while the page is being read.
+      if (!current || candidate.row.slice(0, 8).some((value, index) => String(value) !== String(current[index]))) return false;
+      candidate.row = current;
+    }
+    first = end;
+  }
+  return true;
 }
