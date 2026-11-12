@@ -188,7 +188,7 @@ test("analytics applies sentiment and entity to gaps and examples, while monthly
     review("prior", "2026-10-11", 1, ["03"]),
     review("new", "2026-10-12", 5, ["03"]),
     review("generic", "2026-10-12", 1, []),
-    review("shared", "2026-10-13", 2, ["03"], ["BBVA Empresas", "Otro"]),
+    review("shared", "2026-10-13", 3, ["03"], ["BBVA Empresas", "Otro"]),
     review("other", "2026-10-14", 2, [], ["Otro"]),
     review("general", "2026-10-15", 1, [])
   ];
@@ -208,7 +208,7 @@ test("analytics applies sentiment and entity to gaps and examples, while monthly
     {id:"03",label:"Transferencias",total:1,promoters:0,detractors:1,weight:100/3,balance:-100,gap:0}
   ]);
   assert.equal(result.examples[1].review.key, "shared");
-  assert.ok(result.examples.every(({review}) => review.rating <= 2 && review.entities.includes("BBVA Empresas")));
+  assert.ok(result.examples.every(({review}) => review.rating <= 3 && review.entities.includes("BBVA Empresas")));
 });
 
 test("annual reviews keep all star ratings, use the selected entity and rank votes and named authors", () => {
@@ -230,7 +230,7 @@ test("annual reviews keep all star ratings, use the selected entity and rank vot
   assert.equal(result.leadingBlock, null);
   assert.deepEqual(Array.from(result.annual.topHelpful, row => row.key), ["c", "b", "d"]);
   assert.deepEqual(Array.from(result.annual.topAuthors, row => [row.author,row.count]), [["Ana",3],["Luis",1]]);
-  assert.deepEqual(["total","promoters","detractors","neutral","helpful","answered"].map(key => result.annual[key]), [5,2,2,1,4,1]);
+  assert.deepEqual(["total","promoters","detractors","neutral","helpful","answered"].map(key => result.annual[key]), [5,1,3,1,4,1]);
 });
 
 test("recent block statistics do not invent a historical baseline or sum duplicated reviews into the denominator", () => {
@@ -466,11 +466,11 @@ test("the persistent snapshot requires the matching schema and generations", () 
     getProperties: () => ({ MARKETS_REVIEWS_GENERATION: generation })
   }) };
   const catalogVersion = api.marketsReviewCatalogVersion_(api.readAppCatalog_());
-  let schema = 3;
+  let schema = 6;
   api.readMarketsWebCache_ = (_key,build)=>build();
   api.readMarketsPersistentCache_ = () => ({ schema, end: window.end, versions: ["1", "", catalogVersion], values: { "page:ES:es": staticPage } });
   assert.equal(api.readMarketsReviewCache_(ss, "page", filters, window, () => null), null);
-  schema = 6;
+  schema = 7;
   assert.equal(api.readMarketsReviewCache_(ss, "page", filters, window, () => null), staticPage);
   generation = "2";
   assert.equal(api.readMarketsReviewCache_(ss, "page", filters, window, () => null), null);
@@ -517,7 +517,7 @@ test("monthly sentiment filters gaps and examples while balance and baseline kee
   const rows = [
     review("prior promoter","2026-10-10",5), review("prior detractor","2026-10-11",1),
     review("recent promoter","2026-11-01",5), review("recent detractor","2026-11-02",1),
-    review("recent neutral","2026-11-02",3), review("other bank","2026-11-02",5,"Banco")
+    review("recent neutral","2026-11-02",4), review("other bank","2026-11-02",5,"Banco")
   ];
   const window = { start:"2026-10-01", recent:"2026-11-01", end:"2026-11-11" };
   for (const [segment,key,balance] of [["DETRACTOR","recent detractor",-100],["PROMOTER","recent promoter",100],["NEUTRAL","recent neutral",0]]) {
