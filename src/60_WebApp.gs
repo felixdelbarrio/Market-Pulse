@@ -771,18 +771,43 @@ function configureMarketsReviewInsights() {
   return setupMarketsReviewInsights();
 }
 
+const MARKETS_MEASURED_JOBS = Object.freeze({ health: 'Comprobación de salud', newsletter: 'Newsletter mensual' });
+
+function measureMarketsScheduledJob_(name, run) {
+  const started = new Date();
+  let status = 'ERROR';
+  try {
+    const result = run();
+    status = result?.status || 'OK';
+    return result;
+  } finally {
+    try {
+      PropertiesService.getScriptProperties().setProperty('MARKETS_JOB_TIMING:' + name, JSON.stringify({
+        startedAt: started.toISOString(), durationMs: Date.now() - started.getTime(), status
+      }));
+    } catch (error) {
+      console.warn('No se pudo registrar la duración de ' + name + ': ' + errorToString_(error));
+    }
+  }
+}
+
 function getMarketsPerformance() {
   const { ss } = requireMarketsAdministrator_();
   const sheet = ss.getSheetByName(MARKETS_CONFIG.sheets.usage);
   const lastRow = sheet?.getLastRow() || 1;
   const size = Math.min(3000, Math.max(0, lastRow - 1));
   const rows = size ? sheet.getRange(lastRow - size + 1, 4, size, 5).getValues() : [];
-  const pipeline = readMarketsReviewPipeline_(PropertiesService.getScriptProperties());
+  const properties = PropertiesService.getScriptProperties();
+  const pipeline = readMarketsReviewPipeline_(properties);
+  const scheduled = Object.entries(MARKETS_MEASURED_JOBS).map(([key, label]) => ({
+    label, ...safeJsonParse_(properties.getProperty('MARKETS_JOB_TIMING:' + key))
+  }));
   return {
     operations: summarizeMarketsPerformance_(rows),
     ratings: readRecentMarketsAdminRuns_(ss, 14).map(({ startedAt, durationMs, status }) => ({ startedAt, durationMs, status })),
     jobs: (pipeline?.jobs || []).map(({ label, status, lastBatchMs, totalBatchMs, measuredBatches }) =>
       ({ label, status, lastBatchMs, totalBatchMs, measuredBatches })),
+    scheduled,
     day: pipeline?.day || '',
     rowsAnalyzed: size
   };

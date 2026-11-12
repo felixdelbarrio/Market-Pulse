@@ -1134,6 +1134,8 @@
           data.jobs.map(job=>[job.label,job.status,ms(job.lastBatchMs),ms(job.totalBatchMs),job.measuredBatches??"—"]));
         $("admin-performance-ratings").innerHTML=table(["Inicio de captura","Estado","Duración"],
           data.ratings.map(run=>[dateTimeLabel(run.startedAt),run.status,ms(run.durationMs)]));
+        $("admin-performance-scheduled").innerHTML=table(["Tarea","Última ejecución","Estado","Duración"],
+          data.scheduled.map(job=>[job.label,job.startedAt?dateTimeLabel(job.startedAt):"—",job.status||"Pendiente de medición",ms(job.durationMs)]));
       }catch(error){target.textContent=error.message}
       finally{performancePending=false}
     }

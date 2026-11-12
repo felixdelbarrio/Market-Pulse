@@ -8,6 +8,10 @@
  */
 
 function runMarketsMonthlyNewsletter() {
+  return measureMarketsScheduledJob_('newsletter', runMarketsMonthlyNewsletter_);
+}
+
+function runMarketsMonthlyNewsletter_() {
   const now = new Date();
   const day = Number(Utilities.formatDate(now, MARKETS_CONFIG.timeZone, 'd'));
   if (day !== 1) return { status: 'SKIPPED_NOT_MONTH_START', sent: 0 };
@@ -33,20 +37,22 @@ function sendMarketsMonthlyNewsletter_(ss, period, isTest) {
   const subscribers = readAllMarketsAlertPreferences_(ss).filter(function (item) {
     return item.newsletterEnabled;
   });
-  const ratings = readRatingObjects_(ss);
-  const catalog = readAppCatalog_(ss);
-  const existing = readExistingAlertKeys_(ss);
-  const sender = requireMarketsAlertSender_(ss);
-  const images = buildMarketsAlertInlineImages_();
   const result = { status: 'NOT_REQUIRED', period: period, subscribers: subscribers.length,
     sent: 0, skipped: 0, failures: [] };
+  if (!subscribers.length) return result;
+  const existing = isTest ? {} : readExistingAlertKeys_(ss);
+  const pending = subscribers.map(preferences => ({
+    preferences, eventKey: ['NEWSLETTER_MONTHLY', period, preferences.email].join('|')
+  })).filter(({ eventKey }) => !existing[eventKey]);
+  result.skipped = subscribers.length - pending.length;
+  if (!pending.length) return result;
+
+  const ratings = readRatingObjects_(ss);
+  const catalog = readAppCatalog_(ss);
+  const sender = requireMarketsAlertSender_(ss);
+  const images = buildMarketsAlertInlineImages_();
   const acceptedEvents = [];
-  subscribers.forEach(function (preferences) {
-    const eventKey = ['NEWSLETTER_MONTHLY', period, preferences.email].join('|');
-    if (!isTest && existing[eventKey]) {
-      result.skipped += 1;
-      return;
-    }
+  pending.forEach(function ({ preferences, eventKey }) {
     try {
       const model = buildMarketsNewsletterModel_(ratings, catalog, preferences, period, {
         isTest: Boolean(isTest), language: marketsNewsletterLanguageFor_(preferences.email)
