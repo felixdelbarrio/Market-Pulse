@@ -1,5 +1,9 @@
 /** Verifica que el proceso diario termino con datos utilizables y un canal de alertas operativo. */
 function checkDailyRatingMonitorHealth() {
+  return measureMarketsScheduledJob_('health', checkDailyRatingMonitorHealth_);
+}
+
+function checkDailyRatingMonitorHealth_() {
   const ss = openMarketsSpreadsheet_();
   ensureWorkbookSchema_(ss);
   const control = readControl_(ss);

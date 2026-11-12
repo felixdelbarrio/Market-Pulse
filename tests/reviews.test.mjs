@@ -265,7 +265,9 @@ test("country pages and snapshots partition each review by its own storefront ev
     review("local-tr",tr,"TR"),
     review("local-co",ios,"CO")
   ];
-  const sheet = {getLastRow:()=>rows.length+1,getRange:()=>({getValues:()=>rows})};
+  const sheet = {getLastRow:()=>rows.length+1,getRange:(start, _col, length, width)=>({
+    getValues:()=>rows.slice(start-2,start-2+length).map(row=>row.slice(0,width))
+  })};
   const ss = {getSheetByName:name=>name==="MARKET_REVIEWS"?sheet:null,getId:()=>"test"};
   let snapshot;
   const cache = new Map();
@@ -297,7 +299,11 @@ test("country pages and snapshots partition each review by its own storefront ev
   assert.equal(live.total,1);
   assert.equal(live.rows[0].key,"local-co");
   assert.equal(live.rows[0].app,"BBVA iOS");
-  assert.equal(runtime.getMarketsReviewPage({...filters,country:"ES"}).total,2);
+  const spain = runtime.getMarketsReviewPage({...filters,country:"ES"});
+  assert.equal(spain.total,2);
+  assert.deepEqual(runtime.getMarketsReviewExport({...filters,country:"ES",start:spain.window.start}).rows.map(row=>row.key),
+    spain.rows.map(row=>row.key));
+  assert.throws(()=>runtime.getMarketsReviewExport({...filters,country:"ALL"}),/Selecciona una geografía/);
   assert.equal(runtime.getMarketsReviewAnalytics({country:"ES",year:"2026"}).annual.total,2);
   assert.equal(runtime.getMarketsReviewAnalytics({country:"ALL",year:"2026"}).annual.total,5);
   assert.throws(()=>runtime.getMarketsReviewPage({...filters,country:"ALL"}),/Selecciona una geografía/);
@@ -307,7 +313,8 @@ test("country pages and snapshots partition each review by its own storefront ev
   runtime.publishMarketsReviewSnapshot_();
   const query = runtime.queryMarketsReviews_;
   runtime.queryMarketsReviews_ = () => { throw new Error("unexpected Sheets read"); };
-  assert.deepEqual([runtime.getMarketsReviewAnalytics(monthly),runtime.getMarketsReviewAnalytics(annual)],expected);
+  const withoutTiming = ({ timing, ...data }) => data;
+  assert.deepEqual([runtime.getMarketsReviewAnalytics(monthly),runtime.getMarketsReviewAnalytics(annual)].map(withoutTiming),expected.map(withoutTiming));
   runtime.queryMarketsReviews_ = query;
   assert.deepEqual({...snapshot.values["page:CO:es"].counts},{CO:1,TR:1,ES:2,UNKNOWN:1});
   assert.equal(snapshot.values["page:CO:es"].rows[0].key,"local-co");
@@ -470,7 +477,7 @@ test("the persistent snapshot requires the matching schema and generations", () 
 });
 
 test("calendar analytics reads a closed year and its predecessor independently of the heatmap sentiment", () => {
-  const observed = [];
+  const observed = [], cache = new Map();
   const review = (key,date,rating) => ({
     key,date,rating,entities:["BBVA Empresas"],blocks:["01"],original:key
   });
@@ -478,9 +485,13 @@ test("calendar analytics reads a closed year and its predecessor independently o
     review("end","2025-12-31",5),review("after","2026-01-01",1)];
   Object.assign(api,{
     currentMarketsUserEmail_:()=> "reader@bbva.com",
-    openMarketsSpreadsheet_:()=>({}),
+    openMarketsSpreadsheet_:()=>({getId:()=>"calendar"}),
     marketsReviewTopics_:()=>({"01":"Transferencias"}),
     readMarketsReviewCache_:(_ss,_op,_filters,_window,build)=>build(),
+    readMarketsWebCache_:(key,build)=>{
+      if (!cache.has(key)) cache.set(key,build());
+      return cache.get(key);
+    },
     queryMarketsReviews_:(_ss,filters,window)=>{
       observed.push([filters.start,window.end]);
       return rows.filter(row=>row.date>=filters.start && row.date<=window.end);
@@ -488,6 +499,8 @@ test("calendar analytics reads a closed year and its predecessor independently o
   });
   api.Utilities.formatDate=()=> "2026-11-11";
   const result=api.getMarketsReviewAnalytics({country:"ES",year:"2025",segment:"DETRACTOR"});
+  const promoters=api.getMarketsReviewAnalytics({country:"ES",year:"2025",segment:"PROMOTER"});
+  assert.equal(promoters.entities[0].total,1);
   assert.deepEqual(observed,[["2024-01-01","2025-12-31"]]);
   assert.equal(result.annual.start,"2025-01-01");
   assert.equal(result.annual.end,"2025-12-31");
@@ -515,4 +528,22 @@ test("monthly sentiment filters gaps and examples while balance and baseline kee
     assert.equal(result.deltas[0].gap,balance);
     assert.deepEqual(Array.from(result.examples, item=>item.review.key),[key]);
   }
+});
+
+
+test("compact review source keeps counts, repeat authors and full records eligible for cards", () => {
+  const common = { entities: ["BBVA Empresas"], blocks: ["01"], author:"Ana", reply: "Gracias", original: "Transferencia pendiente" };
+  const rows = [
+    { ...common, key: "old", date: "2026-01-03", rating: 2, helpful: 0 },
+    { ...common, key: "helpful", date: "2026-01-04", rating: 2, helpful: 10 },
+    { ...common, key: "recent", date: "2026-11-01", rating: 2, helpful: 0 }
+  ];
+  const window = { start: "2026-01-01", recent: "2026-11-01", end: "2026-11-11" };
+  const filters = { analysisMonth: "2026-11", segment: "DETRACTOR", entity: "BBVA Empresas" };
+  const compact = api.compactMarketsReviewAnalyticsRows_(rows, window.end);
+  assert.equal(compact[0].original, undefined);
+  assert.equal(compact[1], rows[1]);
+  assert.equal(compact[2], rows[2]);
+  const summarize = data => api.summarizeMarketsReviewAnalytics_(data, { "01": "Transferencias" }, filters, window);
+  assert.deepEqual(summarize(compact), summarize(rows));
 });

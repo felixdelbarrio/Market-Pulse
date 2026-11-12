@@ -24,14 +24,13 @@ function recordMarketsUsageEvents(events) {
   }).filter(Boolean);
   if (!rows.length) return { recorded: 0 };
   const lock = LockService.getScriptLock();
-  if (!lock.tryLock(MARKETS_CONFIG.lockTimeoutMs)) return { recorded: 0, deferred: true };
+  if (!lock.tryLock(250)) return { recorded: 0, deferred: true };
   try {
     const ss = openMarketsSpreadsheet_();
     const sheet = ensureMarketsUsageSheet_(ss);
     const start = sheet.getLastRow() + 1;
     ensureSheetCapacity_(sheet, start + rows.length - 1, MARKETS_CONFIG.headers.usage.length);
     sheet.getRange(start, 1, rows.length, MARKETS_CONFIG.headers.usage.length).setValues(rows);
-    CacheService.getScriptCache().remove(usageAnalyticsCacheKey_(MARKETS_CONFIG.timeZone));
     return { recorded: rows.length };
   } finally {
     lock.releaseLock();
