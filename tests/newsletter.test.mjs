@@ -438,3 +438,19 @@ test("localized newsletter renders subject, plain text and HTML in the chosen la
     assert.match(rendered.html, /iOS/);
   }
 });
+
+
+test("a fully delivered newsletter skips loading ratings and opening the sender", () => {
+  const saved = { readAllMarketsAlertPreferences_: context.readAllMarketsAlertPreferences_,
+    readExistingAlertKeys_: context.readExistingAlertKeys_, readRatingObjects_: context.readRatingObjects_ };
+  try {
+    context.readAllMarketsAlertPreferences_ = () => [{ email:"reader@bbva.com", newsletterEnabled:true }];
+    context.readExistingAlertKeys_ = () => ({ "NEWSLETTER_MONTHLY|2026-10|reader@bbva.com": true });
+    context.readRatingObjects_ = () => assert.fail("Ratings are only needed for pending recipients");
+    const result = context.sendMarketsMonthlyNewsletter_({}, "2026-10", false);
+    assert.equal(result.skipped, 1);
+    assert.equal(result.sent, 0);
+  } finally {
+    Object.assign(context, saved);
+  }
+});

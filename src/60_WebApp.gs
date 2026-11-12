@@ -1,6 +1,6 @@
 /** Web app de lectura para el dashboard de ratings. */
 var MARKETS_WEB = Object.freeze({
-  version: '2026.11.12.56',
+  version: '2026.11.12.58',
   // Solo debe cambiar si cambia el formato serializado. Un cambio visual no
   // puede obligar al primer usuario a reconstruir la cache desde Sheets.
   cacheSchemaVersion: '2026.10.21.41',
@@ -31,17 +31,17 @@ function includeMarketsWebPartial_(name) {
 
 /** RPC inicial consumido por Index.html. */
 function getMarketsDashboardBootstrap() {
+  const started = Date.now();
+  let source = 'cache';
   const userContext = getMarketsUserContext();
   const cacheKey = marketsBootstrapCacheKey_();
   const data = readMarketsWebCache_(cacheKey, function () {
     const persistent = readMarketsPersistentCache_('bootstrap');
-    if (persistent) return persistent;
+    if (persistent) { source = 'snapshot'; return persistent; }
+    source = 'sheet';
     const ss = openMarketsSpreadsheet_();
-    let allTrends = readMarketsPersistentCache_('trends');
-    if (!allTrends) allTrends = buildAllDashboardTrendsForWeb_(ss, MARKETS_WEB.maxTrendMonths);
-    const bootstrap = buildMarketsDashboardBootstrap_(ss, allTrends);
+    const bootstrap = buildMarketsDashboardBootstrap_(ss, []);
     tryWriteMarketsPersistentCache_('bootstrap', bootstrap, bootstrap.meta.dataDate);
-    tryWriteMarketsPersistentCache_('trends', allTrends, bootstrap.meta.dataDate);
     return bootstrap;
   });
   // La identidad nunca se almacena en la cache compartida.
@@ -51,6 +51,7 @@ function getMarketsDashboardBootstrap() {
   data.meta.webVersion = MARKETS_WEB.version;
   data.userContext = userContext;
   data.reviewSegments = MARKETS_DEFAULT_REVIEW_SEGMENTS;
+  data.timing = { source, durationMs: Date.now() - started };
   return data;
 }
 
@@ -478,22 +479,61 @@ function readRunFetchSummaryForWeb_(ss, runId, appsTotal) {
   };
 }
 
-function readMarketsWebCache_(key, builder) {
+function readMarketsWebCache_(key, builder, maxParts = 1) {
   const cache = CacheService.getScriptCache();
-  const cached = cache.get(key);
-  if (cached) {
-    try { return JSON.parse(cached); } catch (ignored) {}
-  }
+  try {
+    const cached = cache.get(key);
+    if (cached?.startsWith('gzip-single:')) return decodeMarketsCache_(cached.slice(12));
+    if (cached?.startsWith('gzip:')) {
+      const [, generation, count] = cached.split(':');
+      const parts = Number(count);
+      if (parts > 0 && parts <= maxParts) {
+        const keys = Array.from({ length: parts }, (_, index) => key + ':' + generation + ':' + index);
+        const chunks = cache.getAll(keys);
+        if (keys.every(part => chunks[part])) return decodeMarketsCache_(keys.map(part => chunks[part]).join(''));
+      }
+    } else if (cached) return JSON.parse(cached);
+  } catch (ignored) {}
   const value = builder();
-  writeMarketsWebCache_(cache, key, value);
+  writeMarketsWebCache_(cache, key, value, maxParts);
   return value;
 }
 
-function writeMarketsWebCache_(cache, key, value) {
-  const serialized = JSON.stringify(value);
-  if (serialized.length <= MARKETS_WEB.maxCacheCharacters) {
-    try { cache.put(key, serialized, MARKETS_WEB.cacheSeconds); } catch (ignored) {}
-  }
+function writeMarketsWebCache_(cache, key, value, maxParts = 1) {
+  try {
+    const serialized = JSON.stringify(value);
+    const size = MARKETS_WEB.maxCacheCharacters;
+    // UTF-8 can occupy more bytes than a JavaScript string has characters.
+    if (serialized.length <= size / 3) {
+      cache.put(key, serialized, MARKETS_WEB.cacheSeconds);
+      return;
+    }
+    const bytes = Utilities.newBlob(serialized, 'application/json');
+    if (serialized.length <= size && bytes.getBytes().length <= size) {
+      cache.put(key, serialized, MARKETS_WEB.cacheSeconds);
+      return;
+    }
+    const encoded = Utilities.base64Encode(Utilities.gzip(bytes).getBytes());
+    const parts = Math.ceil(encoded.length / size);
+    if (parts > maxParts) return;
+    if (parts === 1) {
+      cache.put(key, 'gzip-single:' + encoded, MARKETS_WEB.cacheSeconds);
+      return;
+    }
+    const generation = Utilities.getUuid();
+    const chunks = {};
+    for (let index = 0; index < parts; index++) {
+      chunks[key + ':' + generation + ':' + index] = encoded.slice(index * size, (index + 1) * size);
+    }
+    cache.putAll(chunks, MARKETS_WEB.cacheSeconds);
+    // Publish the index last. A concurrent writer can only replace the pointer.
+    cache.put(key, ['gzip', generation, parts].join(':'), MARKETS_WEB.cacheSeconds);
+  } catch (ignored) {}
+}
+
+function decodeMarketsCache_(encoded) {
+  const blob = Utilities.newBlob(Utilities.base64Decode(encoded), 'application/gzip');
+  return JSON.parse(Utilities.ungzip(blob).getDataAsString('UTF-8'));
 }
 
 function marketsBootstrapCacheKey_() {
@@ -583,8 +623,7 @@ function readMarketsPersistentCache_(name) {
       if (!chunk) return null;
       encoded += chunk;
     }
-    const blob = Utilities.newBlob(Utilities.base64Decode(encoded), 'application/gzip');
-    return JSON.parse(Utilities.ungzip(blob).getDataAsString('UTF-8'));
+    return decodeMarketsCache_(encoded);
   } catch (error) {
     console.warn('No se pudo leer la cache persistente ' + name + ': ' + errorToString_(error));
     return null;
@@ -732,26 +771,75 @@ function configureMarketsReviewInsights() {
   return setupMarketsReviewInsights();
 }
 
+const MARKETS_MEASURED_JOBS = Object.freeze({ health: 'Comprobación de salud', newsletter: 'Newsletter mensual' });
+
+function measureMarketsScheduledJob_(name, run) {
+  const started = new Date();
+  let status = 'ERROR';
+  try {
+    const result = run();
+    status = result?.status || 'OK';
+    return result;
+  } finally {
+    try {
+      PropertiesService.getScriptProperties().setProperty('MARKETS_JOB_TIMING:' + name, JSON.stringify({
+        startedAt: started.toISOString(), durationMs: Date.now() - started.getTime(), status
+      }));
+    } catch (error) {
+      console.warn('No se pudo registrar la duración de ' + name + ': ' + errorToString_(error));
+    }
+  }
+}
+
 function getMarketsPerformance() {
   const { ss } = requireMarketsAdministrator_();
   const sheet = ss.getSheetByName(MARKETS_CONFIG.sheets.usage);
-  const size = Math.min(3000, Math.max(0, (sheet?.getLastRow() || 1) - 1));
-  if (!size) return [];
+  const lastRow = sheet?.getLastRow() || 1;
+  const size = Math.min(3000, Math.max(0, lastRow - 1));
+  const rows = size ? sheet.getRange(lastRow - size + 1, 4, size, 5).getValues() : [];
+  const properties = PropertiesService.getScriptProperties();
+  const pipeline = readMarketsReviewPipeline_(properties);
+  const scheduled = Object.entries(MARKETS_MEASURED_JOBS).map(([key, label]) => ({
+    label, ...safeJsonParse_(properties.getProperty('MARKETS_JOB_TIMING:' + key))
+  }));
+  return {
+    operations: summarizeMarketsPerformance_(rows),
+    ratings: readRecentMarketsAdminRuns_(ss, 14).map(({ startedAt, durationMs, status }) => ({ startedAt, durationMs, status })),
+    jobs: (pipeline?.jobs || []).map(({ label, status, lastBatchMs, totalBatchMs, measuredBatches }) =>
+      ({ label, status, lastBatchMs, totalBatchMs, measuredBatches })),
+    scheduled,
+    day: pipeline?.day || '',
+    rowsAnalyzed: size
+  };
+}
+
+function summarizeMarketsPerformance_(rows) {
   const samples = new Map();
-  const rows = sheet.getRange(sheet.getLastRow() - size + 1, 4, size, 4).getValues();
-  for (const [type, , operation, detail] of rows) {
+  for (const [type, view, operation, detail, version] of rows) {
     if (type !== 'PERFORMANCE') continue;
-    const match = /^(RPC|CACHE) (\d{1,6}) (OK|ERROR)$/.exec(detail);
+    const match = /^(RPC|CACHE|SHARED|UI|SERVER_CACHE|SERVER_SNAPSHOT|SERVER_SHEET) (\d{1,6}) (OK|ERROR|TIMEOUT)$/.exec(detail);
     if (!match) continue;
-    if (!samples.has(operation)) samples.set(operation, { rpc: [], hits: 0, errors: 0 });
-    const sample = samples.get(operation);
-    if (match[3] === 'ERROR') sample.errors++;
-    else if (match[1] === 'CACHE') sample.hits++;
-    else sample.rpc.push(Number(match[2]));
+    const [, kind, milliseconds, outcome] = match;
+    const key = JSON.stringify([view, operation, version]);
+    if (!samples.has(key)) samples.set(key, {
+      view, operation, version, rpc: [], ui: [], server: [], serverHits: 0, hits: 0, shared: 0, errors: 0, timeouts: 0
+    });
+    const sample = samples.get(key);
+    if (outcome === 'TIMEOUT') sample.timeouts++;
+    else if (outcome === 'ERROR') sample.errors++;
+    else if (kind === 'CACHE') sample.hits++;
+    else if (kind === 'SHARED') sample.shared++;
+    else if (kind.startsWith('SERVER_')) {
+      if (kind !== 'SERVER_SHEET') sample.serverHits++;
+      sample.server.push(Number(milliseconds));
+    } else (kind === 'UI' ? sample.ui : sample.rpc).push(Number(milliseconds));
   }
-  return [...samples].map(([operation, data]) => {
-    const values = data.rpc.sort((a, b) => a - b);
-    return { operation, calls: values.length, hits: data.hits, errors: data.errors,
-      p95: values.length ? values[Math.ceil(values.length * .95) - 1] : null };
-  });
+  const percentile = (values, fraction) => values.length ? values[Math.ceil(values.length * fraction) - 1] : null;
+  return [...samples.values()].map(({ rpc, ui, server, ...sample }) => {
+    rpc.sort((a, b) => a - b);
+    ui.sort((a, b) => a - b);
+    server.sort((a, b) => a - b);
+    return { ...sample, calls: rpc.length, uiSamples: ui.length,
+      p50: percentile(rpc, .5), p95: percentile(rpc, .95), uiP95: percentile(ui, .95), serverP95: percentile(server, .95), serverSamples: server.length };
+  }).sort((a, b) => String(b.version).localeCompare(String(a.version)) || (b.p95 ?? 0) - (a.p95 ?? 0));
 }

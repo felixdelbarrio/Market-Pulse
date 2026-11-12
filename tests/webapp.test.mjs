@@ -139,6 +139,27 @@ test("persistent shared cache survives L1 expiry and swaps generations", () => {
   assert.equal(bulkReads, 2);
 });
 
+test("compressed cache survives a fragmented entry and safely rebuilds after eviction", () => {
+  let seed = 137;
+  const contents = Array.from({ length: 220000 }, () => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    return String.fromCharCode(33 + (seed >>> 16) % 90);
+  }).join("");
+  const entries = new Map();
+  const cache = {
+    get: key => entries.get(key),
+    getAll: keys => Object.fromEntries(keys.map(key => [key, entries.get(key)])),
+    put: (key, value) => entries.set(key, value),
+    putAll: values => Object.entries(values).forEach(([key, value]) => entries.set(key, value))
+  };
+  context.CacheService = { getScriptCache: () => cache };
+  context.writeMarketsWebCache_(cache, "large", contents, 6);
+  assert.match(entries.get("large"), /^gzip:/);
+  assert.equal(context.readMarketsWebCache_("large", () => assert.fail("cache miss"), 6), contents);
+  entries.delete([...entries.keys()].find(key => key.startsWith("large:")));
+  assert.equal(context.readMarketsWebCache_("large", () => "recovered", 6), "recovered");
+});
+
 test("doGet builds an HtmlService response using supported metadata", () => {
   const calls = [];
   const output = {
@@ -345,7 +366,7 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(app, /function activateAdminTab/);
   assert.match(app, /function handleAdminTabKeydown/);
   assert.match(app, /if\(view==="admin"&&!state\.userContext\?\.isAdmin\)return/);
-  assert.match(app, /getMarketsAdminDashboard\(\)/);
+  assert.match(app, /getMarketsAdminDashboard\(false\)/);
   assert.doesNotMatch(app, /localStorage|markets-voc-preferences|market-pulse-language/);
   assert.doesNotMatch(index, /id="view-overview"/);
   const evolutionMarkup = index.slice(index.indexOf('id="view-evolution"'), index.indexOf('id="view-alerts"'));
@@ -751,3 +772,24 @@ test("evolution KPIs use BBVA closes for the selected period", () => {
   assert.equal(D.prepareSeries(trends,{country:"ALL",platform:"ALL"})[0].points[0].value,D.prepareSeries(trends,{country:"CO",platform:"ALL"})[0].points[0].value);
   assert.equal(D.evolutionKpis(trends,[],{country:"ALL",platform:"ALL"},"2026-10").current,2);
  });
+
+
+test("performance separates page latency, real calls, reuse and timeouts by release", () => {
+  const result = context.summarizeMarketsPerformance_([
+    ["PERFORMANCE","reviews","REVIEW:PAGE","RPC 120 OK","56"],
+    ["PERFORMANCE","reviews","REVIEW:PAGE","RPC 500 OK","56"],
+    ["PERFORMANCE","reviews","REVIEW:PAGE","RPC 60000 TIMEOUT","56"],
+    ["PERFORMANCE","reviews","REVIEW:PAGE","CACHE 0 OK","56"],
+    ["PERFORMANCE","reviews","REVIEW:PAGE","SHARED 0 OK","56"],
+    ["PERFORMANCE","reviews","REVIEW:PAGE","RPC 40 OK","57"],
+    ["PERFORMANCE","reviews","READY","UI 900 OK","57"]
+  ]);
+  const previous = result.find(row => row.version === "56");
+  assert.equal(previous.calls, 2);
+  assert.equal(previous.p50, 120);
+  assert.equal(previous.p95, 500);
+  assert.equal(previous.timeouts, 1);
+  assert.equal(previous.hits, 1);
+  assert.equal(previous.shared, 1);
+  assert.equal(result.find(row => row.operation === "READY").uiP95, 900);
+});

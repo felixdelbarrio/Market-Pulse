@@ -23,3 +23,32 @@ test("new ratings match the current exact contract", () => {
   assert.equal(row[13], 1234);
   assert.deepEqual(Array.from(row).slice(-2), ["", ""]);
 });
+
+test("the daily job reuses ratings with the same metrics it wrote to Sheets", () => {
+  const app = { appKey: "ANDROID|ES|BBVA", platform: "Android", store: "Google Play",
+    countryCode: "ES", country: "España", appName: "BBVA", isBbva: true,
+    marketSegment: "BANK", displayOrder: 0 };
+  const rows = [[4, 100, 1], [4.5, 120, 15]].flatMap(([rating, ratingCount, day]) =>
+    context.buildRatingRows_([{ ok: true, app, rating, ratingCount }],
+      new Date(2026, 6, day, 12), new Date(2026, 6, day, 13)));
+  let reads = 0;
+  const sheet = {
+    getLastRow: () => rows.length + 1,
+    getRange(start, column) {
+      return {
+        getValues() { reads++; return rows.map(row => row.slice()); },
+        setValues(values) {
+          values.forEach((value, index) => rows[start - 2 + index].splice(column - 1, value.length, ...value));
+          return this;
+        },
+        setNumberFormat() { return this; }
+      };
+    }
+  };
+  const ss = { getSheetByName: () => sheet };
+  const updated = context.rebuildRatingMetrics_(ss, 7, [app]);
+  assert.equal(reads, 1);
+  assert.deepEqual(updated, context.readRatingObjects_(ss));
+  assert.equal(updated[1].ratingCountDelta30d, 20);
+  assert.equal(updated[1].rankingIsComplete, true);
+});

@@ -23,7 +23,7 @@ function buildRatingRows_(fetchResults, observedDate, ingestedAt) {
  */
 function rebuildRatingMetrics_(ss, lookbackDays, catalog) {
   const sheet = ss.getSheetByName(MARKETS_CONFIG.sheets.ratings);
-  if (sheet.getLastRow() <= 1) return;
+  if (sheet.getLastRow() <= 1) return [];
   const width = MARKETS_CONFIG.headers.ratings.length;
   const values = sheet.getRange(2, 1, sheet.getLastRow() - 1, width).getValues();
   const indexes = indexHeaders_(MARKETS_CONFIG.headers.ratings);
@@ -37,6 +37,7 @@ function rebuildRatingMetrics_(ss, lookbackDays, catalog) {
   const snapshotGroups = {};
   const seriesByApp = {};
   const maxDateByApp = {};
+  const dateKeys = new Map(), monthDates = new Map();
   const monthValues = values.map(function () { return ['']; });
   const catalogValues = values.map(function () { return ['', '', '', '', '', false]; });
 
@@ -45,7 +46,11 @@ function rebuildRatingMetrics_(ss, lookbackDays, catalog) {
     const rating = normalizeRating_(row[indexes.rating]);
     const appKey = trimString_(row[indexes.app_key]);
     if (!(date instanceof Date) || !appKey || rating === null) return;
-    monthValues[rowIndex][0] = dateFromKey_(dateKey_(date).slice(0, 7) + '-01');
+    const dateMillis = date.getTime();
+    if (!dateKeys.has(dateMillis)) dateKeys.set(dateMillis, dateKey_(date));
+    const day = dateKeys.get(dateMillis), month = day.slice(0, 7);
+    if (!monthDates.has(month)) monthDates.set(month, dateFromKey_(month + '-01'));
+    monthValues[rowIndex][0] = monthDates.get(month);
     const app = catalogByKey[appKey];
     const segment = app ? app.marketSegment : (trimString_(row[indexes.market_segment]) || 'BANK');
     const displayOrder = app && app.displayOrder !== null ? app.displayOrder : toNonNegativeInteger_(row[indexes.display_order]);
@@ -53,12 +58,11 @@ function rebuildRatingMetrics_(ss, lookbackDays, catalog) {
     catalogValues[rowIndex][1] = displayOrder === null ? '' : displayOrder;
     if (app) {
       const groupKey = [app.platform, app.countryCode, segment].join('|');
-      const snapshotKey = groupKey + '|' + dateKey_(date);
+      const snapshotKey = groupKey + '|' + day;
       (snapshotGroups[snapshotKey] || (snapshotGroups[snapshotKey] = {
         expected: expectedByGroup[groupKey] || 0, items: []
       })).items.push({ rowIndex: rowIndex, rating: rating });
     }
-    const dateMillis = date.getTime();
     (seriesByApp[appKey] || (seriesByApp[appKey] = [])).push({
       rowIndex: rowIndex,
       dateMillis: dateMillis,
@@ -103,6 +107,14 @@ function rebuildRatingMetrics_(ss, lookbackDays, catalog) {
   sheet.getRange(2, indexes.ranking + 1, metrics.length, 4).setValues(metrics);
   sheet.getRange(2, indexes.market_segment + 1, catalogValues.length, 6).setValues(catalogValues);
   sheet.getRange(2, indexes.previous_rating_count_30d + 1, countMetrics.length, 2).setValues(countMetrics);
+  const groups = [[indexes.ranking, metrics], [indexes.market_segment, catalogValues],
+    [indexes.previous_rating_count_30d, countMetrics]];
+  values.forEach(function (row, index) {
+    for (const [start, group] of groups) {
+      for (let offset = 0; offset < group[index].length; offset++) row[start + offset] = group[index][offset];
+    }
+  });
+  return mapMarketsRatingObjects_(values, indexes);
 }
 
 function readRatingObjects_(ss) {
@@ -110,7 +122,11 @@ function readRatingObjects_(ss) {
   if (sheet.getLastRow() <= 1) return [];
   const headers = MARKETS_CONFIG.headers.ratings;
   const indexes = indexHeaders_(headers);
-  return sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues().map(function (row) {
+  return mapMarketsRatingObjects_(sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues(), indexes);
+}
+
+function mapMarketsRatingObjects_(values, indexes) {
+  return values.map(function (row) {
     const observedDate = row[indexes.observed_date];
     return {
       recordKey: trimString_(row[indexes.record_key]), observedDate: observedDate,
