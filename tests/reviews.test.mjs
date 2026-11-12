@@ -31,7 +31,7 @@ test("an edited review updates its existing row and requeues translation", () =>
   const app = { platform: "iOS", countryCode: "TR", appId: "123", appKey: "IOS|TR|BANK" };
   const id = '["iOS","TR","123","456"]';
   const previous = [id, app.appKey, "TR", "iOS", "123", "456", "2026-10-01T12:00:00Z", 4, "", "", "Old"];
-  const properties = new Map([["MARKETS_REVIEWS_TRANSLATION_ROW", "18"]]);
+  const properties = new Map();
   const writes = [];
   const sheet = { getLastRow: () => 2, getLastColumn: () => 15, getRange: (row, column, height, width) => ({
     getValues: () => [previous], setValues: values => writes.push({ row, column, width, values })
@@ -60,7 +60,6 @@ test("an edited review updates its existing row and requeues translation", () =>
   assert.equal(writes[0].row, 2);
   assert.equal(writes[0].column, 7);
   assert.deepEqual(Array.from(writes[0].values[0].slice(4, 8)), ["Edited", "", "", ""]);
-  assert.equal(properties.get("MARKETS_REVIEWS_TRANSLATION_ROW"), "2");
 });
 
 test("App Store retries the failed page without blocking the next listing", () => {
@@ -269,6 +268,7 @@ test("country pages and snapshots partition each review by its own storefront ev
   const sheet = {getLastRow:()=>rows.length+1,getRange:()=>({getValues:()=>rows})};
   const ss = {getSheetByName:name=>name==="MARKET_REVIEWS"?sheet:null,getId:()=>"test"};
   let snapshot;
+  const cache = new Map();
   Object.assign(runtime,{
     MARKETS_CONFIG:{timeZone:"Europe/Madrid"},
     MARKETS_WEB:{countryCodes:["ES","CO","TR"]},
@@ -279,7 +279,9 @@ test("country pages and snapshots partition each review by its own storefront ev
     PropertiesService:{getScriptProperties:()=>({getProperties:()=>({})})},
     currentMarketsUserEmail_:()=>"reader@bbva.com",
     openMarketsSpreadsheet_:()=>ss,readAppCatalog_:()=>catalog,marketsReviewSheet_:()=>sheet,marketsReviewWidth_:()=>15,
-    readMarketsWebCache_:(_key,build)=>build(),readMarketsPersistentCache_:()=>snapshot,
+    CacheService:{getScriptCache:()=>cache},
+    writeMarketsWebCache_:(cache,key,value)=>cache.set(key,value),
+    readMarketsWebCache_:(key,build)=>cache.get(key)??build(),readMarketsPersistentCache_:()=>snapshot,
     tryWriteMarketsPersistentCache_:(_name,value)=>{snapshot=value;return {ok:true}}
   });
   const window = {start:"2026-10-13",end:"2026-11-11"};
@@ -299,7 +301,14 @@ test("country pages and snapshots partition each review by its own storefront ev
   assert.equal(runtime.getMarketsReviewAnalytics({country:"ES",year:"2026"}).annual.total,2);
   assert.equal(runtime.getMarketsReviewAnalytics({country:"ALL",year:"2026"}).annual.total,5);
   assert.throws(()=>runtime.getMarketsReviewPage({...filters,country:"ALL"}),/Selecciona una geografía/);
+  const monthly = { country:"ES", analysisMonth:"2026-11", segment:"DETRACTOR", entity:"BBVA Empresas" };
+  const annual = { country:"ES", year:"2026", segment:"DETRACTOR", entity:"BBVA Empresas" };
+  const expected = [runtime.getMarketsReviewAnalytics(monthly),runtime.getMarketsReviewAnalytics(annual)];
   runtime.publishMarketsReviewSnapshot_();
+  const query = runtime.queryMarketsReviews_;
+  runtime.queryMarketsReviews_ = () => { throw new Error("unexpected Sheets read"); };
+  assert.deepEqual([runtime.getMarketsReviewAnalytics(monthly),runtime.getMarketsReviewAnalytics(annual)],expected);
+  runtime.queryMarketsReviews_ = query;
   assert.deepEqual({...snapshot.values["page:CO:es"].counts},{CO:1,TR:1,ES:2,UNKNOWN:1});
   assert.equal(snapshot.values["page:CO:es"].rows[0].key,"local-co");
   assert.equal(snapshot.values["analytics:ES"].total,2);
@@ -326,14 +335,14 @@ test("translation repair reaches historical gaps and preserves successful cells 
   const runtime = vm.createContext({});
   vm.runInContext(fs.readFileSync(new URL("../src/54_Reviews.gs", import.meta.url), "utf8"), runtime);
   const row = ["key","APP","TR","iOS","123","456","2026-10-01",4,"","","Merhaba","Hola","",""];
-  const properties = new Map([["MARKETS_REVIEWS_TRANSLATION_ROW","15"]]);
+  const properties = new Map();
   const calls = [];
   let fail = true, generations = 0;
   const sheet = { getLastRow: () => 2, getRange: (_row, column) => ({
     getValues: () => [row.slice(column - 1)], setValues: ([values]) => row.splice(column - 1, values.length, ...values)
   }) };
   Object.assign(runtime, {
-    marketsReviewRecoveryMonth_: value => value.slice(0,7),
+    marketsReviewRecoveryMonth_: value => value.slice(0,7), errorToString_: error => error.message,
     requireMarketsReviewOwner_: () => ({ss:{}}), marketsReviewSheet_: () => sheet, openMarketsSpreadsheet_: () => ({}),
     LockService: { getUserLock: () => ({tryLock:()=>true, releaseLock(){}}) },
     PropertiesService: { getScriptProperties: () => ({
@@ -346,7 +355,6 @@ test("translation repair reaches historical gaps and preserves successful cells 
       return target === "tr" ? original : "Hello";
     } }
   });
-  assert.equal(runtime.translateMarketsReviews_().translated,0);
   const audit = runtime.auditMarketsReviewTranslations();
   assert.equal(audit.pending,1);
   assert.deepEqual(Array.from(audit.groups[0].missing),[0,1,1]);
@@ -359,6 +367,43 @@ test("translation repair reaches historical gaps and preserves successful cells 
   assert.deepEqual(row.slice(10),["Merhaba","Hola","Hello","Merhaba"]);
   assert.deepEqual(calls,["en","tr","en"]);
   assert.equal(generations,2);
+});
+
+test("translation prioritizes review date and probes again after quota exhaustion", () => {
+  let now = 1000;
+  const runtime = vm.createContext({
+    Date: class extends Date { static now() { return now; } },
+    errorToString_: error => error.message
+  });
+  vm.runInContext(fs.readFileSync(new URL("../src/54_Reviews.gs", import.meta.url), "utf8"), runtime);
+  const rows = [["2026-11-10",4,"","","new","","",""],["2025-11-12",4,"","","old","","",""],
+    ["2026-11-11",4,"","","newest","","",""]];
+  const calls = [], properties = new Map();
+  let quota = true;
+  Object.assign(runtime, {
+    openMarketsSpreadsheet_:()=>({}), marketsReviewSheet_:()=>({
+      getLastRow:()=>rows.length+1,
+      getRange:(row,col)=>col===7?{getValues:()=>rows}:{setValues:([values])=>rows[row-2].splice(5,3,...values)}
+    }),
+    LockService:{getUserLock:()=>({tryLock:()=>true,releaseLock(){}})},
+    PropertiesService:{getScriptProperties:()=>({getProperty:key=>properties.get(key),setProperty:(key,value)=>properties.set(key,value)})},
+    SpreadsheetApp:{flush(){}}, advanceMarketsReviewGeneration_(){},
+    LanguageApp:{translate:(text,_source,lang)=>{
+      calls.push([text,lang]);
+      if(quota&&lang==="en")throw Error("Service invoked too many times for one day: translate");
+      return text+lang;
+    }}
+  });
+  const first=runtime.translateMarketsReviews_();
+  assert.equal(first.quotaLimited,true);
+  assert.equal(first.pending,3);
+  assert.deepEqual(calls,[["newest","es"],["newest","en"]]);
+  assert.equal(rows[2][5],"newestes");
+  runtime.translateMarketsReviews_();
+  assert.equal(calls.length,2);
+  now=first.retryAt;quota=false;
+  assert.equal(runtime.translateMarketsReviews_().complete,true);
+  assert.deepEqual(calls.slice(2).map(([text])=>text),["newest","newest","new","new","new","old","old","old"]);
 });
 
 test("review cache isolates scopes and invalidates when the data or catalog changes", () => {

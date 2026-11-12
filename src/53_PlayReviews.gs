@@ -166,7 +166,6 @@ function storePlayReviews_(sheet, properties, known, listing, reviews, summary, 
   const changes = new Map();
   const captured = new Date().toISOString();
   let nextIndex = sheet.getLastRow() + 1;
-  let rewind = Number(properties.getProperty('MARKETS_REVIEWS_TRANSLATION_ROW')) || 2;
   for (const review of reviews) {
     const key = JSON.stringify(['Android', listing.packageName, review.id]);
     const previous = changes.get(key) || known.get(key);
@@ -180,9 +179,8 @@ function storePlayReviews_(sheet, properties, known, listing, reviews, summary, 
     const row = newer ? [key, listing.appKey, '', 'Android', listing.packageName, review.id, review.date,
       review.rating, review.version, '', review.text, '', '', '', captured] : previous.row.slice();
     const index = previous ? previous.index : nextIndex++;
-    if (previous && newer) {
-      if (previous.row[10] === review.text) row.splice(11, 3, ...previous.row.slice(11, 14));
-      else rewind = Math.min(rewind, index);
+    if (previous && newer && previous.row[10] === review.text) {
+      row.splice(11, 3, ...previous.row.slice(11, 14));
     }
     row[2] = [...markets].sort().join(',');
     row[14] = captured;
@@ -191,7 +189,6 @@ function storePlayReviews_(sheet, properties, known, listing, reviews, summary, 
   }
   if (!changes.size) return;
   ensureSheetCapacity_(sheet, nextIndex - 1, width);
-  properties.setProperty('MARKETS_REVIEWS_TRANSLATION_ROW', String(rewind));
   const ordered = [...changes.values()].sort((a, b) => a.index - b.index);
   for (let start = 0; start < ordered.length;) {
     let end = start + 1;

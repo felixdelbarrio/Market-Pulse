@@ -195,3 +195,26 @@ test("coverage counts unique reviews observed in the selected storefront and doe
   assert.equal(result.status, "Posible hueco");
   assert.deepEqual(Array.from(result.values, item => item.count), [1, 0, 1]);
 });
+
+test("supervisor resumes pending translations after quota and publishes without rerunning collection or alerts", () => {
+  const key = "MARKETS_REVIEW_PIPELINE", quota = "MARKETS_TRANSLATION_QUOTA_RETRY_AT";
+  const props = new Map(), calls = [];
+  const local = vm.createContext({
+    MARKETS_TRANSLATION_QUOTA_RETRY_KEY: quota, MARKETS_CONFIG:{timeZone:"Europe/Madrid"}, safeJsonParse_:JSON.parse,
+    Utilities:{formatDate:(_date,_tz,format)=>format==="HHmm"?"1500":"2026-11-12"},
+    LockService:{getScriptLock:()=>({tryLock:()=>true,releaseLock(){}})},
+    PropertiesService:{getScriptProperties:()=>({getProperty:key=>props.get(key),setProperty:(key,value)=>props.set(key,value)})},
+    translateMarketsReviews_:()=>{calls.push("translate");return {eligible:10,checked:10,translated:1,failed:0,pending:0,complete:true}},
+    publishMarketsReviewSnapshot_:()=>{calls.push("publish");return {complete:true,published:1}}
+  });
+  vm.runInContext(fs.readFileSync(new URL("../src/51_ReviewOperations.gs",import.meta.url),"utf8"),local);
+  const pipeline=local.newMarketsReviewPipeline_("2026-11-12");
+  pipeline.stage=pipeline.jobs.length;pipeline.jobs[2].pending=1;
+  props.set(key,JSON.stringify(pipeline));props.set(quota,String(Date.now()+60000));
+  local.superviseMarketsReviews_();
+  assert.deepEqual(calls,[]);
+  props.set(quota,"0");
+  for(let i=0;i<3;i++)local.superviseMarketsReviews_();
+  assert.deepEqual(calls,["translate","publish"]);
+  assert.equal(JSON.parse(props.get(key)).stage,pipeline.jobs.length);
+});
