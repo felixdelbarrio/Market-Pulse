@@ -121,3 +121,100 @@ test("review collection resumes the remaining listings before moving to translat
   assert.equal(job.done, 9);
   assert.equal(job.added, 6);
 });
+
+test("selective recovery is owner-only, resumes one page and only stores the requested month", () => {
+  const local = vm.createContext({ console: { warn() {} }, safeJsonParse_: JSON.parse,
+    MARKETS_CONFIG: { timeZone: "Europe/Madrid" }, Utilities: { formatDate: () => "2026-11" } });
+  vm.runInContext(fs.readFileSync(new URL("../src/51_ReviewOperations.gs", import.meta.url), "utf8"), local);
+  const scope = { appKey: "bbva-es", month: "2026-10" };
+  const app = { appKey: scope.appKey, appName: "BBVA", countryCode: "ES", platform: "Android", packageName: "com.test.app" };
+  const props = new Map([["MARKETS_PLAY_REVIEW|com.test.app|ES", "regular"]]);
+  const writes = [], requests = [];
+  const sheet = { getLastRow: () => 1 };
+  let isOwner = false;
+  Object.assign(local, {
+    requireMarketsReviewOwner_: () => { if (!isOwner) throw Error("Acceso denegado"); return { ss: {} }; },
+    readAppCatalog_: () => [app], marketsIosReviewListings_: () => [],
+    marketsReviewSheet_: () => sheet, marketsReviewWidth_: () => 16,
+    marketsReviewDigest_: value => value,
+    LockService: { getUserLock: () => ({ tryLock: () => true, releaseLock() {} }) },
+    PropertiesService: { getScriptProperties: () => ({
+      getProperty: key => props.get(key) ?? null, setProperty: (key, value) => props.set(key, value),
+      deleteProperty: key => props.delete(key)
+    }) },
+    fetchPlayReviewPage_: (_app, cursor) => {
+      requests.push(cursor);
+      return { next: "next", rows: [{ id: "wanted-" + cursor, date: "2026-10-31" }, { id: "out", date: "2026-11-01" }] };
+    },
+    storePlayReviews_: (_sheet, _props, _known, _app, rows, summary) => {
+      writes.push(...rows.map(row => row.id));
+      summary.added = rows.length;
+    }
+  });
+  assert.throws(() => local.getMarketsReviewRecoveryOptions(), /denegado/);
+  assert.throws(() => local.runMarketsReviewRecovery(scope), /denegado/);
+  isOwner = true;
+  const first = local.runMarketsReviewRecovery(scope);
+  assert.equal(first.pages, 1);
+  assert.equal(first.added, 1);
+  assert.equal(first.cursor, undefined);
+  assert.equal(local.getMarketsReviewRecoveryOptions().state.month, scope.month);
+  assert.throws(() => local.runMarketsReviewRecovery({ ...scope, month: "2026-09" }), /Termina/);
+  const second = local.runMarketsReviewRecovery(scope);
+  assert.equal(second.reason, "invalid_cursor");
+  assert.equal(second.complete, true);
+  assert.equal(second.pages, 2);
+  assert.equal(second.added, 2);
+  assert.equal(local.runMarketsReviewRecovery(scope).pages, 2);
+  assert.deepEqual(requests, ["", "next"]);
+  assert.deepEqual(writes, ["wanted-", "wanted-next"]);
+  assert.equal(local.closeMarketsReviewRecovery().closed, true);
+  assert.equal(props.get("MARKETS_PLAY_REVIEW|com.test.app|ES"), "regular");
+});
+
+test("coverage counts unique reviews observed in the selected storefront and does not confirm gaps from zero counts", () => {
+  const local = vm.createContext({ MARKETS_CONFIG: {}, Utilities: { formatDate: () => "2026-11" } });
+  vm.runInContext(fs.readFileSync(new URL("../src/51_ReviewOperations.gs", import.meta.url), "utf8"), local);
+  const rows = [
+    ["ES,MX", "Android", "com.test.app", "a", "2026-09-15"],
+    ["ES", "Android", "com.test.app", "a", "2026-09-15"],
+    ["MX", "Android", "com.test.app", "b", "2026-10-15"],
+    ["ES", "iOS", "com.test.app", "c", "2026-10-15"],
+    ["ES", "Android", "com.test.app", "d", "2026-11-05"]
+  ];
+  Object.assign(local, {
+    requireMarketsReviewOwner_: () => ({ ss: {} }),
+    marketsReviewRecoveryListings_: () => [{ appKey: "es", countryCode: "ES", packageName: "com.test.app", platform: "Android" }],
+    marketsReviewSheet_: () => ({ getLastRow: () => rows.length + 1, getRange: (_row, col, _height, width) => {
+      assert.equal(col, 3);
+      assert.equal(width, 5);
+      return { getValues: () => rows };
+    } })
+  });
+  const result = local.getMarketsReviewCoverage({ appKey: "es", month: "2026-10" });
+  assert.equal(result.status, "Posible hueco");
+  assert.deepEqual(Array.from(result.values, item => item.count), [1, 0, 1]);
+});
+
+test("supervisor resumes pending translations after quota and publishes without rerunning collection or alerts", () => {
+  const key = "MARKETS_REVIEW_PIPELINE", quota = "MARKETS_TRANSLATION_QUOTA_RETRY_AT";
+  const props = new Map(), calls = [];
+  const local = vm.createContext({
+    MARKETS_TRANSLATION_QUOTA_RETRY_KEY: quota, MARKETS_CONFIG:{timeZone:"Europe/Madrid"}, safeJsonParse_:JSON.parse,
+    Utilities:{formatDate:(_date,_tz,format)=>format==="HHmm"?"1500":"2026-11-12"},
+    LockService:{getScriptLock:()=>({tryLock:()=>true,releaseLock(){}})},
+    PropertiesService:{getScriptProperties:()=>({getProperty:key=>props.get(key),setProperty:(key,value)=>props.set(key,value)})},
+    translateMarketsReviews_:()=>{calls.push("translate");return {eligible:10,checked:10,translated:1,failed:0,pending:0,complete:true}},
+    publishMarketsReviewSnapshot_:()=>{calls.push("publish");return {complete:true,published:1}}
+  });
+  vm.runInContext(fs.readFileSync(new URL("../src/51_ReviewOperations.gs",import.meta.url),"utf8"),local);
+  const pipeline=local.newMarketsReviewPipeline_("2026-11-12");
+  pipeline.stage=pipeline.jobs.length;pipeline.jobs[2].pending=1;
+  props.set(key,JSON.stringify(pipeline));props.set(quota,String(Date.now()+60000));
+  local.superviseMarketsReviews_();
+  assert.deepEqual(calls,[]);
+  props.set(quota,"0");
+  for(let i=0;i<3;i++)local.superviseMarketsReviews_();
+  assert.deepEqual(calls,["translate","publish"]);
+  assert.equal(JSON.parse(props.get(key)).stage,pipeline.jobs.length);
+});

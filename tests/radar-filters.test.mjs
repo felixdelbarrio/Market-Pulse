@@ -6,7 +6,7 @@ import { clientScript } from './client-script.mjs';
 
 const read = name => fs.readFileSync(new URL(`../src/${name}.html`, import.meta.url), 'utf8');
 
-function filterBindings({ crypto, sessionStorage } = {}) {
+function filterBindings({ crypto, sessionStorage, browserCountry = "ES" } = {}) {
   const bindings = {}, calls = [], controls = new Map(), handlers = new Map();
   const context = vm.createContext({
     navigator: { language: 'es' },
@@ -22,7 +22,7 @@ function filterBindings({ crypto, sessionStorage } = {}) {
       crypto,
       matchMedia() {},
       MarketsUI: { option() { return ''; } },
-      MarketsDomain: { browserMarket: () => 'ES', config: { countries: { ES: 'España', MX: 'México' }, platforms: ['iOS', 'Android'] } },
+      MarketsDomain: { browserMarket: () => browserCountry, config: { countries: { ES: 'España', MX: 'México' }, platforms: ['iOS', 'Android'] } },
       MarketRadarFilters: {
         searchable() { return {}; },
         create(root, binding) {
@@ -43,10 +43,12 @@ function filterBindings({ crypto, sessionStorage } = {}) {
       if (rows) state.adminCenter={subscribers:rows};
       bindRadarFilters();
     };
+    activateView = view => { if (view === "reviews") loadReviews(); };
+    globalThis.openCohort = openReviewCohort;
     globalThis.sessionId = usageSessionId;
   })();`);
   vm.runInContext(script, context);
-  return { bindings, calls, handlers, setup: context.setup, sessionId: context.sessionId };
+  return { bindings, calls, handlers, setup: context.setup, openCohort: context.openCohort, sessionId: context.sessionId };
 }
 
 const copy = value => JSON.parse(JSON.stringify(value));
@@ -75,6 +77,18 @@ test('review chips preserve drill-down context and restore and show all reset th
   assert.deepEqual(copy(reviews.omitChips),['country']);
   assert.ok(reviews.alwaysChips.includes('platform'));
   assert.equal(all.segment,'');
+});
+
+test('comments resolve an unsupported browser market and global drill-downs to one geography', () => {
+  const { bindings, calls, setup, openCohort } = filterBindings({browserCountry:'ALL'});
+  setup({scope:{meta:{countries:[{code:'ES'},{code:'MX'}]}}});
+  const reviews = bindings['review-filters'];
+  assert.equal(reviews.initial().country,'ES');
+  reviews.commit({...reviews.applied(),country:'MX'},'apply');
+  openCohort({country:'ALL',app:'BBVA Empresas',topic:'01',reviewKey:'aggregate'},'Global');
+  assert.deepEqual(copy(calls.at(-1)),{page:0,country:'MX',app:'BBVA Empresas',topic:'01',reviewKey:''});
+  openCohort({country:'ES',app:'BBVA Empresas',topic:'01'},'España');
+  assert.equal(calls.at(-1).country,'ES');
 });
 
 test('annual filters use the browser country and reset the KPI app on year changes', () => {
@@ -139,7 +153,7 @@ test('monthly balance does not bridge missing months and the legend matches the 
   assert.equal(path.split('M').length - 1,2);
   assert.doesNotMatch(path,/L/);
   assert.match(chart,/2026-08 · Sin datos/);
-  const legend = reviewBalanceLegend([{entity:'Banco Central',total:19}],'Banco Central',String);
+  const legend = reviewBalanceLegend([{entity:'Banco Central',total:19}],String);
   assert.ok(legend.includes('background:' + color));
-  assert.match(legend,/aria-pressed="true"/);
+  assert.doesNotMatch(legend,/<button/);
 });

@@ -31,7 +31,7 @@ test("an edited review updates its existing row and requeues translation", () =>
   const app = { platform: "iOS", countryCode: "TR", appId: "123", appKey: "IOS|TR|BANK" };
   const id = '["iOS","TR","123","456"]';
   const previous = [id, app.appKey, "TR", "iOS", "123", "456", "2026-10-01T12:00:00Z", 4, "", "", "Old"];
-  const properties = new Map([["MARKETS_REVIEWS_TRANSLATION_ROW", "18"]]);
+  const properties = new Map();
   const writes = [];
   const sheet = { getLastRow: () => 2, getLastColumn: () => 15, getRange: (row, column, height, width) => ({
     getValues: () => [previous], setValues: values => writes.push({ row, column, width, values })
@@ -60,7 +60,38 @@ test("an edited review updates its existing row and requeues translation", () =>
   assert.equal(writes[0].row, 2);
   assert.equal(writes[0].column, 7);
   assert.deepEqual(Array.from(writes[0].values[0].slice(4, 8)), ["Edited", "", "", ""]);
-  assert.equal(properties.get("MARKETS_REVIEWS_TRANSLATION_ROW"), "2");
+});
+
+test("App Store retries the failed page without blocking the next listing", () => {
+  const runtime = vm.createContext({});
+  vm.runInContext(fs.readFileSync(new URL("../src/54_Reviews.gs", import.meta.url), "utf8"), runtime);
+  const apps = ["123", "456"].map(appId=>({ appId, appKey:appId, countryCode:"TR", platform:"iOS" }));
+  const props = new Map(), calls = [];
+  const retryKey = "MARKETS_IOS_REVIEW_RETRY|123";
+  let fail = true;
+  Object.assign(runtime, {
+    LockService: { getUserLock: () => ({tryLock:()=>true, releaseLock(){}}) },
+    openMarketsSpreadsheet_: () => ({}), marketsReviewSheet_: () => ({getLastRow:()=>1}), marketsReviewWidth_: () => 16,
+    readAppCatalog_: () => apps,
+    PropertiesService: { getScriptProperties: () => ({
+      getProperty: key => props.get(key), setProperty: (key,value) => props.set(key,value), deleteProperty: key => props.delete(key)
+    }) },
+    marketsReviewFeedUrl_: (app,page) => app.appId+":"+page,
+    UrlFetchApp: { fetch: key => {
+      calls.push(key);
+      return {getResponseCode:()=>fail && key==="123:3" ? 503 : 200, getContentText:()=>""};
+    } },
+    parseMarketsReviewFeed_: (app,page) => ({rows:[],more:app.appId==="123" && page<3})
+  });
+  assert.equal(runtime.collectMarketsReviews_().failures,1);
+  assert.deepEqual(calls,["123:1","123:2","123:3","456:1"]);
+  const retry = JSON.parse(props.get(retryKey));
+  assert.equal(retry.page,3);
+  props.set(retryKey,JSON.stringify({...retry,after:0}));
+  fail = false;
+  assert.equal(runtime.collectMarketsReviews_().failures,0);
+  assert.deepEqual(calls.slice(-2),["123:3","456:1"]);
+  assert.equal(props.has(retryKey),false);
 });
 
 test("Google Play pagination preserves provenance and deduplicates across storefronts", () => {
@@ -94,6 +125,50 @@ test("Google Play pagination preserves provenance and deduplicates across storef
   api.storePlayReviews_(sheet, properties, known, listing, changed, summary, 16);
   assert.equal(JSON.parse(writes[2].rows[0][15]).helpful, 4);
   assert.equal(writes[2].rows[0][6], page.rows[0].date);
+});
+
+test("Play recent scans resume after the page budget and preserve the historical cursor on a rate limit", () => {
+  const runtime = vm.createContext({});
+  vm.runInContext(fs.readFileSync(new URL("../src/53_PlayReviews.gs", import.meta.url), "utf8"), runtime);
+  const listing = { platform: "Android", countryCode: "ES", packageName: "com.example.app" };
+  const history = "MARKETS_PLAY_REVIEW|com.example.app|ES";
+  const recent = "MARKETS_PLAY_REFRESH|com.example.app|ES";
+  const props = new Map([[history, "history"]]);
+  const sheet = { getLastRow: () => 1 };
+  const calls = [];
+  let limited = false;
+  Object.assign(runtime, {
+    LockService: { getUserLock: () => ({tryLock:()=>true, releaseLock(){}}) },
+    openMarketsSpreadsheet_: () => ({}), marketsReviewSheet_: () => sheet, marketsReviewWidth_: () => 16,
+    readAppCatalog_: () => [listing],
+    PropertiesService: { getScriptProperties: () => ({
+      getProperty: key => props.get(key) ?? null, setProperty: (key,value) => props.set(key,value),
+      deleteProperty: key => props.delete(key)
+    }) },
+    storePlayReviews_: (_sheet, _properties, _known, _listing, rows, summary) => { summary.added += rows.length; },
+    fetchPlayReviewPage_: (_listing, token) => {
+      calls.push(token);
+      if (limited) throw Object.assign(new Error("Google Play HTTP 429"), {rateLimited:true});
+      if (token === "history") return {rows:[],next:"older"};
+      if (token === "older") return {rows:[],next:""};
+      return {rows:Array.from({length:150},(_,i)=>({id:token+i})),next:token === "3" ? "3" : String(Number(token)+1)};
+    }
+  });
+  const round = runtime.collectMarketsPlayReviews_();
+  assert.equal(round.added,450);
+  assert.deepEqual(calls,["","1","2","history"]);
+  assert.equal(props.get(recent),"3");
+  assert.equal(props.get(history),"older");
+  limited = true;
+  assert.equal(runtime.collectMarketsPlayReviews_().rateLimited,true);
+  assert.equal(calls.at(-1),"3");
+  assert.equal(props.get(history),"older");
+  assert.equal(props.get(recent),"3");
+  props.delete("MARKETS_PLAY_REVIEW_PAUSE");
+  limited = false;
+  assert.equal(runtime.collectMarketsPlayReviews_().failures,1);
+  assert.equal(props.has(recent),false);
+  assert.equal(props.get(history),"DONE");
 });
 
 test("functional review evidence uses catalog IDs, context and exclusions", () => {
@@ -167,25 +242,175 @@ test("recent block statistics do not invent a historical baseline or sum duplica
   assert.deepEqual(Array.from(result.deltas,row=>[row.weight,row.gap]),[[100,null],[100,null]]);
 });
 
-test("market facets count shared reviews once per market and keep the exact listing", () => {
-  const row = { key: "one", app: "Spain app", countries: ["ES", "TR"], listings: [
-    { country: "ES", app: "Spain app", entity: "BBVA Empresas" },
-    { country: "TR", app: "Turkey app", entity: "BBVA Empresas" }
-  ] };
-  const result = api.paginateMarketsReviews_([row], { country: "TR", page: 4 }, {});
-  assert.equal(result.allMarkets, 1);
-  assert.equal(result.counts.ES, 1);
-  assert.equal(result.counts.TR, 1);
-  assert.equal(result.total, 1);
-  assert.equal(result.page, 0);
-  assert.equal(result.rows[0].app, "Turkey app");
-  assert.throws(() => api.normalizeMarketsReviewFilters_({ start: "2026-02-30" }), /Fecha no válida/);
+test("country pages and snapshots partition each review by its own storefront evidence", () => {
+  const runtime = vm.createContext({ trimString_: value => String(value ?? "").trim() });
+  for (const file of ["54_Reviews.gs", "52_ReviewInsights.gs"]) {
+    vm.runInContext(fs.readFileSync(new URL("../src/" + file, import.meta.url), "utf8"), runtime);
+  }
+  const android = (packageName,countryCode) => ({
+    platform:"Android",appKey:packageName+"|"+countryCode,packageName,countryCode,appName:"BBVA",isBbva:true
+  });
+  const es = android("com.example.shared","ES"), co = android(es.packageName,"CO");
+  const historical = android("com.example.historical","ES"), tr = android("com.example.local","TR");
+  const ios = {platform:"iOS",appKey:"ios|CO",countryCode:"CO",appId:"100",appName:"BBVA iOS",isBbva:true};
+  const catalog = [es,co,historical,tr,ios];
+  const review = (key,app,markets,date="2026-11-01") => [
+    key,app.appKey,markets,app.platform,app.packageName||app.appId,key,date,1,"","","Same text"
+  ];
+  const rows = [
+    review("multipais",es,"CO,ES"),
+    review("solo-observada-es",es,"ES"),
+    review("compartida-historica",historical,"ES"),
+    review("evidencia-antigua",historical,"ES,MX","2024-01-01"),
+    review("local-tr",tr,"TR"),
+    review("local-co",ios,"CO")
+  ];
+  const sheet = {getLastRow:()=>rows.length+1,getRange:()=>({getValues:()=>rows})};
+  const ss = {getSheetByName:name=>name==="MARKET_REVIEWS"?sheet:null,getId:()=>"test"};
+  let snapshot;
+  const cache = new Map();
+  Object.assign(runtime,{
+    MARKETS_CONFIG:{timeZone:"Europe/Madrid"},
+    MARKETS_WEB:{countryCodes:["ES","CO","TR"]},
+    Utilities:{
+      formatDate:()=>"2026-11-11",DigestAlgorithm:{SHA_256:"SHA_256"},
+      computeDigest:(_,value)=>value,base64EncodeWebSafe:value=>value
+    },
+    PropertiesService:{getScriptProperties:()=>({getProperties:()=>({})})},
+    currentMarketsUserEmail_:()=>"reader@bbva.com",
+    openMarketsSpreadsheet_:()=>ss,readAppCatalog_:()=>catalog,marketsReviewSheet_:()=>sheet,marketsReviewWidth_:()=>15,
+    CacheService:{getScriptCache:()=>cache},
+    writeMarketsWebCache_:(cache,key,value)=>cache.set(key,value),
+    readMarketsWebCache_:(key,build)=>cache.get(key)??build(),readMarketsPersistentCache_:()=>snapshot,
+    tryWriteMarketsPersistentCache_:(_name,value)=>{snapshot=value;return {ok:true}}
+  });
+  const window = {start:"2026-10-13",end:"2026-11-11"};
+  const aggregate = runtime.queryMarketsReviews_(ss,{country:"ALL",platform:"ALL"},window);
+  const shared = aggregate.filter(row=>row.sharedListing);
+  assert.deepEqual(Array.from(shared,row=>row.key),["multipais"]);
+  assert.ok(shared.every(row=>row.countries[0]==="UNKNOWN"&&row.attributionMethod==="multi_storefront_ambiguous"));
+  assert.equal(aggregate.length,5);
+  const filters = {platform:"ALL",app:"BBVA Empresas"};
+  const live = runtime.getMarketsReviewPage({...filters,country:"CO",page:4});
+  assert.deepEqual({...live.counts},{CO:1,TR:1,ES:2,UNKNOWN:1});
+  assert.equal(live.page,0);
+  assert.equal(live.total,1);
+  assert.equal(live.rows[0].key,"local-co");
+  assert.equal(live.rows[0].app,"BBVA iOS");
+  assert.equal(runtime.getMarketsReviewPage({...filters,country:"ES"}).total,2);
+  assert.equal(runtime.getMarketsReviewAnalytics({country:"ES",year:"2026"}).annual.total,2);
+  assert.equal(runtime.getMarketsReviewAnalytics({country:"ALL",year:"2026"}).annual.total,5);
+  assert.throws(()=>runtime.getMarketsReviewPage({...filters,country:"ALL"}),/Selecciona una geografía/);
+  const monthly = { country:"ES", analysisMonth:"2026-11", segment:"DETRACTOR", entity:"BBVA Empresas" };
+  const annual = { country:"ES", year:"2026", segment:"DETRACTOR", entity:"BBVA Empresas" };
+  const expected = [runtime.getMarketsReviewAnalytics(monthly),runtime.getMarketsReviewAnalytics(annual)];
+  runtime.publishMarketsReviewSnapshot_();
+  const query = runtime.queryMarketsReviews_;
+  runtime.queryMarketsReviews_ = () => { throw new Error("unexpected Sheets read"); };
+  assert.deepEqual([runtime.getMarketsReviewAnalytics(monthly),runtime.getMarketsReviewAnalytics(annual)],expected);
+  runtime.queryMarketsReviews_ = query;
+  assert.deepEqual({...snapshot.values["page:CO:es"].counts},{CO:1,TR:1,ES:2,UNKNOWN:1});
+  assert.equal(snapshot.values["page:CO:es"].rows[0].key,"local-co");
+  assert.equal(snapshot.values["analytics:ES"].total,2);
+  assert.equal(snapshot.values["analytics:TR"].total,1);
+  assert.equal(snapshot.values["analytics:ALL"].total,5);
+  assert.equal(snapshot.values["analytics:UNKNOWN"].total,1);
+  const provisional=rows.find(row=>row[0]==="solo-observada-es");
+  provisional[2]="ES,CO";
+  const changed=runtime.queryMarketsReviews_(ss,{country:"ALL",platform:"ALL"},window);
+  assert.equal(changed.length,aggregate.length);
+  assert.equal(changed.find(row=>row.key===provisional[0]).countries[0],"UNKNOWN");
+  const duplicate = review("local-co-es", ios, "ES", "2026-11-02");
+  duplicate[5] = "local-co"; // Same Apple review ID under a second storefront key.
+  rows.push(duplicate);
+  const byAlias = runtime.queryMarketsReviews_(ss,{country:"UNKNOWN",platform:"ALL",reviewKey:duplicate[0]},window);
+  assert.equal(byAlias.length,1);
+  assert.equal(byAlias[0].key,"local-co");
+  assert.equal(byAlias[0].date,"2026-11-02");
+  assert.equal(runtime.queryMarketsReviews_(ss,{country:"ALL",platform:"ALL"},window).length,aggregate.length);
+  assert.throws(() => runtime.normalizeMarketsReviewFilters_({ start: "2026-02-30" }), /Fecha no válida/);
 });
 
-test("review cache isolates scopes and invalidates when the data generation changes", () => {
+test("translation repair reaches historical gaps and preserves successful cells after a partial failure", () => {
+  const runtime = vm.createContext({});
+  vm.runInContext(fs.readFileSync(new URL("../src/54_Reviews.gs", import.meta.url), "utf8"), runtime);
+  const row = ["key","APP","TR","iOS","123","456","2026-10-01",4,"","","Merhaba","Hola","",""];
+  const properties = new Map();
+  const calls = [];
+  let fail = true, generations = 0;
+  const sheet = { getLastRow: () => 2, getRange: (_row, column) => ({
+    getValues: () => [row.slice(column - 1)], setValues: ([values]) => row.splice(column - 1, values.length, ...values)
+  }) };
+  Object.assign(runtime, {
+    marketsReviewRecoveryMonth_: value => value.slice(0,7), errorToString_: error => error.message,
+    requireMarketsReviewOwner_: () => ({ss:{}}), marketsReviewSheet_: () => sheet, openMarketsSpreadsheet_: () => ({}),
+    LockService: { getUserLock: () => ({tryLock:()=>true, releaseLock(){}}) },
+    PropertiesService: { getScriptProperties: () => ({
+      getProperty: key => properties.get(key), setProperty: (key,value) => properties.set(key,value)
+    }) },
+    SpreadsheetApp: { flush(){} }, advanceMarketsReviewGeneration_: () => generations++,
+    LanguageApp: { translate: (original, _source, target) => {
+      calls.push(target);
+      if (target === "en" && fail) throw new Error("Temporary failure");
+      return target === "tr" ? original : "Hello";
+    } }
+  });
+  const audit = runtime.auditMarketsReviewTranslations();
+  assert.equal(audit.pending,1);
+  assert.deepEqual(Array.from(audit.groups[0].missing),[0,1,1]);
+  const partial = runtime.repairMarketsReviewTranslations();
+  assert.equal(partial.failed,1);
+  assert.equal(partial.complete,false);
+  assert.deepEqual(row.slice(10),["Merhaba","Hola","","Merhaba"]);
+  fail = false;
+  assert.equal(runtime.repairMarketsReviewTranslations().complete,true);
+  assert.deepEqual(row.slice(10),["Merhaba","Hola","Hello","Merhaba"]);
+  assert.deepEqual(calls,["en","tr","en"]);
+  assert.equal(generations,2);
+});
+
+test("translation prioritizes review date and probes again after quota exhaustion", () => {
+  let now = 1000;
+  const runtime = vm.createContext({
+    Date: class extends Date { static now() { return now; } },
+    errorToString_: error => error.message
+  });
+  vm.runInContext(fs.readFileSync(new URL("../src/54_Reviews.gs", import.meta.url), "utf8"), runtime);
+  const rows = [["2026-11-10",4,"","","new","","",""],["2025-11-12",4,"","","old","","",""],
+    ["2026-11-11",4,"","","newest","","",""]];
+  const calls = [], properties = new Map();
+  let quota = true;
+  Object.assign(runtime, {
+    openMarketsSpreadsheet_:()=>({}), marketsReviewSheet_:()=>({
+      getLastRow:()=>rows.length+1,
+      getRange:(row,col)=>col===7?{getValues:()=>rows}:{setValues:([values])=>rows[row-2].splice(5,3,...values)}
+    }),
+    LockService:{getUserLock:()=>({tryLock:()=>true,releaseLock(){}})},
+    PropertiesService:{getScriptProperties:()=>({getProperty:key=>properties.get(key),setProperty:(key,value)=>properties.set(key,value)})},
+    SpreadsheetApp:{flush(){}}, advanceMarketsReviewGeneration_(){},
+    LanguageApp:{translate:(text,_source,lang)=>{
+      calls.push([text,lang]);
+      if(quota&&lang==="en")throw Error("Service invoked too many times for one day: translate");
+      return text+lang;
+    }}
+  });
+  const first=runtime.translateMarketsReviews_();
+  assert.equal(first.quotaLimited,true);
+  assert.equal(first.pending,3);
+  assert.deepEqual(calls,[["newest","es"],["newest","en"]]);
+  assert.equal(rows[2][5],"newestes");
+  runtime.translateMarketsReviews_();
+  assert.equal(calls.length,2);
+  now=first.retryAt;quota=false;
+  assert.equal(runtime.translateMarketsReviews_().complete,true);
+  assert.deepEqual(calls.slice(2).map(([text])=>text),["newest","newest","new","new","new","old","old","old"]);
+});
+
+test("review cache isolates scopes and invalidates when the data or catalog changes", () => {
   const properties = {};
-  const entries = new Map();
+  const entries = new Map(), catalog = [];
   Object.assign(api, {
+    readAppCatalog_:()=>catalog,
     PropertiesService: { getScriptProperties: () => ({ getProperties: () => properties }) },
     Utilities: { DigestAlgorithm: { SHA_256: "SHA_256" }, computeDigest: (_, value) => value, base64EncodeWebSafe: value => value },
     readMarketsWebCache_: (key, build) => {
@@ -201,6 +426,8 @@ test("review cache isolates scopes and invalidates when the data generation chan
   assert.equal(get({ page: 0, country: "TR" }), 2);
   properties.MARKETS_REVIEWS_GENERATION = "new";
   assert.equal(get({ country: "ES", page: 0 }), 3);
+  catalog.push({platform:"Android",appKey:"app|ES",packageName:"com.example.app",countryCode:"ES"});
+  assert.equal(get({ country: "ES", page: 0 }), 4);
 });
 
 test("review endpoints accept corporate readers and reject anonymous users before reading data", () => {
@@ -222,7 +449,7 @@ test("review endpoints accept corporate readers and reject anonymous users befor
   assert.equal(page.window.start, "2026-10-13");
 });
 
-test("the default review scope serves the persistent snapshot only for the matching generation", () => {
+test("the persistent snapshot requires the matching schema and generations", () => {
   const window = { start: "2026-10-13", end: "2026-11-11" };
   const filters = { country: "ES", platform: "ALL", app: "BBVA Empresas", language: "es" };
   const staticPage = { total: 10 };
@@ -231,7 +458,12 @@ test("the default review scope serves the persistent snapshot only for the match
   api.PropertiesService = { getScriptProperties: () => ({
     getProperties: () => ({ MARKETS_REVIEWS_GENERATION: generation })
   }) };
-  api.readMarketsPersistentCache_ = () => ({ end: window.end, versions: ["1", ""], values: { "page:ES:es": staticPage } });
+  const catalogVersion = api.marketsReviewCatalogVersion_(api.readAppCatalog_());
+  let schema = 3;
+  api.readMarketsWebCache_ = (_key,build)=>build();
+  api.readMarketsPersistentCache_ = () => ({ schema, end: window.end, versions: ["1", "", catalogVersion], values: { "page:ES:es": staticPage } });
+  assert.equal(api.readMarketsReviewCache_(ss, "page", filters, window, () => null), null);
+  schema = 5;
   assert.equal(api.readMarketsReviewCache_(ss, "page", filters, window, () => null), staticPage);
   generation = "2";
   assert.equal(api.readMarketsReviewCache_(ss, "page", filters, window, () => null), null);
@@ -263,4 +495,24 @@ test("calendar analytics reads a closed year and its predecessor independently o
   assert.equal(result.annual.total,2);
   assert.equal(result.annual.promoters,1);
   assert.equal(result.entities[0].total,1);
+});
+
+test("monthly sentiment filters gaps and examples while balance and baseline keep all stars for the selected app", () => {
+  const review = (key, date, rating, entity = "BBVA Empresas") => ({
+    key, date, rating, entities:[entity], blocks:["01"], title:key, original:key
+  });
+  const rows = [
+    review("prior promoter","2026-10-10",5), review("prior detractor","2026-10-11",1),
+    review("recent promoter","2026-11-01",5), review("recent detractor","2026-11-02",1),
+    review("recent neutral","2026-11-02",3), review("other bank","2026-11-02",5,"Banco")
+  ];
+  const window = { start:"2026-10-01", recent:"2026-11-01", end:"2026-11-11" };
+  for (const [segment,key,balance] of [["DETRACTOR","recent detractor",-100],["PROMOTER","recent promoter",100],["NEUTRAL","recent neutral",0]]) {
+    const result = api.summarizeMarketsReviewAnalytics_(rows, {"01":"Pagos"}, {analysisMonth:"2026-11",segment,entity:"BBVA Empresas"}, window);
+    assert.deepEqual(Array.from(result.monthlyEntityOptions),["BBVA Empresas"]);
+    assert.equal(result.monthly.find(point=>point.month==="2026-11").total,3);
+    assert.equal(result.baseline.total,2);
+    assert.equal(result.deltas[0].gap,balance);
+    assert.deepEqual(Array.from(result.examples, item=>item.review.key),[key]);
+  }
 });

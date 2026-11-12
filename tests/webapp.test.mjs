@@ -319,7 +319,7 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(app, /MarketsReport\.render/);
   assert.match(app, /const request=trendRequest\(\)/);
   assert.match(app, /view:state\.view,selection:\{\.\.\.selection\(\),app:state\.view==="evolution"\?state\.evolutionApp:""\},periodYear:state\.periodYear,periodMonth:state\.periodMonth/);
-  assert.match(app, /report-button"\)\.classList\.toggle\("hidden",privateView\|\|\["reviews","analytics"\]\.includes\(state\.view\)\)/);
+  assert.match(app, /report-button"\)\.classList\.toggle\("hidden",!slot\)/);
   const report = fs.readFileSync(new URL("../src/Report.html", import.meta.url), "utf8");
   const reportStyles = fs.readFileSync(new URL("../src/ReportStyles.html", import.meta.url), "utf8");
   assert.match(report, /La voz del mercado/);
@@ -344,9 +344,9 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(app, /target=\"_blank\"/);
   assert.match(app, /rel=\"noopener noreferrer\"/);
   assert.match(app, /function renderRankRow/);
-  assert.match(index, /<label for="country-filter">Geografía<\/label>/);
-  assert.match(index, /<label>Plataforma<\/label>/);
-  assert.match(index, /id="benchmark-control" class="control hidden"/);
+  assert.doesNotMatch(index, /id="(?:country-filter|platform-control|benchmark-weighted)"/);
+  assert.match(index, /id="benchmark-filters"[\s\S]+name="segment"[\s\S]+name="ranking"[\s\S]+id="benchmark-markets"/);
+  assert.match(index, /id="evolution-filters"[\s\S]+id="evolution-markets"/);
   assert.match(index, /<label for="segment-filter">Tipo de entidad<\/label>/);
   assert.match(index, /id="evolution-filters"[\s\S]+name="app"[\s\S]+name="year"[\s\S]+name="month"/);
   assert.deepEqual([...index.matchAll(/<button[^>]+data-view="([^"]+)"/g)].map(match => match[1]),
@@ -372,8 +372,10 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.doesNotMatch(index, /id="view-overview"/);
   const evolutionMarkup = index.slice(index.indexOf('id="view-evolution"'), index.indexOf('id="view-alerts"'));
   const analyticsMarkup = index.slice(index.indexOf('id="view-analytics"'), index.indexOf('id="view-reviews"'));
-  assert.match(evolutionMarkup, /id="evolution-kpis"[\s\S]*id="review-balance"[\s\S]*id="review-deltas"[\s\S]*id="review-examples"[\s\S]*id="monthly-matrix"[\s\S]*id="new-review-impact"/);
-  assert.match(analyticsMarkup, /id="annual-chart"[\s\S]*id="review-heatmap"[\s\S]*id="review-annual"/);
+  assert.doesNotMatch(evolutionMarkup + app, /evolution-kpis/);
+  assert.match(evolutionMarkup, /id="monthly-matrix"[\s\S]*id="new-review-impact"[\s\S]*id="review-balance"[\s\S]*id="monthly-review-segment"[\s\S]*id="review-deltas"[\s\S]*id="review-examples"/);
+  assert.match(analyticsMarkup, /class="annual-chart-layout">\s*<div id="annual-chart"[^>]*><\/div>\s*<aside id="annual-series"[^>]*><\/aside>/);
+  assert.match(analyticsMarkup, /id="review-heatmap"[\s\S]*id="analytics-entity"[\s\S]*id="annual-chart"[\s\S]*id="review-annual"/);
   const charts = fs.readFileSync(new URL("../src/Charts.html", import.meta.url), "utf8");
   assert.match(charts, /class="rating-bar-metric"/);
   assert.match(charts, /<\/span><b aria-label="Rating/);
@@ -384,7 +386,7 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(charts, /class="new-review-unavailable"/);
   assert.doesNotMatch(charts, /platformBadge/);
   assert.match(app, /const mobileViewport=window\.matchMedia\("\(max-width:780px\)"\)/);
-  assert.match(app, /monthlyRatingMatrix\(state\.trends,state\.snapshot,selection\(\),period,mobileViewport\.matches\?3:6\)/);
+  assert.match(app, /monthlyRatingMatrix\(state\.trends,state\.snapshot,\{\.\.\.selection\(\),app:state\.evolutionApp\|\|"ALL"\},period,mobileViewport\.matches\?3:6\)/);
   assert.match(app, /const compactInteger=/);
   assert.doesNotMatch(charts, /Cierre mensual|<span>\/ 5<\/span>/);
   const components = fs.readFileSync(new URL("../src/Components.html", import.meta.url), "utf8");
@@ -741,11 +743,10 @@ test("summary comparison uses BBVA by geography and banks within one country", (
 
 test("all-markets benchmark keeps every market on one page", () => {
   const app = fs.readFileSync(new URL("../src/App.html", import.meta.url), "utf8");
-  assert.match(app, /function renderBenchmark\(\).*D\.selectionRows\(state\.snapshot,selection\(\),state\.benchmarkSegment,true\)/);
+  assert.match(app, /function renderBenchmark\(\)[\s\S]+D\.selectionRows\(state\.snapshot,selection\(\),state\.benchmarkSegment,true\)/);
+  assert.match(app, /Object\.keys\(groups\)\.sort\(\)\.map/);
+  assert.match(app, /alwaysChips:\["segment","ranking"\]/);
   assert.doesNotMatch(app, /vista agregada está reservada|Selecciona un mercado · BBVA Empresas/);
-  assert.match(app, /segment-filter"\)\.disabled=false/);
-  assert.match(app, /function syncViewControls\(\).*state\.view==="benchmark"/);
-  assert.match(app, /benchmark-control"\)\.classList\.toggle\("hidden",!benchmark\)/);
 });
 
 test("evolution KPIs use BBVA closes for the selected period", () => {

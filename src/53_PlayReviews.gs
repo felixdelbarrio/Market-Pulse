@@ -105,20 +105,40 @@ function collectMarketsPlayReviews_(limit = Infinity) {
     const deadline = Date.now() + 235000;
     const start = Math.max(0, keys.indexOf(properties.getProperty(indexKey)));
     const summary = { added: 0, updated: 0, failures: 0, pages: 0, processed: 0, eligible: keys.length };
-    // One latest page and one historical page per storefront per round.
+    // Bound the recent scan separately so it leaves room for historical progress.
     for (let step = 0; step < Math.min(keys.length, limit) && Date.now() < deadline && summary.pages < 100; step++) {
       const index = (start + step) % keys.length, key = keys[index], listing = listings.get(key);
       const stateKey = 'MARKETS_PLAY_REVIEW|' + key;
       const history = properties.getProperty(stateKey);
+      const refreshKey = 'MARKETS_PLAY_REFRESH|' + key;
+      let activeKey = refreshKey;
       try {
-        const latest = fetchPlayReviewPage_(listing, '');
-        storePlayReviews_(sheet, properties, known, listing, latest.rows, summary, width);
-        if (history === null) properties.setProperty(stateKey, latest.next || 'DONE');
-        summary.pages++;
+        let token = properties.getProperty(refreshKey) || '';
+        const visited = new Set();
+        for (let step = 0; step < 3 && summary.pages < 99 && Date.now() < deadline; step++) {
+          const page = fetchPlayReviewPage_(listing, token);
+          const overlap = page.rows.length > 0 && page.rows.every(review => {
+            const stored = known.get(JSON.stringify(['Android', listing.packageName, review.id]))?.row;
+            return stored && String(stored[2]).split(',').includes(listing.countryCode) && Date.parse(stored[6]) >= Date.parse(review.date);
+          });
+          storePlayReviews_(sheet, properties, known, listing, page.rows, summary, width);
+          if (history === null && step === 0 && !token) properties.setProperty(stateKey, page.next || 'DONE');
+          summary.pages++;
+          visited.add(token);
+          if (!page.next || overlap || visited.has(page.next)) {
+            if (token) properties.deleteProperty(refreshKey);
+            if (page.next && visited.has(page.next)) summary.failures++;
+            break;
+          }
+          token = page.next;
+          properties.setProperty(refreshKey, token);
+        }
         if (history && history !== 'DONE' && Date.now() < deadline) {
+          activeKey = stateKey;
           const page = fetchPlayReviewPage_(listing, history);
           storePlayReviews_(sheet, properties, known, listing, page.rows, summary, width);
-          properties.setProperty(stateKey, page.next && page.next !== history ? page.next : 'DONE');
+          if (page.next === history) summary.failures++;
+          else properties.setProperty(stateKey, page.next || 'DONE');
           summary.pages++;
         }
       } catch (error) {
@@ -130,7 +150,7 @@ function collectMarketsPlayReviews_(limit = Infinity) {
           summary.rateLimited = true;
           break;
         }
-        if (history && /HTTP (400|404)$/.test(error.message)) properties.deleteProperty(stateKey);
+        if (/HTTP (400|404)$/.test(error.message)) properties.deleteProperty(activeKey);
       }
       properties.setProperty(indexKey, keys[(index + 1) % keys.length]);
       summary.processed++;
@@ -146,7 +166,6 @@ function storePlayReviews_(sheet, properties, known, listing, reviews, summary, 
   const changes = new Map();
   const captured = new Date().toISOString();
   let nextIndex = sheet.getLastRow() + 1;
-  let rewind = Number(properties.getProperty('MARKETS_REVIEWS_TRANSLATION_ROW')) || 2;
   for (const review of reviews) {
     const key = JSON.stringify(['Android', listing.packageName, review.id]);
     const previous = changes.get(key) || known.get(key);
@@ -160,9 +179,8 @@ function storePlayReviews_(sheet, properties, known, listing, reviews, summary, 
     const row = newer ? [key, listing.appKey, '', 'Android', listing.packageName, review.id, review.date,
       review.rating, review.version, '', review.text, '', '', '', captured] : previous.row.slice();
     const index = previous ? previous.index : nextIndex++;
-    if (previous && newer) {
-      if (previous.row[10] === review.text) row.splice(11, 3, ...previous.row.slice(11, 14));
-      else rewind = Math.min(rewind, index);
+    if (previous && newer && previous.row[10] === review.text) {
+      row.splice(11, 3, ...previous.row.slice(11, 14));
     }
     row[2] = [...markets].sort().join(',');
     row[14] = captured;
@@ -171,7 +189,6 @@ function storePlayReviews_(sheet, properties, known, listing, reviews, summary, 
   }
   if (!changes.size) return;
   ensureSheetCapacity_(sheet, nextIndex - 1, width);
-  properties.setProperty('MARKETS_REVIEWS_TRANSLATION_ROW', String(rewind));
   const ordered = [...changes.values()].sort((a, b) => a.index - b.index);
   for (let start = 0; start < ordered.length;) {
     let end = start + 1;

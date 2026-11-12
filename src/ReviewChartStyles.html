@@ -1,4 +1,15 @@
 <style>
+.annual-chart-layout{display:grid;grid-template-columns:minmax(0,1fr) min(var(--sidebar-width),42%);align-items:start}
+.annual-chart-layout:has(.series-summary:empty){grid-template-columns:minmax(0,1fr)}
+.annual-chart-layout .chart-wrap svg{min-height:0}
+.annual-chart-layout .series-summary{max-block-size:var(--chart-height);overflow:auto}
+.annual-chart-layout .series-summary:empty{display:none}
+.annual-chart-layout .series-card{grid-template-columns:var(--space-1) minmax(0,1fr) auto;overflow-wrap:anywhere}
+@media(max-width:780px){
+  .annual-chart-layout .series-summary,.annual-chart-layout .series-card{padding:var(--space-1)}
+  .annual-chart-layout .series-card{grid-template-columns:var(--space-1) minmax(0,1fr)}
+  .annual-chart-layout .series-card>b{grid-column:2}
+}
 /* News Radar chart styles scoped to the monthly balance card. */
 #review-balance-panel .trend-chart svg{width:100%;display:block;overflow:visible}
 #review-balance-panel .trend-chart svg text{fill:var(--color-primary-text-secondary);font-size:var(--text-s);font-family:var(--font-body)}
@@ -14,7 +25,7 @@
 #review-balance-panel{position:relative;padding:var(--space-3);background:var(--color-primary-bg-alternative);border:var(--stroke) solid var(--color-primary-border);border-radius:var(--radius-container);box-shadow:none;color:var(--color-primary-text-main);font:400 var(--text-m)/var(--line-m) var(--font-body)}
 #review-balance-panel h3{margin:0;font:700 var(--text-xl)/var(--line-xl) var(--font-heading)}
 #review-balance-panel .eyebrow{margin:0;color:var(--color-primary-text-secondary);font-size:var(--text-s);font-weight:500}
-#review-balance-panel .chart-period,#review-balance-panel .review-chart-note{font-size:var(--text-s);color:var(--color-primary-text-secondary)}
+#review-balance-panel .chart-period,.review-chart-note{font-size:var(--text-s);color:var(--color-primary-text-secondary)}
 #review-balance-panel .chart-area{fill:var(--color-primary-accent-01);fill-opacity:.2}
 #review-balance-panel .chart-tooltip{z-index:2}
 #review-balance-panel [hidden]{display:none!important}
@@ -27,7 +38,7 @@
 #review-gap-panel .gap-negative{fill:var(--color-primary-text-alert)}
 #review-gap-panel .gap-positive{fill:var(--color-primary-text-positive)}
 #review-gap-panel caption{text-align:left;padding:var(--space-1)}
-.analytics-app{width:min(100%,var(--sidebar-width));margin-bottom:var(--space-2)}
+.analytics-app{width:min(100%,var(--sidebar-width))}
 .section-head h2>.icon{margin-inline-end:var(--space-1);vertical-align:middle}
 .review-gap-table .admin-table th[scope=col]:not(:first-child),.review-gap-table .admin-table td{text-align:center;vertical-align:middle;font-variant-numeric:tabular-nums}
 .review-gap-table .admin-table th[scope=row]{vertical-align:middle;background:var(--color-primary-bg-alternative)}
@@ -43,8 +54,8 @@
 #review-balance-panel .geo-count{font-weight:500}
 #review-balance-panel .geo-track{grid-column:span 2;display:block;height:var(--focus-offset);background:var(--color-primary-border);border-radius:var(--radius-component);overflow:hidden}
 #review-balance-panel .geo-track>span{display:block;height:100%;background:var(--color-primary-bg-action);border-radius:inherit}
-#review-balance-panel .geo-row:is(:hover,:focus-visible,[aria-pressed=true]){color:var(--color-primary-bg-action);background:var(--color-primary-bg-hover)}
 #review-balance-panel .identity-label{display:inline-flex;align-items:center;gap:var(--space-1);overflow-wrap:anywhere}
 #review-balance-panel .identity-label i{width:var(--space-1);height:var(--space-1);border-radius:50%;flex:none}
 @media(max-width:767px){#review-balance-panel .map-layout{grid-template-columns:1fr}#review-balance-panel .geo-entities{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 var(--space-2)}}
+.monthly-sentiment{width:min(100%,var(--sidebar-width));margin-bottom:var(--space-2)}
 </style>

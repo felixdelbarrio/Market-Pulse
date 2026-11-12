@@ -14,8 +14,8 @@ function summarizeMarketsReviewAlerts_(rows, now) {
     if (!(timestamp > start && timestamp <= now.getTime()) || seen.has(row.key) ||
         !Number.isInteger(row.rating) || row.rating < 1 || row.rating > 5 ||
         !['Android', 'iOS'].includes(row.platform)) continue;
-    // El mismo package Android se cuenta una vez y no se asigna a una geografía concreta.
-    const countryCode = row.countries.length === 1 && !row.sharedListing ? row.countries[0] : 'ALL';
+    // Las reseñas sin atribución sólo participan en el ámbito no territorial.
+    const countryCode = row.countries.length === 1 && row.countries[0] !== 'UNKNOWN' && !row.sharedListing ? row.countries[0] : 'ALL';
     seen.add(row.key);
     const id = [row.platform, countryCode].join('|');
     const group = groups.get(id) || { platform: row.platform, countryCode, total: 0, low: 0 };
@@ -36,7 +36,7 @@ function buildMarketsReviewAlertEvents_(groups, preferences, existing, now, day)
     if (!severity || existing[eventKey]) return [];
     const threshold = severity === 'CRITICAL' ? preferences.reviewCriticalPct : preferences.reviewWarningPct;
     return [{ timestamp: now, eventKey, referenceDate: dateFromKey_(day), platform: group.platform,
-      countryCode: group.countryCode, country: group.countryCode === 'ALL' ? 'Ficha compartida' : group.countryCode,
+      countryCode: group.countryCode, country: group.countryCode === 'ALL' ? 'Sin geografía' : group.countryCode,
       type: 'REVIEW_LOW_SHARE', severity, threshold, metricValue: round2_(share),
       detail: group.low + ' de ' + group.total + ' reseñas públicas de BBVA Empresas fechadas en las últimas 24 horas. Umbral: ' + threshold + ' %.',
       recipients: preferences.email, userEmail: preferences.email, ruleId: 'REVIEW_LOW_SHARE', direction: 'UP',
@@ -51,7 +51,7 @@ function processMarketsReviewAlerts_(day) {
   const subscribers = readAllMarketsAlertPreferences_(ss).filter(item => item.active && item.reviewShareEnabled);
   if (!subscribers.length) return 0;
   const window = { start: shiftReviewDay_(day, -2), end: shiftReviewDay_(day, 1) };
-  const rows = queryMarketsReviews_(ss, { country: 'ALL', platform: 'ALL', app: 'BBVA Empresas' }, window);
+  const rows = queryMarketsReviews_(ss, { country: 'ALL', platform: 'ALL', app: 'BBVA Empresas', deferBlocks: true }, window);
   const groups = summarizeMarketsReviewAlerts_(rows, now);
   if (!groups.length) return 0;
   const lock = LockService.getScriptLock();
