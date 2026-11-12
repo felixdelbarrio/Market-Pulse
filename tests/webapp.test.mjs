@@ -419,6 +419,8 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
 test("Excel export keeps filters, numeric ratings and chart references and omits empty sections", async () => {
   const browser = { window: {}, Blob, TextEncoder };
   const html = fs.readFileSync(new URL("../src/Workbook.html", import.meta.url), "utf8");
+  // HtmlService can interpret URL slashes inside XML template literals as comments.
+  for (const line of html.split("\n")) if (line.includes("`")) assert.doesNotMatch(line, /https?:\/\//);
   vm.runInNewContext(clientScript(html), browser);
   const filters = [["Geografía", "España"], ["Desde", "2026-01-01"]];
   const result = browser.window.MarketsWorkbook.build([
