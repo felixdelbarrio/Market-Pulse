@@ -58,4 +58,20 @@
 #review-balance-panel .identity-label i{width:var(--space-1);height:var(--space-1);border-radius:50%;flex:none}
 @media(max-width:767px){#review-balance-panel .map-layout{grid-template-columns:1fr}#review-balance-panel .geo-entities{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 var(--space-2)}}
 .monthly-sentiment{width:min(100%,var(--sidebar-width));margin-bottom:var(--space-2)}
+
+.annual-kpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--grid-gutter)}
+.annual-metric-group{min-width:0;padding:var(--space-2);border:var(--stroke) solid var(--color-primary-border);border-radius:var(--radius-container);background:var(--color-primary-bg-surface)}
+.annual-metric-group h4,.annual-review-section>h4{margin:0 0 var(--space-2)}
+.annual-metric-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,8rem),1fr));gap:var(--space-1)}
+.annual-metric-grid .metric-card{background:var(--color-primary-bg-alternative);overflow-wrap:anywhere}
+.annual-review-section{margin-block-start:var(--space-3)}
+.annual-author-list,.annual-author-reviews{display:grid;gap:var(--space-1)}
+.annual-author{min-width:0;border:var(--stroke) solid var(--color-primary-border);border-radius:var(--radius-component)}
+.annual-author summary{padding:var(--space-2);cursor:pointer;overflow-wrap:anywhere}
+.annual-author summary strong{display:inline-block;margin-inline-start:var(--space-1);color:var(--color-primary-text-secondary);font-size:var(--text-s)}
+.annual-author[open] summary{border-block-end:var(--stroke) solid var(--color-primary-border);background:var(--color-primary-bg-surface)}
+.annual-author-reviews{padding:var(--space-2)}
+.annual-author-reviews p{margin:0;overflow-wrap:anywhere}
+.annual-author-reviews .review-card + .review-card{margin-top:0}
+@media(max-width:767px){.annual-kpis{grid-template-columns:minmax(0,1fr)}}
 </style>
