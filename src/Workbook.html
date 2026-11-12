@@ -1,0 +1,104 @@
+<script>
+  (()=>{
+    "use strict";
+    const spreadsheet="http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+    const relations="http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+    const packageTypes="application/vnd.openxmlformats-officedocument";
+    const xml=value=>String(value??"").replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\ufffe\uffff]/g,"")
+      .replace(/[&<>"']/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&apos;"})[char]);
+    function column(index){
+      let letters="";
+      for(let n=index+1;n;n=Math.floor((n-1)/26))letters=String.fromCharCode(65+(n-1)%26)+letters;
+      return letters;
+    }
+    const relationship=(id,type,target)=>`<Relationship Id="${id}" Type="${relations}/${type}" Target="${target}"/>`;
+    const relationshipFile=entries=>`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${entries}</Relationships>`;
+    const crcTable=Uint32Array.from({length:256},(_,byte)=>{
+      for(let bit=0;bit<8;bit++)byte=(byte>>>1)^((byte&1)?0xedb88320:0);
+      return byte;
+    });
+    function zip(files){
+      const encoder=new TextEncoder(), body=[], directory=[];
+      let offset=0, directorySize=0;
+      const header=(length,fields)=>{
+        const buffer=new Uint8Array(length), view=new DataView(buffer.buffer);
+        for(const [position,value,width=2] of fields){
+          if(width===4)view.setUint32(position,value,true);
+          else view.setUint16(position,value,true);
+        }
+        return buffer;
+      };
+      for(const [path,content] of files){
+        const name=encoder.encode(path), data=encoder.encode(content);
+        let crc=0xffffffff;
+        for(const byte of data)crc=(crc>>>8)^crcTable[(crc^byte)&255];
+        crc^=0xffffffff;
+        const local=header(30,[[0,0x04034b50,4],[4,20],[12,33],[14,crc,4],[18,data.length,4],[22,data.length,4],[26,name.length]]);
+        const central=header(46,[[0,0x02014b50,4],[4,20],[6,20],[14,33],[16,crc,4],[20,data.length,4],
+          [24,data.length,4],[28,name.length],[42,offset,4]]);
+        body.push(local,name,data);
+        directory.push(central,name);
+        offset+=local.length+name.length+data.length;
+        directorySize+=central.length+name.length;
+      }
+      if(offset+directorySize>0xffffffff)throw new Error("El archivo supera el tamaño admitido.");
+      const end=header(22,[[0,0x06054b50,4],[8,files.size],[10,files.size],[12,directorySize,4],[16,offset,4]]);
+      return new Blob([...body,...directory,end],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+    }
+    function chartXml(name,header,rows,firstRow){
+      const range=(col,start,end)=>xml(`'${name.replaceAll("'","''")}'!$${column(col)}$${start}:$${column(col)}$${end}`);
+      const reference=(col,numeric)=>{
+        const type=numeric?"num":"str";
+        const points=rows.map((row,index)=>row[col]==null?"":`<c:pt idx="${index}"><c:v>${xml(row[col])}</c:v></c:pt>`).join("");
+        return `<c:${type}Ref><c:f>${range(col,firstRow,firstRow+rows.length-1)}</c:f><c:${type}Cache>${numeric?"<c:formatCode>General</c:formatCode>":""}<c:ptCount val="${rows.length}"/>${points}</c:${type}Cache></c:${type}Ref>`;
+      };
+      const series=header.slice(1).map((label,index)=>`<c:ser><c:idx val="${index}"/><c:order val="${index}"/><c:tx><c:v>${xml(label)}</c:v></c:tx><c:marker><c:symbol val="circle"/></c:marker><c:cat>${reference(0,false)}</c:cat><c:val>${reference(index+1,true)}</c:val></c:ser>`).join("");
+      return `<c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart"><c:chart><c:plotArea><c:layout/><c:lineChart><c:grouping val="standard"/>${series}<c:axId val="10"/><c:axId val="20"/></c:lineChart><c:catAx><c:axId val="10"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:axPos val="b"/><c:crossAx val="20"/><c:crosses val="autoZero"/></c:catAx><c:valAx><c:axId val="20"/><c:scaling><c:orientation val="minMax"/><c:max val="5"/><c:min val="1"/></c:scaling><c:axPos val="l"/><c:majorGridlines/><c:crossAx val="10"/><c:crosses val="autoZero"/></c:valAx></c:plotArea><c:legend><c:legendPos val="b"/></c:legend><c:plotVisOnly val="1"/><c:dispBlanksAs val="gap"/></c:chart></c:chartSpace>`;
+    }
+    function build(sheets){
+      const files=new Map(), types=[], workbookRelations=[], workbookSheets=[];
+      function part(path,type,content){
+        files.set(path,content);
+        types.push(`<Override PartName="/${path}" ContentType="${packageTypes}.${type}+xml"/>`);
+      }
+      sheets.forEach(({name,filters,header,rows,chart},index)=>{
+        if(!rows.length)return;
+        const id=index+1;
+        const content=[...filters,[],header,...rows];
+        if(content.length>1048576||header.length>16384)throw new Error("La selección supera los límites de Excel.");
+        const columns=Array.from({length:Math.max(2,header.length)},(_,i)=>{
+          const lengths=[header[i]?.length||0,...filters.map(row=>String(row[i]??"").length)];
+          for(const row of rows.slice(0,100))lengths.push(String(row[i]??"").length);
+          return `<col min="${i+1}" max="${i+1}" width="${Math.min(72,Math.max(12,...lengths)+2)}" customWidth="1"/>`;
+        }).join("");
+        const data=content.map((row,i)=>`<row r="${i+1}">${row.map((value,j)=>{
+          const address=column(j)+(i+1);
+          if(value==null||value==="")return "";
+          if(Number.isFinite(value))return `<c r="${address}"><v>${value}</v></c>`;
+          // Inline strings keep public comments and filter text out of Excel's formula evaluator.
+          return `<c r="${address}" t="inlineStr"><is><t xml:space="preserve">${xml(String(value).slice(0,32767))}</t></is></c>`;
+        }).join("")}</row>`).join("");
+        if(chart){
+          const from=content.length+2;
+          const anchor=(tag,row,col)=>`<xdr:${tag}><xdr:col>${col}</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${row}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:${tag}>`;
+          part(`xl/charts/chart${id}.xml`,"drawingml.chart",chartXml(name,header,rows,filters.length+3));
+          part(`xl/drawings/drawing${id}.xml`,"drawing",
+            `<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><xdr:twoCellAnchor>${anchor("from",from,0)}${anchor("to",from+18,12)}<xdr:graphicFrame><xdr:nvGraphicFramePr><xdr:cNvPr id="1" name="Rating"/><xdr:cNvGraphicFramePr/></xdr:nvGraphicFramePr><xdr:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></xdr:xfrm><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart"><c:chart xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:r="${relations}" r:id="rId1"/></a:graphicData></a:graphic></xdr:graphicFrame><xdr:clientData/></xdr:twoCellAnchor></xdr:wsDr>`);
+          files.set(`xl/drawings/_rels/drawing${id}.xml.rels`,relationshipFile(relationship("rId1","chart",`../charts/chart${id}.xml`)));
+          files.set(`xl/worksheets/_rels/sheet${id}.xml.rels`,relationshipFile(relationship("rId1","drawing",`../drawings/drawing${id}.xml`)));
+        }
+        part(`xl/worksheets/sheet${id}.xml`,"spreadsheetml.worksheet",
+          `<worksheet xmlns="${spreadsheet}" xmlns:r="${relations}"><cols>${columns}</cols><sheetData>${data}</sheetData>${chart?'<drawing r:id="rId1"/>':""}</worksheet>`);
+        workbookRelations.push(relationship(`rId${id}`,"worksheet",`worksheets/sheet${id}.xml`));
+        workbookSheets.push(`<sheet name="${xml(name)}" sheetId="${id}" r:id="rId${id}"/>`);
+      });
+      if(!workbookSheets.length)throw new Error("No hay datos para descargar con estos filtros.");
+      part("xl/workbook.xml","spreadsheetml.sheet.main",`<workbook xmlns="${spreadsheet}" xmlns:r="${relations}"><sheets>${workbookSheets.join("")}</sheets></workbook>`);
+      files.set("xl/_rels/workbook.xml.rels",relationshipFile(workbookRelations.join("")));
+      files.set("_rels/.rels",relationshipFile(relationship("rId1","officeDocument","xl/workbook.xml")));
+      files.set("[Content_Types].xml",`<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>${types.join("")}</Types>`);
+      return zip(files);
+    }
+    window.MarketsWorkbook=Object.freeze({build});
+  })();
+</script>

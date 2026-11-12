@@ -265,7 +265,9 @@ test("country pages and snapshots partition each review by its own storefront ev
     review("local-tr",tr,"TR"),
     review("local-co",ios,"CO")
   ];
-  const sheet = {getLastRow:()=>rows.length+1,getRange:()=>({getValues:()=>rows})};
+  const sheet = {getLastRow:()=>rows.length+1,getRange:(start, _col, length, width)=>({
+    getValues:()=>rows.slice(start-2,start-2+length).map(row=>row.slice(0,width))
+  })};
   const ss = {getSheetByName:name=>name==="MARKET_REVIEWS"?sheet:null,getId:()=>"test"};
   let snapshot;
   const cache = new Map();
@@ -297,7 +299,11 @@ test("country pages and snapshots partition each review by its own storefront ev
   assert.equal(live.total,1);
   assert.equal(live.rows[0].key,"local-co");
   assert.equal(live.rows[0].app,"BBVA iOS");
-  assert.equal(runtime.getMarketsReviewPage({...filters,country:"ES"}).total,2);
+  const spain = runtime.getMarketsReviewPage({...filters,country:"ES"});
+  assert.equal(spain.total,2);
+  assert.deepEqual(runtime.getMarketsReviewExport({...filters,country:"ES",start:spain.window.start}).rows.map(row=>row.key),
+    spain.rows.map(row=>row.key));
+  assert.throws(()=>runtime.getMarketsReviewExport({...filters,country:"ALL"}),/Selecciona una geografía/);
   assert.equal(runtime.getMarketsReviewAnalytics({country:"ES",year:"2026"}).annual.total,2);
   assert.equal(runtime.getMarketsReviewAnalytics({country:"ALL",year:"2026"}).annual.total,5);
   assert.throws(()=>runtime.getMarketsReviewPage({...filters,country:"ALL"}),/Selecciona una geografía/);

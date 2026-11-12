@@ -1,12 +1,10 @@
 /** Materializa las dos fuentes compactas consumidas por el Web App. */
 function rebuildDashboardDatasets_(ss, catalog, ratings, execution) {
-  const activeKeys = (catalog || []).reduce(function (out, app) { out[app.appKey] = true; return out; }, {});
-  const activeRatings = (ratings || []).filter(function (item) { return Boolean(activeKeys[item.appKey]); });
-  const competitionRows = buildCompetitionRows_(activeRatings, catalog, execution);
+  const competitionRows = buildCompetitionRows_(ratings, catalog, execution);
   const competitionSheet = ss.getSheetByName(MARKETS_CONFIG.sheets.competition);
   replaceSheetData_(competitionSheet, MARKETS_CONFIG.headers.competition, competitionRows);
 
-  const trendRows = buildMonthlyTrendRows_(activeRatings);
+  const trendRows = buildMonthlyTrendRows_(ratings);
   const trendSheet = ss.getSheetByName(MARKETS_CONFIG.sheets.trends);
   replaceSheetData_(trendSheet, MARKETS_CONFIG.headers.trends, trendRows);
 

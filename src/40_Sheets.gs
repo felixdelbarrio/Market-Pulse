@@ -222,7 +222,7 @@ function readControl_(ss) {
   return control;
 }
 
-function readAppCatalog_(ss) {
+function readAppCatalog_(ss, includeDisabled = false) {
   const sheet = ss.getSheetByName(MARKETS_CONFIG.sheets.catalog);
   if (sheet.getLastRow() <= 1) throw new Error('APP_CATALOG esta vacio. Importe el libro maestro antes de ejecutar.');
   const headers = sheet.getRange(1, 1, 1, MARKETS_CONFIG.headers.catalog.length).getValues()[0];
@@ -261,7 +261,7 @@ function readAppCatalog_(ss) {
     validateCatalogApp_(app);
     return app;
   });
-  return catalog.filter(function (app) { return app.enabled; });
+  return includeDisabled ? catalog : catalog.filter(function (app) { return app.enabled; });
 }
 
 function replaceSheetData_(sheet, headers, rows) {

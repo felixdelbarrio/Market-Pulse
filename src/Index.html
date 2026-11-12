@@ -11,7 +11,6 @@
   <?!= includeMarketsWebPartial_('BrandAssets'); ?>
   <?!= includeMarketsWebPartial_('BrandIdentity'); ?>
   <?!= includeMarketsWebPartial_('DesignSystem'); ?>
-  <?!= includeMarketsWebPartial_('ReportStyles'); ?>
   <?!= includeMarketsWebPartial_('RadarFilterStyles'); ?>
   <?!= includeMarketsWebPartial_('ReviewChartStyles'); ?>
   <?!= includeMarketsWebPartial_('RadarFilterAssets'); ?>
@@ -48,8 +47,7 @@
 
 
     <main>
-      <template id="report-control"><button id="report-button" class="button report-action" type="button" title="Descargar informe completo" aria-label="Descargar informe completo"><span aria-hidden="true">↓</span><span>Descargar informe</span></button></template>
-      <div id="print-cover" class="print-cover"><strong>Market Pulse · BBVA Banca de Empresas e Instituciones</strong><span id="print-context"></span></div>
+      <template id="report-control"><button id="report-button" class="button report-action" type="button" title="Descargar Excel" aria-label="Descargar Excel"><span aria-hidden="true">↓</span><span>Descargar Excel</span></button></template>
       <section id="view-benchmark" class="view">
         <div class="section-head"><div><span class="section-kicker">Benchmark, de aplicaciones para Banca de Empresas, en Android / iOS / Huawei</span><h2><svg class="icon" aria-hidden="true" focusable="false" width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
 <path d="M20.8 21.0898H11.2V14.6898H12.8V19.4898H19.2V10.2738L12 4.5138L4.79995 10.2738V19.4898H6.39995V21.0898H3.19995V10.0818C3.19995 9.7148 3.36395 9.3738 3.64995 9.1448L11.25 3.0648C11.691 2.7118 12.308 2.7118 12.749 3.0648L20.349 9.1448C20.635 9.3738 20.799 9.7158 20.799 10.0818L20.8 21.0898Z"/>
@@ -100,7 +98,7 @@
             <div class="panel-head"><h3>Brecha de saldo por bloque</h3></div>
             <div id="review-deltas" class="panel-body" aria-live="polite"></div>
           </section>
-          <section class="panel"><div class="panel-head"><h3 id="review-examples-title">Ejemplos del mes en curso</h3></div><div id="review-examples" class="panel-body"></div></section>
+          <section class="panel hidden" id="review-examples-panel"><div class="panel-head"><h3 id="review-examples-title">Ejemplos del mes en curso</h3></div><div id="review-examples" class="panel-body"></div></section>
       </section>
 
       <section id="view-alerts" class="view hidden">
@@ -170,6 +168,7 @@
 
       <section id="view-analytics" class="view mp-next hidden">
         <div class="section-head"><div><span class="section-kicker">Posición competitiva</span><h2><img class="radar-view-icon" src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTE5LjEwMDIgNy4xOTk5NUMxOS4xMDAyIDYuNzAyOTUgMTkuNTAzMiA2LjI5OTk1IDIwLjAwMDIgNi4yOTk5NUMyMC40OTcyIDYuMjk5OTUgMjAuOTAwMiA2LjcwMjk1IDIwLjkwMDIgNy4xOTk5NUMyMC45MDAyIDcuNjk2OTUgMjAuNDk3MiA4LjA5OTk1IDIwLjAwMDIgOC4wOTk5NUMxOS41MDMyIDguMDk5OTUgMTkuMTAwMiA3LjY5Njk1IDE5LjEwMDIgNy4xOTk5NVpNMy4yMDAyIDkuNTk5OTVIOC4wMDAyVjIxLjZIMy4yMDAyVjkuNTk5OTVaTTQuODAwMiAyMEg2LjQwMDJWMTEuMkg0LjgwMDJWMjBaTTkuNjAwMiAzLjE5OTk1SDE0LjQwMDJWMjEuNkg5LjYwMDJWMy4xOTk5NVpNMTEuMjAwMiAyMEgxMi44MDAyVjQuNzk5OTVIMTEuMjAwMlYyMFpNMTkuMjAwMiAyMEgxNy42MDAyVjYuMzk5OTVIMTYuMDAwMlYyMS42SDIwLjgwMDJWOS42OTk5NUgxOS4yMDAyVjIwWiIvPgo8L3N2Zz4K" alt="">Análisis anual</h2><p>Explora la evolución anual de las valoraciones y opiniones sobre los canales digitales de banca de empresas e instituciones. Compara tendencias y niveles de satisfacción, identifica patrones de sentimiento y profundiza en los principales indicadores, las reseñas más relevantes y la participación de los usuarios.</p></div>
+        <div class="report-slot"></div>
         <div id="analytics-filters" class="radar-filters">
           <form class="filter-panel" hidden>
             <div class="filter-field"><label for="analytics-year">Año</label><select id="analytics-year" name="year"></select></div>
@@ -193,6 +192,7 @@
       </section>
       <section id="view-reviews" class="view mp-next hidden">
         <div class="section-head"><div><span class="section-kicker">Reseñas públicas de App Store y Google Play.</span><h2><img class="radar-view-icon" src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTEyLjc5OTkgMTAuNTAwMkMxMy4yOTcgMTAuNTAwMiAxMy42OTk5IDEwLjA5NzMgMTMuNjk5OSA5LjYwMDE5QzEzLjY5OTkgOS4xMDMxNCAxMy4yOTcgOC43MDAyIDEyLjc5OTkgOC43MDAyQzEyLjMwMjggOC43MDAyIDExLjg5OTkgOS4xMDMxNCAxMS44OTk5IDkuNjAwMTlDMTEuODk5OSAxMC4wOTczIDEyLjMwMjggMTAuNTAwMiAxMi43OTk5IDEwLjUwMDJaIi8+CjxwYXRoIGQ9Ik0xNi43OTk5IDguMDAwMlYzLjIwMDJIMi4zOTk5VjE1LjAzNDJDMi4zOTk5IDE1LjUyMTIgMi42OTA5IDE1Ljk1NjIgMy4xNDA5IDE2LjE0MzJDMy4yODk5IDE2LjIwNTIgMy40NDY5IDE2LjIzNTIgMy42MDA5IDE2LjIzNTJDMy45MTI5IDE2LjIzNTIgNC4yMTc5IDE2LjExMzIgNC40NDc5IDE1Ljg4MzJMNi43MzA5IDEzLjYwMDJINy4xOTk5VjE4LjQwMDJIMTcuMjY4OUwxOS41NTE5IDIwLjY4MzJDMTkuNzgxOSAyMC45MTMyIDIwLjA4NzkgMjEuMDM1MiAyMC4zOTg5IDIxLjAzNTJDMjAuNTUzOSAyMS4wMzUyIDIwLjcwOTkgMjEuMDA1MiAyMC44NTg5IDIwLjk0MzJDMjEuMzA4OSAyMC43NTcyIDIxLjU5OTkgMjAuMzIxMiAyMS41OTk5IDE5LjgzNDJWOC4wMDAySDE2Ljc5OTlaTTYuNTY1OSAxMi4wMDAyQzYuMjQ0OSAxMi4wMDAyIDUuOTQzOSAxMi4xMjUyIDUuNzE2OSAxMi4zNTEyTDMuOTk5OSAxNC4wNjgyVjQuODAwMkgxNS4xOTk5VjEyLjAwMDJINi41NjU5Wk0xOS45OTk5IDE4Ljg2OTJMMTguMjgyOSAxNy4xNTIyQzE4LjA1NTkgMTYuOTI1MiAxNy43NTQ5IDE2LjgwMTIgMTcuNDMzOSAxNi44MDEySDguNzk5OVYxMy42MDEySDE2Ljc5OTlWOS42MDEySDE5Ljk5OTlWMTguODY5MloiLz4KPC9zdmc+Cg==" alt="">Comentarios</h2><p>Explora los comentarios sobre canales digitales de banca de empresas e instituciones, agrupadas por entidad financiera. Consulta la actualidad del mes en curso y profundiza en cualquier periodo mediante búsquedas y filtros.</p></div>
+        <div class="report-slot"></div>
         <div id="review-filters" class="radar-filters">
           <form class="filter-panel" hidden>
             <div class="filter-field"><label for="review-app">Aplicación</label><select id="review-app" name="app"></select></div>
@@ -294,7 +294,6 @@
     <footer class="footer"><span><strong>Market Pulse</strong> · BBVA Banca de Empresas e Instituciones · Ratings y valoraciones públicas</span><span id="footer-version">Contrato de datos</span></footer>
   </div>
 
-  <section id="print-report" class="print-report" aria-hidden="true"></section>
 
   <dialog id="incident-dialog"><div class="dialog-head"><h2>Incidencias de la última carga</h2><button id="dialog-close" class="dialog-close" type="button" aria-label="Cerrar"></button></div><div id="incident-list" class="incident-list"></div></dialog>
   <dialog id="admin-subscriber-dialog" class="admin-subscriber-dialog">
@@ -327,7 +326,7 @@
   <?!= includeMarketsWebPartial_('Domain'); ?>
   <?!= includeMarketsWebPartial_('Components'); ?>
   <?!= includeMarketsWebPartial_('Charts'); ?>
-  <?!= includeMarketsWebPartial_('Report'); ?>
+  <?!= includeMarketsWebPartial_('Workbook'); ?>
   <?!= includeMarketsWebPartial_('RadarFilters'); ?>
   <?!= includeMarketsWebPartial_('App'); ?>
 </body>

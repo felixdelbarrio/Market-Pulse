@@ -295,7 +295,7 @@ test("store URL sanitizer rejects native schemes and foreign domains", () => {
 });
 
 test("modular client JavaScript compiles and Index composes every layer", () => {
-  const names = ["DesignSystem", "Domain", "Components", "Charts", "Report", "RadarFilterAssets", "RadarFilters", "App"];
+  const names = ["DesignSystem", "Domain", "Components", "Charts", "Workbook", "RadarFilterAssets", "RadarFilters", "App"];
   names.forEach(name => {
     const html = fs.readFileSync(new URL(`../src/${name}.html`, import.meta.url), "utf8");
     assert.doesNotThrow(() => new Function(clientScript(html)), `${name} must compile`);
@@ -314,32 +314,10 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(index, /name="application-name" content="Market Pulse"/);
   assert.match(index, /name="apple-mobile-web-app-title" content="Market Pulse"/);
   names.forEach(name => assert.match(index, new RegExp(`includeMarketsWebPartial_\\('${name}'\\)`)));
-  assert.match(index, /includeMarketsWebPartial_\('ReportStyles'\)/);
-  assert.match(index, /id="print-report" class="print-report"/);
-  assert.match(app, /MarketsReport\.render/);
+  assert.match(app, /MarketsWorkbook\.build/);
   assert.match(app, /const request=trendRequest\(\)/);
-  assert.match(app, /view:state\.view,selection:\{\.\.\.selection\(\),app:state\.view==="evolution"\?state\.evolutionApp:""\},periodYear:state\.periodYear,periodMonth:state\.periodMonth/);
-  assert.match(app, /report-button"\)\.classList\.toggle\("hidden",!slot\)/);
-  const report = fs.readFileSync(new URL("../src/Report.html", import.meta.url), "utf8");
-  const reportStyles = fs.readFileSync(new URL("../src/ReportStyles.html", import.meta.url), "utf8");
-  assert.match(report, /La voz del mercado/);
-  assert.match(report, /Posición competitiva/);
-  assert.doesNotMatch(report, /Confianza y metodología|qualityPage|Qué sabemos y con qué nivel de certeza/);
-  assert.match(report, /if\(view==="overview"\)/);
-  assert.match(report, /else if\(view==="benchmark"\)/);
-  assert.match(report, /comparisonPage\(context,\{comparison,selection,meta,scopeLabel\}/);
-  assert.match(report, /const chart=view==="evolution"\?/);
-  assert.match(report, /monthlyPulsePage/);
-  assert.match(report, /buildMovements\(displaySeries,period\)/);
-  assert.match(report, /if\(!\["overview","benchmark","evolution"\]\.includes\(input\.view\)\)throw/);
-  assert.match(report, /const totalPages=1\+builders\.length/);
-  assert.match(report, /chunk\(benchmarkRows,12\)/);
-  assert.match(report, /chunk\(detail,12\)/);
-  assert.match(report, /input\.periodYear/);
-  assert.match(reportStyles, /width:297mm;height:210mm/);
-  assert.match(reportStyles, /report-cover/);
-  assert.match(reportStyles, /report-benchmark-table/);
-  assert.match(reportStyles, /report-monthly-table/);
+  assert.match(app, /mobileViewport\.matches\?null/);
+  assert.equal((index.match(/class="report-slot"/g)||[]).length,4);
   assert.doesNotMatch(fs.readFileSync(new URL("../src/DesignSystem.html", import.meta.url), "utf8"), /\.view,\.view\.hidden\{display:block!important/);
   assert.match(app, /target=\"_blank\"/);
   assert.match(app, /rel=\"noopener noreferrer\"/);
@@ -386,7 +364,7 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(charts, /class="new-review-unavailable"/);
   assert.doesNotMatch(charts, /platformBadge/);
   assert.match(app, /const mobileViewport=window\.matchMedia\("\(max-width:780px\)"\)/);
-  assert.match(app, /monthlyRatingMatrix\(state\.trends,state\.snapshot,\{\.\.\.selection\(\),app:state\.evolutionApp\|\|"ALL"\},period,mobileViewport\.matches\?3:6\)/);
+  assert.match(app, /monthlyRatingMatrix\(trends,state\.snapshot,\{\.\.\.selection\(\),app:state\.evolutionApp\|\|"ALL"\},period,mobileViewport\.matches\?3:6\)/);
   assert.match(app, /const compactInteger=/);
   assert.doesNotMatch(charts, /Cierre mensual|<span>\/ 5<\/span>/);
   const components = fs.readFileSync(new URL("../src/Components.html", import.meta.url), "utf8");
@@ -438,53 +416,31 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.doesNotMatch(index + app, /(?:market|itms-apps|appmarket):\/\//);
 });
 
-test("each downloadable report reproduces its current view and period", () => {
-  const browser = {};
-  browser.window = browser;
-  vm.createContext(browser);
-  ["DesignSystem", "Domain", "Components", "Charts", "Report"].forEach(name => {
-    const html = fs.readFileSync(new URL(`../src/${name}.html`, import.meta.url), "utf8");
-    vm.runInContext(clientScript(html), browser);
-  });
-  const snapshot = [
-    { appKey: "BBVA", appName: "BBVA", platform: "Android", countryCode: "MX", country: "México", segment: "BANK", isBbva: true, rating: 4.8, delta30d: 0.1, ratingCount: 1200, ratingCountDelta30d: 40, rankingComplete: true, fresh: true, volumeKey: "BBVA", volumeScope: "MARKET" },
-    { appKey: "RIVAL", appName: "Banco Rival", platform: "Android", countryCode: "MX", country: "México", segment: "BANK", isBbva: false, rating: 4.9, delta30d: -0.02, ratingCount: 800, ratingCountDelta30d: 10, rankingComplete: true, fresh: true, volumeKey: "RIVAL", volumeScope: "MARKET" }
-  ];
-  const trends = [
-    { appKey: "BBVA", appName: "BBVA", platform: "Android", countryCode: "MX", country: "México", segment: "BANK", isBbva: true, month: "2026-05", ratingEom: 4.2, ratingCountEom: 1000 },
-    { appKey: "BBVA", appName: "BBVA", platform: "Android", countryCode: "MX", country: "México", segment: "BANK", isBbva: true, month: "2026-06", ratingEom: 4.5, ratingCountEom: 1100 },
-    { appKey: "BBVA", appName: "BBVA", platform: "Android", countryCode: "MX", country: "México", segment: "BANK", isBbva: true, month: "2026-07", ratingEom: 4.99, ratingCountEom: 1200 },
-    { appKey: "RIVAL", appName: "Banco Rival", platform: "Android", countryCode: "MX", country: "México", segment: "BANK", isBbva: false, month: "2026-05", ratingEom: 4.7, ratingCountEom: 700 },
-    { appKey: "RIVAL", appName: "Banco Rival", platform: "Android", countryCode: "MX", country: "México", segment: "BANK", isBbva: false, month: "2026-06", ratingEom: 4.8, ratingCountEom: 750 },
-    { appKey: "RIVAL", appName: "Banco Rival", platform: "Android", countryCode: "MX", country: "México", segment: "BANK", isBbva: false, month: "2026-07", ratingEom: 4.9, ratingCountEom: 800 }
-  ];
-  const base = { meta: { dataDate: "2026-07-22", countries: [{ code: "MX", name: "México" }] }, snapshot, trends, benchmarkSegment: "BANK", selection: { country: "MX", platform: "Android" }, generatedAt: new Date("2026-07-22T12:00:00Z") };
-  const execute = input => {
-    const target = { innerHTML: "", setAttribute() {} };
-    const result = browser.MarketsReport.render({ ...base, ...input, target });
-    return { result: JSON.parse(JSON.stringify(result)), html: target.innerHTML };
-  };
-  const overview = execute({ view: "overview", periodYear: "2026", periodMonth: "05" });
-  assert.equal(overview.result.period, "2026-07");
-  assert.equal(overview.result.pages, 5);
-  assert.match(overview.html, /Resumen ejecutivo/);
-  assert.match(overview.html, /Rating actual por plataforma/);
-  assert.match(overview.html, /Detalle operativo por store/);
-  const benchmark = execute({ view: "benchmark" });
-  assert.equal(benchmark.result.rows.benchmark, 2);
-  assert.match(benchmark.html, /Ranking completo del mercado/);
-  assert.match(benchmark.html, /BBVA Empresas/);
-  assert.match(benchmark.html, /Banco Rival/);
-  const evolution = execute({ view: "evolution", periodYear: "2026", periodMonth: "06" });
-  assert.equal(evolution.result.period, "2026-06");
-  assert.equal(evolution.result.pages, 4);
-  assert.equal(evolution.result.rows.monthly, 1);
-  assert.equal(evolution.result.rows.newReviewImpact, 1);
-  assert.match(evolution.html, /Pulso mensual de BBVA Empresas/);
-  assert.match(evolution.html, /Qué nota dejan las nuevas opiniones/);
-  assert.match(evolution.html, /4,50/);
-  assert.doesNotMatch(evolution.html, /4,99/);
-  assert.throws(() => execute({ view: "alerts" }), /no admite descarga/i);
+test("Excel export keeps filters, numeric ratings and chart references and omits empty sections", async () => {
+  const browser = { window: {}, Blob, TextEncoder };
+  const html = fs.readFileSync(new URL("../src/Workbook.html", import.meta.url), "utf8");
+  vm.runInNewContext(clientScript(html), browser);
+  const filters = [["Geografía", "España"], ["Desde", "2026-01-01"]];
+  const result = browser.window.MarketsWorkbook.build([
+    { name: "Mapa de calor", filters, header: ["Entidad", "Acceso"], rows: [] },
+    { name: "Rating mensual", filters, header: ["Mes", "Android"], rows: [["2026-01", 4.8], ["2026-02", null]], chart: true },
+    { name: "Comentarios", filters, header: ["Comentario"], rows: [["=2+2 <texto>"]] }
+  ]);
+  const bytes = Buffer.from(await result.arrayBuffer()), entries = new Map();
+  for (let offset = 0; bytes.readUInt32LE(offset) === 0x04034b50;) {
+    const length = bytes.readUInt32LE(offset + 18);
+    const nameLength = bytes.readUInt16LE(offset + 26);
+    const start = offset + 30 + nameLength;
+    entries.set(bytes.toString("utf8", offset + 30, start), bytes.toString("utf8", start, start + length));
+    offset = start + length;
+  }
+  assert.doesNotMatch(entries.get("xl/workbook.xml"), /Mapa de calor/);
+  assert.match(entries.get("xl/worksheets/sheet2.xml"), /España/);
+  assert.match(entries.get("xl/worksheets/sheet2.xml"), /<c r="B5"><v>4.8<\/v><\/c>/);
+  assert.doesNotMatch(entries.get("xl/worksheets/sheet2.xml"), /r="B6"/);
+  assert.match(entries.get("xl/charts/chart2.xml"), /&apos;Rating mensual&apos;!\$B\$5:\$B\$6/);
+  assert.match(entries.get("xl/worksheets/sheet3.xml"), /t="inlineStr".*?=2\+2 &lt;texto&gt;/);
+  assert.throws(() => browser.window.MarketsWorkbook.build([]), /No hay datos/);
 });
 
 test("client domain deduplicates shared Android volumes and excludes competitors", () => {
@@ -712,7 +668,7 @@ test("evolution includes all apps by default and supports filtering by app", () 
   assert.deepEqual(Array.from(browser.MarketsDomain.selectionRows(snapshot, { country: "MX", platform: "ALL" }, "FINTECH", true), row => row.appKey), ["BBVA", "MP"]);
   const app = fs.readFileSync(new URL("../src/App.html", import.meta.url), "utf8");
   assert.match(app, /function trendRequest\(\)\{return\{[^}]*segment:"ALL"/);
-  assert.match(app, /function activeTrendRows\(\)\{return D\.trendRows\(withPublishedRatings\(state\.trends,selection\(\)\),\{\.\.\.selection\(\),app:state\.evolutionApp\}\)\}/);
+  assert.match(app, /function activeTrendRows\(trends\)\{return D\.trendRows\(trends,\{\.\.\.selection\(\),app:state\.evolutionApp\}\)\}/);
   assert.doesNotMatch(app, /activeTrendRows\(\).*benchmarkSegment/);
 });
 
