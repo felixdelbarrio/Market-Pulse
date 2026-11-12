@@ -354,9 +354,9 @@ function processMarketsReviewTranslations_(historical) {
 }
 
 const MARKETS_DEFAULT_REVIEW_SEGMENTS = [
-  { id: 'DETRACTOR', label: 'Detractores', stars: [1, 2] },
-  { id: 'NEUTRAL', label: 'Neutros', stars: [3] },
-  { id: 'PROMOTER', label: 'Promotores', stars: [4, 5] }
+  { id: 'DETRACTOR', label: 'Detractores', stars: [1, 2, 3] },
+  { id: 'NEUTRAL', label: 'Neutros', stars: [4] },
+  { id: 'PROMOTER', label: 'Promotores', stars: [5] }
 ];
 
 function getMarketsReviewSegments() {
