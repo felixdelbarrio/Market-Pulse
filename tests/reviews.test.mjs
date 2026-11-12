@@ -529,3 +529,21 @@ test("monthly sentiment filters gaps and examples while balance and baseline kee
     assert.deepEqual(Array.from(result.examples, item=>item.review.key),[key]);
   }
 });
+
+
+test("compact review source keeps counts, repeat authors and full records eligible for cards", () => {
+  const common = { entities: ["BBVA Empresas"], blocks: ["01"], author:"Ana", reply: "Gracias", original: "Transferencia pendiente" };
+  const rows = [
+    { ...common, key: "old", date: "2026-01-03", rating: 2, helpful: 0 },
+    { ...common, key: "helpful", date: "2026-01-04", rating: 2, helpful: 10 },
+    { ...common, key: "recent", date: "2026-11-01", rating: 2, helpful: 0 }
+  ];
+  const window = { start: "2026-01-01", recent: "2026-11-01", end: "2026-11-11" };
+  const filters = { analysisMonth: "2026-11", segment: "DETRACTOR", entity: "BBVA Empresas" };
+  const compact = api.compactMarketsReviewAnalyticsRows_(rows, window.end);
+  assert.equal(compact[0].original, undefined);
+  assert.equal(compact[1], rows[1]);
+  assert.equal(compact[2], rows[2]);
+  const summarize = data => api.summarizeMarketsReviewAnalytics_(data, { "01": "Transferencias" }, filters, window);
+  assert.deepEqual(summarize(compact), summarize(rows));
+});

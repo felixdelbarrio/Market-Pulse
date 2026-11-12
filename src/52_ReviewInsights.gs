@@ -397,7 +397,8 @@ function publishMarketsReviewSnapshot_() {
     const sourceRange = { start: (Number(year) - 1) + '-01-01', end };
     const query = { country, platform: 'ALL', start: sourceRange.start };
     const sourceKey = marketsReviewAnalyticsSourceKey_(ss, query, sourceRange, versions);
-    writeMarketsWebCache_(cache, sourceKey, { rows: scoped.filter(row => row.date >= sourceRange.start), topics }, 12);
+    writeMarketsWebCache_(cache, sourceKey, { rows: compactMarketsReviewAnalyticsRows_(
+      scoped.filter(row => row.date >= sourceRange.start), end), topics }, 12);
     for (const dateFilter of [{ year }, { analysisMonth }]) {
       const filters = normalizeMarketsReviewFilters_({ country, ...dateFilter, segment: 'DETRACTOR', entity: MARKETS_REVIEW_ENTITY });
       const window = marketsReviewAnalyticsWindow_(filters, end);
@@ -523,7 +524,8 @@ function getMarketsReviewAnalytics(filters) {
     const key = marketsReviewAnalyticsSourceKey_(ss, query, range, versions);
     const { rows, topics } = readMarketsWebCache_(key, () => {
       timing.source = 'sheet';
-      return { rows: queryMarketsReviews_(ss, query, range, true, catalog), topics: marketsReviewTopics_(ss) };
+      const rows = queryMarketsReviews_(ss, query, range, true, catalog);
+      return { rows: compactMarketsReviewAnalyticsRows_(rows, range.end), topics: marketsReviewTopics_(ss) };
     }, 12);
     timing.source = timing.source || 'cache';
     return buildMarketsReviewAnalytics_(rows.filter(row => row.date >= start), topics, filters, window);
@@ -569,8 +571,18 @@ function buildMarketsReviewAnalytics_(rows, topics, filters, window) {
   return result;
 }
 
+/** Preserve the full records eligible for examples or helpful-review cards. */
+function compactMarketsReviewAnalyticsRows_(rows, end) {
+  const examplesStart = shiftReviewDay_(end, -30);
+  return rows.map(row => {
+    if (row.date >= examplesStart || (Number.isInteger(row.helpful) && row.helpful >= MARKETS_REVIEW_HELPFUL_MIN)) return row;
+    return { date: row.date, rating: row.rating, entities: row.entities, blocks: row.blocks,
+      author: row.author, reply: row.reply?.trim() ? '1' : '' };
+  });
+}
+
 function marketsReviewAnalyticsSourceKey_(ss, query, range, versions) {
-  return marketsReviewCacheKey_(ss, 'analytics-source', query, range, versions);
+  return marketsReviewCacheKey_(ss, 'analytics-source-compact', query, range, versions);
 }
 
 function marketsReviewCacheKey_(ss, operation, filters, window, versions) {
