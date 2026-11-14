@@ -1,3 +1,17 @@
+const MARKETS_FUNCTIONAL_ALIASES = 'FUNCTIONAL_EQUIVALENCES';
+const MARKETS_FUNCTIONAL_ALIAS_HEADERS = ['id', 'aliases'];
+const MARKETS_FUNCTIONAL_TRANSLATIONS = 'FUNCTIONAL_TRANSLATIONS';
+const MARKETS_FUNCTIONAL_TRANSLATION_HEADERS = ['language', 'original', 'translated'];
+const MARKETS_FUNCTIONAL_JOB = 'MARKETS_FUNCTIONAL_JOB';
+
+function marketsBusinessAliases_(ss) {
+  const sheet = ss.getSheetByName(MARKETS_FUNCTIONAL_ALIASES);
+  if (!sheet || sheet.getLastRow() < 2) return {};
+  requireCurrentSheetContract_(ss, MARKETS_FUNCTIONAL_ALIASES, MARKETS_FUNCTIONAL_ALIAS_HEADERS);
+  return Object.fromEntries(sheet.getRange(2, 1, sheet.getLastRow() - 1, 2).getDisplayValues()
+    .map(([id, value]) => [id, value.split('\n').filter(Boolean)]));
+}
+
 const MARKETS_FUNCTIONAL_MASTER = '1hsFp-ZiiSsSt_ka73oKAWFlHEySdmJM_IrkBmK6YfH8';
 const MARKETS_FUNCTIONAL_TABS = ['Soluciones Funcionales', 'Capacidades canal (core y VD)'];
 const MARKETS_REVIEW_PAYROLL = /\b(?:(?:pagos?|remesas?|transferencias) de (?:las? )?nominas?(?!\w| (?:en|a) mi cuenta)|(?:pago|pagar|procesar) (?:la )?nomina (?:de|a|para) (?:mis |nuestros )?empleados|(?:pagar|procesar) (?:las? )?nominas|payroll processing|paying (?:my |our )?employees|calisanlar\w* maas\w*|personel maas\w*|folha de pagamento)\b/u;
@@ -166,13 +180,13 @@ function marketsReviewRankTerms_(words) {
   return words.map(marketsReviewRankWord_).filter(word => word.length > 2 && !MARKETS_REVIEW_RANK_STOP.has(word));
 }
 
-function compileReviewRules_(catalog) {
+function compileReviewRules_(catalog, aliases = {}) {
   const literal = new Map(), semantic = new Map(), df = new Map();
   const entries = catalog.map(([id, , name, description]) => {
     const [terms, required, excluded] = MARKETS_REVIEW_RULES[id] || [[], [], []];
     const context = required.map(normalizeReviewEvidence_).filter(Boolean);
     const exclude = excluded.map(normalizeReviewEvidence_).filter(Boolean);
-    const phrases = [...new Set([name, ...terms].map(normalizeReviewEvidence_))]
+    const phrases = [...new Set([name, ...terms, ...(aliases[id] || [])].map(normalizeReviewEvidence_))]
       .filter(phrase => phrase && (phrase.includes(' ') || context.length));
     const descriptive = new Set(marketsReviewRankTerms_(normalizeReviewEvidence_(description).split(' ')));
     const words = new Set([...descriptive, ...marketsReviewRankTerms_(phrases.join(' ').split(' '))]);
@@ -294,7 +308,7 @@ function classifyMarketsReviewAudience_(normalized, ids, knownBlocks) {
   const evidence = {};
   for (const [key, pattern] of MARKETS_REVIEW_AUDIENCE_PATTERNS) evidence[key] = pattern.exec(normalized)?.[0] || '';
   if (!evidence.salaryReceived || /\b(?:empleados|proveedores)\b/.test(normalized)) {
-    evidence.direct ||= MARKETS_REVIEW_PAYROLL.exec(normalized)?.[0] || '';
+    if (!evidence.direct) evidence.direct = MARKETS_REVIEW_PAYROLL.exec(normalized)?.[0] || '';
   }
   const direct = evidence.direct && !evidence.negatedBusiness;
   const conflict = direct && evidence.retail;
@@ -314,6 +328,9 @@ function matchesMarketsReviewAudience_(filter, decision) {
 function syncMarketsFunctionalCatalog_() {
   const lock = LockService.getUserLock();
   if (!lock.tryLock(1000)) return { deferred: true };
+  const properties = PropertiesService.getScriptProperties();
+  const started = Date.now();
+  const requested = properties.getProperty('MARKETS_FUNCTIONAL_SYNC_REQUEST');
   try {
     const ss = openMarketsSpreadsheet_(), master = SpreadsheetApp.openById(MARKETS_FUNCTIONAL_MASTER);
     const seen = new Set(), rows = [];
@@ -336,12 +353,11 @@ function syncMarketsFunctionalCatalog_() {
     }
     if (!rows.length) throw new Error('Catálogo funcional vacío.');
     rows.sort((a, b) => a[0].localeCompare(b[0]));
-    const properties = PropertiesService.getScriptProperties();
     const revision = Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, JSON.stringify(rows)));
     const existing = ss.getSheetByName('FUNCTIONAL_CATALOG');
     const changed = !existing || properties.getProperty('MARKETS_FUNCTIONAL_REVISION') !== revision;
     if (changed) {
-      const sheet = existing || ss.insertSheet('FUNCTIONAL_CATALOG');
+      const sheet = existing ? requireCurrentSheetContract_(ss, 'FUNCTIONAL_CATALOG', MARKETS_FUNCTIONAL_HEADERS) : ss.insertSheet('FUNCTIONAL_CATALOG');
       const previous = sheet.getLastRow();
       ensureSheetCapacity_(sheet, rows.length + 1, 4);
       sheet.getRange(1, 1, rows.length + 1, 4).setNumberFormat('@')
@@ -351,21 +367,147 @@ function syncMarketsFunctionalCatalog_() {
       SpreadsheetApp.flush();
       properties.setProperty('MARKETS_FUNCTIONAL_REVISION', revision);
     }
-    properties.setProperty('MARKETS_FUNCTIONAL_SYNCED', new Date().toISOString());
+    properties.setProperties({ MARKETS_FUNCTIONAL_SYNCED: new Date().toISOString(),
+      MARKETS_FUNCTIONAL_SYNC_STATUS: JSON.stringify({ status: 'Completado', durationMs: Date.now() - started, functions: rows.length, changed }) });
+    if (requested && properties.getProperty('MARKETS_FUNCTIONAL_SYNC_REQUEST') === requested) {
+      properties.deleteProperty('MARKETS_FUNCTIONAL_SYNC_REQUEST');
+    }
     return { changed, functions: rows.length };
+  } catch (error) {
+    properties.setProperty('MARKETS_FUNCTIONAL_SYNC_STATUS', JSON.stringify({ status: 'Reintento pendiente',
+      durationMs: Date.now() - started, error: errorToString_(error).slice(0, 180), retryAt: Date.now() + 3600000 }));
+    throw error;
   } finally {
     lock.releaseLock();
   }
 }
 
+// Like News Radar: revision-bound checkpoint, reuse translations by original text,
+// short quota-aware batches, and leave the original visible until its label is ready.
+function advanceMarketsFunctionalCatalog_() {
+  const properties = PropertiesService.getScriptProperties();
+  const today = Utilities.formatDate(new Date(), MARKETS_CONFIG.timeZone, 'yyyy-MM-dd');
+  const sync = safeJsonParse_(properties.getProperty('MARKETS_FUNCTIONAL_SYNC_STATUS')) || {};
+  const last = properties.getProperty('MARKETS_FUNCTIONAL_SYNCED');
+  if ((properties.getProperty('MARKETS_FUNCTIONAL_SYNC_REQUEST') || !last ||
+      Utilities.formatDate(new Date(last), MARKETS_CONFIG.timeZone, 'yyyy-MM-dd') !== today) &&
+      !(sync.retryAt > Date.now())) {
+    try { syncMarketsFunctionalCatalog_(); }
+    catch (error) { console.warn('Catálogo funcional: ' + errorToString_(error)); }
+    return;
+  }
+  const revision = properties.getProperty('MARKETS_FUNCTIONAL_REVISION');
+  const previous = safeJsonParse_(properties.getProperty(MARKETS_FUNCTIONAL_JOB));
+  if (!revision || (previous?.revision === revision && (previous.status === 'Completado' || previous.retryAt > Date.now())) ||
+      Number(properties.getProperty(MARKETS_TRANSLATION_QUOTA_RETRY_KEY)) > Date.now()) return;
+  const lock = LockService.getUserLock();
+  if (!lock.tryLock(1000)) return;
+  const started = Date.now();
+  const job = previous?.revision === revision ? previous : { revision, done: 0, total: 0, day: previous?.day, calls: previous?.calls || 0 };
+  try {
+    const ss = openMarketsSpreadsheet_();
+    const catalog = requireCurrentSheetContract_(ss, 'FUNCTIONAL_CATALOG', MARKETS_FUNCTIONAL_HEADERS);
+    const originals = [...new Set(catalog.getRange(2, 2, catalog.getLastRow() - 1, 2).getDisplayValues().flat().filter(Boolean))].sort();
+    const languages = ['en', 'tr'];
+    job.total = originals.length * languages.length;
+    if (job.day !== today) { job.day = today; job.calls = 0; }
+    const existing = ss.getSheetByName(MARKETS_FUNCTIONAL_TRANSLATIONS);
+    const sheet = existing ? requireCurrentSheetContract_(ss, MARKETS_FUNCTIONAL_TRANSLATIONS, MARKETS_FUNCTIONAL_TRANSLATION_HEADERS)
+      : ss.insertSheet(MARKETS_FUNCTIONAL_TRANSLATIONS);
+    if (!existing) sheet.getRange(1, 1, 1, 3).setValues([MARKETS_FUNCTIONAL_TRANSLATION_HEADERS]);
+    const lastRow = sheet.getLastRow();
+    const rows = lastRow > 1 ? sheet.getRange(2, 1, lastRow - 1, 3).getDisplayValues() : [];
+    const known = new Set(rows.map(([lang, original]) => JSON.stringify([lang, original])));
+    const batch = [];
+    let cursor = job.done;
+    let failure;
+    try {
+      while (cursor < job.total && batch.length < 20 && job.calls < 100 && Date.now() - started < 10000) {
+        const original = originals[Math.floor(cursor / languages.length)], language = languages[cursor % languages.length];
+        if (!known.has(JSON.stringify([language, original]))) {
+          job.calls++;
+          const translated = String(LanguageApp.translate(original, 'es', language) || '').trim();
+          if (!translated) throw new Error('Traducción vacía.');
+          batch.push([language, original, translated].map(marketsReviewLiteral_));
+        }
+        cursor++;
+      }
+    } catch (error) { failure = error; }
+    if (batch.length) {
+      ensureSheetCapacity_(sheet, lastRow + batch.length, 3);
+      sheet.getRange(lastRow + 1, 1, batch.length, 3).setValues(batch);
+      SpreadsheetApp.flush();
+    }
+    job.done = cursor;
+    job.status = cursor === job.total ? 'Completado' : job.calls >= 100 ? 'En pausa por límite diario' : 'Pendiente';
+    job.error = '';
+    job.retryAt = 0;
+    if (failure) throw failure;
+  } catch (error) {
+    job.status = 'Reintento pendiente';
+    job.error = errorToString_(error).slice(0, 180);
+    job.retryAt = Date.now() + 3600000;
+    if (/quota|cuota|too many times|limit exceeded/i.test(job.error)) {
+      properties.setProperty(MARKETS_TRANSLATION_QUOTA_RETRY_KEY, String(job.retryAt));
+    }
+  } finally {
+    job.updatedAt = new Date().toISOString();
+    job.durationMs = Date.now() - started;
+    try { properties.setProperty(MARKETS_FUNCTIONAL_JOB, JSON.stringify(job)); }
+    finally { lock.releaseLock(); }
+  }
+}
+
+function marketsFunctionalJobStatus_() {
+  const properties = PropertiesService.getScriptProperties();
+  const synced = properties.getProperty('MARKETS_FUNCTIONAL_SYNCED');
+  const sync = safeJsonParse_(properties.getProperty('MARKETS_FUNCTIONAL_SYNC_STATUS')) || {};
+  const translation = safeJsonParse_(properties.getProperty(MARKETS_FUNCTIONAL_JOB)) || {};
+  return [
+    { name: 'Catálogo global de funcionalidades', status: sync.status || (synced ? 'Completado' : 'Sin ejecución registrada'),
+      updatedAt: synced, error: sync.error, retryAt: sync.retryAt, durationMs: sync.durationMs },
+    { name: 'Traducción del catálogo funcional', status: translation.status || 'Pendiente',
+      updatedAt: translation.updatedAt, error: translation.error, retryAt: translation.retryAt, durationMs: translation.durationMs,
+      done: translation.done, total: translation.total }
+  ];
+}
+
+function marketsFunctionalTranslations_(ss, language) {
+  const sheet = language !== 'es' && ss.getSheetByName(MARKETS_FUNCTIONAL_TRANSLATIONS);
+  if (!sheet || sheet.getLastRow() < 2) return new Map();
+  requireCurrentSheetContract_(ss, MARKETS_FUNCTIONAL_TRANSLATIONS, MARKETS_FUNCTIONAL_TRANSLATION_HEADERS);
+  return new Map(sheet.getRange(2, 1, sheet.getLastRow() - 1, 3).getDisplayValues()
+    .filter(row => row[0] === language).map(([, original, translated]) => [original, translated]));
+}
+
+function localizeMarketsReviewTopics_(ss, data, language) {
+  const names = marketsFunctionalTranslations_(ss, language || 'es');
+  if (!names.size) return data;
+  const topics = Object.fromEntries(Object.entries(data.topics).map(([id, name]) => [id, names.get(name) || name]));
+  return { ...data, topics, ...(data.deltas ? { deltas: data.deltas.map(row => ({ ...row, label: topics[row.id] || row.label })) } : {}) };
+}
+
+function queueMarketsFunctionalCatalogEdit_(event) {
+  const range = event?.range;
+  if (!range || !MARKETS_FUNCTIONAL_TABS.includes(range.getSheet().getName()) || range.getColumn() > 6) return;
+  PropertiesService.getScriptProperties().setProperty('MARKETS_FUNCTIONAL_SYNC_REQUEST', Utilities.getUuid());
+}
+
 function setupMarketsReviewInsights() {
   requireMarketsReviewOwner_();
-  const result = syncMarketsFunctionalCatalog_();
-  if (!ScriptApp.getProjectTriggers().some(trigger => trigger.getHandlerFunction() === 'syncMarketsFunctionalCatalog_')) {
-    ScriptApp.newTrigger('syncMarketsFunctionalCatalog_').timeBased().everyDays(1).atHour(10)
-      .inTimezone('Europe/Madrid').create();
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(5000)) return { deferred: true };
+  try {
+    const triggers = ScriptApp.getProjectTriggers();
+    if (!triggers.some(trigger => trigger.getHandlerFunction() === 'queueMarketsFunctionalCatalogEdit_' &&
+        trigger.getTriggerSourceId() === MARKETS_FUNCTIONAL_MASTER)) {
+      ScriptApp.newTrigger('queueMarketsFunctionalCatalogEdit_').forSpreadsheet(MARKETS_FUNCTIONAL_MASTER).onEdit().create();
+    }
+    PropertiesService.getScriptProperties().setProperty('MARKETS_FUNCTIONAL_SYNC_REQUEST', Utilities.getUuid());
+    return { queued: true };
+  } finally {
+    lock.releaseLock();
   }
-  return result;
 }
 
 function getMarketsReviewHeatmap(filters) {
@@ -451,7 +593,7 @@ function marketsReviewCatalogVersion_(catalog) {
 }
 
 function marketsReviewVersions_(properties, catalogVersion) {
-  return [properties.MARKETS_REVIEWS_GENERATION || '', properties.MARKETS_FUNCTIONAL_REVISION || '', catalogVersion];
+  return [properties.MARKETS_REVIEWS_GENERATION || '', properties.MARKETS_FUNCTIONAL_REVISION || '', catalogVersion, ...(properties.MARKETS_FUNCTIONAL_ALIASES_REVISION ? [properties.MARKETS_FUNCTIONAL_ALIASES_REVISION] : [])];
 }
 
 function marketsReviewSnapshotScope_(operation, filters, window) {
@@ -570,7 +712,7 @@ function getMarketsReviewPage(filters) {
     }
     return page;
   }, timing);
-  return { ...page, timing: { ...timing, durationMs: Date.now() - requestStarted } };
+  return { ...localizeMarketsReviewTopics_(ss, page, filters.language), timing: { ...timing, durationMs: Date.now() - requestStarted } };
 }
 
 /** Descarga la selección completa con los mismos filtros y permisos que Comentarios. */
@@ -582,7 +724,7 @@ function getMarketsReviewExport(filters) {
   const window = marketsReviewWindow_(filters);
   if (filters.start && filters.start < window.start) window.start = filters.start;
   const rows = queryMarketsReviews_(ss, filters, window);
-  return { rows, topics: marketsReviewTopics_(ss), window };
+  return localizeMarketsReviewTopics_(ss, { rows, topics: marketsReviewTopics_(ss), window }, filters.language);
 }
 
 function normalizeMarketsReviewFilters_(filters) {
@@ -668,7 +810,7 @@ function getMarketsReviewAnalytics(filters) {
     return { ...review, text: translated || review.original, translated: Boolean(translated && translated !== review.original) };
   }
   return {
-    ...data,
+    ...localizeMarketsReviewTopics_(ss, data, language),
     timing: { ...timing, durationMs: Date.now() - requestStarted },
     examples: data.examples.map(({ block, review }) => ({ block, review: localizeReview(review) })),
     annual: { ...data.annual, topHelpful: data.annual.topHelpful.map(localizeReview),
