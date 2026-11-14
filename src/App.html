@@ -1555,7 +1555,7 @@
       root.onclick=async event=>{
         const button=event.target.closest("[data-run-job]");
         if(!button||runningPanelJob)return;
-        if(button.dataset.runJob==="ratings"){await requestAdminRatingRecovery();return;}
+        if(button.dataset.runJob==="ratings"){runningPanelJob=true;try{await requestAdminRatingRecovery();}finally{runningPanelJob=false}return;}
         runningPanelJob=true;
         const result=$("admin-jobs-result");
         button.disabled=true;
@@ -1588,7 +1588,7 @@
           <label>Zona horaria <input name="timeZone" value="${U.esc(settings.timeZone||system.timeZone)}" required></label>
           <button class="alert-button secondary" type="submit">Guardar</button></fieldset></form>`;
       });
-      const labels={telemetry:"Telemetría",executions:"Ejecuciones",backups:"Backups",captures:"Capturas",alerts:"Alertas"};
+      const labels={telemetry:"Telemetría",executions:"Ejecuciones",backups:"Backups",captures:"Capturas",alerts:"Alertas",experience:"Incidencias de experiencia"};
       const folders=Object.entries(operations.folders||{}).map(([kind,id])=>`<form data-job-action="folder" data-id="${U.esc(kind)}">
         <label>${U.esc(labels[kind])} <input name="folder" value="${U.esc(id)}" required></label>
         <button class="alert-button secondary" type="submit">Guardar</button></form>`);

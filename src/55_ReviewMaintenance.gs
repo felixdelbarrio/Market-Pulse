@@ -3,7 +3,8 @@ const MARKETS_STORAGE_DEFAULTS = Object.freeze({
   executions: '1KZAZKCJnDM8KhXlVd2RK7CsfHTBFcasc',
   backups: '1iU5uOmK5bR2RPodxbwCxDkzSkIbWJ-2d',
   captures: '1Pkd_EHftNWYBeb5ren_n-UQlJIG3LZTm',
-  alerts: '17Efjh8-PLL1-TiilfRBLXpbZ3AO1L6jM'
+  alerts: '17Efjh8-PLL1-TiilfRBLXpbZ3AO1L6jM',
+  experience: '1CHGxHEF4KBhiLI7PA0cGrorp7y0zUrfG'
 });
 const MARKETS_BACKUP_PROPERTY = 'MARKETS_MONTHLY_BACKUP';
 
@@ -78,7 +79,11 @@ function advanceMarketsMonthlyBackup_(now = new Date(), manual = false) {
 }
 
 const MARKETS_MAINTENANCE_PROPERTY = 'MARKETS_REVIEW_MAINTENANCE';
-const MARKETS_LOG_ARCHIVE_DAYS = 180;
+const MARKETS_LOG_RETENTION = 'MARKETS_LOG_RETENTION_DAYS';
+
+function marketsLogRetentionDays_(properties) {
+  return Number(properties.getProperty(MARKETS_LOG_RETENTION)) || 15;
+}
 
 function advanceMarketsReviewMaintenance_(now = new Date(), manual = false) {
   const properties = PropertiesService.getScriptProperties();
@@ -121,7 +126,7 @@ function advanceMarketsReviewMaintenance_(now = new Date(), manual = false) {
 
 /** Archive bounded, aggregate-only samples. Source logs remain available for existing reports. */
 function archiveMarketsOperationalLogs_(ss, properties, now) {
-  const cutoff = now.getTime() - MARKETS_LOG_ARCHIVE_DAYS * 86400000;
+  const cutoff = now.getTime() - marketsLogRetentionDays_(properties) * 86400000;
   const folders = marketsStorageFolders_(properties);
   const tables = [
     ['runs', 'executions', [0, 2, 3, 4, 5, 6, 7, 9]],
@@ -137,14 +142,14 @@ function archiveMarketsOperationalLogs_(ss, properties, now) {
     const next = Number(properties.getProperty(property)) || 2;
     const count = Math.min(100, sheet.getLastRow() - next + 1);
     if (count <= 0) continue;
-    const rows = sheet.getRange(next, 1, count, headers.length).getDisplayValues();
+    const rows = sheet.getRange(next, 1, count, headers.length).getValues();
     const firstCurrent = rows.findIndex(row => !(Date.parse(row[0]) < cutoff));
     const eligible = firstCurrent < 0 ? rows : rows.slice(0, firstCurrent);
     if (!eligible.length) continue;
     const material = JSON.stringify({ origin: ss.getId(), table: name, firstRow: next,
       headers: columns.map(column => headers[column]), rows: eligible.map(row => columns.map(column => row[column])) });
     const digest = marketsReviewDigest_(material).slice(0, 18);
-    const filename = name + '-' + next + '-' + digest + '.json';
+    const filename = Utilities.formatDate(now, MARKETS_CONFIG.timeZone, 'yyyy-MM-dd') + '-' + name + '-' + next + '-' + digest + '.json';
     const folder = DriveApp.getFolderById(folders[folderKind]);
     const matches = folder.getFilesByName(filename);
     const file = matches.hasNext() ? matches.next() : folder.createFile(filename, material, MimeType.PLAIN_TEXT);
