@@ -587,7 +587,7 @@ function getMarketsReviewHeatmap(filters) {
 }
 
 const MARKETS_REVIEW_ENTITY = 'BBVA Empresas';
-const MARKETS_REVIEW_SNAPSHOT_SCHEMA = 10;
+const MARKETS_REVIEW_SNAPSHOT_SCHEMA = 11;
 const MARKETS_REVIEW_HELPFUL_MIN = 5;
 const MARKETS_REVIEW_PAGE_SIZE = 25;
 
@@ -876,6 +876,15 @@ function marketsReviewAnalyticsWindow_(filters, today) {
 function buildMarketsReviewAnalytics_(rows, topics, filters, window) {
   const annual = filters.year ? { start: window.start, end: window.end } : marketsAnnualReviewWindow_(window);
   const result = summarizeMarketsReviewAnalytics_(rows, topics, filters, window, annual);
+  if (filters.analysisMonth && filters.inferGeography !== 'NO' && filters.country !== 'ALL' && filters.country !== 'UNKNOWN') {
+    result.inferredAndroidVolumes = {};
+    for (const row of rows) {
+      if (row.date.slice(0, 7) !== filters.analysisMonth || !row.volumeKey ||
+          !row.attributionMethod?.startsWith('review_evidence_') ||
+          (filters.entity !== 'ALL' && !row.entities.includes(filters.entity))) continue;
+      result.inferredAndroidVolumes[row.volumeKey] = (result.inferredAndroidVolumes[row.volumeKey] || 0) + 1;
+    }
+  }
   if (filters.year) {
     const previousYear = String(Number(filters.year) - 1);
     const priorRows = rows.filter(row => row.date.startsWith(previousYear + '-'));
@@ -905,7 +914,8 @@ function compactMarketsReviewAnalyticsRows_(rows, end) {
   return rows.map(row => {
     if (authorSamples.has(row) || row.date >= examplesStart || (Number.isInteger(row.helpful) && row.helpful >= MARKETS_REVIEW_HELPFUL_MIN)) return row;
     return { date: row.date, rating: row.rating, entities: row.entities, blocks: row.blocks,
-      author: row.author, reply: row.reply?.trim() ? '1' : '' };
+      author: row.author, reply: row.reply?.trim() ? '1' : '',
+      ...(row.attributionMethod?.startsWith('review_evidence_') ? { volumeKey: row.volumeKey, attributionMethod: row.attributionMethod } : {}) };
   });
 }
 

@@ -1052,16 +1052,17 @@ function saveMarketsNewsletterInteraction(token) {
   }
 }
 
-function getMarketsNewsletterInteractions(kind, period) {
+function getMarketsNewsletterInteractions(kind, period, vote, status) {
   const { ss } = requireMarketsAdministrator_();
   if (!['access', 'feedback'].includes(kind) || (period && !/^\d{4}-(?:0[1-9]|1[0-2])$/.test(period))) throw new Error('Filtro no válido.');
+  if ((vote && !['positive', 'negative'].includes(vote)) || (status && !['pendiente', 'atendido'].includes(status))) throw new Error('Filtro no válido.');
   const name = MARKETS_NEWSLETTER_INTERACTIONS;
   const sheet = ss.getSheetByName(name);
   if (!sheet) return { total: 0, positive: 0, negative: 0, rows: [] };
   requireCurrentSheetContract_(ss, name, MARKETS_NEWSLETTER_INTERACTION_HEADERS);
   const last = sheet.getLastRow();
   const rows = last > 1 ? sheet.getRange(2, 1, last - 1, 5).getValues() : [];
-  const selected = rows.filter(row => (kind === 'access') === (row[2] === 'open') && (!period || row[1] === period));
+  const selected = rows.filter(row => (kind === 'access') === (row[2] === 'open') && (!period || row[1] === period) && (!vote || row[2] === vote) && (!status || row[4] === status));
   return { total: selected.length, positive: selected.filter(row => row[2] === 'positive').length,
     negative: selected.filter(row => row[2] === 'negative').length,
     rows: selected.sort((a, b) => new Date(b[3]) - new Date(a[3])).slice(0, 100)

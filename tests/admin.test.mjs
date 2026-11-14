@@ -258,3 +258,30 @@ test("unified supervisor waits for the migration day, then dispatches each sched
   for(let i=0;i<4;i++)runtime.advanceMarketsScheduledOperations_(first);
   assert.deepEqual(calls,["ratings","newsletter","health"]);
 });
+
+test("log archive verifies complete rows and refuses deletion if the sheet changes", () => {
+  const entries = new Map(), files = new Map();
+  let nextId=0, changed=false, deleted=0;
+  const runtime=vm.createContext({
+    safeJsonParse_:value=>JSON.parse(value||"null"), marketsReviewDigest_:s=>s,
+    MARKETS_CONFIG:{timeZone:"Europe/Madrid"},Utilities:{formatDate:()=>"2026-11-14"},
+    MimeType:{PLAIN_TEXT:"text/plain"},SpreadsheetApp:{flush(){}},
+    DriveApp:{getFileById:id=>files.get(id),getFolderById:()=>({
+      getFilesByName:()=>({hasNext:()=>false}),
+      createFile:(_name,material)=>{const id=String(++nextId),file={getId:()=>id,getBlob:()=>({getDataAsString:()=>material})};files.set(id,file);return file;}
+    })}
+  });
+  vm.runInContext(fs.readFileSync(new URL("../src/55_ReviewMaintenance.gs",import.meta.url),"utf8"),runtime);
+  const props={getProperty:k=>entries.get(k),setProperty:(k,v)=>{entries.set(k,v);if(changed)rows[0][2]="changed"},deleteProperty:k=>entries.delete(k)};
+  const rows=[["2026-10-01","run-1","full detail"],["2026-11-13","run-2","recent"]];
+  const sheet={getName:()=>"RUN_LOG",getLastRow:()=>rows.length+1,getRange:(row,_col,count)=>({getValues:()=>rows.slice(row-2,row-2+count).map(r=>r.slice())}),deleteRows:(_,count)=>{deleted+=count;rows.splice(0,count)}};
+  const run=()=>runtime.archiveMarketsLogPrefix_({getId:()=>"source"},sheet,["DATE","ID","DETAIL"],"folder",Date.parse("2026-11-01"),props,new Date("2026-11-14"));
+  changed=true;
+  assert.throws(run,/origen cambió/);
+  assert.equal(deleted,0);
+  rows[0][2]="full detail";changed=false;
+  assert.equal(run(),1);
+  assert.equal(deleted,1);
+  assert.equal(rows[0][1],"run-2");
+  assert.match(files.get("1").getBlob().getDataAsString(),/full detail/);
+});

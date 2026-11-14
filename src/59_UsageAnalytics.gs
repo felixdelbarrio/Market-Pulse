@@ -81,12 +81,12 @@ function readMarketsUsageAnalytics_(ss, timeZone, now) {
   const analytics = buildMarketsUsageAnalytics_(rows, zone, now || new Date(), {
     totalRows: totalRows, rowsAnalyzed: rowCount, truncated: truncated
   });
-  if (cache) cache.put(cacheKey, JSON.stringify(analytics), 300);
+  if (cache) { try { cache.put(cacheKey, JSON.stringify(analytics), 300); } catch (ignored) {} }
   return analytics;
 }
 
 function usageAnalyticsCacheKey_(timeZone) {
-  return 'markets:usage:analytics:' + MARKETS_CONFIG.codeVersion + ':' + trimString_(timeZone);
+  return 'markets:usage:analytics:v2:' + MARKETS_CONFIG.codeVersion + ':' + trimString_(timeZone);
 }
 
 function buildMarketsUsageAnalytics_(rows, timeZone, now, tracking) {
@@ -127,9 +127,10 @@ function buildMarketsUsageAnalytics_(rows, timeZone, now, tracking) {
     const action = trimString_(row[indexes.action]);
     const device = trimString_(row[indexes.device]) || 'UNKNOWN';
     const item = users[email] || (users[email] = {
-      email: email, sessions: {}, activeDays: {}, views: 0, actions: 0, errors: 0,
+      email: email, sessions: {}, activeDays: {}, views: 0, actions: 0, errors: 0, events: 0,
       firstSeenAt: timestamp, lastSeenAt: timestamp
     });
+    item.events++;
     item.sessions[sessionId] = true;
     item.activeDays[dateKey] = true;
     item.firstSeenAt = timestamp < item.firstSeenAt ? timestamp : item.firstSeenAt;
@@ -166,7 +167,7 @@ function buildMarketsUsageAnalytics_(rows, timeZone, now, tracking) {
     return {
       email: email, sessions: Object.keys(item.sessions).length,
       activeDays: Object.keys(item.activeDays).length, views: item.views,
-      actions: item.actions, errors: item.errors,
+      actions: item.actions, errors: item.errors, events: item.events,
       firstSeenAt: item.firstSeenAt.toISOString(), lastSeenAt: item.lastSeenAt.toISOString()
     };
   }).sort(function (a, b) {
@@ -178,7 +179,7 @@ function buildMarketsUsageAnalytics_(rows, timeZone, now, tracking) {
       a.lastSeenAt.localeCompare(b.lastSeenAt);
   });
   const dailyTrend = [];
-  for (let offset = -13; offset <= 0; offset += 1) {
+  for (let offset = -29; offset <= 0; offset += 1) {
     const key = usageOffsetDateKey_(today, offset);
     const item = daily[key] || { users: {}, sessions: {}, events: 0, errors: 0 };
     dailyTrend.push({
@@ -208,10 +209,13 @@ function buildMarketsUsageAnalytics_(rows, timeZone, now, tracking) {
       sessions: currentWeekSessions, previousSessions: previousWeekSessions,
       sessionsChangePct: usageChangePct_(currentWeekSessions, previousWeekSessions)
     },
-    dailyTrend: dailyTrend,
+    dailyTrend: dailyTrend.slice(-14),
+    adoptionTrend: dailyTrend,
     topViews: usageCountRanking_(views),
     topActions: usageCountRanking_(actions),
     devices: usageCountRanking_(devices),
+    adoptionUsers: ranking.map(row => ({ ...row,
+      firstDay: usageDateKey_(new Date(row.firstSeenAt), timeZone), lastDay: usageDateKey_(new Date(row.lastSeenAt), timeZone) })),
     mostActive: ranking.slice(0, 10),
     leastActive: leastActive.slice(0, 10),
     recentIncidents: incidents.sort(function (a, b) {

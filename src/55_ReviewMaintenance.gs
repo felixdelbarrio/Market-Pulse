@@ -94,7 +94,7 @@ function advanceMarketsReviewMaintenance_(now = new Date(), manual = false) {
   if (!lock.tryLock(1000)) return false;
   try {
     const previous = safeJsonParse_(properties.getProperty(MARKETS_MAINTENANCE_PROPERTY)) || {};
-    if (previous.day === day && (previous.status === 'Completado' || previous.retryAt > now.getTime())) return false;
+    if (previous.day === day && ((!manual && previous.status === 'Completado') || previous.retryAt > now.getTime())) return false;
     const ss = openMarketsSpreadsheet_();
     const state = { day, updatedAt: now.toISOString(), status: 'Completado' };
     try {
@@ -124,38 +124,74 @@ function advanceMarketsReviewMaintenance_(now = new Date(), manual = false) {
   }
 }
 
-/** Archive bounded, aggregate-only samples. Source logs remain available for existing reports. */
+/** Archive complete rows, verify Drive content, then remove the unchanged prefix. */
 function archiveMarketsOperationalLogs_(ss, properties, now) {
-  const cutoff = now.getTime() - marketsLogRetentionDays_(properties) * 86400000;
-  const folders = marketsStorageFolders_(properties);
-  const tables = [
-    ['runs', 'executions', [0, 2, 3, 4, 5, 6, 7, 9]],
-    ['usage', 'telemetry', [0, 3, 4, 5, 7, 8]]
-  ];
-  let archived = 0;
-  for (const [table, folderKind, columns] of tables) {
-    const name = MARKETS_CONFIG.sheets[table], headers = MARKETS_CONFIG.headers[table];
-    const sheet = ss.getSheetByName(name);
-    if (!sheet) continue;
-    requireCurrentSheetContract_(ss, name, headers);
-    const property = 'MARKETS_LOG_ARCHIVE:' + name;
-    const next = Number(properties.getProperty(property)) || 2;
-    const count = Math.min(100, sheet.getLastRow() - next + 1);
-    if (count <= 0) continue;
-    const rows = sheet.getRange(next, 1, count, headers.length).getValues();
-    const firstCurrent = rows.findIndex(row => !(Date.parse(row[0]) < cutoff));
-    const eligible = firstCurrent < 0 ? rows : rows.slice(0, firstCurrent);
-    if (!eligible.length) continue;
-    const material = JSON.stringify({ origin: ss.getId(), table: name, firstRow: next,
-      headers: columns.map(column => headers[column]), rows: eligible.map(row => columns.map(column => row[column])) });
-    const digest = marketsReviewDigest_(material).slice(0, 18);
-    const filename = Utilities.formatDate(now, MARKETS_CONFIG.timeZone, 'yyyy-MM-dd') + '-' + name + '-' + next + '-' + digest + '.json';
-    const folder = DriveApp.getFolderById(folders[folderKind]);
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(1000)) throw new Error('Los registros están en uso. Se reintentará el archivado.');
+  try {
+    const cutoff = now.getTime() - marketsLogRetentionDays_(properties) * 86400000;
+    const folders = marketsStorageFolders_(properties);
+    let archived = 0;
+    for (const [table, folderKind] of [['runs', 'executions'], ['usage', 'telemetry']]) {
+      const name = MARKETS_CONFIG.sheets[table], headers = MARKETS_CONFIG.headers[table];
+      if (!ss.getSheetByName(name)) continue;
+      const sheet = requireCurrentSheetContract_(ss, name, headers);
+      archived += archiveMarketsLogPrefix_(ss, sheet, headers, folders[folderKind], cutoff, properties, now);
+    }
+    return archived;
+  } finally { lock.releaseLock(); }
+}
+
+function archiveMarketsLogPrefix_(ss, sheet, headers, folderId, cutoff, properties, now) {
+  const name = sheet.getName(), width = headers.length, key = 'MARKETS_FULL_LOG_ARCHIVE:' + name;
+  const previous = safeJsonParse_(properties.getProperty(key));
+  const total = sheet.getLastRow() - 1;
+  const read = count => sheet.getRange(2, 1, count, width).getValues();
+  let checkpoint = previous, material, file;
+  if (checkpoint) {
+    file = DriveApp.getFileById(checkpoint.fileId);
+    material = file.getBlob().getDataAsString();
+    if (marketsReviewDigest_(material) !== checkpoint.digest) throw new Error('El archivo previo cambió: ' + name);
+    const before = JSON.stringify(JSON.parse(material).rows[0]);
+    const current = total > 0 ? JSON.stringify(read(1)[0]) : 'null';
+    if (total === checkpoint.total - checkpoint.count && current !== before && current === checkpoint.nextRow) {
+      properties.deleteProperty(key);
+      return 0;
+    }
+  } else {
+    const rows = total > 0 ? read(Math.min(total, 101)) : [];
+    const eligible = [];
+    for (const row of rows.slice(0, 100)) {
+      if (!(new Date(row[0]).getTime() < cutoff) || !row[0]) break;
+      eligible.push(row);
+    }
+    if (!eligible.length) return 0;
+    const nextRow = JSON.stringify(rows[eligible.length] || null);
+    if (nextRow === JSON.stringify(eligible[0])) throw new Error('Límite de archivo ambiguo: ' + name);
+    material = JSON.stringify({ origin: ss.getId(), table: name, headers, rows: eligible });
+    const digest = marketsReviewDigest_(material);
+    const date = Utilities.formatDate(now, MARKETS_CONFIG.timeZone, 'yyyy-MM-dd');
+    const filename = date + '-' + name + '-' + digest.slice(0, 18) + '.json';
+    const folder = DriveApp.getFolderById(folderId);
     const matches = folder.getFilesByName(filename);
-    const file = matches.hasNext() ? matches.next() : folder.createFile(filename, material, MimeType.PLAIN_TEXT);
-    if (matches.hasNext() || file.getBlob().getDataAsString() !== material) throw new Error('Archivo operativo no verificable: ' + name);
-    properties.setProperty(property, String(next + eligible.length));
-    archived += eligible.length;
+    file = matches.hasNext() ? matches.next() : folder.createFile(filename, material, MimeType.PLAIN_TEXT);
+    if (matches.hasNext() || file.getBlob().getDataAsString() !== material) throw new Error('Archivo no verificable: ' + name);
+    checkpoint = { fileId: file.getId(), digest, count: eligible.length, total, nextRow };
+    properties.setProperty(key, JSON.stringify(checkpoint));
   }
-  return archived;
+  const payload = JSON.parse(material);
+  if (payload.origin !== ss.getId() || payload.table !== name || JSON.stringify(payload.headers) !== JSON.stringify(headers) ||
+      payload.rows.length !== checkpoint.count || total < checkpoint.count ||
+      JSON.stringify(read(checkpoint.count)) !== JSON.stringify(payload.rows) ||
+      JSON.stringify(total > checkpoint.count ? sheet.getRange(checkpoint.count + 2, 1, 1, width).getValues()[0] : null) !== checkpoint.nextRow) {
+    throw new Error('El origen cambió durante el archivado: ' + name);
+  }
+  sheet.deleteRows(2, checkpoint.count);
+  SpreadsheetApp.flush();
+  const after = sheet.getLastRow() - 1;
+  if (after !== total - checkpoint.count || (after > 0 ? JSON.stringify(read(1)[0]) : 'null') !== checkpoint.nextRow) {
+    throw new Error('No se pudo confirmar el borrado: ' + name);
+  }
+  properties.deleteProperty(key);
+  return checkpoint.count;
 }
