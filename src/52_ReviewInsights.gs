@@ -301,7 +301,7 @@ function classifyMarketsReviewAudience_(normalized, ids, knownBlocks) {
   const evidence = {};
   for (const [key, pattern] of MARKETS_REVIEW_AUDIENCE_PATTERNS) evidence[key] = pattern.exec(normalized)?.[0] || '';
   if (!evidence.salaryReceived || /\b(?:empleados|proveedores)\b/.test(normalized)) {
-    evidence.direct ||= MARKETS_REVIEW_PAYROLL.exec(normalized)?.[0] || '';
+    if (!evidence.direct) evidence.direct = MARKETS_REVIEW_PAYROLL.exec(normalized)?.[0] || '';
   }
   const direct = evidence.direct && !evidence.negatedBusiness;
   const conflict = direct && evidence.retail;
