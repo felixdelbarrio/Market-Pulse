@@ -94,8 +94,71 @@ function superviseMarketsReviews_() {
 
 function runMarketsReviewWorker_(event) {
   const worker = event?.triggerUid && ScriptApp.getProjectTriggers().find(trigger => trigger.getUniqueId() === event.triggerUid);
-  try { advanceMarketsReviewPipeline_(); }
+  try { if (!advanceMarketsScheduledOperations_()) advanceMarketsReviewPipeline_(); }
   finally { if (worker) ScriptApp.deleteTrigger(worker); }
+}
+
+const MARKETS_UNIFIED_OPERATIONS = 'MARKETS_UNIFIED_OPERATIONS';
+const MARKETS_LEGACY_OPERATION_HANDLERS = ['runDailyRatingMonitor', 'checkDailyRatingMonitorHealth', 'runMarketsMonthlyNewsletter'];
+
+/** Owner migration only. Start at the next local day to avoid replaying today's legacy triggers. */
+function enableMarketsUnifiedSupervisor() {
+  requireMarketsReviewOwner_();
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(1000)) throw new Error('Hay otra operación en curso.');
+  try {
+    installMarketsReviewSupervisor_();
+    const properties = PropertiesService.getScriptProperties();
+    const existing = properties.getProperty(MARKETS_UNIFIED_OPERATIONS);
+    const today = Utilities.formatDate(new Date(), MARKETS_CONFIG.timeZone, 'yyyy-MM-dd');
+    // Delete only owned legacy schedules. Keep catalog onEdit and the one-shot worker.
+    ScriptApp.getProjectTriggers().filter(trigger => MARKETS_LEGACY_OPERATION_HANDLERS.includes(trigger.getHandlerFunction()))
+      .forEach(trigger => ScriptApp.deleteTrigger(trigger));
+    if (!existing) properties.setProperty(MARKETS_UNIFIED_OPERATIONS, today);
+    return { enabled: true, startsAfter: existing || today };
+  } finally { lock.releaseLock(); }
+}
+
+function advanceMarketsScheduledOperations_(now = new Date()) {
+  const properties = PropertiesService.getScriptProperties();
+  const enabledAfter = properties.getProperty(MARKETS_UNIFIED_OPERATIONS);
+  if (!enabledAfter) return false;
+  const tz = MARKETS_CONFIG.timeZone;
+  const day = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
+  if (day <= enabledAfter) return false;
+  const time = Utilities.formatDate(now, tz, 'HHmm');
+  const due = (hour, minute) => time >= String(hour).padStart(2, '0') + String(minute).padStart(2, '0');
+  const operations = [
+    ['ratings', due(MARKETS_CONFIG.runHour, MARKETS_CONFIG.runMinute), runDailyRatingMonitor],
+    ['newsletter', day.endsWith('-01') && due(MARKETS_CONFIG.newsletterHour, MARKETS_CONFIG.newsletterMinute), runMarketsMonthlyNewsletter],
+    ['health', due(MARKETS_CONFIG.healthCheckHour, MARKETS_CONFIG.healthCheckMinute), checkDailyRatingMonitorHealth]
+  ];
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(1000)) return true;
+  let selected;
+  try {
+    for (const [id, ready, run] of operations) {
+      if (!ready) continue;
+      const key = 'MARKETS_UNIFIED_RUN:' + id;
+      const previous = safeJsonParse_(properties.getProperty(key));
+      if (previous?.day === day) continue;
+      properties.setProperty(key, JSON.stringify({ day, status: 'En curso', startedAt: now.toISOString() }));
+      selected = { key, run };
+      break;
+    }
+  } finally { lock.releaseLock(); }
+  if (!selected) return false;
+  let status = 'ERROR';
+  try {
+    const result = selected.run();
+    status = result?.status || 'OK';
+  } catch (error) {
+    console.error('Supervisor: ' + errorToString_(error));
+  } finally {
+    properties.setProperty(selected.key, JSON.stringify({ day, status, startedAt: now.toISOString(),
+      finishedAt: new Date().toISOString() }));
+  }
+  return true;
 }
 
 function advanceMarketsReviewPipeline_() {
@@ -300,14 +363,16 @@ function getMarketsReviewRecoveryOptions() {
 }
 
 function marketsReviewRecoveryScope_(ss, scope) {
-  const month = scope?.month;
+  const today = Utilities.formatDate(new Date(), MARKETS_CONFIG.timeZone, 'yyyy-MM-dd');
+  const day = scope?.mode === 'today' ? today : '';
+  const month = day ? day.slice(0, 7) : scope?.month;
   if (typeof month !== 'string' || !/^20\d{2}-(0[1-9]|1[0-2])$/.test(month) ||
       month > Utilities.formatDate(new Date(), MARKETS_CONFIG.timeZone, 'yyyy-MM')) {
     throw new Error('Selecciona un mes válido.');
   }
   const app = marketsReviewRecoveryListings_(ss).find(listing => listing.appKey === scope?.appKey);
   if (!app) throw new Error('El escaparate no es válido o no se puede identificar de forma unívoca.');
-  return { app, month };
+  return { app, month, day };
 }
 
 function marketsReviewRecoveryMonth_(value) {
@@ -337,7 +402,7 @@ function getMarketsReviewCoverage(scope) {
 /** Una página por acción: no toca los cursores del supervisor ni ejecuta alertas. */
 function runMarketsReviewRecovery(scope) {
   const { ss } = requireMarketsReviewOwner_();
-  const { app, month } = marketsReviewRecoveryScope_(ss, scope);
+  const { app, month, day } = marketsReviewRecoveryScope_(ss, scope);
   const properties = PropertiesService.getScriptProperties();
   const lock = LockService.getUserLock();
   if (!lock.tryLock(1000)) return { deferred: true };
@@ -345,18 +410,22 @@ function runMarketsReviewRecovery(scope) {
     const android = app.platform === 'Android';
     const pageLimit = MARKETS_REVIEW_RECOVERY_LIMITS[app.platform];
     const previous = safeJsonParse_(properties.getProperty(MARKETS_REVIEW_RECOVERY_KEY));
-    const sameScope = previous?.appKey === app.appKey && previous.month === month;
+    const sameScope = previous?.appKey === app.appKey && previous.month === month && (previous.day || '') === day;
     if (!sameScope && previous && !previous.complete) {
       throw new Error('Termina la recuperación abierta o ciérrala antes de seleccionar otro periodo.');
     }
-    const state = sameScope ? previous : { appKey: app.appKey, month, pages: 0, added: 0, updated: 0,
+    const state = sameScope ? previous : { appKey: app.appKey, month, day, pages: 0, added: 0, updated: 0,
       unchanged: 0, failures: 0, cursor: android ? '' : 1, seen: [], complete: false, pageLimit };
     if (state.complete || state.retryAt > Date.now()) return marketsReviewRecoveryState_(properties);
     const pausedUntil = android ? Number(properties.getProperty('MARKETS_PLAY_REVIEW_PAUSE')) : 0;
     if (pausedUntil > Date.now()) return { deferred: true, retryAt: pausedUntil };
     try {
       const page = android ? fetchPlayReviewPage_(app, state.cursor) : fetchMarketsIosReviewPage_(app, state.cursor);
-      const selected = page.rows.filter(row => marketsReviewRecoveryMonth_(android ? row.date : row[6]) === month);
+      const selected = page.rows.filter(row => {
+        const date = android ? row.date : row[6];
+        return day ? (date instanceof Date ? Utilities.formatDate(date, MARKETS_CONFIG.timeZone, 'yyyy-MM-dd') : String(date).slice(0, 10)) === day
+          : marketsReviewRecoveryMonth_(date) === month;
+      });
       const result = { added: 0, updated: 0 };
       if (selected.length) {
         const sheet = marketsReviewSheet_(ss), width = marketsReviewWidth_(sheet), height = sheet.getLastRow() - 1;
@@ -454,6 +523,9 @@ function marketsAdminReviewOperations_(email) {
   const config = marketsReviewJobSettings_(properties);
   return {
     owner, config,
+    unifiedAfter: properties.getProperty(MARKETS_UNIFIED_OPERATIONS) || '',
+    newsletter: safeJsonParse_(properties.getProperty('MARKETS_JOB_TIMING:newsletter')),
+    health: safeJsonParse_(properties.getProperty('MARKETS_JOB_TIMING:health')),
     interval: Number(properties.getProperty(MARKETS_REVIEW_INTERVAL)) || 15,
     supervisorLast: properties.getProperty('MARKETS_REVIEW_SUPERVISOR_LAST'),
     geography: typeof MARKETS_GEO_AUDIT_PROPERTY === 'string' ? safeJsonParse_(properties.getProperty(MARKETS_GEO_AUDIT_PROPERTY)) : null,

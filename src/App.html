@@ -442,6 +442,7 @@
       bindOptional("admin-business-cancel","click",()=>$("admin-business-dialog").close());
       for(const tab of ["newsletter-access","feedback"])bindOptional("admin-"+tab+"-period","change",()=>loadAdminNewsletterInteractions(tab));
       bindOptional("admin-review-recovery","toggle",loadReviewRecoveryOptions);
+      bindOptional("admin-review-recovery-mode","change",syncReviewRecoveryMode);
       bindOptional("admin-review-recovery-form","submit",submitReviewRecovery);
       bindOptional("admin-review-recovery-close","click",closeReviewRecovery);
       $("review-enabled").addEventListener("change",syncAlertRuleInputs);
@@ -1447,15 +1448,24 @@
       const retry=result.retryAt>Date.now()&&!result.complete?`Reintento a partir de ${dateTimeLabel(new Date(result.retryAt).toISOString())}`:"";
       target.textContent=[result.month,progress,reason,retry].filter(Boolean).join(" · ");
     }
+    let recoveryPlatform="";
+    function syncReviewRecoveryMode(){
+      const monthly=$("admin-review-recovery-mode").value==="month";
+      $("admin-review-recovery-month").hidden=!monthly;
+      $("admin-review-recovery-month").required=monthly;
+      $("admin-review-recovery-month-label").hidden=!monthly;
+    }
     async function loadReviewRecoveryOptions(event){
-      if(!event.currentTarget.open||reviewRecoveryLoaded||reviewRecoveryBusy)return;
+      if(!event.currentTarget.open||reviewRecoveryBusy)return;
       const target=$("admin-review-recovery-result");
       setReviewRecoveryBusy(true);
       try{
         const {listings,state:previous}=await callServer("admin:reviews:options");
-        const ordered=[...listings].sort((a,b)=>countryLabel(a.countryCode).localeCompare(countryLabel(b.countryCode))||a.appName.localeCompare(b.appName)||a.platform.localeCompare(b.platform));
+        const ordered=listings.filter(item=>!recoveryPlatform||item.platform===recoveryPlatform).sort((a,b)=>countryLabel(a.countryCode).localeCompare(countryLabel(b.countryCode))||a.appName.localeCompare(b.appName)||a.platform.localeCompare(b.platform));
         $("admin-review-recovery-listing").innerHTML=ordered.map(item=>U.option(item.appKey,`${countryLabel(item.countryCode)} · ${item.appName} · ${item.platform}`,previous?.appKey===item.appKey)).join("");
         $("admin-review-recovery-month").value=previous?.month||state.meta.dataDate.slice(0,7);
+        $("admin-review-recovery-mode").value=previous&&!previous.day?"month":"today";
+        syncReviewRecoveryMode();
         reviewRecoveryLoaded=ordered.length>0;
         renderReviewRecovery(previous);
         if(!ordered.length)target.textContent="No hay escaparates disponibles para recuperar.";
@@ -1465,13 +1475,17 @@
     async function submitReviewRecovery(event){
       event.preventDefault();
       if(reviewRecoveryBusy||!reviewRecoveryLoaded)return;
-      const scope={appKey:$("admin-review-recovery-listing").value,month:$("admin-review-recovery-month").value};
+      const scope={appKey:$("admin-review-recovery-listing").value,month:$("admin-review-recovery-month").value,mode:$("admin-review-recovery-mode").value};
       const recover=event.submitter?.value==="recover";
       const target=$(recover?"admin-review-recovery-result":"admin-review-coverage");
       target.textContent=recover?"Consultando una página de la tienda…":"Consultando la cobertura…";
       setReviewRecoveryBusy(true);
       try{
-        const result=await callServer(recover?"admin:reviews:recover":"admin:reviews:coverage",scope);
+        let result;
+        do {
+          result=await callServer(recover?"admin:reviews:recover":"admin:reviews:coverage",scope);
+          if(recover)renderReviewRecovery(result);
+        } while(recover&&result&&!result.complete&&!result.deferred&&!(result.retryAt>Date.now()));
         if(recover){$("admin-review-coverage").textContent="";renderReviewRecovery(result)}
         else target.textContent=`${result.status} · ${result.values.map(item=>`${item.month}: ${integer(item.count)}`).join(" · ")}`;
       }catch(error){target.textContent=error.message}
@@ -1499,14 +1513,14 @@
       const jobs=[
         {id:"ratings",priority:1,group:"Ratings",name:"Carga diaria de ratings",detail:latest?`${latest.appsError} con error · ${latest.appsNoRating} sin rating · ${latest.rowsUpserted} filas actualizadas`:"",schedule:system.dailySchedule,
           status:latest?.status||"Sin ejecuciones",done:latest?latest.appsOk+latest.appsNoRating+latest.appsError:0,total:latest?.appsTotal},
-        {id:"newsletter",priority:2,group:"Envíos planificados",name:"Newsletter mensual",schedule:system.newsletterSchedule,enabled:system.newsletterDeliveryEnabled},
+        {id:"newsletter",priority:2,group:"Envíos planificados",name:"Newsletter mensual",schedule:system.newsletterSchedule,enabled:system.newsletterDeliveryEnabled,status:operations?.newsletter?.status,updatedAt:operations?.newsletter?.startedAt,total:1,done:operations?.newsletter&&operations.newsletter.status!=="ERROR"?1:0},
         ...(pipeline?.jobs||[]).map(job=>({...job,name:job.label,
           group:({supervisor:"Supervisor de colas",ios:"Recopilación de reseñas",android:"Recopilación de reseñas",
             alerts:"Envíos planificados",translate:"Traducción de reseñas y respuestas",publish:"Generación de snapshots"})[job.id],
           schedule:job.id==="supervisor"?`Cada ${operations?.interval||15} minutos`:pipeline.day,
           enabled:job.id==="supervisor"?pipeline.installed!==false:undefined,
           updatedAt:job.id==="supervisor"?operations?.supervisorLast:job.lastAttemptAt,
-          detail:job.id==="supervisor"?(system.healthMonitorEnabled?"Monitor de salud · "+system.healthSchedule:"Monitor de salud desactivado"):
+          detail:job.id==="supervisor"?([operations?.unifiedAfter?"Supervisión unificada":"Supervisión de reseñas",system.healthMonitorEnabled?"Monitor de salud · "+system.healthSchedule:"Monitor de salud desactivado",operations?.health?.startedAt?dateTimeLabel(operations.health.startedAt):""].filter(Boolean).join(" · ")):
             [job.id==="ios"||job.id==="android"?`${job.added||0} nuevas · ${job.updated||0} actualizadas · ${job.failures||0} errores`:"",
              job.replyPending==null?"":job.replyPending+" respuestas pendientes"].filter(Boolean).join(" · ")})),
         {id:"index",priority:3,group:"Clasificación de reseñas",name:"Clasificación de comentarios",...index,status:index?.complete?"Completado":"Pendiente"},
@@ -1520,7 +1534,7 @@
           detail:job.changed==null?"":job.changed?"Cambios detectados":"Sin cambios"}))
       ];
       const actions={backup:"Crear copia mensual",index:"Clasificar pendientes",geography:"Iniciar inferencia",maintenance:"Iniciar mantenimiento",
-        publish:"Generar snapshots",taxonomy:"Actualizar catálogo",taxonomyTranslation:"Traducir pendientes"};
+        ios:"Recuperar reseñas",android:"Recuperar reseñas",publish:"Generar snapshots",taxonomy:"Actualizar catálogo",taxonomyTranslation:"Traducir pendientes"};
       const groups=new Map();
       for(const job of jobs){
         const saved=config[job.id]||{};
@@ -1555,6 +1569,13 @@
       root.onclick=async event=>{
         const button=event.target.closest("[data-run-job]");
         if(!button||runningPanelJob)return;
+        if(["ios","android"].includes(button.dataset.runJob)){
+          const details=$("admin-review-recovery");
+          recoveryPlatform=button.dataset.runJob==="ios"?"iOS":"Android";
+          if(details.open)await loadReviewRecoveryOptions({currentTarget:details});else details.open=true;
+          details.scrollIntoView({block:"nearest"});
+          return;
+        }
         if(button.dataset.runJob==="ratings"){runningPanelJob=true;try{await requestAdminRatingRecovery();}finally{runningPanelJob=false}return;}
         runningPanelJob=true;
         const result=$("admin-jobs-result");

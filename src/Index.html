@@ -256,14 +256,16 @@
           <div id="admin-panel-health" class="admin-tab-panel" data-admin-panel="health" role="tabpanel" aria-labelledby="admin-tab-health"><div id="admin-loading" class="panel alert-loading">Cargando el panel de control…</div><section class="panel"><div class="panel-head"><div><h3>Panel de control</h3><span>Procesos ordenados por prioridad. El supervisor reanuda las tareas pendientes.</span></div><div class="admin-toolbar-actions"></div></div><div class="panel-body">
             <details id="admin-review-recovery" class="panel-body radar-filters hidden">
               <summary>Recuperación selectiva de reseñas</summary>
-              <p>Consulta la cobertura por escaparate y mes. Cada paso revisa una página visible en la tienda; un mes sin reseñas observadas no confirma una pérdida.</p>
+              <p>Consulta la cobertura por escaparate y mes. La recuperación recorre las páginas disponibles de la tienda.</p>
               <form id="admin-review-recovery-form">
                 <label for="admin-review-recovery-listing">Escaparate</label>
                 <select id="admin-review-recovery-listing" class="select-control" required></select>
-                <label for="admin-review-recovery-month">Mes</label>
-                <input id="admin-review-recovery-month" type="month" required>
+                <label for="admin-review-recovery-mode">Periodo</label>
+                <select id="admin-review-recovery-mode"><option value="today">Hoy</option><option value="month">Meses</option></select>
+                <label id="admin-review-recovery-month-label" for="admin-review-recovery-month" hidden>Mes</label>
+                <input id="admin-review-recovery-month" type="month" hidden>
                 <button class="alert-button secondary" type="submit" value="coverage">Consultar cobertura</button>
-                <button class="alert-button secondary" type="submit" value="recover">Recuperar una página</button>
+                <button class="alert-button secondary" type="submit" value="recover">Recuperar reseñas</button>
                 <button class="alert-button secondary hidden" id="admin-review-recovery-close" type="button">Cerrar recuperación</button>
               </form>
               <p id="admin-review-coverage" role="status"></p>

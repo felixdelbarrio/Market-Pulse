@@ -238,3 +238,23 @@ test("the supervisor schedules one worker and skips a live lease", () => {
   local.superviseMarketsReviews_();
   assert.deepEqual(triggers.map(trigger=>trigger.getHandlerFunction()),["runMarketsReviewWorker_"]);
 });
+
+test("unified supervisor waits for the migration day, then dispatches each scheduled job once", () => {
+  const values = new Map([["MARKETS_UNIFIED_OPERATIONS","2026-11-14"]]), calls = [];
+  const properties = {getProperty:key=>values.get(key),setProperty:(key,value)=>values.set(key,value)};
+  const runtime = vm.createContext({
+    safeJsonParse_:value=>JSON.parse(value||"null"),
+    PropertiesService:{getScriptProperties:()=>properties},
+    LockService:{getScriptLock:()=>({tryLock:()=>true,releaseLock(){}})},
+    Utilities:{formatDate:(date,_,format)=>format==="HHmm"?"1015":date.toISOString().slice(0,10)},
+    MARKETS_CONFIG:{timeZone:"Europe/Madrid",runHour:7,runMinute:5,newsletterHour:8,newsletterMinute:15,healthCheckHour:9,healthCheckMinute:15},
+    runDailyRatingMonitor:()=>calls.push("ratings"),
+    runMarketsMonthlyNewsletter:()=>calls.push("newsletter"),
+    checkDailyRatingMonitorHealth:()=>calls.push("health")
+  });
+  vm.runInContext(fs.readFileSync(new URL("../src/51_ReviewOperations.gs",import.meta.url),"utf8"),runtime);
+  assert.equal(runtime.advanceMarketsScheduledOperations_(new Date("2026-11-14")),false);
+  const first = new Date("2026-12-01");
+  for(let i=0;i<4;i++)runtime.advanceMarketsScheduledOperations_(first);
+  assert.deepEqual(calls,["ratings","newsletter","health"]);
+});
