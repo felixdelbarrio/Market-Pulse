@@ -232,8 +232,8 @@
           </section>
           <section id="admin-panel-feedback" data-admin-panel="feedback" class="admin-tab-panel panel hidden" role="tabpanel" aria-labelledby="admin-tab-feedback">
             <div class="panel-head"><div><p class="eyebrow">Newsletters</p><h3>Feedback</h3></div></div><div class="record-toolbar"><div class="radar-filters" id="admin-feedback-filters"><form class="record-filters" hidden>
-              <label>Edición <input type="month" name="period"></label><label>Valoración <select name="vote"><option value="">Todas</option><option value="positive">Útil</option><option value="negative">Mejorable</option></select></label>
-              <label>Estado <select name="status"><option value="">Todos</option><option value="pendiente">Pendiente</option><option value="atendido">Atendido</option></select></label></form></div><button class="alert-button secondary" id="admin-feedback-export" type="button" disabled>Exportar selección</button></div>
+              <label>Edición <input type="month" name="period"></label><div class="filter-field"><label for="admin-record-vote">Valoración</label><select id="admin-record-vote" name="vote"><option value="">Todas</option><option value="positive">Útil</option><option value="negative">Mejorable</option></select></div>
+              <div class="filter-field"><label for="admin-record-status">Estado</label><select id="admin-record-status" name="status"><option value="">Todos</option><option value="pendiente">Pendiente</option><option value="atendido">Atendido</option></select></div></form></div><button class="alert-button secondary" id="admin-feedback-export" type="button" disabled>Exportar selección</button></div>
             <div class="panel-body" id="admin-feedback-results" aria-live="polite"></div>
           </section>
           <section id="admin-panel-business" data-admin-panel="business" class="admin-tab-panel panel hidden" role="tabpanel" aria-labelledby="admin-tab-business">
@@ -286,7 +286,7 @@
             <section class="panel"><div class="panel-head"><div><p class="eyebrow">Uso de Market Pulse</p><h3>Adopción</h3></div></div>
               <div id="admin-adoption-filters" class="radar-filters"><form class="record-filters" hidden>
                 <label>Usuario <input name="query" type="search" autocomplete="off"></label>
-                <label>Actividad <select name="days"><option value="1">Hoy</option><option value="7">Últimos 7 días</option><option value="14">Últimos 14 días</option><option value="30">Últimos 30 días</option></select></label>
+                <div class="filter-field"><label for="admin-record-days">Actividad</label><select id="admin-record-days" name="days"><option value="1">Hoy</option><option value="7">Últimos 7 días</option><option value="14">Últimos 14 días</option><option value="30">Últimos 30 días</option></select></div>
               </form></div>
               <div class="panel-body" id="admin-adoption-chart"></div><div class="kpi-grid panel-body" id="admin-adoption-metrics"></div>
               <div class="panel-body" id="admin-adoption-rows"></div><div id="admin-adoption-pagination" class="panel-body"></div>
