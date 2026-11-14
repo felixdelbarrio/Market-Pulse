@@ -326,7 +326,7 @@
         const timer=window.setTimeout(()=>finish("TIMEOUT")("Market Pulse no ha respondido a tiempo. Reintenta la carga."),serverTimeoutMs(method));
         try{
           const runner=google.script.run.withSuccessHandler(finish("OK")).withFailureHandler(finish("ERROR"));
-          if(method==="bootstrap")runner.getMarketsDashboardBootstrap();else if(method==="user:context")runner.getMarketsUserContext();else if(method==="admin:get")runner.getMarketsAdminDashboard(false);else if(method==="admin:subscriber:save")runner.saveMarketsAdminSubscriber(argument.email,argument.preferences);else if(method==="admin:newsletter:test")runner.sendMarketsAdminNewsletterTestEmail(argument);else if(method==="admin:reviews:restart")runner.requestMarketsReviewPipeline();else if(method==="admin:reviews:options")runner.getMarketsReviewRecoveryOptions();else if(method==="admin:reviews:coverage")runner.getMarketsReviewCoverage(argument);else if(method==="admin:reviews:recover")runner.runMarketsReviewRecovery(argument);else if(method==="admin:reviews:close")runner.closeMarketsReviewRecovery();else if(method==="admin:ratings:recover")runner.requestMarketsAdminRatingRecovery();else if(method==="reviews:segments")runner.getMarketsReviewSegments();else if(method==="reviews")runner.getMarketsReviews(argument);else if(method==="review:page")runner.getMarketsReviewPage(argument);else if(method==="review:export")runner.getMarketsReviewExport(argument);else if(method==="review:analytics")runner.getMarketsReviewAnalytics(argument);else if(method==="review:configure")runner.configureMarketsReviewInsights();else if(method==="admin:usage")runner.getMarketsAdminUsage();else if(method==="performance")runner.getMarketsPerformance();else if(method==="trends")runner.getMarketsDashboardTrends(argument);else if(method==="alerts:get")runner.getMarketsAlertPreferences();else if(method==="alerts:save")runner.saveMarketsAlertPreferences(argument);else if(method==="alerts:reset")runner.resetMarketsAlertPreferences();else if(method==="alerts:test")runner.sendMarketsAlertTestEmail();else finish("ERROR")(new Error("Operación no soportada: "+method));
+          if(method==="bootstrap")runner.getMarketsDashboardBootstrap();else if(method==="user:context")runner.getMarketsUserContext();else if(method==="admin:get")runner.getMarketsAdminDashboard(false);else if(method==="admin:business:refresh")runner.refreshMarketsAdminFunctionalCatalog();else if(method==="admin:business")runner.getMarketsBusinessCatalog(argument);else if(method==="admin:business:save")runner.saveMarketsBusinessCatalogEntry(argument);else if(method==="admin:newsletter:feedback-state")runner.setMarketsNewsletterFeedbackState(argument.id,argument.state);else if(method==="admin:newsletter:interactions")runner.getMarketsNewsletterInteractions(argument.kind,argument.period);else if(method==="admin:subscriber:save")runner.saveMarketsAdminSubscriber(argument.email,argument.preferences);else if(method==="admin:newsletter:test")runner.sendMarketsAdminNewsletterTestEmail(argument);else if(method==="admin:reviews:restart")runner.requestMarketsReviewPipeline();else if(method==="admin:reviews:options")runner.getMarketsReviewRecoveryOptions();else if(method==="admin:reviews:coverage")runner.getMarketsReviewCoverage(argument);else if(method==="admin:reviews:recover")runner.runMarketsReviewRecovery(argument);else if(method==="admin:reviews:close")runner.closeMarketsReviewRecovery();else if(method==="admin:ratings:recover")runner.requestMarketsAdminRatingRecovery();else if(method==="reviews:segments")runner.getMarketsReviewSegments();else if(method==="reviews")runner.getMarketsReviews(argument);else if(method==="review:page")runner.getMarketsReviewPage(argument);else if(method==="review:export")runner.getMarketsReviewExport(argument);else if(method==="review:analytics")runner.getMarketsReviewAnalytics(argument);else if(method==="review:configure")runner.configureMarketsReviewInsights();else if(method==="admin:usage")runner.getMarketsAdminUsage();else if(method==="performance")runner.getMarketsPerformance();else if(method==="trends")runner.getMarketsDashboardTrends(argument);else if(method==="alerts:get")runner.getMarketsAlertPreferences();else if(method==="alerts:save")runner.saveMarketsAlertPreferences(argument);else if(method==="alerts:reset")runner.resetMarketsAlertPreferences();else if(method==="alerts:test")runner.sendMarketsAlertTestEmail();else finish("ERROR")(new Error("Operación no soportada: "+method));
         }catch(error){finish("ERROR")(error)}
       });
     }
@@ -426,6 +426,11 @@
     }
     function bindFilters(){
       bindOptional("admin-performance-refresh","click",loadPerformance);
+      bindOptional("admin-log-section","change",renderAdminLog);
+      bindOptional("admin-business-section","change",loadAdminBusiness);
+      bindOptional("admin-business-form","submit",saveAdminBusiness);
+      bindOptional("admin-business-cancel","click",()=>$("admin-business-dialog").close());
+      for(const tab of ["newsletter-access","feedback"])bindOptional("admin-"+tab+"-period","change",()=>loadAdminNewsletterInteractions(tab));
       bindOptional("review-catalog-sync","click",syncReviewCatalog);
       bindOptional("admin-review-restart","click",restartReviewPipeline);
       bindOptional("admin-review-recovery","toggle",loadReviewRecoveryOptions);
@@ -1327,7 +1332,87 @@
     function alertActivityLabel(type){return type==="REVIEW_LOW_SHARE"?"Reseñas de 1 y 2 estrellas":type==="RATING_DROP_DAILY"?"Caída diaria":type==="RATING_DROP_MTD"?"Caída del día 15 al día 15":type==="RATING_DROP_YTD"?"Caída desde inicio de año":type==="NEWSLETTER_MONTHLY"?"Newsletter mensual":type==="NEWSLETTER_TEST"?"Prueba de newsletter":type==="TEST"?"Prueba de entrega":"Cruce competitivo"}
     function renderAlertActivity(events){if(!events.length){$("alert-activity").innerHTML=U.empty("Todavía no hay alertas para ti","Cuando una regla se active, aparecerá aquí y recibirás el resumen por email.");return}$("alert-activity").innerHTML=events.map(event=>`<article class="alert-event"><i class="alert-event-dot ${event.severity==="CRITICAL"?"critical":event.severity==="POSITIVE"?"positive":""}"></i><div><strong>${U.esc(alertActivityLabel(event.type))}</strong><span>${U.esc(`${event.countryCode==="ALL"&&event.type==="REVIEW_LOW_SHARE"?"Ficha compartida":countryLabel(event.countryCode)} · ${event.platform} · ${event.detail}`)}</span></div><time>${U.esc(dateTimeLabel(event.timestamp))}</time></article>`).join("")}
 
-    function activateAdminTab(name,focus=false){const tabs=[...document.querySelectorAll(".admin-tab")],selected=tabs.find(tab=>tab.dataset.adminTab===name)||tabs[0];if(!selected)return;state.adminTab=selected.dataset.adminTab;tabs.forEach(tab=>{const active=tab===selected;tab.classList.toggle("active",active);tab.setAttribute("aria-selected",String(active));tab.tabIndex=active?0:-1});document.querySelectorAll(".admin-tab-panel").forEach(panel=>panel.classList.toggle("hidden",panel.dataset.adminPanel!==state.adminTab));if(state.adminTab==="performance")loadPerformance();if(state.adminTab==="usage")loadAdminUsage();if(focus){trackUsage("ACTION","admin","ADMIN_TAB",state.adminTab);selected.focus()}}
+    function renderAdminLog(){
+      const selected=$("admin-log-section").value;
+      document.querySelectorAll("[data-admin-log]").forEach(panel=>panel.classList.toggle("hidden",state.adminTab!=="logs"||panel.dataset.adminLog!==selected));
+      if(state.adminTab==="logs"&&selected==="performance")loadPerformance();
+    }
+    let businessRequest=0,businessDraft;
+    function adminDataTable(columns,rows,action){
+      return '<div class="admin-table-wrap"><table class="admin-table"><thead><tr>'+columns.map(x=>'<th scope="col">'+U.esc(x)+'</th>').join("")+
+        (action?'<th scope="col">Acciones</th>':'')+'</tr></thead><tbody>'+rows.map((row,i)=>'<tr>'+row.map(x=>'<td>'+U.esc(String(x??""))+'</td>').join("")+
+          (action?'<td><button class="alert-button secondary" type="button" data-entry="'+i+'">Editar</button></td>':'')+'</tr>').join("")+'</tbody></table></div>';
+    }
+    async function loadAdminBusiness(){
+      const token=++businessRequest, section=$("admin-business-section").value, target=$("admin-business-results");
+      target.innerHTML=U.loading();
+      try{
+        const data=await callServer("admin:business",section);
+        if(token!==businessRequest||state.adminTab!=="business")return;
+        target.innerHTML=(section==="functional"?'<p><button class="alert-button secondary" type="button" data-sync>Sincronizar desde el catálogo maestro</button></p>':"")+(data.edit==="aliases"?'<p><button type="button" class="alert-button primary" data-entry="-1">Añadir equivalencia</button></p>':'')+
+          (data.rows.length?adminDataTable(data.columns,data.rows,Boolean(data.edit)):U.empty("Sin entradas","Este catálogo aún no tiene registros."));
+        target.onclick=async event=>{
+          const sync=event.target.closest("[data-sync]");
+          if(sync){
+            sync.disabled=true;
+            try{await callServer("admin:business:refresh");if(token===businessRequest)loadAdminBusiness()}
+            catch(error){showError(error);sync.disabled=false}
+            return;
+          }
+          const entry=event.target.closest("[data-entry]");
+          if(!entry||!data.edit)return;
+          const row=data.rows[Number(entry.dataset.entry)]||["",""];
+          businessDraft={section,expected:String(row[1])};
+          $("admin-business-key").value=row[0];
+          $("admin-business-key").readOnly=Boolean(row[0]);
+          $("admin-business-value").value=row[1];
+          $("admin-business-value").required=section!=="aliases";
+          $("admin-business-error").textContent="";
+          $("admin-business-dialog").showModal();
+        };
+      }catch(error){if(token===businessRequest)target.textContent=error.message}
+    }
+    async function saveAdminBusiness(event){
+      event.preventDefault();
+      if(!businessDraft)return;
+      const button=event.submitter;
+      if(button)button.disabled=true;
+      try{
+        await callServer("admin:business:save",{...businessDraft,key:$("admin-business-key").value.trim(),value:$("admin-business-value").value});
+        $("admin-business-dialog").close();
+        if(state.adminTab==="business")loadAdminBusiness();
+      }catch(error){$("admin-business-error").textContent=error.message}
+      finally{if(button)button.disabled=false}
+    }
+    const newsletterRequests={};
+    async function loadAdminNewsletterInteractions(tab){
+      const token=new Object();
+      newsletterRequests[tab]=token;
+      const target=$("admin-"+tab+"-results"), period=$("admin-"+tab+"-period").value, feedback=tab==="feedback";
+      target.innerHTML=U.loading();
+      try{
+        const data=await callServer("admin:newsletter:interactions",{kind:feedback?"feedback":"access",period});
+        if(newsletterRequests[tab]!==token)return;
+        const labels={open:"Acceso confirmado",positive:"👍 Útil",negative:"👎 Mejorable"};
+        target.innerHTML=U.metrics(feedback?[{label:"Valoraciones",value:String(data.total)},{label:"Útil",value:String(data.positive)},{label:"Mejorable",value:String(data.negative)}]:
+          [{label:"Accesos únicos confirmados",value:String(data.total)}])+
+          (data.rows.length?adminDataTable(["Edición","Interacción","Fecha",...(feedback?["Estado"]:[])],
+            data.rows.map(([edition,action,date,status])=>[edition,labels[action],date,...(feedback?[status]:[])]),feedback):
+            U.empty("Sin registros","Las interacciones aparecerán después de los próximos envíos."));
+        target.querySelectorAll("[data-entry]").forEach(button=>{
+          const row=data.rows[Number(button.dataset.entry)], next=row[3]==="atendido"?"pendiente":"atendido";
+          button.textContent=next==="atendido"?"Marcar atendido":"Reabrir";
+          button.onclick=async()=>{
+            button.disabled=true;
+            try{
+              await callServer("admin:newsletter:feedback-state",{id:row[4],state:next});
+              if(newsletterRequests[tab]===token)loadAdminNewsletterInteractions(tab);
+            }catch(error){showError(error);button.disabled=false}
+          };
+        });
+      }catch(error){if(newsletterRequests[tab]===token)target.textContent=error.message}
+    }
+    function activateAdminTab(name,focus=false){const tabs=[...document.querySelectorAll(".admin-tab")],selected=tabs.find(tab=>tab.dataset.adminTab===name)||tabs[0];if(!selected)return;state.adminTab=selected.dataset.adminTab;tabs.forEach(tab=>{const active=tab===selected;tab.classList.toggle("active",active);tab.setAttribute("aria-selected",String(active));tab.tabIndex=active?0:-1});document.querySelectorAll(".admin-tab-panel").forEach(panel=>panel.classList.toggle("hidden",panel.dataset.adminPanel!==state.adminTab));renderAdminLog();if(state.adminTab==="business")loadAdminBusiness();if(["newsletter-access","feedback"].includes(state.adminTab))loadAdminNewsletterInteractions(state.adminTab);if(state.adminTab==="usage")loadAdminUsage();if(focus){trackUsage("ACTION","admin","ADMIN_TAB",state.adminTab);selected.focus()}}
     function handleAdminTabKeydown(event){if(!["ArrowLeft","ArrowRight","Home","End"].includes(event.key))return;const tabs=[...document.querySelectorAll(".admin-tab")],current=Math.max(0,tabs.indexOf(document.activeElement));let next=event.key==="Home"?0:event.key==="End"?tabs.length-1:event.key==="ArrowRight"?(current+1)%tabs.length:(current-1+tabs.length)%tabs.length;event.preventDefault();activateAdminTab(tabs[next].dataset.adminTab,true)}
     async function loadAdmin(force=false){const started=performance.now();if(!state.userContext?.isAdmin)return;if(state.adminLoading||state.adminLoaded&&!force){if(state.adminLoaded){renderAdmin();trackReady("admin","Mostrar administración",started)}return}state.adminLoading=true;$("admin-loading").classList.remove("hidden");$("admin-content").classList.add("hidden");try{state.adminCenter=await callServer("admin:get");state.adminLoaded=true;renderAdmin();trackReady("admin","Mostrar administración",started)}catch(error){$("admin-loading").textContent=error?.message||String(error);showError(error)}finally{state.adminLoading=false}}
     function statusBadge(value){const text=String(value||"—"),tone=/^(OK|ACTIVE|VERIFIED|SENT)$/i.test(text)?"ok":/PARTIAL|WARN|PENDING/i.test(text)?"warn":/ERROR|FAIL|DENIED|DISABLED/i.test(text)?"bad":"";return`<span class="admin-status ${tone}">${U.esc(text)}</span>`}

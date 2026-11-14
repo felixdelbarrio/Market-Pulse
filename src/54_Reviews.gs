@@ -374,7 +374,7 @@ function marketsReviewClassification_(ss) {
   const entries = taxonomy && taxonomy.getLastRow() > 1
     ? taxonomy.getRange(2, 1, taxonomy.getLastRow() - 1, 4).getDisplayValues() : [];
   const knownBlocks = new Set(entries.filter(([id, label]) => /^\d{2}\./.test(id) && label).map(([id]) => id.slice(0, 2)));
-  return { rules: compileReviewRules_(entries), knownBlocks };
+  return { rules: compileReviewRules_(entries, marketsBusinessAliases_()), knownBlocks };
 }
 
 function marketsReviewBlocks_(ids, knownBlocks) {

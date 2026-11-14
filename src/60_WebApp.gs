@@ -1,6 +1,6 @@
 /** Web app de lectura para el dashboard de ratings. */
 var MARKETS_WEB = Object.freeze({
-  version: '2026.11.12.59',
+  version: '2026.11.14.60',
   // Solo debe cambiar si cambia el formato serializado. Un cambio visual no
   // puede obligar al primer usuario a reconstruir la cache desde Sheets.
   cacheSchemaVersion: '2026.10.21.41',
@@ -16,6 +16,7 @@ var MARKETS_WEB = Object.freeze({
 
 /** Publica el dashboard bajo el control de acceso del despliegue de Apps Script. */
 function doGet(event) {
+  if (event?.parameter?.newsletterInteraction) return renderMarketsNewsletterInteractionPage_(event.parameter.newsletterInteraction);
   if (event?.parameter?.alertFeedback) return renderMarketsAlertFeedbackPage_(event.parameter.alertFeedback);
   const page = HtmlService.createTemplateFromFile('Index').evaluate()
     .setTitle('Market Pulse · BBVA Banca de Empresas e Instituciones')

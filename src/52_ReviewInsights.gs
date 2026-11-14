@@ -1,3 +1,10 @@
+const MARKETS_BUSINESS_ALIASES = 'MARKETS_BUSINESS_ALIASES';
+
+function marketsBusinessAliases_() {
+  return typeof PropertiesService === 'undefined' ? {}
+    : JSON.parse(PropertiesService.getScriptProperties().getProperty?.(MARKETS_BUSINESS_ALIASES) || '{}');
+}
+
 const MARKETS_FUNCTIONAL_MASTER = '1hsFp-ZiiSsSt_ka73oKAWFlHEySdmJM_IrkBmK6YfH8';
 const MARKETS_FUNCTIONAL_TABS = ['Soluciones Funcionales', 'Capacidades canal (core y VD)'];
 const MARKETS_REVIEW_PAYROLL = /\b(?:(?:pagos?|remesas?|transferencias) de (?:las? )?nominas?(?!\w| (?:en|a) mi cuenta)|(?:pago|pagar|procesar) (?:la )?nomina (?:de|a|para) (?:mis |nuestros )?empleados|(?:pagar|procesar) (?:las? )?nominas|payroll processing|paying (?:my |our )?employees|calisanlar\w* maas\w*|personel maas\w*|folha de pagamento)\b/u;
@@ -166,13 +173,13 @@ function marketsReviewRankTerms_(words) {
   return words.map(marketsReviewRankWord_).filter(word => word.length > 2 && !MARKETS_REVIEW_RANK_STOP.has(word));
 }
 
-function compileReviewRules_(catalog) {
+function compileReviewRules_(catalog, aliases = {}) {
   const literal = new Map(), semantic = new Map(), df = new Map();
   const entries = catalog.map(([id, , name, description]) => {
     const [terms, required, excluded] = MARKETS_REVIEW_RULES[id] || [[], [], []];
     const context = required.map(normalizeReviewEvidence_).filter(Boolean);
     const exclude = excluded.map(normalizeReviewEvidence_).filter(Boolean);
-    const phrases = [...new Set([name, ...terms].map(normalizeReviewEvidence_))]
+    const phrases = [...new Set([name, ...terms, ...(aliases[id] || [])].map(normalizeReviewEvidence_))]
       .filter(phrase => phrase && (phrase.includes(' ') || context.length));
     const descriptive = new Set(marketsReviewRankTerms_(normalizeReviewEvidence_(description).split(' ')));
     const words = new Set([...descriptive, ...marketsReviewRankTerms_(phrases.join(' ').split(' '))]);
@@ -451,7 +458,7 @@ function marketsReviewCatalogVersion_(catalog) {
 }
 
 function marketsReviewVersions_(properties, catalogVersion) {
-  return [properties.MARKETS_REVIEWS_GENERATION || '', properties.MARKETS_FUNCTIONAL_REVISION || '', catalogVersion];
+  return [properties.MARKETS_REVIEWS_GENERATION || '', properties.MARKETS_FUNCTIONAL_REVISION || '', catalogVersion, ...(properties.MARKETS_BUSINESS_ALIASES ? [marketsReviewDigest_(properties.MARKETS_BUSINESS_ALIASES)] : [])];
 }
 
 function marketsReviewSnapshotScope_(operation, filters, window) {

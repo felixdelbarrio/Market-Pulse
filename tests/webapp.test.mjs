@@ -355,7 +355,7 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(index, /class="nav-button hidden" id="admin-nav"/);
   assert.match(index, /id="view-admin"/);
   assert.match(index, /id="admin-tabs"[^>]*role="tablist"/);
-  assert.match(index, /data-admin-tab="performance"/);
+  assert.match(index, /data-admin-log="performance"/);
   assert.match(index, /data-admin-tab="usage"/);
   assert.match(index, /id="admin-country-pills"[^>]*role="group"/);
   assert.match(index, /id="admin-platform-pills"[^>]*role="group"/);

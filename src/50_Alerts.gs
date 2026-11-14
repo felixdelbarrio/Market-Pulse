@@ -1053,6 +1053,8 @@ function renderMarketsAlertFeedbackPage_(token) {
   if (!request) return HtmlService.createHtmlOutput('<p>El enlace de valoración ha caducado o no es válido.</p>');
   const page = HtmlService.createTemplateFromFile('AlertFeedback');
   page.token = token;
+  page.newsletter = false;
+  page.destination = '';
   page.choice = request.vote === 'positive' ? 'Sí, me resultó útil' : 'No me resultó útil';
   return page.evaluate().setTitle('Valorar alerta de Market Pulse')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
