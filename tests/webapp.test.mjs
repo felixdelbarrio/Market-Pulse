@@ -372,7 +372,8 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   const evolutionMarkup = index.slice(index.indexOf('id="view-evolution"'), index.indexOf('id="view-alerts"'));
   const analyticsMarkup = index.slice(index.indexOf('id="view-analytics"'), index.indexOf('id="view-reviews"'));
   assert.doesNotMatch(evolutionMarkup + app, /evolution-kpis/);
-  assert.match(evolutionMarkup, /id="monthly-matrix"[\s\S]*id="new-review-impact"[\s\S]*id="review-balance"[\s\S]*id="monthly-review-segment"[\s\S]*id="review-deltas"[\s\S]*id="review-examples"/);
+  assert.match(evolutionMarkup, /id="evolution-filters"[\s\S]*name="audience"[\s\S]*name="inferGeography"[\s\S]*name="segment"[\s\S]*<\/form>/);
+  assert.match(evolutionMarkup, /id="monthly-matrix"[\s\S]*id="new-review-impact"[\s\S]*id="review-balance"[\s\S]*id="review-deltas"[\s\S]*id="review-examples"/);
   assert.match(analyticsMarkup, /class="annual-chart-layout">\s*<div id="annual-chart"[^>]*><\/div>\s*<aside id="annual-series"[^>]*><\/aside>/);
   assert.match(analyticsMarkup, /id="review-heatmap"[\s\S]*id="analytics-entity"[\s\S]*id="annual-chart"[\s\S]*id="review-annual"/);
   const charts = fs.readFileSync(new URL("../src/Charts.html", import.meta.url), "utf8");

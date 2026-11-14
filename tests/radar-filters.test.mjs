@@ -34,6 +34,7 @@ function filterBindings({ crypto, sessionStorage, browserCountry = "ES" } = {}) 
     calls
   });
   const script = clientScript(read('App')).replace(/\}\)\(\);\s*$/, `
+    renderEvolution = () => calls.push({...monthlyFilters});
     loadReviews = () => calls.push({ page: 0, ...reviewScope() });
     loadAnalytics = (localOnly=false) => calls.push({ ...annualScope(), entity: analyticsEntity, localOnly });
     renderAdminSubscribers = rows => calls.push(adminSubscriberFilterRows(rows).map(row => row.email));
@@ -42,6 +43,7 @@ function filterBindings({ crypto, sessionStorage, browserCountry = "ES" } = {}) 
       if (cohort) reviewDrilldown={scope:cohort,label:"Detalle"};
       if (rows) state.adminCenter={subscribers:rows};
       bindRadarFilters();
+      bindEvolutionFilters();
     };
     activateView = view => { if (view === "reviews") loadReviews(); };
     globalThis.openCohort = openReviewCohort;
@@ -97,7 +99,7 @@ test('annual filters use the browser country and reset the KPI app on year chang
   const analytics = bindings['analytics-filters'], initial = analytics.initial();
   assert.equal(initial.country,'ES');
   assert.match(initial.year,/^\d{4}$/);
-  assert.deepEqual(copy(analytics.alwaysChips),['country','year']);
+  assert.deepEqual(copy(analytics.alwaysChips),['country','year','audience','inferGeography']);
   handlers.get('analytics-entity:change')({target:{value:'Banco Central'}});
   const year=String(Number(initial.year)-1);
   analytics.commit({...analytics.applied(),year});
@@ -207,4 +209,21 @@ test('comments keep filters editable and ignore out-of-order results and errors 
   await e;
   assert.equal(getNode('review-results').innerHTML,'loading');
   assert.equal(getNode('review-results').busy,'false');
+});
+
+test('monthly audience and inference are applied and reset independently of annual and comments', () => {
+  const {bindings, calls, setup} = filterBindings();
+  setup({scope:{evolutionApp:'BBVA Empresas',periodYear:'2026',periodMonth:'11'}});
+  const monthly = bindings['evolution-filters'], annual = bindings['analytics-filters'], comments = bindings['review-filters'];
+  for (const view of [monthly, annual, comments]) {
+    assert.ok(view.alwaysChips.includes('audience'));
+    assert.ok(view.alwaysChips.includes('inferGeography'));
+  }
+  monthly.commit({...monthly.applied(), audience:'BEI_ONLY', inferGeography:'NO'});
+  assert.deepEqual(copy(calls.at(-1)), {audience:'BEI_ONLY',inferGeography:'NO',segment:'DETRACTOR'});
+  assert.equal(annual.applied().inferGeography, undefined);
+  assert.equal(comments.applied().inferGeography, undefined);
+  monthly.commit(monthly.all());
+  assert.equal(monthly.applied().inferGeography,'');
+  assert.equal(monthly.applied().audience,'');
 });

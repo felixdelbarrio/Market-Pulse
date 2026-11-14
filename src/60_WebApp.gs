@@ -1,6 +1,6 @@
 /** Web app de lectura para el dashboard de ratings. */
 var MARKETS_WEB = Object.freeze({
-  version: '2026.11.14.63',
+  version: '2026.11.14.64',
   // Solo debe cambiar si cambia el formato serializado. Un cambio visual no
   // puede obligar al primer usuario a reconstruir la cache desde Sheets.
   cacheSchemaVersion: '2026.10.21.41',

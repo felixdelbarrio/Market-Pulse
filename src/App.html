@@ -336,7 +336,7 @@
         const timer=window.setTimeout(()=>finish("TIMEOUT")("Market Pulse no ha respondido a tiempo. Reintenta la carga."),serverTimeoutMs(method));
         try{
           const runner=google.script.run.withSuccessHandler(finish("OK")).withFailureHandler(finish("ERROR"));
-          if(method==="bootstrap")runner.getMarketsDashboardBootstrap();else if(method==="user:context")runner.getMarketsUserContext();else if(method==="admin:get")runner.getMarketsAdminDashboard(false);else if(method==="admin:business:refresh")runner.refreshMarketsAdminFunctionalCatalog();else if(method==="admin:business")runner.getMarketsBusinessCatalog(argument,appLanguage);else if(method==="admin:business:save")runner.saveMarketsBusinessCatalogEntry(argument);else if(method==="admin:newsletter:feedback-state")runner.setMarketsNewsletterFeedbackState(argument.id,argument.state);else if(method==="admin:newsletter:interactions")runner.getMarketsNewsletterInteractions(argument.kind,argument.period);else if(method==="admin:subscriber:save")runner.saveMarketsAdminSubscriber(argument.email,argument.preferences);else if(method==="admin:newsletter:test")runner.sendMarketsAdminNewsletterTestEmail(argument);else if(method==="admin:jobs:interval")runner.configureMarketsReviewSupervisor(argument);else if(method==="admin:jobs:settings")runner.saveMarketsReviewJobSettings(argument.id,argument.config);else if(method==="admin:jobs:folder")runner.saveMarketsStorageFolder(argument.kind,argument.id);else if(method==="admin:reviews:restart")runner.requestMarketsReviewPipeline();else if(method==="admin:reviews:options")runner.getMarketsReviewRecoveryOptions();else if(method==="admin:reviews:coverage")runner.getMarketsReviewCoverage(argument);else if(method==="admin:reviews:recover")runner.runMarketsReviewRecovery(argument);else if(method==="admin:reviews:close")runner.closeMarketsReviewRecovery();else if(method==="admin:ratings:recover")runner.requestMarketsAdminRatingRecovery();else if(method==="reviews:segments")runner.getMarketsReviewSegments();else if(method==="reviews")runner.getMarketsReviews(argument);else if(method==="review:page")runner.getMarketsReviewPage(argument);else if(method==="review:export")runner.getMarketsReviewExport(argument);else if(method==="review:analytics")runner.getMarketsReviewAnalytics(argument);else if(method==="admin:usage")runner.getMarketsAdminUsage();else if(method==="performance")runner.getMarketsPerformance();else if(method==="trends")runner.getMarketsDashboardTrends(argument);else if(method==="alerts:get")runner.getMarketsAlertPreferences();else if(method==="alerts:save")runner.saveMarketsAlertPreferences(argument);else if(method==="alerts:reset")runner.resetMarketsAlertPreferences();else if(method==="alerts:test")runner.sendMarketsAlertTestEmail();else finish("ERROR")(new Error("Operación no soportada: "+method));
+          if(method==="bootstrap")runner.getMarketsDashboardBootstrap();else if(method==="user:context")runner.getMarketsUserContext();else if(method==="admin:get")runner.getMarketsAdminDashboard(false);else if(method==="admin:business:refresh")runner.refreshMarketsAdminFunctionalCatalog();else if(method==="admin:business")runner.getMarketsBusinessCatalog(argument,appLanguage);else if(method==="admin:business:save")runner.saveMarketsBusinessCatalogEntry(argument);else if(method==="admin:newsletter:feedback-state")runner.setMarketsNewsletterFeedbackState(argument.id,argument.state);else if(method==="admin:newsletter:interactions")runner.getMarketsNewsletterInteractions(argument.kind,argument.period);else if(method==="admin:subscriber:save")runner.saveMarketsAdminSubscriber(argument.email,argument.preferences);else if(method==="admin:newsletter:test")runner.sendMarketsAdminNewsletterTestEmail(argument);else if(method==="admin:jobs:run")runner.runMarketsPanelJob(argument);else if(method==="admin:jobs:interval")runner.configureMarketsReviewSupervisor(argument);else if(method==="admin:jobs:settings")runner.saveMarketsReviewJobSettings(argument.id,argument.config);else if(method==="admin:jobs:folder")runner.saveMarketsStorageFolder(argument.kind,argument.id);else if(method==="admin:reviews:restart")runner.requestMarketsReviewPipeline();else if(method==="admin:reviews:options")runner.getMarketsReviewRecoveryOptions();else if(method==="admin:reviews:coverage")runner.getMarketsReviewCoverage(argument);else if(method==="admin:reviews:recover")runner.runMarketsReviewRecovery(argument);else if(method==="admin:reviews:close")runner.closeMarketsReviewRecovery();else if(method==="admin:ratings:recover")runner.requestMarketsAdminRatingRecovery();else if(method==="reviews:segments")runner.getMarketsReviewSegments();else if(method==="reviews")runner.getMarketsReviews(argument);else if(method==="review:page")runner.getMarketsReviewPage(argument);else if(method==="review:export")runner.getMarketsReviewExport(argument);else if(method==="review:analytics")runner.getMarketsReviewAnalytics(argument);else if(method==="admin:usage")runner.getMarketsAdminUsage();else if(method==="performance")runner.getMarketsPerformance();else if(method==="trends")runner.getMarketsDashboardTrends(argument);else if(method==="alerts:get")runner.getMarketsAlertPreferences();else if(method==="alerts:save")runner.saveMarketsAlertPreferences(argument);else if(method==="alerts:reset")runner.resetMarketsAlertPreferences();else if(method==="alerts:test")runner.sendMarketsAlertTestEmail();else finish("ERROR")(new Error("Operación no soportada: "+method));
         }catch(error){finish("ERROR")(error)}
       });
     }
@@ -467,7 +467,7 @@
     function renderDashboardMarkets(view){
       renderGeographyTabs($(`${view}-markets`),state.meta.countries.map(item=>item.code),state.country,code=>{
         if(code===state.country)return;
-        state.country=code;state.periodYear="";state.periodMonth="";$("monthly-review-audience").value="";
+        state.country=code;state.periodYear="";state.periodMonth="";
         trackUsage("FILTER",view,"GLOBAL_SCOPE",code);
         if(view==="evolution")loadTrends();
         else renderDashboard();
@@ -592,6 +592,8 @@
     const defaultAnalyticsEntity="BBVA Empresas";
     let analyticsSelection=null, analyticsEntity=defaultAnalyticsEntity, resizeReviewBalance;
     let annualTrends=[], annualYears=[], heatmapSegment="DETRACTOR", annualAppControl;
+    const monthlyFilterDefaults={audience:"",inferGeography:"",segment:"DETRACTOR"};
+    let monthlyFilters={...monthlyFilterDefaults};
     let monthlyRequest=0, monthlyReviewKey="", monthlyBalanceKey="";
     const analyticsInitial=()=>({country:browserMarket(),year:reviewDates().end.slice(0,4),audience:""});
     const annualScope=()=>analyticsSelection||analyticsInitial();
@@ -620,7 +622,7 @@
       const common={labelValue:reviewFilterLabel,fixedChips:["start","end"]};
       radarFilters.analytics=create($("analytics-filters"),{
         initial:analyticsInitial,all:()=>({...analyticsInitial(),country:"ALL"}),applied:annualScope,
-        alwaysChips:["country","year"],fixedChips:["year"],
+        alwaysChips:["country","year","audience","inferGeography"],fixedChips:["year"],
         labelValue:(key,value)=>{
           if(key!=="year")return reviewFilterLabel(key,value);
           const {start,end}=annualDates(value);
@@ -641,7 +643,7 @@
       });
       radarFilters.reviews=create($("review-filters"),{
         ...common, initial:initialComments, all:allComments, applied:reviewScope, prepare:prepareReviewFilterOptions,
-        alwaysChips:["platform","app","segment","topic"], omitChips:["country"],
+        alwaysChips:["platform","app","segment","topic","audience","inferGeography"], omitChips:["country"],
         validate:validateReviewDates,
         draftChanged:(field,values)=>{
           if(field==="country"||field==="platform"){
@@ -924,9 +926,9 @@
     async function loadMonthlyReviews(period){
       const started=performance.now(), current=reviewDates().end.slice(0,7);
       const analysisMonth=period||current;
-      const balanceScope={...selection(),analysisMonth,audience:$("monthly-review-audience").value,inferGeography:$("monthly-review-infer").value,entity:state.evolutionApp,language:appLanguage};
+      const balanceScope={...selection(),analysisMonth,audience:monthlyFilters.audience,inferGeography:monthlyFilters.inferGeography,entity:state.evolutionApp,language:appLanguage};
       const balanceKey=JSON.stringify(balanceScope);
-      const scope={...balanceScope,segment:$("monthly-review-segment").value};
+      const scope={...balanceScope,segment:monthlyFilters.segment};
       const key=JSON.stringify(scope);
       if(key===monthlyReviewKey&&(monthlyReviewsLoading||Date.now()-monthlyReviewLoadedAt<reviewResponseTtl))return;
       monthlyReviewKey=key;
@@ -1265,22 +1267,22 @@
       $("month-filter").innerHTML=model.months.map(month=>U.option(month,monthName(month),month===model.month)).join("");
     }
     function bindEvolutionFilters(){
-      for(const id of ["monthly-review-segment","monthly-review-audience","monthly-review-infer"])$(id).addEventListener("change",()=>{if(state.evolutionApp)loadMonthlyReviews(evolutionPeriod(state.evolutionApp,state.periodYear,state.periodMonth).period)});
-      const current=()=>({app:state.evolutionApp,year:state.periodYear,month:state.periodMonth});
-      const reset=()=>({app:state.evolutionApp,year:"",month:""});
+      const current=()=>({app:state.evolutionApp,year:state.periodYear,month:state.periodMonth,...monthlyFilters});
+      const reset=()=>({app:state.evolutionApp,year:"",month:"",...monthlyFilterDefaults});
       radarFilters.evolution=window.MarketRadarFilters.create($("evolution-filters"),{translate,
-        applied:current,initial:()=>({...reset(),app:preferredEvolutionApp(evolutionApps())}),all:reset,fixedChips:["app"],alwaysChips:["app","year","month"],
-        labelValue:(key,value)=>value?(key==="month"?monthName(value):value):key==="app"?"Sin aplicaciones":"Sin cierre",
+        applied:current,initial:()=>({...reset(),app:preferredEvolutionApp(evolutionApps())}),all:reset,fixedChips:["app"],alwaysChips:["app","year","month","audience","inferGeography","segment"],
+        labelValue:(key,value)=>["audience","inferGeography","segment"].includes(key)?reviewFilterLabel(key,value):value?(key==="month"?monthName(value):value):key==="app"?"Sin aplicaciones":"Sin cierre",
         prepare:()=>{
           $("evolution-app").innerHTML=evolutionApps().map(app=>U.option(app,app,app===state.evolutionApp)).join("");
           fillEvolutionPeriods(evolutionPeriod(state.evolutionApp,state.periodYear,state.periodMonth));
         },
         draftChanged:(field,values)=>{
-          if(field==="month")return;
+          if(field!=="year"&&field!=="app")return;
           fillEvolutionPeriods(evolutionPeriod(values.app,values.year,values.month));
           radarFilters.evolution.refresh();
         },
-        commit:({app,year,month})=>{
+        commit:({app,year,month,...filters})=>{
+          monthlyFilters=filters;
           state.evolutionApp=app;state.periodYear=year;state.periodMonth=month;
           renderEvolution();
         }
@@ -1298,15 +1300,14 @@
       const apps=evolutionApps();
       if(!apps.includes(state.evolutionApp))state.evolutionApp=preferredEvolutionApp(apps);
       $("review-balance-panel").classList.toggle("hidden",!state.evolutionApp);
-      $("monthly-review-segment").closest(".monthly-sentiment").classList.toggle("hidden",!state.evolutionApp);
-      const renderKey=JSON.stringify([state.country,state.evolutionApp,state.periodYear,state.periodMonth,mobileViewport.matches,appLanguage]);
+      const renderKey=JSON.stringify([state.country,state.evolutionApp,state.periodYear,state.periodMonth,monthlyFilters,mobileViewport.matches,appLanguage]);
       if(evolutionRender?.trends===state.trends&&evolutionRender.key===renderKey){
         radarFilters.evolution.render();
         return;
       }
       const publishedTrends=withPublishedRatings(state.trends,selection());
       const period=syncPeriodControls(activeTrendRows(publishedTrends));
-      evolutionRender={trends:state.trends,key:JSON.stringify([state.country,state.evolutionApp,state.periodYear,state.periodMonth,mobileViewport.matches,appLanguage])};
+      evolutionRender={trends:state.trends,key:JSON.stringify([state.country,state.evolutionApp,state.periodYear,state.periodMonth,monthlyFilters,mobileViewport.matches,appLanguage])};
       radarFilters.evolution.render();
       const month=period.period||reviewDates().end.slice(0,7);
       if(state.evolutionApp)loadMonthlyReviews(month);
@@ -1489,49 +1490,76 @@
       renderAdminJobSettings(operations, pipeline, system);
       $("admin-review-restart").classList.toggle("hidden",!pipeline?.canRestart);
       $("admin-review-recovery").classList.toggle("hidden",!pipeline?.canRestart);
-      const latest=runs[0];
-      const done=latest?latest.appsOk+latest.appsNoRating+latest.appsError:0;
-      const progress=latest?.appsTotal>0&&done<=latest.appsTotal
-        ? `<progress class="admin-job-progress" value="${done}" max="${latest.appsTotal}" aria-label="Cobertura registrada de la última carga"></progress><span>${done} / ${latest.appsTotal} aplicaciones</span>`
-        : "";
-      const cards=[
-        {name:"Carga diaria de ratings",schedule:system.dailySchedule,status:latest?.status||"Sin ejecución registrada",progress},
-        {name:"Monitor de salud",schedule:system.healthSchedule,status:system.healthMonitorEnabled?"Habilitado":"Deshabilitado"},
-        {name:"Newsletter mensual",schedule:system.newsletterSchedule,status:system.newsletterDeliveryEnabled?"Habilitada":"Deshabilitada"},
-        ...(pipeline?.jobs||[]).map(job=>({name:job.label,
-          schedule:job.priority===0?`Cada ${operations?.interval || 15} minutos`:`Prioridad ${job.priority} · ${pipeline.day||"En espera"}`,
-          status:job.status,progress:job.total>0?`<progress class="admin-job-progress" value="${job.done}" max="${job.total}" aria-label="${U.esc(job.label)}"></progress>
-            <span>${job.done} / ${job.total} · ${job.added} nuevas · ${job.updated} actualizadas · ${job.failures} incidencias${job.pending?` · ${job.pending} pendientes`:""}</span>`:"",
-          detail:[job.priority===0&&operations?.supervisorLast?dateTimeLabel(operations.supervisorLast):"",
-            job.lastProgressAt?"Último avance: "+dateTimeLabel(job.lastProgressAt):"",
-            job.lastSuccessAt?"Último éxito: "+dateTimeLabel(job.lastSuccessAt):"",
-            job.replyPending==null?"":job.replyPending+" respuestas pendientes"].filter(Boolean).join(" · "),
-          error:job.error})),
-        ...(operations?[{name:"Clasificación de reseñas",schedule:"Prioridad 3",
-          status:operations.index?.complete?"Completado":"Pendiente",
-          progress:operations.index?.total?`<progress class="admin-job-progress" value="${operations.index.done}" max="${operations.index.total}" aria-label="Clasificación de reseñas"></progress><p>${operations.index.done} / ${operations.index.total}</p>`:"",
-          detail:operations.index?.updatedAt?dateTimeLabel(operations.index.updatedAt):""},
-          {name:"Inferencia geográfica Android",schedule:"Prioridad 3",status:operations.geography?.complete?"Completado":"Pendiente",
-            detail:operations.geography?`${operations.geography.processed} revisadas · ${operations.geography.counts.VALIDAR||0} candidatas · ${operations.geography.counts.CONFLICTO||0} conflictos`:""},
-          {name:"Mantenimiento",schedule:"Prioridad 6",status:operations.config.maintenance?.enabled?operations.maintenance?.status||"Programado":"Deshabilitado",
-            detail:operations.maintenance?.total==null?"":`${operations.maintenance.total} filas · ${operations.maintenance.invalid} inválidas · ${operations.maintenance.duplicates} duplicadas · ${operations.maintenance.archived||0} archivadas`,error:operations.maintenance?.error},
-          {name:"Backup mensual",schedule:"Prioridad 6",status:operations.config.backup?.enabled?operations.backup?.status||"Programado":"Deshabilitado",
-            detail:operations.backup?.updatedAt?dateTimeLabel(operations.backup.updatedAt):"",error:operations.backup?.error}]:[])
+      const latest=runs[0], config=operations?.config||{};
+      const index=operations?.index, geo=operations?.geography, maintenance=operations?.maintenance, backup=operations?.backup;
+      const jobs=[
+        {id:"ratings",priority:1,group:"Ratings",name:"Carga diaria de ratings",schedule:system.dailySchedule,
+          status:latest?.status||"Sin ejecuciones",done:latest?latest.appsOk+latest.appsNoRating+latest.appsError:0,total:latest?.appsTotal},
+        {id:"newsletter",priority:2,group:"Envíos planificados",name:"Newsletter mensual",schedule:system.newsletterSchedule,enabled:system.newsletterDeliveryEnabled},
+        {id:"health",priority:6,group:"Mantenimiento y backup",name:"Monitor de salud",schedule:system.healthSchedule,enabled:system.healthMonitorEnabled},
+        ...(pipeline?.jobs||[]).map(job=>({...job,name:job.label,
+          group:({supervisor:"Supervisor de colas",ios:"Recopilación de reseñas",android:"Recopilación de reseñas",
+            alerts:"Envíos planificados",translate:"Traducción de reseñas y respuestas",publish:"Generación de snapshots"})[job.id],
+          schedule:job.id==="supervisor"?`Cada ${operations?.interval||15} minutos`:pipeline.day,
+          enabled:job.id==="supervisor"?pipeline.installed!==false:undefined,
+          updatedAt:job.id==="supervisor"?operations?.supervisorLast:job.lastAttemptAt,
+          detail:job.replyPending==null?"":job.replyPending+" respuestas pendientes"})),
+        {id:"index",priority:3,group:"Clasificación de reseñas",name:"Clasificación funcional y de audiencia",...index,status:index?.complete?"Completado":"Pendiente"},
+        {id:"geography",priority:3,group:"Inferencia geográfica",name:"Inferencia geográfica Android",...geo,status:geo?.complete?"Completado":"Pendiente",
+          done:geo?.next?geo.next-2:undefined,total:geo?.total,
+          detail:geo?`${geo.processed} revisadas · ${geo.counts.VALIDAR||0} candidatas · ${geo.counts.CONFLICTO||0} conflictos`:""},
+        {id:"maintenance",priority:6,group:"Mantenimiento y backup",name:"Mantenimiento incremental",...maintenance,done:maintenance?.total,
+          detail:maintenance?.total==null?"":`${maintenance.invalid} inválidas · ${maintenance.duplicates} duplicadas · ${maintenance.archived||0} archivadas`},
+        {id:"backup",priority:6,group:"Mantenimiento y backup",name:"Backup mensual",...backup,done:backup?.id?1:0,total:1},
+        ...(system.functionalJobs||[]).map(job=>({...job,group:"Catálogo global de funcionalidades",
+          detail:job.changed==null?"":job.changed?"Cambios detectados":"Sin cambios"}))
       ];
-      const catalogue = (system.functionalJobs || []).map(job => ({
-        ...job, progress: job.total > 0 ? `<progress class="admin-job-progress" value="${job.done}" max="${job.total}" aria-label="${U.esc(job.name)}"></progress><p>${job.done} / ${job.total}</p>` : "",
-        detail: [job.changed == null ? "" : job.changed ? "Cambios detectados" : "Sin cambios",
-          job.updatedAt ? "Última ejecución: " + dateTimeLabel(job.updatedAt) : "",
-          job.retryAt ? "Reintento: " + dateTimeLabel(new Date(job.retryAt).toISOString()) : "",
-          job.durationMs == null ? "" : "Último lote: " + job.durationMs + " ms"].filter(Boolean).join(" · ")
-      }));
-      const processCard = job => `<article class="admin-process-card"><div class="admin-process-heading">
-        <h4>${U.esc(job.name)}</h4><span>${U.esc(job.status)}</span></div>
-        <p class="admin-job-schedule">${U.esc(job.schedule)} · ${U.esc(job.timeZone || system.timeZone)}</p>
-        ${job.progress || ""}${job.detail ? `<p>${U.esc(job.detail)}</p>` : ""}${job.error ? `<p>${U.esc(job.error)}</p>` : ""}</article>`;
-      $("admin-jobs").innerHTML = `<div class="admin-process-grid">${cards.map(processCard).join("")}</div>
-        <section class="admin-process-group"><div class="admin-process-heading"><h3>Catálogo global de funcionalidades</h3>
-        <span>Prioridad 6</span></div><div class="admin-process-grid">${catalogue.map(processCard).join("")}</div></section>`;
+      const actions={index:"Clasificar pendientes",geography:"Iniciar inferencia",maintenance:"Iniciar mantenimiento",
+        publish:"Generar snapshots",taxonomy:"Actualizar catálogo",taxonomyTranslation:"Traducir pendientes"};
+      const groups=new Map();
+      for(const job of jobs){
+        const saved=config[job.id]||{};
+        job.priority=saved.priority??job.priority;
+        job.enabled=saved.enabled??job.enabled??true;
+        job.schedule=saved.time||job.schedule;
+        job.timeZone=saved.timeZone||system.timeZone;
+        const key=job.priority+"|"+job.group;
+        if(!groups.has(key))groups.set(key,{name:job.group,priority:job.priority,jobs:[]});
+        groups.get(key).jobs.push(job);
+      }
+      const statusLine=(label,value)=>value?`<p class="admin-process-meta">${label}: ${U.esc(dateTimeLabel(value))}</p>`:"";
+      const processCard=job=>{
+        const status=job.status||"Programado";
+        const tone=!job.enabled?"inactive":job.error||/ERROR|Fallid|Revisar|Sin activador/i.test(status)?"error":
+          /^(Activo|OK|Completad)/i.test(status)?"complete":"pending";
+        const progress=Number.isFinite(job.total)&&job.total>0
+          ? `<progress class="admin-job-progress" value="${Math.min(job.total,job.done||0)}" max="${job.total}" aria-label="${U.esc(job.name)}"></progress><p class="admin-process-meta">${job.done||0}/${job.total}</p>`
+          : status==="En curso"?`<progress class="admin-job-progress" aria-label="${U.esc(job.name)}"></progress>`:"";
+        return `<article class="admin-process-card"><div class="admin-process-heading"><h4>${U.esc(job.name)}</h4>
+          <span class="admin-process-state" data-status="${tone}">${job.enabled?"Activo":"Inactivo"}${status==="Activo"||!job.enabled?"":" · "+U.esc(status)}</span></div>
+          <p class="admin-process-meta">${[job.schedule,job.timeZone].filter(Boolean).map(U.esc).join(" · ")}</p>${progress}
+          ${statusLine("Última ejecución",job.updatedAt)}${statusLine("Último avance",job.lastProgressAt)}${statusLine("Último éxito",job.lastSuccessAt)}
+          ${statusLine("Reintento",job.retryAt?new Date(job.retryAt).toISOString():"")}
+          ${job.detail?`<p class="admin-process-meta">${U.esc(job.detail)}</p>`:""}${job.error?`<p>${U.esc(job.error)}</p>`:""}
+          ${operations?.owner&&actions[job.id]?`<button class="alert-button secondary" type="button" data-run-job="${job.id}" ${!job.enabled||status==="En curso"?"disabled":""}>${actions[job.id]}</button>`:""}</article>`;
+      };
+      const root=$("admin-jobs");
+      root.innerHTML=[...groups.values()].sort((a,b)=>a.priority-b.priority).map(group=>`<section class="admin-process-group">
+        <div class="admin-process-heading"><h3>${U.esc(group.name)}</h3><span class="admin-process-meta">Prioridad ${group.priority}</span></div>
+        <div class="admin-process-grid">${group.jobs.map(processCard).join("")}</div></section>`).join("");
+      root.onclick=async event=>{
+        const button=event.target.closest("[data-run-job]");
+        if(!button)return;
+        const result=$("admin-jobs-result");
+        button.disabled=true;
+        result.textContent="Ejecutando…";
+        try{
+          const response=await callServer("admin:jobs:run",button.dataset.runJob);
+          result.textContent=response.message;
+          await loadAdmin(true);
+        }catch(error){result.textContent=error.message}
+        finally{button.disabled=false}
+      };
     }
     function renderAdminJobSettings(operations, pipeline, system) {
       const panel=$("admin-job-settings");
@@ -1545,7 +1573,7 @@
         {id:"index",name:"Clasificación de reseñas",priority:3},{id:"geography",name:"Inferencia geográfica Android",priority:3},{id:"backup",name:"Backup mensual",priority:6},{id:"maintenance",name:"Mantenimiento",priority:6}];
       const forms=jobs.map(job=>{
         const settings=operations.config[job.id]||{};
-        const enabled=settings.enabled ?? !["backup","maintenance"].includes(job.id);
+        const enabled=settings.enabled ?? true;
         return `<form data-job-action="settings" data-id="${U.esc(job.id)}"><fieldset><legend>${U.esc(job.name||job.label)}</legend>
           <label><input type="checkbox" name="enabled" ${enabled?"checked":""}> Habilitado</label>
           <label>Prioridad <input type="number" name="priority" min="1" max="6" value="${settings.priority||job.priority}" required></label>

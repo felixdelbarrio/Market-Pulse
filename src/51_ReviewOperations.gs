@@ -414,7 +414,9 @@ function closeMarketsReviewRecovery() {
 const MARKETS_REVIEW_JOB_SETTINGS = 'MARKETS_REVIEW_JOB_SETTINGS';
 
 function marketsReviewJobSettings_(properties) {
-  return safeJsonParse_(properties.getProperty(MARKETS_REVIEW_JOB_SETTINGS) || '{}') || {};
+  const scheduled = { enabled: true, priority: 6, time: '08:00', timeZone: MARKETS_CONFIG.timeZone };
+  return { maintenance: { ...scheduled }, backup: { ...scheduled },
+    ...(safeJsonParse_(properties.getProperty(MARKETS_REVIEW_JOB_SETTINGS) || '{}') || {}) };
 }
 
 function saveMarketsReviewJobSettings(id, payload) {
@@ -461,4 +463,37 @@ function marketsAdminReviewOperations_(email) {
     maintenance: typeof MARKETS_MAINTENANCE_PROPERTY === 'string' ? safeJsonParse_(properties.getProperty(MARKETS_MAINTENANCE_PROPERTY)) : null,
     folders: owner && typeof marketsStorageFolders_ === 'function' ? marketsStorageFolders_(properties) : null
   };
+}
+
+/** Manual runs share the owner scope and the same worker locks and checkpoints. */
+function runMarketsPanelJob(id) {
+  requireMarketsReviewOwner_();
+  switch (id) {
+    case 'geography': {
+      const stop = Date.now() + 15000;
+      while (Date.now() < stop && advanceMarketsAndroidGeography_()) {}
+      const properties = PropertiesService.getScriptProperties();
+      const state = safeJsonParse_(properties.getProperty(MARKETS_GEO_AUDIT_PROPERTY));
+      return { message: state?.complete ? 'Inferencia completada.' : 'Lote de inferencia procesado. El supervisor continuará.' };
+    }
+    case 'maintenance': {
+      advanceMarketsReviewMaintenance_(new Date(), true);
+      const state = safeJsonParse_(PropertiesService.getScriptProperties().getProperty(MARKETS_MAINTENANCE_PROPERTY));
+      return { message: state?.error || state?.status || 'Mantenimiento en espera.' };
+    }
+    case 'taxonomy':
+      syncMarketsFunctionalCatalog_();
+      return { message: 'Catálogo comprobado.' };
+    case 'taxonomyTranslation':
+      advanceMarketsFunctionalCatalog_({ sync: false, translate: true });
+      return { message: 'Traducción comprobada.' };
+    case 'index':
+      advanceMarketsReviewIndex_();
+      return { message: 'Lote de clasificación procesado.' };
+    case 'publish':
+      publishMarketsReviewSnapshot_();
+      return { message: 'Vistas comprobadas.' };
+    default:
+      throw new Error('Trabajo no disponible para ejecución manual.');
+  }
 }
