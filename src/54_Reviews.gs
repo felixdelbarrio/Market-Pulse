@@ -524,9 +524,6 @@ function queryMarketsReviews_(ss, filters, window, includeTranslations = false, 
     const indexed = saved && saved[0] === row[0] && saved[2] === classification.version &&
       saved[1] === marketsReviewTextDigest_(row);
     if (!indexed && rules) classified++;
-    if (derived && classified > MARKETS_REVIEW_INDEX_BATCH && (filters.audience || filters.topic)) {
-      throw new Error('El índice de reseñas se está actualizando. Vuelve a consultar este filtro cuando finalice la clasificación.');
-    }
     const decision = filters.audience && (indexed ? { audience: saved[4], sharedOperation: saved[5] === true }
       : classifyMarketsReviewAudience_(original));
     if (decision && !matchesMarketsReviewAudience_(filters.audience, decision)) return false;
