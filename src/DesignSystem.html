@@ -166,7 +166,13 @@
   .admin-job-schedule{margin:0;color:var(--color-primary-text-secondary)}
   .admin-job-progress{width:100%;accent-color:var(--color-primary-bg-action-pressed)}
   .admin-job-cards{margin-top:var(--space-2)}
-  @media(max-width:767px){.admin-job-cards{grid-template-columns:1fr}}
+  .admin-process-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,18rem),1fr));gap:var(--space-2)}
+  .admin-process-group{margin-top:var(--space-3);padding-top:var(--space-3);border-top:1px solid var(--color-primary-border)}
+  .admin-process-group>.admin-process-heading{margin-bottom:var(--space-2)}
+  .admin-process-heading{display:flex;align-items:center;justify-content:space-between;gap:var(--space-2);flex-wrap:wrap}
+  .admin-process-heading h3,.admin-process-heading h4{margin:0;font-weight:500}
+  .admin-process-card{min-width:0;padding:var(--space-2);border:1px solid var(--color-primary-border);border-radius:var(--radius-container);background:var(--color-primary-bg-alternative)}
+  .admin-process-card p{margin-block:var(--space-1)}
   .mp-next #review-deltas article{width:min(100%,42rem)}
   .topbar{display:flex;align-items:center;justify-content:space-between;gap:var(--space-2);padding:var(--space-2) var(--layout-gutter);color:var(--color-primary-text-on-main);background:var(--color-primary-bg-main)}
   .brand,.bia-brand{display:flex;align-items:center;gap:var(--space-2);min-width:0}

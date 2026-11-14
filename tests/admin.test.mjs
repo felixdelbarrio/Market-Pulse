@@ -206,16 +206,35 @@ test("supervisor resumes pending translations after quota and publishes without 
     PropertiesService:{getScriptProperties:()=>({getProperty:key=>props.get(key),setProperty:(key,value)=>props.set(key,value)})},
     translateMarketsReviews_:()=>{calls.push("translate");return {eligible:10,checked:10,translated:1,failed:0,pending:0,complete:true}},
     publishMarketsReviewSnapshot_:()=>{calls.push("publish");return {complete:true,published:1}},
-    advanceMarketsFunctionalCatalog_:()=>calls.push("catalog")
+    advanceMarketsFunctionalCatalog_:({sync})=>sync&&calls.push("catalog")
   });
   vm.runInContext(fs.readFileSync(new URL("../src/51_ReviewOperations.gs",import.meta.url),"utf8"),local);
   const pipeline=local.newMarketsReviewPipeline_("2026-11-12");
   pipeline.stage=pipeline.jobs.length;pipeline.jobs[2].pending=1;
   props.set(key,JSON.stringify(pipeline));props.set(quota,String(Date.now()+60000));
-  local.superviseMarketsReviews_();
+  local.advanceMarketsReviewPipeline_();
   assert.deepEqual(calls,["catalog"]);
   props.set(quota,"0");
-  for(let i=0;i<3;i++)local.superviseMarketsReviews_();
+  for(let i=0;i<3;i++)local.advanceMarketsReviewPipeline_();
   assert.deepEqual(calls,["catalog","translate","publish","catalog"]);
   assert.equal(JSON.parse(props.get(key)).stage,pipeline.jobs.length);
+});
+
+test("the supervisor schedules one worker and skips a live lease", () => {
+  const properties = new Map(), triggers = [];
+  const local = vm.createContext({
+    safeJsonParse_: value=>JSON.parse(value||"null"),
+    PropertiesService:{getScriptProperties:()=>({getProperty:key=>properties.get(key),setProperty:(key,value)=>properties.set(key,value)})},
+    LockService:{getScriptLock:()=>({tryLock:()=>true,releaseLock(){}})},
+    ScriptApp:{getProjectTriggers:()=>triggers,newTrigger:handler=>({timeBased:()=>({after:()=>({create:()=>
+      triggers.push({getHandlerFunction:()=>handler})})})})}
+  });
+  vm.runInContext(fs.readFileSync(new URL("../src/51_ReviewOperations.gs",import.meta.url),"utf8"),local);
+  properties.set("MARKETS_REVIEW_PIPELINE",JSON.stringify({leaseUntil:Date.now()+60000}));
+  local.superviseMarketsReviews_();
+  assert.equal(triggers.length,0);
+  properties.delete("MARKETS_REVIEW_PIPELINE");
+  local.superviseMarketsReviews_();
+  local.superviseMarketsReviews_();
+  assert.deepEqual(triggers.map(trigger=>trigger.getHandlerFunction()),["runMarketsReviewWorker_"]);
 });
