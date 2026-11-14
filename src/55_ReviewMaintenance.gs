@@ -33,7 +33,6 @@ function saveMarketsStorageFolder(kind, id) {
 function advanceMarketsMonthlyBackup_(now = new Date()) {
   const properties = PropertiesService.getScriptProperties();
   const job = marketsReviewJobSettings_(properties).backup;
-  // El propietario verifica el destino y habilita el trabajo tras la migración.
   if (!job?.enabled || !marketsReviewJobReady_({ backup: job }, 'backup', now)) return;
   const month = Utilities.formatDate(now, job.timeZone, 'yyyyMM');
   const lock = LockService.getUserLock();
@@ -78,10 +77,10 @@ function advanceMarketsMonthlyBackup_(now = new Date()) {
 const MARKETS_MAINTENANCE_PROPERTY = 'MARKETS_REVIEW_MAINTENANCE';
 const MARKETS_LOG_ARCHIVE_DAYS = 180;
 
-function advanceMarketsReviewMaintenance_(now = new Date()) {
+function advanceMarketsReviewMaintenance_(now = new Date(), manual = false) {
   const properties = PropertiesService.getScriptProperties();
   const job = marketsReviewJobSettings_(properties).maintenance;
-  if (!job?.enabled || !marketsReviewJobReady_({ maintenance: job }, 'maintenance', now)) return false;
+  if (!job?.enabled || (!manual && !marketsReviewJobReady_({ maintenance: job }, 'maintenance', now))) return false;
   const day = Utilities.formatDate(now, job.timeZone, 'yyyy-MM-dd');
   const lock = LockService.getUserLock();
   if (!lock.tryLock(1000)) return false;

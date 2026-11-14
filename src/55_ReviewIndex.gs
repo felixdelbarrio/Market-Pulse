@@ -147,6 +147,13 @@ function refreshMarketsReviewGeography() {
 const MARKETS_GEO_AUDIT_PROPERTY = 'MARKETS_ANDROID_GEO_AUDIT';
 
 function advanceMarketsAndroidGeography_(now = new Date()) {
+  const lock = LockService.getUserLock();
+  if (!lock.tryLock(1000)) return false;
+  try { return scanMarketsAndroidGeographyBatch_(now); }
+  finally { lock.releaseLock(); }
+}
+
+function scanMarketsAndroidGeographyBatch_(now) {
   const ss = openMarketsSpreadsheet_();
   const source = marketsReviewSheet_(ss);
   const properties = PropertiesService.getScriptProperties();
@@ -173,6 +180,7 @@ function advanceMarketsAndroidGeography_(now = new Date()) {
     state.counts[result.status] = (state.counts[result.status] || 0) + 1;
   }
   state.next += count;
+  state.total = Math.max(0, last - 1);
   state.complete = state.next > last;
   state.updatedAt = now.toISOString();
   properties.setProperty(MARKETS_GEO_AUDIT_PROPERTY, JSON.stringify(state));
