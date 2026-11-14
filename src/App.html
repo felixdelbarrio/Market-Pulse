@@ -308,7 +308,7 @@
 
     document.addEventListener("DOMContentLoaded",initializeApp);
 
-    function initializeApp(){try{window.addEventListener("error",event=>trackUsage("ERROR",state.view,"RUNTIME_ERROR",event.message));window.addEventListener("unhandledrejection",event=>trackUsage("ERROR",state.view,"PROMISE_REJECTION",event.reason?.message||event.reason));$("view-benchmark").querySelector(".report-slot").append($("report-control").content);bindNavigation();bindFilters();bindInteractions();initializeLanguage();document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="hidden")flushUsage()});const viewportChanged=()=>{syncViewControls();if(state.meta&&state.view==="evolution"){renderEvolution();resizeReviewBalance?.()}};if(typeof mobileViewport.addEventListener==="function")mobileViewport.addEventListener("change",viewportChanged);else if(typeof mobileViewport.addListener==="function")mobileViewport.addListener(viewportChanged);$("dialog-close").innerHTML=U.icon("close");$("admin-subscriber-close").innerHTML=U.icon("close");$("loader-retry").addEventListener("click",loadBootstrap);loadBootstrap()}catch(error){showStartupFailure(error)}}
+    function initializeApp(){try{window.addEventListener("error",event=>trackUsage("ERROR",state.view,"RUNTIME_ERROR",event.message));window.addEventListener("unhandledrejection",event=>trackUsage("ERROR",state.view,"PROMISE_REJECTION",event.reason?.message||event.reason));$("view-benchmark").querySelector(".report-slot").append($("report-control").content);bindNavigation();bindFilters();bindInteractions();initializeLanguage();if(document.body.dataset.initialView==="alerts")activateView("alerts");document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="hidden")flushUsage()});const viewportChanged=()=>{syncViewControls();if(state.meta&&state.view==="evolution"){renderEvolution();resizeReviewBalance?.()}};if(typeof mobileViewport.addEventListener==="function")mobileViewport.addEventListener("change",viewportChanged);else if(typeof mobileViewport.addListener==="function")mobileViewport.addListener(viewportChanged);$("dialog-close").innerHTML=U.icon("close");$("admin-subscriber-close").innerHTML=U.icon("close");$("loader-retry").addEventListener("click",loadBootstrap);loadBootstrap()}catch(error){showStartupFailure(error)}}
 
     function serverTimeoutMs(method){return ["admin:ratings:recover","admin:jobs:run"].includes(method)?360000:method==="admin:newsletter:test"?120000:method==="bootstrap"?60000:(method.startsWith("admin:reviews:")||method.startsWith("review:")||method==="trends")?60000:method==="admin:get"?30000:20000}
     let activeRpc=0;
@@ -1013,7 +1013,7 @@
       const share=count=>annual.total?fmt(100*count/annual.total,1)+" %":"";
       const groups=[
         {title:"Volumen de opiniones",stats:[
-          {label:"Opiniones del año seleccionado",number:annual.total,accent:true,delta:difference(annual.total,annual.previousTotal)},
+          {label:"Opiniones del año seleccionado",number:annual.total,delta:difference(annual.total,annual.previousTotal)},
           {label:"Opiniones del año anterior",number:annual.previousTotal}
         ]},
         ...(showRatings?[{title:"Evolución del rating",stats:[
@@ -1022,7 +1022,7 @@
         ]}]:[]),
         {title:"Distribución por sentimiento",stats:[
           {label:"Promotoras",number:annual.promoters,valueClass:"delta-up",foot:share(annual.promoters)},
-          {label:"Neutras",number:annual.neutral,foot:share(annual.neutral)},
+          {label:"Neutras",number:annual.neutral,valueClass:"review-neutral-value",foot:share(annual.neutral)},
           {label:"Detractoras",number:annual.detractors,valueClass:"delta-down",foot:share(annual.detractors)}
         ]},
         {title:"Interacción con las reseñas",stats:[

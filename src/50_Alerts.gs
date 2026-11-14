@@ -616,6 +616,7 @@ function marketsAlertEmailMessage_(recipient, events, inlineImages, sender) {
     'Content-Disposition: inline; filename="bbva.png"',
     '',
     marketsAlertMimeBytes_(image.getBytes()),
+    ...marketsEmailFooterMime_(inlineImages, relatedBoundary),
     '--' + relatedBoundary + '--',
     ''
   ].join(crlf);
@@ -778,8 +779,7 @@ function renderMarketsAlertEmail_(events, recipient, feedback) {
     '<tr><td width="100%" style="padding:22px 28px 8px;">' + summary + '</td></tr>' +
     '<tr><td width="100%" style="padding:14px 28px 8px;">' + cards + '</td></tr>' +
     '<tr><td width="100%" style="padding:18px 28px 30px;">' + cta + '<p style="margin:18px 0 0;color:#46536D;font-size:12px;line-height:18px;">Este correo es privado y contiene únicamente señales configuradas para tu cuenta. Las preferencias de otros usuarios nunca son visibles.</p><p style="margin:7px 0 0;color:#ADB8C2;font-size:10px;line-height:15px;">Datos obtenidos el ' + escapeMarketsAlertHtml_(marketsAlertDataDateLabel_(events)) + ' · backend ' + escapeMarketsAlertHtml_(MARKETS_CONFIG.codeVersion) + ' / web ' + escapeMarketsAlertHtml_(marketsAlertWebVersion_()) + '.</p></td></tr>' +
-    '<tr><td width="100%" style="padding:16px 28px;background:#070E46;color:#85C8FF;font-size:11px;line-height:17px;"><strong style="color:#FFFFFF;">Market Pulse</strong><br>BBVA Banca de Empresas e Instituciones · Ratings y valoraciones públicas.</td></tr>' +
-    renderMarketsAlertFeedbackFooter_(feedback) + '</table></td></tr></table></body></html>';
+    '<tr><td style="padding:0 28px 28px;">' + renderMarketsEmailFooter_(feedback) + '</td></tr></table></td></tr></table></body></html>';
 }
 
 function marketsAlertIsReviewShare_(events) {
@@ -979,7 +979,11 @@ function buildMarketsAlertInlineImages_() {
   const html = HtmlService.createHtmlOutputFromFile('BrandIdentity').getContent();
   const match = html.match(/--asset-bbva-bei-logo:url\("data:image\/png;base64,([^"\)]+)"\)/);
   if (!match) throw new Error('No se ha encontrado el logotipo oficial de BBVA Banca de Empresas e Instituciones.');
-  return { bbvaLogo: Utilities.newBlob(Utilities.base64Decode(match[1]), 'image/png', 'bbva-bei.png') };
+  const images = { bbvaLogo: Utilities.newBlob(Utilities.base64Decode(match[1]), 'image/png', 'bbva-bei.png') };
+  for (const [, id, data] of html.matchAll(/<template id="mail-(biaLogo|feedbackPositive|feedbackNegative)">([A-Za-z0-9+/=]+)<\/template>/g)) {
+    images[id] = Utilities.newBlob(Utilities.base64Decode(data), 'image/png', id + '.png');
+  }
+  return images;
 }
 
 function escapeMarketsAlertHtml_(value) {
@@ -987,20 +991,55 @@ function escapeMarketsAlertHtml_(value) {
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
-function renderMarketsAlertFeedbackFooter_(feedback) {
-  const link = (vote, label) => '<a style="color:#001391;font-weight:700;" href="' +
-    escapeMarketsAlertHtml_(feedback[vote]) + '">' + label + '</a>';
-  return '<tr><td style="padding:16px 28px;color:#46536D;font-size:12px;line-height:18px;">' +
-    'Impulsado por <strong>bIA · Banca Inteligente y Autónoma</strong><br>BBVA Banca de Empresas e Instituciones' +
-    (feedback ? '<p>¿Te ha resultado útil?<br>' + link('positive', 'Sí, me resultó útil') + ' &nbsp; ' +
-      link('negative', 'No me resultó útil') + '</p>' : '') + '</td></tr>';
+function marketsEmailFooterMime_(images, boundary) {
+  return ['biaLogo', 'feedbackPositive', 'feedbackNegative'].flatMap(id => images?.[id] ? [
+    '--' + boundary, 'Content-Type: image/png; name="' + id + '.png"',
+    'Content-Transfer-Encoding: base64', 'Content-ID: <' + id + '>',
+    'Content-Disposition: inline; filename="' + id + '.png"', '', marketsAlertMimeBytes_(images[id].getBytes())
+  ] : []);
+}
+
+function marketsEmailSecret_(key) {
+  const properties = PropertiesService.getScriptProperties();
+  const existing = properties.getProperty(key);
+  if (existing) return existing;
+  // Both delivery paths already hold the script lock while composing messages.
+  const secret = Utilities.getUuid() + Utilities.getUuid();
+  properties.setProperty(key, secret);
+  return secret;
+}
+
+function renderMarketsEmailFooter_(links, language = 'es') {
+  const labels = {
+    es: ['Gestiona tu suscripción', 'Dar de baja', 'Impulsado por', 'Banca Inteligente y Autónoma',
+      'Banca de Empresas e Instituciones', '¿Te ha resultado útil?', 'Útil', 'Mejorable'],
+    en: ['Manage your subscription', 'Unsubscribe', 'Powered by', 'Intelligent and Autonomous Banking',
+      'Corporate and Institutional Banking', 'Was this helpful?', 'Helpful', 'Could be better'],
+    tr: ['Aboneliğini yönet', 'Abonelikten çık', 'Destekleyen', 'Akıllı ve Otonom Bankacılık',
+      'Kurumsal ve Ticari Bankacılık', 'Faydalı oldu mu?', 'Faydalı', 'Geliştirilebilir']
+  };
+  const [manage, unsubscribe, powered, brand, bank, question, positive, negative] = labels[language] || labels.es;
+  const esc = escapeMarketsAlertHtml_;
+  const anchor = (url, label) => '<a style="color:#001391;text-decoration:underline;" href="' + esc(url) + '">' + label + '</a>';
+  const button = (key, label, cid) => '<a aria-label="' + label + '" title="' + label + '" href="' + esc(links[key]) +
+    '" style="display:inline-block;min-width:64px;margin:0 2px;padding:16px;border:1px solid #dfe4e8;border-radius:8px;background:#fff;text-decoration:none;">' +
+    '<img src="cid:' + cid + '" width="32" height="32" alt="' + label + '" style="vertical-align:middle;"></a>';
+  const feedback = links?.positive && links?.negative ?
+    '<table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td align="center" bgcolor="#f4f5f6" style="padding:20px 12px 24px;color:#070e46;">' +
+    '<p style="font-size:16px;margin:8px 0 20px;">' + question + '</p>' + button('positive', positive, 'feedbackPositive') +
+    button('negative', negative, 'feedbackNegative') + '</td></tr></table>' : '';
+  return '<p style="margin:18px 0 24px;font-size:13px;">' + anchor(marketsWebAppUrl_() + '?view=alerts', manage) +
+    (links?.unsubscribe ? ' · ' + anchor(links.unsubscribe, unsubscribe) : '') + '</p>' +
+    '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0 0 20px;border-top:1px solid #dfe4e8;color:#070e46;font-size:13px;line-height:24px;">' +
+    '<tr><td width="92" style="padding:22px 8px;"><img src="cid:biaLogo" width="80" alt="bIA" style="display:block;width:80px;height:auto;"></td>' +
+    '<td style="padding:22px 12px;">' + powered + '<br><strong>' + brand + '</strong><br>BBVA · ' + bank + '</td></tr></table>' + feedback;
 }
 
 function marketsAlertFeedbackLinks_(recipient, messageId) {
-  const secret = PropertiesService.getScriptProperties().getProperty('MARKETS_ALERT_FEEDBACK_SECRET');
-  if (!secret || secret.length < 32) return null;
+  const secret = marketsEmailSecret_('MARKETS_ALERT_FEEDBACK_SECRET');
+  if (secret.length < 32) return null;
   const expiry = Math.floor(Date.now() / 1000) + 30 * 86400;
-  return Object.fromEntries(['positive', 'negative'].map(vote => {
+  return Object.fromEntries(['positive', 'negative', 'unsubscribe'].map(vote => {
     const payload = [messageId, expiry, vote].join('.');
     const signature = signMarketsAlertFeedback_(payload, recipient, secret);
     return [vote, marketsWebAppUrl_() + '?alertFeedback=' + encodeURIComponent(payload + '.' + signature)];
@@ -1013,7 +1052,7 @@ function signMarketsAlertFeedback_(payload, recipient, secret) {
 }
 
 function parseMarketsAlertFeedback_(token) {
-  const match = /^([a-f0-9]{32})\.(\d{10})\.(positive|negative)\.([A-Za-z0-9_-]{43})$/.exec(String(token || ''));
+  const match = /^([a-f0-9]{32})\.(\d{10})\.(positive|negative|unsubscribe)\.([A-Za-z0-9_-]{43})$/.exec(String(token || ''));
   if (!match || Number(match[2]) <= Math.floor(Date.now() / 1000)) return null;
   return { id: match[1], expiry: Number(match[2]), vote: match[3], signature: match[4] };
 }
@@ -1032,6 +1071,7 @@ function saveMarketsAlertFeedback(token) {
   if (!lock.tryLock(5000)) throw new Error('La valoración está ocupada. Inténtalo de nuevo.');
   try {
     const ss = openMarketsSpreadsheet_();
+    if (request.vote === 'unsubscribe') return unsubscribeMarketsEmail_(ss, recipient, false);
     const headers = ['message_id', 'vote', 'recorded_at'];
     let sheet = ss.getSheetByName('ALERT_FEEDBACK');
     if (!sheet) sheet = ss.insertSheet('ALERT_FEEDBACK');
@@ -1054,8 +1094,20 @@ function renderMarketsAlertFeedbackPage_(token) {
   const page = HtmlService.createTemplateFromFile('AlertFeedback');
   page.token = token;
   page.newsletter = false;
+  page.unsubscribe = request.vote === 'unsubscribe';
   page.destination = '';
-  page.choice = request.vote === 'positive' ? 'Sí, me resultó útil' : 'No me resultó útil';
+  page.choice = page.unsubscribe ? 'Dar de baja las alertas' : request.vote === 'positive' ? 'Sí, me resultó útil' : 'No me resultó útil';
   return page.evaluate().setTitle('Valorar alerta de Market Pulse')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+}
+
+/** Called only after validating the recipient-bound link and acquiring the script lock. */
+function unsubscribeMarketsEmail_(ss, recipient, newsletter) {
+  const preferences = readMarketsAlertPreferences_(ss, recipient);
+  const key = newsletter ? 'newsletterEnabled' : 'active';
+  if (preferences[key]) {
+    const updated = normalizeMarketsAlertPreferences_({ ...preferences, [key]: false }, recipient);
+    upsertMarketsAlertPreferences_(ss, updated, recipient);
+  }
+  return { unsubscribed: true };
 }

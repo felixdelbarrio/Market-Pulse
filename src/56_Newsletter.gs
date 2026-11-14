@@ -54,12 +54,7 @@ function sendMarketsMonthlyNewsletter_(ss, period, isTest) {
   const acceptedEvents = [];
   let interactionSecret;
   if (!isTest) try {
-    const properties = PropertiesService.getScriptProperties();
-    interactionSecret = properties.getProperty(MARKETS_NEWSLETTER_SECRET);
-    if (!interactionSecret) {
-      interactionSecret = Utilities.getUuid() + Utilities.getUuid();
-      properties.setProperty(MARKETS_NEWSLETTER_SECRET, interactionSecret);
-    }
+    interactionSecret = marketsEmailSecret_(MARKETS_NEWSLETTER_SECRET);
   } catch (error) {
     interactionSecret = null;
     console.warn('No se pudieron preparar los enlaces de la newsletter: ' + errorToString_(error));
@@ -156,6 +151,9 @@ function sendMarketsNewsletterPreview_(ss, recipient, preferences, configuredFor
   const model = buildMarketsNewsletterModel_(ratings, catalog, preferences, period, {
     isTest: true, configuredFor: configuredFor, language: marketsNewsletterLanguageFor_(configuredFor)
   });
+  // Previews use their own signed action so voting cannot overwrite the real edition.
+  try { model.interactions = marketsNewsletterInteractionLinks_(recipient, period, marketsEmailSecret_(MARKETS_NEWSLETTER_SECRET), true); }
+  catch (error) { console.warn('No se pudieron preparar los enlaces de la prueba: ' + errorToString_(error)); }
   const sender = requireMarketsAlertSender_(ss);
   const message = marketsNewsletterEmailMessage_(recipient, model, buildMarketsAlertInlineImages_(), sender);
   const accepted = Gmail.Users.Messages.send({ raw: message.raw }, 'me');
@@ -488,7 +486,7 @@ function marketsNewsletterEmailMessage_(recipient, model, inlineImages, sender) 
     '--' + related, 'Content-Type: image/png; name="bbva-bei.png"',
     'Content-Transfer-Encoding: base64', 'Content-ID: <bbvaLogo>',
     'Content-Disposition: inline; filename="bbva-bei.png"', '',
-    marketsAlertMimeBytes_(image.getBytes()), '--' + related + '--', ''
+    marketsAlertMimeBytes_(image.getBytes()), ...marketsEmailFooterMime_(inlineImages, related), '--' + related + '--', ''
   ].join(crlf);
   return { raw: Utilities.base64EncodeWebSafe(mime, Utilities.Charset.UTF_8).replace(/=+$/g, ''),
     subject: subject, recipient: recipient };
@@ -598,8 +596,7 @@ function renderMarketsNewsletterHtml_(model) {
     '<tr><td style="padding:4px 30px 28px;"><table role="presentation" cellspacing="0" cellpadding="0"><tr><td bgcolor="#001391" style="border-radius:8px;"><a href="' +
     appUrl + '" style="display:block;padding:13px 22px;color:#FFFFFF;text-decoration:none;font-weight:700;">Abrir Market Pulse</a></td></tr></table>' +
     '<p style="margin:16px 0 0;color:#ADB8C2;font-size:10px;line-height:15px;">La lectura ejecutiva se genera exclusivamente a partir de las cifras mostradas. Ratings y volúmenes de Android, iOS y Huawei nunca se combinan. Solo se publican posiciones con cobertura competitiva completa; los volúmenes no atribuibles y los efectos no fiables se presentan como N/D o se omiten.</p></td></tr>' +
-    '<tr><td style="padding:16px 30px;background:#070E46;color:#85C8FF;font-size:11px;line-height:17px;"><strong style="color:#FFFFFF;">Market Pulse</strong><br>BBVA Banca de Empresas e Instituciones · Uso interno.</td></tr>' +
-    (model.interactions ? '<tr><td>' + renderMarketsNewsletterFeedback_(model.interactions, model.language) + '</td></tr>' : '') +
+    '<tr><td style="padding:0 30px 28px;">' + renderMarketsEmailFooter_(model.interactions, model.language) + '</td></tr>' +
     '</table></td></tr></table></body></html>';
 }
 
@@ -983,7 +980,7 @@ function localizedMarketsNewsletter_(model) {
     esc(subject) + '</h1></header><p>' + esc(coverage) + '</p><table cellpadding="8"><thead><tr>' +
     headers.map(value => '<th scope="col">' + esc(value) + '</th>').join('') + '</tr></thead><tbody>' +
     rows.map(row => '<tr>' + row.map(value => '<td>' + esc(value) + '</td>').join('') + '</tr>').join('') +
-    '</tbody></table><p><a href="' + esc(url) + '">' + esc(copy.link) + '</a></p>' + renderMarketsNewsletterFeedback_(model.interactions, language) + '</body></html>';
+    '</tbody></table><p><a href="' + esc(url) + '">' + esc(copy.link) + '</a></p>' + renderMarketsEmailFooter_(model.interactions, language) + '</body></html>';
   return { subject, plain, html };
 }
 
@@ -991,11 +988,11 @@ const MARKETS_NEWSLETTER_INTERACTIONS = 'NEWSLETTER_INTERACTIONS';
 const MARKETS_NEWSLETTER_INTERACTION_HEADERS = ['id', 'period', 'action', 'recorded_at', 'state'];
 const MARKETS_NEWSLETTER_SECRET = 'MARKETS_NEWSLETTER_INTERACTION_SECRET';
 
-function marketsNewsletterInteractionLinks_(recipient, period, secret) {
+function marketsNewsletterInteractionLinks_(recipient, period, secret, preview = false) {
   if (!secret) return null;
   const expiry = Math.floor(Date.now() / 1000) + 30 * 86400;
-  return Object.fromEntries(['open', 'positive', 'negative'].map(action => {
-    const payload = ['newsletter', period, expiry, action].join('.');
+  return Object.fromEntries(['open', 'positive', 'negative', 'unsubscribe'].map(action => {
+    const payload = [preview ? 'newsletter-preview' : 'newsletter', period, expiry, action].join('.');
     const signature = signMarketsAlertFeedback_(payload, recipient, secret);
     const url = marketsWebAppUrl_() + '?newsletterInteraction=' + encodeURIComponent(payload + '.' + signature);
     return [action, url];
@@ -1003,9 +1000,9 @@ function marketsNewsletterInteractionLinks_(recipient, period, secret) {
 }
 
 function parseMarketsNewsletterInteraction_(token) {
-  const match = /^(newsletter\.(\d{4}-(?:0[1-9]|1[0-2]))\.(\d{10})\.(open|positive|negative))\.([A-Za-z0-9_-]{43})$/.exec(String(token || ''));
+  const match = /^(newsletter(?:-preview)?\.(\d{4}-(?:0[1-9]|1[0-2]))\.(\d{10})\.(open|positive|negative|unsubscribe))\.([A-Za-z0-9_-]{43})$/.exec(String(token || ''));
   if (!match || Number(match[3]) <= Math.floor(Date.now() / 1000)) return null;
-  return { payload: match[1], period: match[2], action: match[4], signature: match[5] };
+  return { payload: match[1], period: match[2], action: match[4], signature: match[5], preview: match[1].startsWith('newsletter-preview.') };
 }
 
 function renderMarketsNewsletterInteractionPage_(token) {
@@ -1014,8 +1011,9 @@ function renderMarketsNewsletterInteractionPage_(token) {
   const page = HtmlService.createTemplateFromFile('AlertFeedback');
   page.token = token;
   page.newsletter = true;
+  page.unsubscribe = interaction.action === 'unsubscribe';
   page.destination = marketsWebAppUrl_();
-  page.choice = { open: 'Continuar a Market Pulse', positive: '👍 Útil', negative: '👎 Mejorable' }[interaction.action];
+  page.choice = { open: 'Continuar a Market Pulse', positive: '👍 Útil', negative: '👎 Mejorable', unsubscribe: 'Dar de baja la newsletter' }[interaction.action];
   return page.evaluate().setTitle('Newsletter de Market Pulse').addMetaTag('viewport', 'width=device-width, initial-scale=1');
 }
 
@@ -1029,11 +1027,13 @@ function saveMarketsNewsletterInteraction(token) {
   for (let i = 0; i < expected.length; i++) diff |= expected.charCodeAt(i) ^ interaction.signature.charCodeAt(i);
   if (diff) throw new Error('El enlace no corresponde a la cuenta conectada.');
   const { period, action } = interaction;
+  if (interaction.preview) return { open: action === 'open', preview: true };
   const id = 'n_' + signMarketsAlertFeedback_(['newsletter', period, action === 'open' ? 'open' : 'vote'].join('.'), email, secret);
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(5000)) throw new Error('No se pudo guardar. Inténtalo de nuevo.');
   try {
     const ss = openMarketsSpreadsheet_();
+    if (action === 'unsubscribe') return unsubscribeMarketsEmail_(ss, email, true);
     const name = MARKETS_NEWSLETTER_INTERACTIONS, headers = MARKETS_NEWSLETTER_INTERACTION_HEADERS;
     const existing = ss.getSheetByName(name);
     const sheet = existing ? requireCurrentSheetContract_(ss, name, headers) : ss.insertSheet(name);
@@ -1097,13 +1097,4 @@ function marketsNewsletterInteractionText_(model) {
   if (!links) return marketsWebAppUrl_();
   const [question, positive, negative] = marketsNewsletterInteractionLabels_(model.language);
   return [links.open, question, positive + ': ' + links.positive, negative + ': ' + links.negative].join('\n');
-}
-
-function renderMarketsNewsletterFeedback_(links, language) {
-  if (!links) return '';
-  const [question, positive, negative] = marketsNewsletterInteractionLabels_(language);
-  const button = (key, label, icon) => '<a style="display:inline-block;margin:0 8px;text-decoration:none;font-size:28px;" aria-label="' +
-    label + '" title="' + label + '" href="' + escapeMarketsAlertHtml_(links[key]) + '">' + icon + '</a>';
-  return '<table role="presentation" width="100%"><tr><td align="center" style="padding:16px;color:#070E46;background:#FFFFFF;">' +
-    '<p>' + question + '</p><p>' + button('positive', positive, '👍') + button('negative', negative, '👎') + '</p></td></tr></table>';
 }
