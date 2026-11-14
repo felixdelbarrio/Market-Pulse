@@ -164,8 +164,7 @@ function advanceMarketsReviewPipeline_() {
     const tasks = [
       { id: 'index', priority: 3, run: () => {
         if (typeof advanceMarketsReviewIndex_ !== 'function') return false;
-        const index = advanceMarketsReviewIndex_();
-        properties.setProperty('MARKETS_REVIEW_INDEX_STATUS', JSON.stringify({ ...index, updatedAt: new Date().toISOString() }));
+        const index = recordMarketsReviewIndexBatch_();
         return !index.complete;
       }},
       { id: 'geography', priority: 3, run: () => typeof advanceMarketsAndroidGeography_ === 'function' && advanceMarketsAndroidGeography_(now) },
@@ -466,6 +465,13 @@ function marketsAdminReviewOperations_(email) {
 }
 
 /** Manual runs share the owner scope and the same worker locks and checkpoints. */
+function recordMarketsReviewIndexBatch_() {
+  const index = advanceMarketsReviewIndex_();
+  PropertiesService.getScriptProperties().setProperty('MARKETS_REVIEW_INDEX_STATUS',
+    JSON.stringify({ ...index, updatedAt: new Date().toISOString() }));
+  return index;
+}
+
 function runMarketsPanelJob(id) {
   requireMarketsReviewOwner_();
   switch (id) {
@@ -488,8 +494,8 @@ function runMarketsPanelJob(id) {
       advanceMarketsFunctionalCatalog_({ sync: false, translate: true });
       return { message: 'Traducción comprobada.' };
     case 'index':
-      advanceMarketsReviewIndex_();
-      return { message: 'Lote de clasificación procesado.' };
+      const index = recordMarketsReviewIndexBatch_();
+      return { message: index.complete ? 'Clasificación completada.' : 'Lote de clasificación procesado.' };
     case 'publish':
       publishMarketsReviewSnapshot_();
       return { message: 'Vistas comprobadas.' };
