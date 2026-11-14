@@ -205,7 +205,11 @@ function marketsAdminReviewPipeline_(email) {
     }
   }
   const state = readMarketsReviewPipeline_(PropertiesService.getScriptProperties());
-  const jobs = state?.jobs || newMarketsReviewPipeline_('').jobs;
+  const definitions = newMarketsReviewPipeline_('').jobs;
+  const jobs = definitions.map(definition => {
+    const current = state?.jobs.find(job => job.id === definition.id);
+    return { ...definition, ...current, label: definition.label, priority: definition.priority };
+  });
   return { day: state?.day || '', installed, canRestart: owner && installed === true,
     jobs: [{ id: 'supervisor', label: 'Supervisor de reseñas', priority: 0,
       status: installed === null ? 'Activador sin verificar' : installed ? 'Activo' : 'Sin activador instalado' }, ...jobs] };
