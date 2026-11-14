@@ -1,11 +1,20 @@
 const MARKETS_FUNCTIONAL_MASTER = '1hsFp-ZiiSsSt_ka73oKAWFlHEySdmJM_IrkBmK6YfH8';
 const MARKETS_FUNCTIONAL_TABS = ['Soluciones Funcionales', 'Capacidades canal (core y VD)'];
+const MARKETS_REVIEW_PAYROLL = /\b(?:(?:pagos?|remesas?|transferencias) de (?:las? )?nominas?(?!\w| (?:en|a) mi cuenta)|(?:pago|pagar|procesar) (?:la )?nomina (?:de|a|para) (?:mis |nuestros )?empleados|(?:pagar|procesar) (?:las? )?nominas|payroll processing|paying (?:my |our )?employees|calisanlar\w* maas\w*|personel maas\w*|folha de pagamento)\b/u;
 const MARKETS_REVIEW_BLOCK_EVIDENCE = {
-  '03': /\b(?:transferencia|transferencias|bank transfer|wire transfer|para transferi|havale|eft)\b/u,
+  '02': /\b(?:mi cuenta|abrir (?:una |mi )?cuenta|cerrar (?:la |mi )?cuenta|cuentas? (?:de (?:la )?)?nominas?|cuenta sueldo|my (?:bank )?account|bank balance|hesabim|hesap bakiyesi|maas hesab\w*)\b/u,
+  '03': /\b(?:transferencias?|bank transfer|wire transfer|para transfer\w*|havale\w*|eft|(?:hacer|enviar|recibir|aprobar) (?:un |los )?pagos?|(?:enviar|mandar) (?:dinero|un (?:spei|pix|bizum))|pagar por (?:spei|pix|bizum)|fast (?:odeme|transfer)\w*)\b/u,
+  '04': MARKETS_REVIEW_PAYROLL,
+  '05': /\b(?:(?:pagar|pago de) (?:mis |los )?impuestos|(?:pagar|pago de) (?:el )?iva|tax payments?|vergi ode\w*)\b/u,
+  '06': /\b(?:pagar (?:el )?alquiler|pago (?:el )?alquiler|pagar (?:una |la )?factura|fatura ode\w*)\b/u,
   '08': /\b(?:prestamo|prestamos|linea de credito|business loan|ticari kredi)\b/u,
-  '11': /\b(?:dat[aá]fono|terminal de pago|pos terminal|pos cihazi)\b/u,
+  '09': /\b(?:mi tarjeta|tarjetas? (?:de (?:credito|debito|empresa|estudiante)|corporativa)|my (?:debit |credit )?card|kartim\w*|(?:kredi|banka) kart\w*)\b/u,
+  '12': /\b(?:deposito a plazo|fondos? de inversion|vadeli mevduat)\b/u,
+  '14': /\b(?:mi seguro|seguro de (?:mi )?(?:hogar|comercio)|insurance premium|sigorta primi)\b/u,
+  '11': /\b(?:datafono|terminal de pago|pos terminal|pos cihazi)\b/u,
   '16': /\b(?:iniciar sesion|inicio de sesion|log in|login|sign in|giris yapamiyorum|sifre)\b/u
 };
+const MARKETS_REVIEW_BLOCK_PATTERNS = Object.entries(MARKETS_REVIEW_BLOCK_EVIDENCE);
 // Reglas del catálogo exportado de News Radar. Solo se aplican a IDs activos del maestro.
 const MARKETS_REVIEW_RULES = {
   "01.01": [["posicion global", "financial dashboard", "dashboard", "home banking", "digital banking solution", "corporate banking platform", "app itau empresas", "banca digital empresarial"], ["dashboard", "posición global", "posicion global", "visión integral", "vision integral", "vista global", "posicion de productos", "posición de productos", "account overview", "financial overview", "product overview", "aggregate", "aggregated"], ["workforce dashboard", "stock market dashboard", "cloud cost dashboard"]],
@@ -108,7 +117,7 @@ const MARKETS_REVIEW_RULES = {
   "16.01": [["login biometrico", "biometria", "biometricos", "biometric", "biometrics", "facial recognition", "problemas de acceso", "error al iniciar sesion", "no deja entrar", "unable to log in", "login outage", "fallo de autenticacion"], ["login", "log in", "log-in", "inicio de sesión", "iniciar sesión", "acceso al canal", "acceso a la app", "sign in", "sign-in", "signing in", "authentication", "autenticación", "passkey", "sesión biométrica"], ["border control", "police facial recognition"]],
   "16.03": [["recuperar contrasena", "password recovery"], [], []],
   "16.04": [["consent management"], [], []],
-  "16.05": [["firma electronica", "electronic signature", "e-signature", "autorizar operaciones", "autorización de pagos", "autorizacion de pagos", "payment authorization", "approve transactions", "transaction signing", "biometric payment authorization"], [], []],
+  "16.05": [["otp para aprobar pagos", "otp to approve payments", "odeme onay kodu", "firma electronica", "electronic signature", "e-signature", "autorizar operaciones", "autorización de pagos", "autorizacion de pagos", "payment authorization", "approve transactions", "transaction signing", "biometric payment authorization"], [], []],
   "16.06": [["pending approvals"], [], []],
   "16.08": [["softtoken", "softoken", "soft token"], [], []],
   "16.10": [["onboarding digital", "digital onboarding", "onboarding empresas", "kyb", "kyc", "onboarding"], ["empresa", "empresas", "pymes", "corporate", "enterprise", "sme", "smes", "business account", "business banking", "personas jurídicas", "persona jurídica", "sociedades"], ["employee onboarding", "onboarding de empleados"]],
@@ -137,43 +146,169 @@ const MARKETS_REVIEW_RULES = {
 const MARKETS_FUNCTIONAL_HEADERS = ['id', 'block', 'function', 'description'];
 
 function normalizeReviewEvidence_(value) {
-  return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+  return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/ı/g, 'i')
     .replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 }
 
+// Adapted from News Radar taxonomy.js (1a81ada): smoothed IDF, logarithmic
+// term frequency, description coverage and a margin for ambiguous candidates.
+const MARKETS_REVIEW_RANK_STOP = new Set(('de del la el los las y para por con que en un una mi tu su al se no ' +
+  'banco banca empresa negocio empresarial aplicacion app digital plataforma servicio operacion cuenta tarjeta pago ' +
+  'transferencia usuario gestion sistema informacion proceso permite realizar solicitar cliente ' +
+  'the and of to in for with a an on from my your our bank banking business company account payment ' +
+  'card transfer service platform user ve bir bu icin ile banka bankacilik sirket isletme odeme hesap kart').split(' ').map(marketsReviewRankWord_));
+
+function marketsReviewRankWord_(word) {
+  return word.length > 4 ? word.replace(/s$/, '') : word;
+}
+
+function marketsReviewRankTerms_(words) {
+  return words.map(marketsReviewRankWord_).filter(word => word.length > 2 && !MARKETS_REVIEW_RANK_STOP.has(word));
+}
+
 function compileReviewRules_(catalog) {
-  const index = new Map();
-  for (const [id, , name] of catalog) {
+  const literal = new Map(), semantic = new Map(), df = new Map();
+  const entries = catalog.map(([id, , name, description]) => {
     const [terms, required, excluded] = MARKETS_REVIEW_RULES[id] || [[], [], []];
     const context = required.map(normalizeReviewEvidence_).filter(Boolean);
     const exclude = excluded.map(normalizeReviewEvidence_).filter(Boolean);
-    for (const phrase of new Set([name, ...terms].map(normalizeReviewEvidence_))) {
-      if (!phrase.includes(' ') && !context.length) continue;
-      const first = phrase.split(' ')[0];
-      if (!index.has(first)) index.set(first, []);
-      index.get(first).push({ id, phrase, context, exclude });
+    const phrases = [...new Set([name, ...terms].map(normalizeReviewEvidence_))]
+      .filter(phrase => phrase && (phrase.includes(' ') || context.length));
+    const descriptive = new Set(marketsReviewRankTerms_(normalizeReviewEvidence_(description).split(' ')));
+    const words = new Set([...descriptive, ...marketsReviewRankTerms_(phrases.join(' ').split(' '))]);
+    for (const word of words) df.set(word, (df.get(word) || 0) + 1);
+    return { id, phrases, context, exclude, descriptive };
+  });
+  const idf = new Map([...df].map(([word, count]) => [word, 1 + Math.log((1 + entries.length) / (1 + count))]));
+  const minimumIdf = Math.min(4.8, 1 + Math.log((1 + entries.length) / 2));
+  function add(index, key, value) {
+    if (!index.has(key)) index.set(key, []);
+    index.get(key).push(value);
+  }
+  for (const {id, phrases, context, exclude, descriptive} of entries) {
+    for (const phrase of phrases) {
+      const words = phrase.split(' ');
+      const ranked = marketsReviewRankTerms_(words);
+      const mean = ranked.length ? ranked.reduce((sum, word) => sum + idf.get(word), 0) / ranked.length : 1;
+      add(literal, words[0], { id, phrase, context, exclude, weight: mean * (1 + Math.log(1 + words.length)) });
+    }
+    let norm = 0;
+    for (const word of descriptive) norm += idf.get(word) ** 2;
+    const row = { id, norm, context, exclude };
+    for (const word of descriptive) {
+      if (idf.get(word) >= minimumIdf) add(semantic, word, { row, weight: idf.get(word) ** 2 });
     }
   }
-  return index;
+  return { literal, semantic };
 }
 
 function classifyReviewEvidence_(text, index) {
-  const normalized = normalizeReviewEvidence_(text);
+  return classifyNormalizedReviewEvidence_(normalizeReviewEvidence_(text), index);
+}
+
+function classifyNormalizedReviewEvidence_(normalized, index) {
+  if (!normalized) return [];
   const padded = ' ' + normalized + ' ';
-  const matches = new Set();
+  const words = [...new Set(normalized.split(' '))];
+  const candidates = new Map(), scoresById = new Map();
   const contains = phrase => padded.includes(' ' + phrase + ' ');
-  for (const word of new Set(normalized.split(' '))) {
-    for (const rule of index.get(word) || []) {
-      if (contains(rule.phrase) && (!rule.context.length || rule.context.some(contains)) &&
-          !rule.exclude.some(contains)) matches.add(rule.id);
+  const eligible = rule => (!rule.context.length || rule.context.some(contains)) && !rule.exclude.some(contains);
+  for (const word of words) {
+    for (const rule of index.literal.get(word) || []) {
+      if (!contains(rule.phrase) || !eligible(rule)) continue;
+      if (!candidates.has(rule.phrase)) candidates.set(rule.phrase, new Set());
+      candidates.get(rule.phrase).add(rule.id);
+      scoresById.set(rule.id, (scoresById.get(rule.id) || 0) + rule.weight);
     }
   }
-  if (!matches.size) {
-    for (const [block, evidence] of Object.entries(MARKETS_REVIEW_BLOCK_EVIDENCE)) {
-      if (evidence.test(normalized)) matches.add(block + '.xx');
+  const matches = new Set();
+  for (const ids of candidates.values()) {
+    const [id] = ids;
+    if (ids.size === 1) matches.add(id);
+    else {
+      const ranked = [...ids].sort((a, b) => scoresById.get(b) - scoresById.get(a));
+      if (scoresById.get(ranked[1]) < scoresById.get(ranked[0]) * 0.85) matches.add(ranked[0]);
+      else if (ranked.every(candidate => candidate.slice(0, 2) === id.slice(0, 2))) matches.add(id.slice(0, 2) + '.xx');
     }
+  }
+  const salaryReceived = MARKETS_REVIEW_AUDIENCE_RULES.salaryReceived.test(normalized) &&
+    !/\b(?:empleados|proveedores)\b/.test(normalized);
+  if (salaryReceived) for (const id of matches) if (id.startsWith('04.')) matches.delete(id);
+  const matchedBlocks = new Set([...matches].map(id => id.slice(0, 2)));
+  for (const [block, evidence] of MARKETS_REVIEW_BLOCK_PATTERNS) {
+    if (!(salaryReceived && block === '04') && (!matchedBlocks.size || ['02', '03', '04', '05'].includes(block)) &&
+        !matchedBlocks.has(block) && evidence.test(normalized)) matches.add(block + '.xx');
+  }
+  // Descriptions are fallback evidence. A literal/block match must not acquire
+  // unrelated secondary labels from a weak semantic association.
+  if (!matches.size && !candidates.size) {
+    const terms = new Map();
+    for (const word of marketsReviewRankTerms_(normalized.split(' '))) {
+      if (index.semantic.has(word)) terms.set(word, (terms.get(word) || 0) + 1);
+    }
+    const scores = new Map();
+    for (const [word, frequency] of terms) {
+      const tf = 1 + Math.log(frequency);
+      for (const { row, weight } of index.semantic.get(word) || []) {
+        if (!scores.has(row)) scores.set(row, { terms: 0, coverage: 0, rank: 0 });
+        const score = scores.get(row);
+        score.terms++;
+        score.coverage += weight;
+        score.rank += tf * weight;
+      }
+    }
+    let best, runner;
+    for (const [row, score] of scores) {
+      if (score.terms < 3 || score.coverage / row.norm < 0.25 || !eligible(row) ||
+          (salaryReceived && row.id.startsWith('04.'))) continue;
+      const candidate = { id: row.id, rank: score.rank / Math.sqrt(row.norm) };
+      if (!best || candidate.rank > best.rank) { runner = best; best = candidate; }
+      else if (!runner || candidate.rank > runner.rank) runner = candidate;
+    }
+    if (best && (!runner || runner.rank < best.rank * 0.85)) matches.add(best.id);
   }
   return [...matches].sort();
+}
+
+// Evidence is evaluated in the original text. An app name or storefront is not evidence.
+const MARKETS_REVIEW_AUDIENCE_RULES = {
+  direct: /\b(?:cuentas? (?:de (?:mi |nuestra |la )?empresa[s]?|de negocios?|empresarial(?:es)?|comercial(?:es)?|pyme|business)|(?:mi|nuestro) negocio|(?:mi|nuestra) empresa|(?:mi|nuestro) comercio|(?:soy|como) (?:autonom[oa]|comerciante|profesional independiente)|(?:tarjeta|banca|cuenta) (?:de empresa[s]?|corporativa|para empresas)|(?:la|mi|nuestra) app de empresas (?:no |me |se )|(?:pago|pagos|pagar|transferencias) a (?:mis |nuestros )?(?:empleados|proveedores)|transferencias masivas|cash pooling|(?:my|our) (?:business|company|employees)|(?:business|corporate|merchant) (?:bank account|account|card|loan)|payroll processing|paying (?:my |our )?employees|supplier payments|(?:minha|nossa) empresa|conta (?:empresarial|pj)|folha de pagamento|ticari hesap\w*|sirket hesab\w*|sirketim(?:in)?|isletmem(?:in)?|esnaf kredisi|kobi kredisi|sanal pos (?:basvur\w*|entegrasyon\w*)|e fatura (?:kes\w*|entegrasyon\w*)|calisanlar\w* maas\w*|personel maas\w*|tedarikci odeme\w*|isletme kredisi|ihracat finansmani)\b/u,
+  probable: /\b(?:gestion de tesoreria|conciliacion de cobros|terminal de cobro|merchant settlement|(?:pos cihaz\w*|sanal pos) (?:basvur\w*|kurulum\w*|komisyon\w*|odeme al\w*)|toplu odeme\w*|bordro\w*|teminat mektub\w*|akreditif\w*)\b/u,
+  retail: /\b(?:cuentas? (?:de (?:la )?)?nominas?|cuentas? sueldo|conta salario|salary account|maas hesab\w*|prestamos? personal(?:es)?|creditos? (?:personal(?:es)?|al consumo)|personal loans?|consumer credit|ihtiyac kredisi|bireysel kredi|kisisel kredi|cuentas? (?:infantil(?:es)?|personal(?:es)?)|para uso personal|(?:uso|utilizo) (?:la app )?personal y|tarjeta (?:personal|de estudiante)|student card|seguro de (?:mi )?hogar|home insurance|alquiler de (?:mi|nuestra) vivienda|(?:transferir|enviar dinero) a mi hij[oa]|(?:recibo|factura) (?:de (?:luz|gas|internet) de mi casa|del hogar)|(?:hipoteca|prestamo) (?:de|para) (?:mi|nuestra) vivienda|(?:ahorrar|ahorro) para (?:mi jubilacion|mis vacaciones)|(?:credito|prestamo) (?:para|de) (?:estudios|mi boda|mis vacaciones)|gastos (?:domesticos|familiares|personales)|(?:vacaciones|viaje personal) (?:de mi familia|en familia)|(?:netflix|spotify) (?:me cobra|subscription|abonelig\w*)|(?:cobro|pago|pagar|planes) (?:a |de )?(?:netflix|spotify)|suscripcion (?:personal|de netflix|de spotify)|ev kira(?:si|m)\w*|ogrenci kart\w*)\b/u,
+  salaryReceived: /\b(?:recib\w*|cobr\w*|deposit\w*|ingres\w*|acredit\w*) (?:\w+ ){0,3}(?:mi nomina|(?:el )?pago de (?:mi |la )?nomina)|\b(?:maasim|maasimi|maas musterisi\w*|maasli musteriyim)\b/u,
+  negatedBusiness: /\b(?:no (?:soy|somos|tengo|tenemos|poseo) (?:una )?(?:empresa|autonom[oa]|negocio)|not (?:a business|self employed)|(?:sirket|esnaf) degilim)\b/u
+};
+
+const MARKETS_REVIEW_AUDIENCE_PATTERNS = Object.entries(MARKETS_REVIEW_AUDIENCE_RULES);
+
+const MARKETS_SHARED_REVIEW_OPERATIONS = new Set([
+  '02.xx', '02.02', '02.03', '02.14', '03.xx', '03.13', '03.18', '03.25',
+  '05.xx', '05.01', '05.23', '06.xx', '06.01', '06.03', '06.06', '06.09',
+  '07.02', '08.xx', '08.24', '08.33', '09.xx', '09.02', '09.03', '09.04',
+  '09.05', '09.06', '09.09', '09.10', '09.11', '09.12', '09.13', '09.14',
+  '09.17', '09.18', '09.19', '09.20', '09.21', '09.22', '09.23',
+  '10.05', '12.xx', '12.04', '12.05', '14.xx', '15.19', '16.03', '16.05', '16.08'
+]);
+
+function classifyMarketsReviewAudience_(normalized, ids, knownBlocks) {
+  const evidence = {};
+  for (const [key, pattern] of MARKETS_REVIEW_AUDIENCE_PATTERNS) evidence[key] = pattern.exec(normalized)?.[0] || '';
+  if (!evidence.salaryReceived || /\b(?:empleados|proveedores)\b/.test(normalized)) {
+    evidence.direct ||= MARKETS_REVIEW_PAYROLL.exec(normalized)?.[0] || '';
+  }
+  const direct = evidence.direct && !evidence.negatedBusiness;
+  const conflict = direct && evidence.retail;
+  const audience = conflict ? 'UNDETERMINED' : direct ? 'BEI_CONFIRMED' : evidence.retail ? 'RETAIL'
+    : evidence.probable && !evidence.negatedBusiness ? 'BEI_PROBABLE' : 'UNDETERMINED';
+  const sharedOperation = ids.some(id => MARKETS_SHARED_REVIEW_OPERATIONS.has(id) && knownBlocks.has(id.slice(0, 2)));
+  return { audience, sharedOperation, evidence };
+}
+
+function matchesMarketsReviewAudience_(filter, decision) {
+  if (filter === 'BEI_ONLY') return decision.audience === 'BEI_CONFIRMED';
+  if (filter === 'BEI_EXTENDED') return !decision.evidence.retail &&
+    (decision.audience === 'BEI_CONFIRMED' || decision.audience === 'BEI_PROBABLE' || decision.sharedOperation);
+  return true;
 }
 
 function syncMarketsFunctionalCatalog_() {
@@ -242,7 +377,8 @@ function getMarketsReviewHeatmap(filters) {
   const country = /^(UNKNOWN|[A-Z]{2})$/.test(filters?.country) ? filters.country : '';
   const platform = ['Android', 'iOS'].includes(filters?.platform) ? filters.platform : '';
   const appName = String(filters?.app || '').slice(0, 150);
-  const scope = { period, country: country || 'ALL', platform: platform || 'ALL', app: appName, maxRating: 3, includeTopics: true };
+  const { audience } = normalizeMarketsReviewFilters_({ audience: filters?.audience });
+  const scope = { audience, period, country: country || 'ALL', platform: platform || 'ALL', app: appName, maxRating: 3, includeTopics: true };
   return readMarketsReviewCache_(ss, 'heatmap', scope, {}, apps => {
     const taxonomy = catalog.getRange(2, 1, catalog.getLastRow() - 1, 4).getDisplayValues();
     const topics = {};
@@ -275,15 +411,8 @@ function getMarketsReviewHeatmap(filters) {
   });
 }
 
-function reviewTopicRules_(ss) {
-  const catalog = ss.getSheetByName('FUNCTIONAL_CATALOG');
-  return catalog && catalog.getLastRow() > 1
-    ? compileReviewRules_(catalog.getRange(2, 1, catalog.getLastRow() - 1, 3).getDisplayValues())
-    : new Map();
-}
-
 const MARKETS_REVIEW_ENTITY = 'BBVA Empresas';
-const MARKETS_REVIEW_SNAPSHOT_SCHEMA = 7;
+const MARKETS_REVIEW_SNAPSHOT_SCHEMA = 8;
 const MARKETS_REVIEW_HELPFUL_MIN = 5;
 const MARKETS_REVIEW_PAGE_SIZE = 25;
 
@@ -326,7 +455,7 @@ function marketsReviewVersions_(properties, catalogVersion) {
 }
 
 function marketsReviewSnapshotScope_(operation, filters, window) {
-  if (filters.year || filters.analysisMonth || filters.platform !== 'ALL' || filters.topic || filters.rating || filters.search || filters.reviewKey ||
+  if (filters.audience || filters.year || filters.analysisMonth || filters.platform !== 'ALL' || filters.topic || filters.rating || filters.search || filters.reviewKey ||
       filters.period || Number(filters.page || 0) !== 0) return '';
   const language = ['es', 'en', 'tr'].includes(filters.language) ? filters.language : 'es';
   if (operation === 'page') {
@@ -425,7 +554,7 @@ function getMarketsReviewPage(filters) {
   if (filters.start && filters.start < window.start) window.start = filters.start;
   const timing = {};
   const page = readMarketsReviewCache_(ss, 'page', filters, window, catalog => {
-    const deferBlocks = !filters.topic;
+    const deferBlocks = !filters.topic && !filters.audience;
     const query = { ...filters, country: 'ALL', deferBlocks };
     const paging = { ...filters, topics: marketsReviewTopics_(ss) };
     const page = deferBlocks && !filters.search
@@ -476,10 +605,14 @@ function normalizeMarketsReviewFilters_(filters) {
   if (filters.rating !== undefined && filters.rating !== '' && !/^[1-5]$/.test(filters.rating)) {
     throw new Error('Número de estrellas no válido.');
   }
+  if (filters.audience && !['ALL', 'BEI_ONLY', 'BEI_EXTENDED'].includes(filters.audience)) {
+    throw new Error('Audiencia no válida.');
+  }
   const normalized = { country, platform, page: Math.min(10000, Math.max(0, Math.floor(Number(filters.page) || 0))) };
   for (const key of ['start', 'end', 'year', 'analysisMonth', 'period', 'topic', 'segment', 'app', 'entity', 'reviewKey', 'search']) {
     if (typeof filters[key] === 'string' && filters[key]) normalized[key] = filters[key].slice(0, 200);
   }
+  if (filters.audience && filters.audience !== 'ALL') normalized.audience = filters.audience;
   if (filters.rating) normalized.rating = String(filters.rating);
   if (['es', 'en', 'tr'].includes(filters.language)) normalized.language = filters.language;
   return normalized;
@@ -518,7 +651,7 @@ function getMarketsReviewAnalytics(filters) {
     const range = { start: sourceStart, end: window.end };
     const query = { country: filters.country, platform: filters.platform, start: sourceStart };
     if (filters.end && filters.end < range.end) query.end = filters.end;
-    for (const field of ['period', 'rating', 'topic', 'reviewKey', 'search']) {
+    for (const field of ['period', 'rating', 'topic', 'reviewKey', 'search', 'audience']) {
       if (filters[field]) query[field] = filters[field];
     }
     const key = marketsReviewAnalyticsSourceKey_(ss, query, range, versions);
@@ -551,12 +684,12 @@ function marketsReviewAnalyticsWindow_(filters, today) {
     window.recent = window.start;
   }
   if (filters.analysisMonth) {
-    filters.monthlyScopeVersion = 1;
     const start = filters.analysisMonth + '-01';
     const [year, month] = filters.analysisMonth.split('-').map(Number);
     window.recent = start;
     window.end = [today, shiftReviewDay_(new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 10), -1)].sort()[0];
-    if (window.start >= start) window.start = (year - 1) + '-01-01';
+    const previousStart = shiftReviewDay_(start, -1).slice(0, 7) + '-01';
+    if (window.start > previousStart) window.start = previousStart;
   }
   return window;
 }
@@ -692,6 +825,9 @@ function summarizeMarketsReviewAnalytics_(rows, topics, filters, window, annual 
     }
   }
   const base = { total: 0, promoters: 0, detractors: 0 };
+  const previousEnd = shiftReviewDay_(window.recent, -1);
+  const baseStart = filters.analysisMonth ? previousEnd.slice(0, 7) + '-01' : window.start;
+  const current = { total: 0, promoters: 0, detractors: 0 };
   const recent = [], recentBlocks = new Map();
   function count(target, row) {
     const score = net(row.rating);
@@ -701,9 +837,10 @@ function summarizeMarketsReviewAnalytics_(rows, topics, filters, window, annual 
   }
   for (const row of filters.year ? [] : local) {
     if (row.date < window.recent) {
-      count(base, row);
+      if (row.date >= baseStart) count(base, row);
       continue;
     }
+    if (filters.analysisMonth) count(current, row);
     if (filters.analysisMonth && segment && !segment.stars.includes(row.rating)) continue;
     recent.push(row);
     for (const id of blocksOf(row)) {
@@ -711,8 +848,8 @@ function summarizeMarketsReviewAnalytics_(rows, topics, filters, window, annual 
       count(recentBlocks.get(id), row);
     }
   }
-  const baseline = base.total ? { ...base, balance: reviewBalancePoints_(base), start: window.start,
-    end: shiftReviewDay_(window.recent, -1) } : null;
+  const baseline = base.total ? { ...base, balance: reviewBalancePoints_(base), start: baseStart,
+    end: previousEnd } : null;
   const deltas = [...recentBlocks].map(([id, stats]) => {
     const balance = reviewBalancePoints_(stats);
     return { id, label: topics[id], ...stats, weight: 100 * stats.total / recent.length,
@@ -734,6 +871,9 @@ function summarizeMarketsReviewAnalytics_(rows, topics, filters, window, annual 
       b.total - a.total || a.label.localeCompare(b.label)), entityOptions: [...new Set(visible.flatMap(row => row.entities))].sort(),
     monthlyEntityOptions: [...new Set([...monthly.values()].map(point => point.entity))].sort(),
     monthly: [...monthly.values()].map(point => ({ ...point, balance: reviewBalancePoints_(point) })),
+    ...(filters.analysisMonth ? { nps: { start: window.recent, end: window.end, current: current.total ? reviewBalancePoints_(current) : null,
+      previous: baseline?.balance ?? null, previousStart: baseStart, previousEnd,
+      delta: current.total && baseline ? reviewBalancePoints_(current) - baseline.balance : null } } : {}),
     deltas, baseline, recentTotal: recent.length };
 }
 

@@ -73,7 +73,7 @@
         const label=`${monthLabel(month)} · ${observations.join(" · ")||"Sin datos"}`;
         return `<rect class="chart-band" data-bucket="${i}" tabindex="0" aria-label="${esc(label)}" x="${start}" y="${top}" width="${end-start}" height="${height-top-bottom}"/>`;
       }).join("");
-      return `<svg viewBox="0 0 ${width} ${height}" role="group" aria-label="Saldo mensual por entidad, de menos cien a cien puntos porcentuales">${ticks}${labels}${bands}${lines}</svg>`;
+      return `<svg viewBox="0 0 ${width} ${height}" role="group" aria-label="NPS mensual de opiniones por entidad, de menos cien a cien puntos porcentuales">${ticks}${labels}${bands}${lines}</svg>`;
     }
     function reviewSeriesColor(entity){
       let hash=0;
@@ -101,7 +101,7 @@
         const y=top+i*step, end=x(row.gap);
         return `<path class="gap-grid" d="M${left} ${y+step/2}H${width-right}"/><text x="${left-8}" y="${y+step/2+4}" text-anchor="end">${esc(row.label)}</text><rect class="${row.gap<0?"gap-negative":"gap-positive"}" x="${Math.min(zero,end)}" y="${y+4}" width="${Math.abs(end-zero)}" height="${step-8}"><title>${esc(row.label)}: ${fmt(row.gap,1)} pp</title></rect>`;
       }).join("");
-      return `<div class="review-gap-plot"><svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${esc(translate("Brecha de saldo por bloque"))}"><rect class="gap-background" x="${left}" y="${top}" width="${width-left-right}" height="${bottom-top}"/>${grid}${bars}<text x="${(left+width-right)/2}" y="${height-8}" text-anchor="middle">${esc(translate("Brecha de saldo vs. base histórica (pp)"))}</text></svg></div>`;
+      return `<div class="review-gap-plot"><svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${esc(translate("Brecha de NPS por bloque"))}"><rect class="gap-background" x="${left}" y="${top}" width="${width-left-right}" height="${bottom-top}"/>${grid}${bars}<text x="${(left+width-right)/2}" y="${height-8}" text-anchor="middle">${esc(translate("Brecha de NPS vs. mes anterior (pp)"))}</text></svg></div>`;
     }
     window.MarketsCharts=Object.freeze({lineChart,ratingBars,monthlyMatrix,newReviewImpact,reviewBalance,reviewBalanceLegend,reviewGaps});
   })();
