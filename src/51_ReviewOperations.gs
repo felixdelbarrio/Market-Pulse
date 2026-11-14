@@ -55,7 +55,7 @@ function superviseMarketsReviews_() {
   const properties = PropertiesService.getScriptProperties();
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(1000)) return;
-  let pipeline, job, background;
+  let pipeline, job, background, catalogIdle = false;
   try {
     const now = new Date();
     const day = Utilities.formatDate(now, MARKETS_CONFIG.timeZone, 'yyyy-MM-dd');
@@ -76,8 +76,10 @@ function superviseMarketsReviews_() {
       job = pipeline.translationSnapshotPending && publication.status !== 'Revisar' ? publication
         : translation.pending && now.getTime() >= retryAt ? translation : null;
     }
-    if (!job || job.status === 'Revisar') return;
-    if (pipeline.leaseUntil) {
+    if (!job || job.status === 'Revisar') {
+      catalogIdle = true;
+    }
+    if (!catalogIdle && pipeline.leaseUntil) {
       job.retries++;
       job.error = 'La ejecución anterior agotó el tiempo disponible.';
       if (job.retries >= 3) {
@@ -89,12 +91,18 @@ function superviseMarketsReviews_() {
       }
     }
     // Una ejecución de Apps Script no puede superar los seis minutos.
-    pipeline.leaseUntil = now.getTime() + 7 * 60 * 1000;
-    job.status = 'En curso';
-    if (!job.startedAt) job.startedAt = now.toISOString();
-    properties.setProperty(MARKETS_REVIEW_PIPELINE_KEY, JSON.stringify(pipeline));
+    if (!catalogIdle) {
+      pipeline.leaseUntil = now.getTime() + 7 * 60 * 1000;
+      job.status = 'En curso';
+      if (!job.startedAt) job.startedAt = now.toISOString();
+      properties.setProperty(MARKETS_REVIEW_PIPELINE_KEY, JSON.stringify(pipeline));
+    }
   } finally {
     lock.releaseLock();
+  }
+  if (catalogIdle) {
+    advanceMarketsFunctionalCatalog_();
+    return;
   }
   const batchStarted = Date.now();
   try {

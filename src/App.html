@@ -326,7 +326,7 @@
         const timer=window.setTimeout(()=>finish("TIMEOUT")("Market Pulse no ha respondido a tiempo. Reintenta la carga."),serverTimeoutMs(method));
         try{
           const runner=google.script.run.withSuccessHandler(finish("OK")).withFailureHandler(finish("ERROR"));
-          if(method==="bootstrap")runner.getMarketsDashboardBootstrap();else if(method==="user:context")runner.getMarketsUserContext();else if(method==="admin:get")runner.getMarketsAdminDashboard(false);else if(method==="admin:business:refresh")runner.refreshMarketsAdminFunctionalCatalog();else if(method==="admin:business")runner.getMarketsBusinessCatalog(argument);else if(method==="admin:business:save")runner.saveMarketsBusinessCatalogEntry(argument);else if(method==="admin:newsletter:feedback-state")runner.setMarketsNewsletterFeedbackState(argument.id,argument.state);else if(method==="admin:newsletter:interactions")runner.getMarketsNewsletterInteractions(argument.kind,argument.period);else if(method==="admin:subscriber:save")runner.saveMarketsAdminSubscriber(argument.email,argument.preferences);else if(method==="admin:newsletter:test")runner.sendMarketsAdminNewsletterTestEmail(argument);else if(method==="admin:reviews:restart")runner.requestMarketsReviewPipeline();else if(method==="admin:reviews:options")runner.getMarketsReviewRecoveryOptions();else if(method==="admin:reviews:coverage")runner.getMarketsReviewCoverage(argument);else if(method==="admin:reviews:recover")runner.runMarketsReviewRecovery(argument);else if(method==="admin:reviews:close")runner.closeMarketsReviewRecovery();else if(method==="admin:ratings:recover")runner.requestMarketsAdminRatingRecovery();else if(method==="reviews:segments")runner.getMarketsReviewSegments();else if(method==="reviews")runner.getMarketsReviews(argument);else if(method==="review:page")runner.getMarketsReviewPage(argument);else if(method==="review:export")runner.getMarketsReviewExport(argument);else if(method==="review:analytics")runner.getMarketsReviewAnalytics(argument);else if(method==="review:configure")runner.configureMarketsReviewInsights();else if(method==="admin:usage")runner.getMarketsAdminUsage();else if(method==="performance")runner.getMarketsPerformance();else if(method==="trends")runner.getMarketsDashboardTrends(argument);else if(method==="alerts:get")runner.getMarketsAlertPreferences();else if(method==="alerts:save")runner.saveMarketsAlertPreferences(argument);else if(method==="alerts:reset")runner.resetMarketsAlertPreferences();else if(method==="alerts:test")runner.sendMarketsAlertTestEmail();else finish("ERROR")(new Error("Operación no soportada: "+method));
+          if(method==="bootstrap")runner.getMarketsDashboardBootstrap();else if(method==="user:context")runner.getMarketsUserContext();else if(method==="admin:get")runner.getMarketsAdminDashboard(false);else if(method==="admin:business:refresh")runner.refreshMarketsAdminFunctionalCatalog();else if(method==="admin:business")runner.getMarketsBusinessCatalog(argument,appLanguage);else if(method==="admin:business:save")runner.saveMarketsBusinessCatalogEntry(argument);else if(method==="admin:newsletter:feedback-state")runner.setMarketsNewsletterFeedbackState(argument.id,argument.state);else if(method==="admin:newsletter:interactions")runner.getMarketsNewsletterInteractions(argument.kind,argument.period);else if(method==="admin:subscriber:save")runner.saveMarketsAdminSubscriber(argument.email,argument.preferences);else if(method==="admin:newsletter:test")runner.sendMarketsAdminNewsletterTestEmail(argument);else if(method==="admin:reviews:restart")runner.requestMarketsReviewPipeline();else if(method==="admin:reviews:options")runner.getMarketsReviewRecoveryOptions();else if(method==="admin:reviews:coverage")runner.getMarketsReviewCoverage(argument);else if(method==="admin:reviews:recover")runner.runMarketsReviewRecovery(argument);else if(method==="admin:reviews:close")runner.closeMarketsReviewRecovery();else if(method==="admin:ratings:recover")runner.requestMarketsAdminRatingRecovery();else if(method==="reviews:segments")runner.getMarketsReviewSegments();else if(method==="reviews")runner.getMarketsReviews(argument);else if(method==="review:page")runner.getMarketsReviewPage(argument);else if(method==="review:export")runner.getMarketsReviewExport(argument);else if(method==="review:analytics")runner.getMarketsReviewAnalytics(argument);else if(method==="admin:usage")runner.getMarketsAdminUsage();else if(method==="performance")runner.getMarketsPerformance();else if(method==="trends")runner.getMarketsDashboardTrends(argument);else if(method==="alerts:get")runner.getMarketsAlertPreferences();else if(method==="alerts:save")runner.saveMarketsAlertPreferences(argument);else if(method==="alerts:reset")runner.resetMarketsAlertPreferences();else if(method==="alerts:test")runner.sendMarketsAlertTestEmail();else finish("ERROR")(new Error("Operación no soportada: "+method));
         }catch(error){finish("ERROR")(error)}
       });
     }
@@ -431,7 +431,6 @@
       bindOptional("admin-business-form","submit",saveAdminBusiness);
       bindOptional("admin-business-cancel","click",()=>$("admin-business-dialog").close());
       for(const tab of ["newsletter-access","feedback"])bindOptional("admin-"+tab+"-period","change",()=>loadAdminNewsletterInteractions(tab));
-      bindOptional("review-catalog-sync","click",syncReviewCatalog);
       bindOptional("admin-review-restart","click",restartReviewPipeline);
       bindOptional("admin-review-recovery","toggle",loadReviewRecoveryOptions);
       bindOptional("admin-review-recovery-form","submit",submitReviewRecovery);
@@ -1181,13 +1180,6 @@
       measure.onchange=()=>{heatmapMeasure=measure.value;render()};
       render();
     }
-    async function syncReviewCatalog(event){
-      const button=event.currentTarget, status=$("review-catalog-status");
-      button.disabled=true;
-      try{const result=await callServer("review:configure");status.textContent=result.deferred?"Sincronización ocupada. Vuelve a intentarlo.":`${result.functions} funcionalidades · ${result.changed?"catálogo actualizado":"sin cambios"}`}
-      catch(error){status.textContent=error.message}
-      finally{button.disabled=false}
-    }
     let performancePending=false;
     async function loadPerformance(){
       if(performancePending)return;
@@ -1494,6 +1486,10 @@
         {name:"Carga diaria de ratings",schedule:system.dailySchedule,status:latest?.status||"Sin ejecución registrada",progress},
         {name:"Monitor de salud",schedule:system.healthSchedule,status:system.healthMonitorEnabled?"Habilitado":"Deshabilitado"},
         {name:"Newsletter mensual",schedule:system.newsletterSchedule,status:system.newsletterDeliveryEnabled?"Habilitada":"Deshabilitada"},
+        ...(system.functionalJobs||[]).map(job=>({name:job.name,status:job.status,
+          schedule:job.updatedAt?dateTimeLabel(job.updatedAt):"Supervisor de reseñas",
+          progress:job.total?'<progress class="admin-job-progress" value="'+job.done+'" max="'+job.total+'"></progress><span>'+job.done+' / '+job.total+'</span>':"",
+          error:[job.error,job.retryAt?"Reintento: "+dateTimeLabel(new Date(job.retryAt).toISOString()):"",job.durationMs==null?"":"Último lote: "+job.durationMs+" ms"].filter(Boolean).join(" · ")})),
         ...(pipeline?.jobs||[]).map(job=>({name:job.label,
           schedule:job.priority===0?"Cada 15 minutos":`Prioridad ${job.priority} · ${pipeline.day||"En espera"}`,
           status:job.status,progress:job.total>0?`<progress class="admin-job-progress" value="${job.done}" max="${job.total}" aria-label="${U.esc(job.label)}"></progress>

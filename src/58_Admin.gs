@@ -79,6 +79,7 @@ function getMarketsAdminDashboard(includeUsage = true) {
       webAppUrl: marketsWebAppUrl_(),
       timeZone: trimString_(access.control.TIME_ZONE) || MARKETS_CONFIG.timeZone,
       reviewPipeline: marketsAdminReviewPipeline_(access.email),
+      functionalJobs: typeof marketsFunctionalJobStatus_ === 'function' ? marketsFunctionalJobStatus_() : [],
       dailySchedule: String(MARKETS_CONFIG.runHour).padStart(2, '0') + ':' + String(MARKETS_CONFIG.runMinute).padStart(2, '0'),
       healthSchedule: String(MARKETS_CONFIG.healthCheckHour).padStart(2, '0') + ':' + String(MARKETS_CONFIG.healthCheckMinute).padStart(2, '0'),
       newsletterSchedule: 'Día 1 · ' + String(MARKETS_CONFIG.newsletterHour).padStart(2, '0') + ':' +
@@ -284,7 +285,7 @@ function getMarketsAdminUsage() {
 
 const MARKETS_BUSINESS_CONTROL = ['RATING_LOOKBACK_DAYS', 'MONITOR_HEALTH_ENABLED'];
 
-function getMarketsBusinessCatalog(section) {
+function getMarketsBusinessCatalog(section, language) {
   const { ss, control } = requireMarketsAdministrator_();
   const config = MARKETS_CONFIG;
   const table = (columns, rows, edit = '') => ({ columns, rows, edit });
@@ -294,13 +295,15 @@ function getMarketsBusinessCatalog(section) {
         .filter(([key]) => MARKETS_BUSINESS_CONTROL.includes(key))
         .map(([key, value, description]) => [key, control[key] ?? value, description]), 'operation');
     case 'functional': {
+      const names = marketsFunctionalTranslations_(ss, ['en', 'tr'].includes(language) ? language : 'es');
       const sheet = ss.getSheetByName('FUNCTIONAL_CATALOG');
       return table(['ID', 'Bloque', 'Funcionalidad', 'Descripción'], sheet?.getLastRow() > 1
         ? requireCurrentSheetContract_(ss, 'FUNCTIONAL_CATALOG', MARKETS_FUNCTIONAL_HEADERS)
-          .getRange(2, 1, sheet.getLastRow() - 1, 4).getDisplayValues() : []);
+          .getRange(2, 1, sheet.getLastRow() - 1, 4).getDisplayValues()
+          .map(([id, block, feature, description]) => [id, names.get(block) || block, names.get(feature) || feature, description]) : []);
     }
     case 'aliases': {
-      const overrides = marketsBusinessAliases_();
+      const overrides = marketsBusinessAliases_(ss);
       return table(['ID funcional', 'Equivalencias adicionales (una por línea)', 'Equivalencias de base'],
         [...new Set([...Object.keys(MARKETS_REVIEW_RULES), ...Object.keys(overrides)])].sort()
           .map(id => [id, (overrides[id] || []).join('\n'), (MARKETS_REVIEW_RULES[id]?.[0] || []).join(' · ')]), 'aliases');
@@ -321,6 +324,7 @@ function getMarketsBusinessCatalog(section) {
     case 'storage':
       return table(['Conjunto', 'Hoja'], [...Object.entries(config.sheets),
         ['Reseñas', 'MARKET_REVIEWS'], ['Catálogo funcional', 'FUNCTIONAL_CATALOG'],
+        ['Equivalencias', MARKETS_FUNCTIONAL_ALIASES], ['Traducciones del catálogo', MARKETS_FUNCTIONAL_TRANSLATIONS],
         ['Interacciones newsletter', MARKETS_NEWSLETTER_INTERACTIONS]]);
     case 'schedule': {
       const clock = (hour, minute) => [hour, minute].map(value => String(value).padStart(2, '0')).join(':');
@@ -373,15 +377,20 @@ function saveMarketsBusinessCatalogEntry(input) {
       if (sheet.getLastRow() < 2 || !sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).createTextFinder(key).matchEntireCell(true).findNext()) {
         throw new Error('La funcionalidad no existe en el catálogo global.');
       }
-      const aliases = marketsBusinessAliases_();
+      const aliases = marketsBusinessAliases_(ss);
       if ((aliases[key] || []).join('\n') !== expected) throw new Error('Las equivalencias cambiaron. Actualiza el catálogo.');
       const terms = [...new Set(value.split('\n').map(normalizeReviewEvidence_).filter(Boolean))];
       if (terms.length > 20 || terms.some(term => !term.includes(' ') || term.length > 100)) throw new Error('Introduce hasta 20 expresiones de varias palabras, una por línea.');
-      if (terms.length) aliases[key] = terms;
-      else delete aliases[key];
-      const json = JSON.stringify(aliases);
-      if (Utilities.newBlob(json).getBytes().length > 8000) throw new Error('Se alcanzó el límite de equivalencias configurables.');
-      PropertiesService.getScriptProperties().setProperty(MARKETS_BUSINESS_ALIASES, json);
+      const existing = ss.getSheetByName(MARKETS_FUNCTIONAL_ALIASES);
+      const target = existing || ss.insertSheet(MARKETS_FUNCTIONAL_ALIASES);
+      if (!existing) target.getRange(1, 1, 1, 2).setValues([MARKETS_FUNCTIONAL_ALIAS_HEADERS]);
+      const last = target.getLastRow();
+      const found = last > 1 ? target.getRange(2, 1, last - 1, 1).createTextFinder(key).matchEntireCell(true).findNext() : null;
+      const row = found ? found.getRow() : last + 1;
+      ensureSheetCapacity_(target, row, 2);
+      target.getRange(row, 1, 1, 2).setNumberFormat('@').setValues([[key, terms.join('\n')]]);
+      SpreadsheetApp.flush();
+      PropertiesService.getScriptProperties().setProperty('MARKETS_FUNCTIONAL_ALIASES_REVISION', Utilities.getUuid());
     } else throw new Error('Este catálogo no admite la edición solicitada.');
     return { saved: true };
   } finally {
@@ -390,6 +399,5 @@ function saveMarketsBusinessCatalogEntry(input) {
 }
 
 function refreshMarketsAdminFunctionalCatalog() {
-  requireMarketsReviewOwner_();
-  return syncMarketsFunctionalCatalog_();
+  return setupMarketsReviewInsights();
 }
