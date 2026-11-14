@@ -286,42 +286,62 @@ function classifyNormalizedReviewEvidence_(normalized, index) {
 
 // Evidence is evaluated in the original text. An app name or storefront is not evidence.
 const MARKETS_REVIEW_AUDIENCE_RULES = {
-  direct: /\b(?:cuentas? (?:de (?:mi |nuestra |la )?empresa[s]?|de negocios?|empresarial(?:es)?|comercial(?:es)?|pyme|business)|(?:mi|nuestro) negocio|(?:mi|nuestra) empresa|(?:mi|nuestro) comercio|(?:soy|como) (?:autonom[oa]|comerciante|profesional independiente)|(?:tarjeta|banca|cuenta) (?:de empresa[s]?|corporativa|para empresas)|(?:la|mi|nuestra) app de empresas (?:no |me |se )|(?:pago|pagos|pagar|transferencias) a (?:mis |nuestros )?(?:empleados|proveedores)|transferencias masivas|cash pooling|(?:my|our) (?:business|company|employees)|(?:business|corporate|merchant) (?:bank account|account|card|loan)|payroll processing|paying (?:my |our )?employees|supplier payments|(?:minha|nossa) empresa|conta (?:empresarial|pj)|folha de pagamento|ticari hesap\w*|sirket hesab\w*|sirketim(?:in)?|isletmem(?:in)?|esnaf kredisi|kobi kredisi|sanal pos (?:basvur\w*|entegrasyon\w*)|e fatura (?:kes\w*|entegrasyon\w*)|calisanlar\w* maas\w*|personel maas\w*|tedarikci odeme\w*|isletme kredisi|ihracat finansmani)\b/u,
-  probable: /\b(?:gestion de tesoreria|conciliacion de cobros|terminal de cobro|merchant settlement|(?:pos cihaz\w*|sanal pos) (?:basvur\w*|kurulum\w*|komisyon\w*|odeme al\w*)|toplu odeme\w*|bordro\w*|teminat mektub\w*|akreditif\w*)\b/u,
+  direct: [
+    /\b(?:cuentas? (?:de (?:mi |nuestra |la )?empresas?|de negocios?|empresarial(?:es)?|comercial(?:es)?|pyme)|(?:tarjeta|banca) (?:de (?:mi |nuestra )?empresas?|corporativa|para empresas)|(?:pago|pagos|pagar|transferencias) a (?:mis |nuestros )?(?:empleados|proveedores)|(?:facturas? a|cobrar a) mis clientes|(?:nominas? de (?:mi |nuestra )?empresa|nominas? de mis empleados)|(?:seguro|alquiler|iva) de (?:mi|nuestro) (?:comercio|negocio|empresa)|suscripcion de software de mi empresa|gestion de tesoreria|conciliacion de cobros|terminal de cobro)\b/u,
+    /\b(?:(?:business|corporate|merchant) (?:bank account|account|card|loan)|payroll processing|paying (?:my |our )?employees|supplier payments|merchant settlement|cash pooling|invoic\w* (?:my|our) (?:customers|clients))\b/u,
+    /\b(?:conta (?:empresarial|pj)|folha de pagamento|pag\w* (?:aos |meus )?(?:funcionarios|fornecedores)|emit\w* nota fiscal)\b/u,
+    /\b(?:ticari (?:hesap\w*|kredi\w*|kart\w*)|(?:sirket|isletme) (?:hesab\w*|kredi\w*)|(?:esnaf|kobi) kred\w*|(?:sirket\w*|isletme\w*) (?:yurtdisindan |duzenli olarak )?tahsilat\w*|tedarikci\w* (?:\w+ ){0,2}ode\w*|(?:calisanlar\w*|personel) maas\w*|ihracat finansman\w*|e fatura (?:kes\w*|entegrasyon\w*)|(?:sanal pos|pos cihaz\w*) (?:basvur\w*|kurulum\w*|entegrasyon\w*|odeme al\w*))\b/u
+  ],
+  context: /\b(?:(?:mi|nuestro|nuestra) (?:empresa|negocio|comercio|pyme)|(?:soy|como) (?:autonom[oa]|comerciante|profesional independiente)|(?:my|our) (?:business|company)|self employed|(?:minha|nossa) empresa|(?:sirketim|isletmem)\w*|isletme sahib\w*|(?:esnaf|kobi)(?:yim|yiz|nin|m)?|ticari)\b/u,
+  banking: /\b(?:transfer\w*|traspas\w*|enviar dinero|spei|eft|havale\w*|swift|fast odeme\w*|(?:para|havale) gonder\w*|pix|pag[oa]\w*|cobr[oa]\w*|odeme\w*|hesa[bp]\w*|cuentas?|accounts?|contas?|tarjetas?|cards?|cartao|kart\w*|impuestos?|tax(?:es)?|vergi\w*|factur\w*|fatura\w*|credit\w*|kredi\w*|prestam\w*|loans?|emprest\w*)\b/u,
+  action: /\b(?:no puedo|no (?:abre|funciona|llega|deja)|puedo|falla\w*|error\w*|comisi\w*|cobr\w*|pag\w*|envi\w*|hac\w*|abr\w*|bloque\w*|gestion\w*|emit\w*|recib\w*|deposit\w*|fail\w*|can(?:not| t)|unable|charge\w*|fee\w*|pay\w*|send\w*|receiv\w*|open\w*|block\w*|yap\w*|gonder\w*|acil\w*|ac(?:am|mak|tim)\w*|al(?:am|in|iyor)\w*|ucret\w*|komisyon\w*|masraf\w*|kes\w*|od[ea]\w*|basvur\w*|limit\w*)\b/u,
+  pension: /\b(?:jubil(?:ad[oa]s?|acion)|pension(?:es|ista[s]?)?|emekli\w*|aposentad\w*|aposentadoria|retired|retirement|pensioner[s]?)\b/u,
+  personalContext: /\b(?:(?:a |para )mi (?:hij[oa]|madre|padre|familia|espos[oa])|(?:to|for) my (?:family|son|daughter|mother|father|wife|husband)|(?:mi|nuestra) (?:casa|vivienda)|(?:my|our) (?:home mortgage|mortgage|rent)|(?:minha|nossa) (?:casa|familia)|konut kred\w*|emekli\w*|alisveris\w*|pago de mi nomina)\b/u,
   retail: /\b(?:cuentas? (?:de (?:la )?)?nominas?|cuentas? sueldo|conta salario|salary account|maas hesab\w*|prestamos? personal(?:es)?|creditos? (?:personal(?:es)?|al consumo)|personal loans?|consumer credit|ihtiyac kredisi|bireysel kredi|kisisel kredi|cuentas? (?:infantil(?:es)?|personal(?:es)?)|para uso personal|(?:uso|utilizo) (?:la app )?personal y|tarjeta (?:personal|de estudiante)|student card|seguro de (?:mi )?hogar|home insurance|alquiler de (?:mi|nuestra) vivienda|(?:transferir|enviar dinero) a mi hij[oa]|(?:recibo|factura) (?:de (?:luz|gas|internet) de mi casa|del hogar)|(?:hipoteca|prestamo) (?:de|para) (?:mi|nuestra) vivienda|(?:ahorrar|ahorro) para (?:mi jubilacion|mis vacaciones)|(?:credito|prestamo) (?:para|de) (?:estudios|mi boda|mis vacaciones)|gastos (?:domesticos|familiares|personales)|(?:vacaciones|viaje personal) (?:de mi familia|en familia)|(?:netflix|spotify) (?:me cobra|subscription|abonelig\w*)|(?:cobro|pago|pagar|planes) (?:a |de )?(?:netflix|spotify)|suscripcion (?:personal|de netflix|de spotify)|ev kira(?:si|m)\w*|ogrenci kart\w*)\b/u,
-  salaryReceived: /\b(?:recib\w*|cobr\w*|deposit\w*|ingres\w*|acredit\w*) (?:\w+ ){0,3}(?:mi nomina|(?:el )?pago de (?:mi |la )?nomina)|\b(?:maasim|maasimi|maas musterisi\w*|maasli musteriyim)\b/u,
-  negatedBusiness: /\b(?:no (?:soy|somos|tengo|tenemos|poseo) (?:una )?(?:empresa|autonom[oa]|negocio)|not (?:a business|self employed)|(?:sirket|esnaf) degilim)\b/u
+  salaryReceived: /\b(?:mi nomina|mi salario|mi sueldo|my (?:paycheck|salary|wages)|meu salario|maasim\w*|maas musterisi\w*|maasli musteriyim|(?:recib\w*|cobr\w*|deposit\w*|ingres\w*|acredit\w*) (?:\w+ ){0,4}(?:la nomina|nomina|(?:el )?pago de (?:mi |la )?nomina))\b/u,
+  negatedBusiness: /\b(?:no (?:soy|somos|tengo|tenemos|poseo|es) (?:una? )?(?:empresa|autonom[oa]|negocio)|not (?:a business|self employed|for (?:my |our )?business)|(?:sirket|esnaf|kobi) degilim|(?:ticari|sirket hesab\w*) degil)\b/u
 };
 
-const MARKETS_REVIEW_AUDIENCE_PATTERNS = Object.entries(MARKETS_REVIEW_AUDIENCE_RULES);
-
-const MARKETS_SHARED_REVIEW_OPERATIONS = new Set([
-  '02.xx', '02.02', '02.03', '02.14', '03.xx', '03.13', '03.18', '03.25',
-  '05.xx', '05.01', '05.23', '06.xx', '06.01', '06.03', '06.06', '06.09',
-  '07.02', '08.xx', '08.24', '08.33', '09.xx', '09.02', '09.03', '09.04',
-  '09.05', '09.06', '09.09', '09.10', '09.11', '09.12', '09.13', '09.14',
-  '09.17', '09.18', '09.19', '09.20', '09.21', '09.22', '09.23',
-  '10.05', '12.xx', '12.04', '12.05', '14.xx', '15.19', '16.03', '16.05', '16.08'
-]);
-
-function classifyMarketsReviewAudience_(normalized, ids, knownBlocks) {
+function classifyMarketsReviewAudience_(original) {
+  const rules = MARKETS_REVIEW_AUDIENCE_RULES;
   const evidence = {};
-  for (const [key, pattern] of MARKETS_REVIEW_AUDIENCE_PATTERNS) evidence[key] = pattern.exec(normalized)?.[0] || '';
-  if (!evidence.salaryReceived || /\b(?:empleados|proveedores)\b/.test(normalized)) {
-    if (!evidence.direct) evidence.direct = MARKETS_REVIEW_PAYROLL.exec(normalized)?.[0] || '';
+  let confirmed = false, sharedOperation = false;
+  // Keep clause boundaries so a personal operation cannot lend context to
+  // incidental business vocabulary elsewhere in the review.
+  const clauses = String(original || '').split(/[.!?;\n]+|\b(?:pero|sin embargo|but|however|mas|porem|ama|ancak|fakat)\b/iu);
+  const normalized = normalizeReviewEvidence_(original);
+  evidence.retail = (rules.retail.exec(normalized) || rules.salaryReceived.exec(normalized) ||
+    rules.pension.exec(normalized) || rules.personalContext.exec(normalized))?.[0] || '';
+  for (const text of clauses) {
+    const clause = normalizeReviewEvidence_(text);
+    if (!clause) continue;
+    const banking = rules.banking.exec(clause)?.[0] || '';
+    const action = rules.action.exec(clause)?.[0] || '';
+    if (banking && action && banking !== action) {
+      evidence.shared = banking;
+      sharedOperation = true;
+    }
+    if (rules.negatedBusiness.test(clause)) continue;
+    const strong = rules.direct.map(pattern => pattern.exec(clause)).find(Boolean)?.[0];
+    const personal = rules.retail.test(clause) || rules.salaryReceived.test(clause) ||
+      rules.pension.test(clause) || rules.personalContext.test(clause);
+    const context = !evidence.retail && rules.context.exec(clause)?.[0];
+    const payroll = !personal && MARKETS_REVIEW_PAYROLL.exec(clause)?.[0];
+    if (strong || payroll || (context && action && (banking || /\b(?:app|uygulama\w*|dijital kanal)\b/u.test(clause)))) {
+      evidence.business = strong || payroll || context;
+      confirmed = true;
+    }
   }
-  const direct = evidence.direct && !evidence.negatedBusiness;
-  const conflict = direct && evidence.retail;
-  const audience = conflict ? 'UNDETERMINED' : direct ? 'BEI_CONFIRMED' : evidence.retail ? 'RETAIL'
-    : evidence.probable && !evidence.negatedBusiness ? 'BEI_PROBABLE' : 'UNDETERMINED';
-  const sharedOperation = ids.some(id => MARKETS_SHARED_REVIEW_OPERATIONS.has(id) && knownBlocks.has(id.slice(0, 2)));
-  return { audience, sharedOperation, evidence };
+  const audience = confirmed ? 'BEI_CONFIRMED' : evidence.retail ? 'RETAIL' : 'UNDETERMINED';
+  const reason = confirmed ? (evidence.retail ? 'explicit_business_with_retail' : 'business')
+    : evidence.retail ? 'personal_use' : sharedOperation ? 'shared_banking' : 'insufficient_evidence';
+  return { audience, sharedOperation, reason, evidence };
 }
 
 function matchesMarketsReviewAudience_(filter, decision) {
   if (filter === 'BEI_ONLY') return decision.audience === 'BEI_CONFIRMED';
-  if (filter === 'BEI_EXTENDED') return !decision.evidence.retail &&
-    (decision.audience === 'BEI_CONFIRMED' || decision.audience === 'BEI_PROBABLE' || decision.sharedOperation);
+  if (filter === 'BEI_EXTENDED') return decision.audience === 'BEI_CONFIRMED' ||
+    (decision.audience === 'UNDETERMINED' && decision.sharedOperation);
   return true;
 }
 
@@ -384,7 +404,7 @@ function syncMarketsFunctionalCatalog_() {
 
 // Like News Radar: revision-bound checkpoint, reuse translations by original text,
 // short quota-aware batches, and leave the original visible until its label is ready.
-function advanceMarketsFunctionalCatalog_() {
+function advanceMarketsFunctionalCatalog_(allow = { sync: true, translate: true }) {
   const properties = PropertiesService.getScriptProperties();
   const today = Utilities.formatDate(new Date(), MARKETS_CONFIG.timeZone, 'yyyy-MM-dd');
   const sync = safeJsonParse_(properties.getProperty('MARKETS_FUNCTIONAL_SYNC_STATUS')) || {};
@@ -392,13 +412,14 @@ function advanceMarketsFunctionalCatalog_() {
   if ((properties.getProperty('MARKETS_FUNCTIONAL_SYNC_REQUEST') || !last ||
       Utilities.formatDate(new Date(last), MARKETS_CONFIG.timeZone, 'yyyy-MM-dd') !== today) &&
       !(sync.retryAt > Date.now())) {
+    if (!allow.sync) return false;
     try { syncMarketsFunctionalCatalog_(); }
     catch (error) { console.warn('Catálogo funcional: ' + errorToString_(error)); }
-    return;
+    return true;
   }
   const revision = properties.getProperty('MARKETS_FUNCTIONAL_REVISION');
   const previous = safeJsonParse_(properties.getProperty(MARKETS_FUNCTIONAL_JOB));
-  if (!revision || (previous?.revision === revision && (previous.status === 'Completado' || previous.retryAt > Date.now())) ||
+  if (!allow.translate || !revision || (previous?.revision === revision && (previous.status === 'Completado' || previous.retryAt > Date.now())) ||
       Number(properties.getProperty(MARKETS_TRANSLATION_QUOTA_RETRY_KEY)) > Date.now()) return;
   const lock = LockService.getUserLock();
   if (!lock.tryLock(1000)) return;
@@ -456,6 +477,7 @@ function advanceMarketsFunctionalCatalog_() {
     try { properties.setProperty(MARKETS_FUNCTIONAL_JOB, JSON.stringify(job)); }
     finally { lock.releaseLock(); }
   }
+  return true;
 }
 
 function marketsFunctionalJobStatus_() {
@@ -463,12 +485,18 @@ function marketsFunctionalJobStatus_() {
   const synced = properties.getProperty('MARKETS_FUNCTIONAL_SYNCED');
   const sync = safeJsonParse_(properties.getProperty('MARKETS_FUNCTIONAL_SYNC_STATUS')) || {};
   const translation = safeJsonParse_(properties.getProperty(MARKETS_FUNCTIONAL_JOB)) || {};
+  const requested = properties.getProperty('MARKETS_FUNCTIONAL_SYNC_REQUEST');
+  const revision = properties.getProperty('MARKETS_FUNCTIONAL_REVISION');
+  const awaitingSync = !revision || Boolean(requested);
+  const pendingTranslation = translation.revision !== revision;
   return [
-    { name: 'Catálogo global de funcionalidades', status: sync.status || (synced ? 'Completado' : 'Sin ejecución registrada'),
-      updatedAt: synced, error: sync.error, retryAt: sync.retryAt, durationMs: sync.durationMs },
-    { name: 'Traducción del catálogo funcional', status: translation.status || 'Pendiente',
+    { id: 'taxonomy', priority: 6, schedule: 'Comprobación diaria y tras cambios', name: 'Catálogo global de funcionalidades', status: sync.status || (synced ? 'Completado' : 'Sin ejecución registrada'),
+      updatedAt: synced, done: sync.functions, total: sync.functions, changed: sync.changed, error: sync.error, retryAt: sync.retryAt, durationMs: sync.durationMs },
+    { id: 'taxonomyTranslation', priority: 6, schedule: 'Tras sincronizar el catálogo',
+      name: 'Traducción del catálogo funcional', status: awaitingSync ? 'Esperando catálogo' :
+        pendingTranslation ? 'Pendiente' : translation.status || 'Pendiente',
       updatedAt: translation.updatedAt, error: translation.error, retryAt: translation.retryAt, durationMs: translation.durationMs,
-      done: translation.done, total: translation.total }
+      done: pendingTranslation ? undefined : translation.done, total: pendingTranslation ? undefined : translation.total }
   ];
 }
 
@@ -554,7 +582,7 @@ function getMarketsReviewHeatmap(filters) {
 }
 
 const MARKETS_REVIEW_ENTITY = 'BBVA Empresas';
-const MARKETS_REVIEW_SNAPSHOT_SCHEMA = 8;
+const MARKETS_REVIEW_SNAPSHOT_SCHEMA = 9;
 const MARKETS_REVIEW_HELPFUL_MIN = 5;
 const MARKETS_REVIEW_PAGE_SIZE = 25;
 
@@ -593,11 +621,13 @@ function marketsReviewCatalogVersion_(catalog) {
 }
 
 function marketsReviewVersions_(properties, catalogVersion) {
-  return [properties.MARKETS_REVIEWS_GENERATION || '', properties.MARKETS_FUNCTIONAL_REVISION || '', catalogVersion, ...(properties.MARKETS_FUNCTIONAL_ALIASES_REVISION ? [properties.MARKETS_FUNCTIONAL_ALIASES_REVISION] : [])];
+  return [properties.MARKETS_REVIEWS_GENERATION || '', properties.MARKETS_FUNCTIONAL_REVISION || '', catalogVersion,
+    ...['MARKETS_FUNCTIONAL_ALIASES_REVISION', 'MARKETS_REVIEW_GEOGRAPHY_REVISION'].flatMap(key =>
+      properties[key] ? [[key, properties[key]]] : [])];
 }
 
 function marketsReviewSnapshotScope_(operation, filters, window) {
-  if (filters.audience || filters.year || filters.analysisMonth || filters.platform !== 'ALL' || filters.topic || filters.rating || filters.search || filters.reviewKey ||
+  if (filters.inferGeography || filters.audience || filters.year || filters.analysisMonth || filters.platform !== 'ALL' || filters.topic || filters.rating || filters.search || filters.reviewKey ||
       filters.period || Number(filters.page || 0) !== 0) return '';
   const language = ['es', 'en', 'tr'].includes(filters.language) ? filters.language : 'es';
   if (operation === 'page') {
@@ -648,9 +678,9 @@ function publishMarketsReviewSnapshot_() {
     if (country === 'ALL') continue;
     for (const language of ['es', 'en', 'tr']) {
       const page = { page: 0, size: MARKETS_REVIEW_PAGE_SIZE, total: counts[country] || 0, counts, topics, window: commentWindow };
-      page.rows = (commentRows.get(country) || []).map(({ translations, ...row }) => {
+      page.rows = (commentRows.get(country) || []).map(({ translations, replyTranslations, ...row }) => {
         const translated = translations[language];
-        return { ...row, text: translated || row.original, translated: Boolean(translated && translated !== row.original) };
+        return { ...row, reply: replyTranslations?.[language] || row.reply, text: translated || row.original, translated: Boolean(translated && translated !== row.original) };
       });
       values['page:' + country + ':' + language] = page;
     }
@@ -696,12 +726,10 @@ function getMarketsReviewPage(filters) {
   if (filters.start && filters.start < window.start) window.start = filters.start;
   const timing = {};
   const page = readMarketsReviewCache_(ss, 'page', filters, window, catalog => {
-    const deferBlocks = !filters.topic && !filters.audience;
+    const deferBlocks = !filters.topic && !filters.audience && !filters.search;
     const query = { ...filters, country: 'ALL', deferBlocks };
     const paging = { ...filters, topics: marketsReviewTopics_(ss) };
-    const page = deferBlocks && !filters.search
-      ? queryMarketsReviews_(ss, query, window, false, catalog, paging)
-      : paginateMarketsReviews_(queryMarketsReviews_(ss, query, window, false, catalog), paging, window);
+    const page = queryMarketsReviews_(ss, query, window, false, catalog, paging);
     if (deferBlocks && page.rows.length) {
       const started = Date.now();
       const { rules, knownBlocks } = marketsReviewClassification_(ss);
@@ -747,6 +775,9 @@ function normalizeMarketsReviewFilters_(filters) {
   if (filters.rating !== undefined && filters.rating !== '' && !/^[1-5]$/.test(filters.rating)) {
     throw new Error('Número de estrellas no válido.');
   }
+  if (filters.inferGeography && !['YES', 'NO'].includes(filters.inferGeography)) {
+    throw new Error('Inferencia geográfica no válida.');
+  }
   if (filters.audience && !['ALL', 'BEI_ONLY', 'BEI_EXTENDED'].includes(filters.audience)) {
     throw new Error('Audiencia no válida.');
   }
@@ -754,6 +785,7 @@ function normalizeMarketsReviewFilters_(filters) {
   for (const key of ['start', 'end', 'year', 'analysisMonth', 'period', 'topic', 'segment', 'app', 'entity', 'reviewKey', 'search']) {
     if (typeof filters[key] === 'string' && filters[key]) normalized[key] = filters[key].slice(0, 200);
   }
+  if (filters.inferGeography === 'NO') normalized.inferGeography = 'NO';
   if (filters.audience && filters.audience !== 'ALL') normalized.audience = filters.audience;
   if (filters.rating) normalized.rating = String(filters.rating);
   if (['es', 'en', 'tr'].includes(filters.language)) normalized.language = filters.language;
@@ -793,7 +825,7 @@ function getMarketsReviewAnalytics(filters) {
     const range = { start: sourceStart, end: window.end };
     const query = { country: filters.country, platform: filters.platform, start: sourceStart };
     if (filters.end && filters.end < range.end) query.end = filters.end;
-    for (const field of ['period', 'rating', 'topic', 'reviewKey', 'search', 'audience']) {
+    for (const field of ['period', 'rating', 'topic', 'reviewKey', 'search', 'audience', 'inferGeography']) {
       if (filters[field]) query[field] = filters[field];
     }
     const key = marketsReviewAnalyticsSourceKey_(ss, query, range, versions);
@@ -805,9 +837,9 @@ function getMarketsReviewAnalytics(filters) {
     timing.source = timing.source || 'cache';
     return buildMarketsReviewAnalytics_(rows.filter(row => row.date >= start), topics, filters, window);
   }, timing);
-  function localizeReview({ translations, ...review }) {
+  function localizeReview({ translations, replyTranslations, ...review }) {
     const translated = translations?.[language];
-    return { ...review, text: translated || review.original, translated: Boolean(translated && translated !== review.original) };
+    return { ...review, reply: replyTranslations?.[language] || review.reply, text: translated || review.original, translated: Boolean(translated && translated !== review.original) };
   }
   return {
     ...localizeMarketsReviewTopics_(ss, data, language),
@@ -906,8 +938,12 @@ function readMarketsReviewCache_(ss, operation, filters, window, builder, timing
   return value;
 }
 
-function advanceMarketsReviewGeneration_(properties) {
-  try { properties.setProperty('MARKETS_REVIEWS_GENERATION', String(Date.now())); }
+function advanceMarketsReviewGeneration_(properties, sourceChanged = false) {
+  try {
+    const generation = String(Date.now());
+    properties.setProperty('MARKETS_REVIEWS_GENERATION', generation);
+    if (sourceChanged) properties.setProperty('MARKETS_REVIEW_SOURCE_GENERATION', generation);
+  }
   catch (error) { console.warn('No se pudo invalidar la caché de reseñas. ' + error.message); }
 }
 

@@ -2,17 +2,18 @@
 const MARKETS_REVIEW_SUPERVISOR = 'superviseMarketsReviews_';
 const MARKETS_REVIEW_PIPELINE_KEY = 'MARKETS_REVIEW_PIPELINE';
 const MARKETS_REVIEW_PIPELINE_STAGES = Object.freeze([
-  { id: 'ios', label: 'Captura de App Store' },
-  { id: 'android', label: 'Captura de Google Play' },
-  { id: 'translate', label: 'Traducción de reseñas' },
-  { id: 'publish', label: 'Publicación de vistas de reseñas' },
-  { id: 'alerts', label: 'Alertas de reseñas' }
+  { id: 'ios', label: 'Captura de App Store', priority: 1 },
+  { id: 'android', label: 'Captura de Google Play', priority: 1 },
+  { id: 'translate', label: 'Traducción de reseñas y respuestas', priority: 4 },
+  { id: 'publish', label: 'Publicación de vistas de reseñas', priority: 5 },
+  { id: 'alerts', label: 'Alertas de reseñas', priority: 2 }
 ]);
 
 function installMarketsReviewSupervisor_() {
   const triggers = ScriptApp.getProjectTriggers();
   if (!triggers.some(trigger => trigger.getHandlerFunction() === MARKETS_REVIEW_SUPERVISOR)) {
-    ScriptApp.newTrigger(MARKETS_REVIEW_SUPERVISOR).timeBased().everyMinutes(15).create();
+    ScriptApp.newTrigger(MARKETS_REVIEW_SUPERVISOR).timeBased().everyMinutes(5).create();
+    PropertiesService.getScriptProperties().setProperty(MARKETS_REVIEW_INTERVAL, '5');
   }
   const handlers = [collectMarketsReviews_.name, collectMarketsPlayReviews_.name, translateMarketsReviews_.name];
   triggers.filter(trigger => handlers.includes(trigger.getHandlerFunction()))
@@ -20,8 +21,8 @@ function installMarketsReviewSupervisor_() {
 }
 
 function newMarketsReviewPipeline_(day) {
-  return { day, stage: 0, jobs: MARKETS_REVIEW_PIPELINE_STAGES.map(({ id, label }, index) => ({
-    id, label, priority: index + 1, status: 'Pendiente', done: 0, total: 0, added: 0, updated: 0, failures: 0, retries: 0
+  return { day, stage: 0, jobs: MARKETS_REVIEW_PIPELINE_STAGES.map(({ id, label, priority }) => ({
+    id, label, priority, status: 'Pendiente', done: 0, total: 0, added: 0, updated: 0, failures: 0, retries: 0
   })) };
 }
 
@@ -51,15 +52,62 @@ function requestMarketsReviewPipeline() {
   }
 }
 
+const MARKETS_REVIEW_WORKER = 'runMarketsReviewWorker_';
+const MARKETS_REVIEW_INTERVAL = 'MARKETS_REVIEW_SUPERVISOR_INTERVAL';
+
+function configureMarketsReviewSupervisor(minutes = 5) {
+  requireMarketsReviewOwner_();
+  if (![1, 5, 10, 15, 30].includes(minutes)) throw new Error('Intervalo de supervisor no válido.');
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(1000)) throw new Error('Hay otra operación en curso.');
+  try {
+    const properties = PropertiesService.getScriptProperties();
+    const existing = ScriptApp.getProjectTriggers().filter(trigger => trigger.getHandlerFunction() === MARKETS_REVIEW_SUPERVISOR);
+    if (existing.length === 1 && Number(properties.getProperty(MARKETS_REVIEW_INTERVAL)) === minutes) return { minutes };
+    ScriptApp.newTrigger(MARKETS_REVIEW_SUPERVISOR).timeBased().everyMinutes(minutes).create();
+    existing.forEach(trigger => ScriptApp.deleteTrigger(trigger));
+    properties.setProperty(MARKETS_REVIEW_INTERVAL, String(minutes));
+    return { minutes };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function superviseMarketsReviews_() {
   const properties = PropertiesService.getScriptProperties();
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(1000)) return;
-  let pipeline, job, background, catalogIdle = false;
+  try {
+    const now = Date.now();
+    properties.setProperty('MARKETS_REVIEW_SUPERVISOR_LAST', new Date(now).toISOString());
+    const workers = ScriptApp.getProjectTriggers().filter(trigger => trigger.getHandlerFunction() === MARKETS_REVIEW_WORKER);
+    if (workers.length && Number(properties.getProperty('MARKETS_REVIEW_WORKER_AT')) > now - 420000) return;
+    const pipeline = readMarketsReviewPipeline_(properties);
+    if (pipeline?.leaseUntil > now) return;
+    workers.forEach(trigger => ScriptApp.deleteTrigger(trigger));
+    ScriptApp.newTrigger(MARKETS_REVIEW_WORKER).timeBased().after(60000).create();
+    properties.setProperty('MARKETS_REVIEW_WORKER_AT', String(now));
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function runMarketsReviewWorker_(event) {
+  const worker = event?.triggerUid && ScriptApp.getProjectTriggers().find(trigger => trigger.getUniqueId() === event.triggerUid);
+  try { advanceMarketsReviewPipeline_(); }
+  finally { if (worker) ScriptApp.deleteTrigger(worker); }
+}
+
+function advanceMarketsReviewPipeline_() {
+  const properties = PropertiesService.getScriptProperties();
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(1000)) return;
+  let pipeline, job, background, settings, catalogIdle = false;
   try {
     const now = new Date();
     const day = Utilities.formatDate(now, MARKETS_CONFIG.timeZone, 'yyyy-MM-dd');
     pipeline = readMarketsReviewPipeline_(properties);
+    settings = marketsReviewJobSettings_(properties);
     const previousFinished = !pipeline || pipeline.stage >= pipeline.jobs.length || pipeline.jobs[pipeline.stage].status === 'Revisar';
     if (pipeline?.day !== day && previousFinished &&
         Utilities.formatDate(now, MARKETS_CONFIG.timeZone, 'HHmm') >= '0800' &&
@@ -67,6 +115,11 @@ function superviseMarketsReviews_() {
       pipeline = newMarketsReviewPipeline_(day);
     }
     if (!pipeline || pipeline.leaseUntil > now.getTime()) return;
+    while (pipeline.stage < pipeline.jobs.length && settings[pipeline.jobs[pipeline.stage].id]?.enabled === false) {
+      pipeline.jobs[pipeline.stage].status = 'Pausado';
+      pipeline.stage++;
+      properties.setProperty(MARKETS_REVIEW_PIPELINE_KEY, JSON.stringify(pipeline));
+    }
     job = pipeline.jobs[pipeline.stage];
     if (!job) {
       background = true;
@@ -75,6 +128,11 @@ function superviseMarketsReviews_() {
       const publication = pipeline.jobs.find(item => item.id === 'publish');
       job = pipeline.translationSnapshotPending && publication.status !== 'Revisar' ? publication
         : translation.pending && now.getTime() >= retryAt ? translation : null;
+    }
+    if (job && !marketsReviewJobReady_(settings, job.id, now)) {
+      job.status = settings[job.id]?.enabled === false ? 'Pausado' : 'Programado';
+      properties.setProperty(MARKETS_REVIEW_PIPELINE_KEY, JSON.stringify(pipeline));
+      job = null;
     }
     if (!job || job.status === 'Revisar') {
       catalogIdle = true;
@@ -94,6 +152,7 @@ function superviseMarketsReviews_() {
     if (!catalogIdle) {
       pipeline.leaseUntil = now.getTime() + 7 * 60 * 1000;
       job.status = 'En curso';
+      job.lastAttemptAt = now.toISOString();
       if (!job.startedAt) job.startedAt = now.toISOString();
       properties.setProperty(MARKETS_REVIEW_PIPELINE_KEY, JSON.stringify(pipeline));
     }
@@ -101,10 +160,32 @@ function superviseMarketsReviews_() {
     lock.releaseLock();
   }
   if (catalogIdle) {
-    advanceMarketsFunctionalCatalog_();
+    const now = new Date();
+    const tasks = [
+      { id: 'index', priority: 3, run: () => {
+        if (typeof advanceMarketsReviewIndex_ !== 'function') return false;
+        const index = advanceMarketsReviewIndex_();
+        properties.setProperty('MARKETS_REVIEW_INDEX_STATUS', JSON.stringify({ ...index, updatedAt: new Date().toISOString() }));
+        return !index.complete;
+      }},
+      { id: 'geography', priority: 3, run: () => typeof advanceMarketsAndroidGeography_ === 'function' && advanceMarketsAndroidGeography_(now) },
+      { id: 'taxonomy', priority: 6, run: () => advanceMarketsFunctionalCatalog_({
+        sync: true, translate: marketsReviewJobReady_(settings, 'taxonomyTranslation', now)
+      }) },
+      { id: 'maintenance', priority: 6, run: () => typeof advanceMarketsReviewMaintenance_ === 'function' && advanceMarketsReviewMaintenance_(now) },
+      { id: 'backup', priority: 6, run: () => typeof advanceMarketsMonthlyBackup_ === 'function' && advanceMarketsMonthlyBackup_(now) }
+    ].filter(task => marketsReviewJobReady_(settings, task.id, now))
+      .sort((a, b) => (settings[a.id]?.priority || a.priority) - (settings[b.id]?.priority || b.priority));
+    // Even during a lengthy backfill, reserve one tick per hour for maintenance.
+    if (Utilities.formatDate(now, MARKETS_CONFIG.timeZone, 'mm') < '05') {
+      tasks.sort((a, b) => Number(a.id === 'index') - Number(b.id === 'index'));
+    }
+    for (const task of tasks) if (task.run()) break;
     return;
   }
+  const previousProgress = JSON.stringify([job.done, job.added, job.updated, job.pending]);
   const batchStarted = Date.now();
+  job.lastAttemptAt = new Date(batchStarted).toISOString();
   try {
     const complete = advanceMarketsReviewJob_(job, pipeline, background);
     job.retries = 0;
@@ -114,6 +195,7 @@ function superviseMarketsReviews_() {
     if (complete) {
       job.status = job.failures || job.pending ? 'Parcial' : 'Completado';
       job.finishedAt = new Date().toISOString();
+      if (!job.failures && !job.pending) job.lastSuccessAt = job.finishedAt;
       if (!background) pipeline.stage++;
     }
   } catch (error) {
@@ -122,6 +204,9 @@ function superviseMarketsReviews_() {
     job.error = errorToString_(error).slice(0, 250);
     console.warn(job.label + ': ' + job.error);
     if (!background && job.status === 'Revisar' && (job.id === 'translate' || job.id === 'publish')) pipeline.stage++;
+  }
+  if (JSON.stringify([job.done, job.added, job.updated, job.pending]) !== previousProgress) {
+    job.lastProgressAt = new Date().toISOString();
   }
   job.lastBatchMs = Date.now() - batchStarted;
   job.totalBatchMs = (job.totalBatchMs || 0) + job.lastBatchMs;
@@ -146,7 +231,10 @@ function advanceMarketsReviewJob_(job, pipeline, background) {
     }
     case 'translate': {
       const result = translateMarketsReviews_();
-      job.batchTranslated = result.translated || 0;
+      job.batchTranslated = (result.translated || 0) + (result.translatedReplies || 0);
+      job.translatedReplies = (job.translatedReplies || 0) + (result.translatedReplies || 0);
+      job.replyPending = result.replyPending;
+      job.retryAt = result.retryAt || 0;
       if (result.deferred) return false;
       if (result.eligible !== undefined) {
         job.done = result.checked;
@@ -322,4 +410,56 @@ function closeMarketsReviewRecovery() {
   } finally {
     lock.releaseLock();
   }
+}
+
+const MARKETS_REVIEW_JOB_SETTINGS = 'MARKETS_REVIEW_JOB_SETTINGS';
+
+function marketsReviewJobSettings_(properties) {
+  return safeJsonParse_(properties.getProperty(MARKETS_REVIEW_JOB_SETTINGS) || '{}') || {};
+}
+
+function saveMarketsReviewJobSettings(id, payload) {
+  const { email } = requireMarketsReviewOwner_();
+  const allowed = [...MARKETS_REVIEW_PIPELINE_STAGES.map(job => job.id), 'index', 'geography', 'taxonomy', 'taxonomyTranslation', 'backup', 'maintenance'];
+  if (!allowed.includes(id) || typeof payload?.enabled !== 'boolean' ||
+      !Number.isInteger(payload.priority) || payload.priority < 1 || payload.priority > 6 ||
+      !/^([01]\d|2[0-3]):[0-5]\d$/.test(payload.time) ||
+      typeof payload.timeZone !== 'string' || !/^[A-Za-z_]+(?:\/[A-Za-z_+-]+)+$/.test(payload.timeZone)) {
+    throw new Error('Configuración de trabajo no válida.');
+  }
+  new Intl.DateTimeFormat('es', { timeZone: payload.timeZone });
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(1000)) throw new Error('Hay otra operación en curso.');
+  try {
+    const properties = PropertiesService.getScriptProperties();
+    const settings = marketsReviewJobSettings_(properties);
+    settings[id] = { enabled: payload.enabled, priority: payload.priority, time: payload.time,
+      timeZone: payload.timeZone, updatedBy: email, updatedAt: new Date().toISOString() };
+    properties.setProperty(MARKETS_REVIEW_JOB_SETTINGS, JSON.stringify(settings));
+    return settings[id];
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function marketsReviewJobReady_(settings, id, now) {
+  const config = settings[id];
+  return !config || (config.enabled &&
+    Utilities.formatDate(now, config.timeZone, 'HH:mm') >= config.time);
+}
+
+function marketsAdminReviewOperations_(email) {
+  const properties = PropertiesService.getScriptProperties();
+  const owner = email === normalizeEmailForComparison_(Session.getEffectiveUser().getEmail());
+  const config = marketsReviewJobSettings_(properties);
+  return {
+    owner, config,
+    interval: Number(properties.getProperty(MARKETS_REVIEW_INTERVAL)) || 15,
+    supervisorLast: properties.getProperty('MARKETS_REVIEW_SUPERVISOR_LAST'),
+    geography: typeof MARKETS_GEO_AUDIT_PROPERTY === 'string' ? safeJsonParse_(properties.getProperty(MARKETS_GEO_AUDIT_PROPERTY)) : null,
+    index: safeJsonParse_(properties.getProperty('MARKETS_REVIEW_INDEX_STATUS')),
+    backup: typeof MARKETS_BACKUP_PROPERTY === 'string' ? safeJsonParse_(properties.getProperty(MARKETS_BACKUP_PROPERTY)) : null,
+    maintenance: typeof MARKETS_MAINTENANCE_PROPERTY === 'string' ? safeJsonParse_(properties.getProperty(MARKETS_MAINTENANCE_PROPERTY)) : null,
+    folders: owner && typeof marketsStorageFolders_ === 'function' ? marketsStorageFolders_(properties) : null
+  };
 }

@@ -60,7 +60,11 @@ function marketsReviewWidth_(sheet) {
 }
 
 function marketsReviewMetadata_(row) {
-  try { return JSON.parse(row[MARKETS_REVIEW_METADATA_COLUMN - 1]) || {}; }
+  return parseMarketsReviewMetadata_(row[MARKETS_REVIEW_METADATA_COLUMN - 1]);
+}
+
+function parseMarketsReviewMetadata_(value) {
+  try { return JSON.parse(value) || {}; }
   catch (ignored) { return {}; }
 }
 
@@ -69,6 +73,7 @@ function mergeMarketsReviewMetadata_(previous, source) {
   if (source.author) out.author = source.author;
   if (Number.isInteger(source.helpful) && source.helpful >= 0) out.helpful = source.helpful;
   if (source.reply && (!out.replyDate || (source.replyDate && source.replyDate >= out.replyDate))) {
+    if (out.reply !== source.reply) delete out.replyTranslations;
     out.reply = source.reply;
     if (source.replyDate) out.replyDate = source.replyDate;
     if (source.replyAuthor) out.replyAuthor = source.replyAuthor;
@@ -242,7 +247,7 @@ function storeMarketsIosReviews_(sheet, properties, known, reviews, summary, wid
   }
   if (pending.size || summary.updated > previousUpdates) {
     SpreadsheetApp.flush();
-    advanceMarketsReviewGeneration_(properties);
+    advanceMarketsReviewGeneration_(properties, true);
   }
 }
 
@@ -303,25 +308,39 @@ function processMarketsReviewTranslations_(historical) {
     if (retryAt > Date.now()) return { quotaLimited: true, retryAt };
     const sheet = marketsReviewSheet_(ss), eligible = Math.max(0, sheet.getLastRow() - 1);
     // La fecha de la reseña (no su posición) define la prioridad, incluso tras una recuperación histórica.
-    const rows = eligible ? sheet.getRange(2, 7, eligible, 8).getValues() : [];
+    const metadataEnabled = typeof sheet.getLastColumn === 'function' && marketsReviewWidth_(sheet) === MARKETS_REVIEW_METADATA_COLUMN;
+    const rows = eligible ? sheet.getRange(2, 7, eligible, metadataEnabled ? 10 : 8).getValues() : [];
     const queue = [];
-    rows.forEach(([date, , , , original, ...values], offset) => {
-      if (original && values.some(value => !value)) queue.push({
-        index: offset + 2, time: Date.parse(date) || 0, original, values
-      });
+    rows.forEach(([date, , , , original, es, en, tr, , rawMetadata], offset) => {
+      const index = offset + 2, time = Date.parse(date) || 0;
+      const values = [es, en, tr];
+      if (original && values.some(value => !value)) queue.push({ index, time, original, values });
+      if (!metadataEnabled || !rawMetadata) return;
+      const metadata = parseMarketsReviewMetadata_(rawMetadata);
+      const replyValues = ['es', 'en', 'tr'].map(lang => metadata.replyTranslations?.[lang] || '');
+      if (metadata.reply && replyValues.some(value => !value)) {
+        queue.push({ index, time: Date.parse(metadata.replyDate) || time, original: metadata.reply,
+          values: replyValues, metadata });
+      }
     });
     queue.sort((a, b) => b.time - a.time || b.index - a.index);
     const deadline = Date.now() + 235000;
     const languages = ['es', 'en', 'tr'];
-    let translated = 0, failed = 0, pending = queue.length, nextRetry = 0;
+    let translated = 0, translatedReplies = 0, failed = 0, pending = queue.length, nextRetry = 0;
+    const replyTotal = queue.filter(item => item.metadata).length;
+    const workTotal = eligible + replyTotal;
+    let replyPending = replyTotal;
+    const translatedText = new Map();
     try {
-      for (const {index, original, values} of queue.slice(0, 100)) {
+      for (const {index, original, values, metadata} of queue.slice(0, 100)) {
         if (Date.now() >= deadline) break;
         const result = values.slice();
         for (let i = 0; i < languages.length; i++) {
           if (result[i]) continue;
           try {
-            result[i] = LanguageApp.translate(String(original), '', languages[i]) || '';
+            const key = JSON.stringify([original, languages[i]]);
+            result[i] = translatedText.get(key) || LanguageApp.translate(String(original), '', languages[i]) || '';
+            if (result[i]) translatedText.set(key, result[i]);
           } catch (error) {
             // LanguageApp no ofrece una consulta de saldo: la siguiente llamada actúa como sonda.
             if (/quota|cuota|too many times|limit exceeded/i.test(errorToString_(error))) {
@@ -332,21 +351,30 @@ function processMarketsReviewTranslations_(historical) {
           }
         }
         if (result.some((value,i) => value !== values[i])) {
-          sheet.getRange(index, 12, 1, 3).setValues([result.map(marketsReviewLiteral_)]);
-          translated++;
+          if (metadata) {
+            metadata.replyTranslations = Object.fromEntries(languages.map((lang, i) => [lang, result[i]]));
+            sheet.getRange(index, MARKETS_REVIEW_METADATA_COLUMN, 1, 1).setValues([[JSON.stringify(metadata)]]);
+            translatedReplies++;
+          } else {
+            sheet.getRange(index, 12, 1, 3).setValues([result.map(marketsReviewLiteral_)]);
+            translated++;
+          }
         }
-        if (result.every(Boolean)) pending--;
+        if (result.every(Boolean)) {
+          pending--;
+          if (metadata) replyPending--;
+        }
         else if (!nextRetry) failed++;
         if (nextRetry) break;
       }
     } finally {
-      if (translated) {
+      if (translated || translatedReplies) {
         SpreadsheetApp.flush();
         advanceMarketsReviewGeneration_(properties);
       }
     }
     if (failed) console.warn('Filas de traducción pendientes de reintento: ' + failed);
-    return { translated, checked: eligible - pending, eligible, failed, pending,
+    return { translated, translatedReplies, replyPending, checked: workTotal - pending, eligible: workTotal, failed, pending,
       quotaLimited: Boolean(nextRetry), retryAt: nextRetry, complete: pending === 0 };
   } finally {
     lock.releaseLock();
@@ -374,7 +402,10 @@ function marketsReviewClassification_(ss) {
   const entries = taxonomy && taxonomy.getLastRow() > 1
     ? taxonomy.getRange(2, 1, taxonomy.getLastRow() - 1, 4).getDisplayValues() : [];
   const knownBlocks = new Set(entries.filter(([id, label]) => /^\d{2}\./.test(id) && label).map(([id]) => id.slice(0, 2)));
-  return { rules: compileReviewRules_(entries, marketsBusinessAliases_(ss)), knownBlocks };
+  const aliases = marketsBusinessAliases_(ss);
+  return { rules: compileReviewRules_(entries, aliases), knownBlocks,
+    version: typeof Utilities === 'object' && Utilities.computeDigest ?
+      marketsReviewDigest_([MARKETS_REVIEW_SNAPSHOT_SCHEMA, entries, aliases]) : '' };
 }
 
 function marketsReviewBlocks_(ids, knownBlocks) {
@@ -406,7 +437,12 @@ function queryMarketsReviews_(ss, filters, window, includeTranslations = false, 
   const readStarted = Date.now();
   const width = marketsReviewWidth_(sheet);
   const indexOnly = Boolean(paging && !paging.fullRead);
-  const indexWidth = MARKETS_REVIEW_HEADERS.indexOf('rating') + 1;
+  const search = normalizeReviewEvidence_(String(filters.search || "").slice(0, 200));
+  const approvedGeo = filters.inferGeography !== 'NO' && typeof readMarketsAndroidGeography_ === 'function'
+    ? readMarketsAndroidGeography_(ss) : new Map();
+  const filterText = Boolean(search || filters.audience || filters.topic);
+  const readOriginal = filterText || approvedGeo.size > 0;
+  const indexWidth = MARKETS_REVIEW_HEADERS.indexOf(readOriginal ? 'original' : 'rating') + 1;
   const stored = sheet.getRange(2, 1, lastRow - 1, indexOnly ? indexWidth : width).getValues();
   let readMs = Date.now() - readStarted;
   const byPackage = new Map();
@@ -414,6 +450,9 @@ function queryMarketsReviews_(ss, filters, window, includeTranslations = false, 
     if (!byPackage.has(app.packageName)) byPackage.set(app.packageName, []);
     byPackage.get(app.packageName).push(app);
   }
+  const derived = Boolean(classification?.version) && typeof marketsReviewIndexSheet_ === 'function' && marketsReviewIndexSheet_(ss);
+  const derivedCount = derived ? Math.max(0, Math.min(stored.length, derived.getLastRow() - 1)) : 0;
+  const derivedRows = derivedCount ? derived.getRange(2, 1, derivedCount, MARKETS_REVIEW_INDEX_HEADERS.length).getValues() : [];
   let classified = 0;
   const started = Date.now();
   const identities = new Map();
@@ -433,7 +472,6 @@ function queryMarketsReviews_(ss, filters, window, includeTranslations = false, 
       }
     }
   }
-  const search = normalizeReviewEvidence_(String(filters.search || "").slice(0, 200));
   const localDate = typeof Intl === 'object' && new Intl.DateTimeFormat('sv-SE', {
     timeZone: MARKETS_CONFIG.timeZone, year: 'numeric', month: '2-digit', day: '2-digit'
   });
@@ -452,10 +490,20 @@ function queryMarketsReviews_(ss, filters, window, includeTranslations = false, 
       if (filters.period && !date.startsWith(filters.period)) return [];
       if (filters.maxRating && row[7] > filters.maxRating) return [];
       const storefronts = [...new Set(markets.split(',').map(code => code.trim()).filter(code => /^[A-Z]{2}$/.test(code)))].sort();
-      const country = storefronts.length === 1 && MARKETS_WEB.countryCodes.includes(storefronts[0]) ? storefronts[0] : 'UNKNOWN';
-      if (filters.country !== 'ALL' && filters.country !== country) return [];
-      const attributionMethod = country !== 'UNKNOWN' ? 'single_storefront' :
+      let country = storefronts.length === 1 && MARKETS_WEB.countryCodes.includes(storefronts[0]) ? storefronts[0] : 'UNKNOWN';
+      let attributionMethod = country !== 'UNKNOWN' ? 'single_storefront' :
         storefronts.length > 1 ? 'multi_storefront_ambiguous' : 'no_evidence';
+      const approval = country === 'UNKNOWN' && android && approvedGeo.get(row[0]);
+      const eligible = approval && (byPackage.get(row[4]) || []).map(app => app.countryCode);
+      if (approval && approval.packageName === row[4] && new Set(eligible).size > 1 &&
+          eligible.includes(approval.country) && approval.digest === marketsReviewTextDigest_(row)) {
+        const evidence = marketsAndroidGeographyCandidate_(row[10], eligible);
+        if (evidence.status === 'VALIDAR' && evidence.candidate === approval.country) {
+          country = approval.country;
+          attributionMethod = 'review_evidence_validated';
+        }
+      }
+      if (filters.country !== 'ALL' && filters.country !== country) return [];
       const sharedListing = android && storefronts.length > 1;
       const direct = catalog.get(row[1]);
       const candidates = storefronts.map(code => (android ? androidListings : iosListings).get(row[4] + '|' + code)).filter(Boolean);
@@ -468,10 +516,33 @@ function queryMarketsReviews_(ss, filters, window, includeTranslations = false, 
       if (!apps.length && (filters.app || candidates.length || !['Android', 'iOS'].includes(row[3]) || !row[4])) return [];
       return [{ row, rowNumber, key, date, countries: [country], android, storefronts, attributionMethod, sharedListing, apps }];
     });
+  function matchingEvidence(candidate) {
+    const { row } = candidate;
+    const original = [row[9], row[10]].join(' ');
+    const normalized = search || rules ? normalizeReviewEvidence_(original) : '';
+    if (search && !normalized.includes(search)) return false;
+    const saved = derivedRows[candidate.rowNumber - 2];
+    const indexed = saved && saved[0] === row[0] && saved[2] === classification.version &&
+      saved[1] === marketsReviewTextDigest_(row);
+    if (!indexed && rules) classified++;
+    if (derived && classified > MARKETS_REVIEW_INDEX_BATCH && (filters.audience || filters.topic)) {
+      throw new Error('El índice de reseñas se está actualizando. Vuelve a consultar este filtro cuando finalice la clasificación.');
+    }
+    const decision = filters.audience && (indexed ? { audience: saved[4], sharedOperation: saved[5] === true }
+      : classifyMarketsReviewAudience_(original));
+    if (decision && !matchesMarketsReviewAudience_(filters.audience, decision)) return false;
+    const ids = indexed ? JSON.parse(saved[3]) : rules ? classifyNormalizedReviewEvidence_(normalized, rules) : [];
+    if (window && filters.topic === 'general' && marketsReviewBlocks_(ids, knownBlocks).length) return false;
+    if (topic && ((!window && !(row[7] >= 1 && row[7] <= 3)) ||
+        !ids.some(id => id === topic || id.slice(0, 2) === topic))) return false;
+    candidate.ids = ids;
+    return true;
+  }
+  const matching = filterText ? candidates.filter(matchingEvidence) : candidates;
   let page;
   if (paging) {
-    candidates.sort(compareMarketsReviewRows_);
-    page = paginateMarketsReviews_(candidates, paging, window);
+    matching.sort(compareMarketsReviewRows_);
+    page = paginateMarketsReviews_(matching, paging, window);
     if (indexOnly && page.rows.length) {
       const startedTextRead = Date.now();
       if (!hydrateMarketsReviewPage_(sheet, width, page.rows)) {
@@ -480,35 +551,28 @@ function queryMarketsReviews_(ss, filters, window, includeTranslations = false, 
       readMs += Date.now() - startedTextRead;
     }
   }
-  const results = (page?.rows || candidates).flatMap(({ row, key, date, countries, android, storefronts, attributionMethod, sharedListing, apps }) => {
+  const results = (page?.rows || matching).map(candidate => {
+      if (!filterText) matchingEvidence(candidate);
+      const { row, key, date, countries, android, storefronts, attributionMethod, sharedListing, apps, ids } = candidate;
       const [country] = countries;
-      const original = [row[9], row[10]].join(' ');
-      const normalized = search || rules ? normalizeReviewEvidence_(original) : '';
-      if (search && !normalized.includes(search)) return [];
-      if (rules) classified++;
-      const ids = rules ? classifyNormalizedReviewEvidence_(normalized, rules) : [];
-      if (filters.audience && !matchesMarketsReviewAudience_(filters.audience,
-          classifyMarketsReviewAudience_(normalized, ids, classification.knownBlocks))) return [];
-      if (window && filters.topic === "general" && marketsReviewBlocks_(ids, knownBlocks).length) return [];
-      if (topic && ((!window && !(row[7] >= 1 && row[7] <= 3)) ||
-          !ids.some(id => id === topic || id.slice(0, 2) === topic))) return [];
       const url = android ? 'https://play.google.com/store/apps/details?id=' + encodeURIComponent(row[4]) +
         '&reviewId=' + encodeURIComponent(row[5]) : row[3] === 'iOS' && storefronts.length === 1 && /^\d+$/.test(row[4])
           ? 'https://apps.apple.com/' + storefronts[0].toLowerCase() + '/app/' + row[4] + '?see-all=reviews&platform=iphone' : '';
-      const { author, helpful, reply, replyDate, replyAuthor } = marketsReviewMetadata_(row);
-      return [{ key, listings: apps.map(app => ({ country: app.countryCode, app: app.appName, entity: app.isBbva ? 'BBVA Empresas' : app.appName })),
+      const { author, helpful, reply, replyDate, replyAuthor, replyTranslations } = marketsReviewMetadata_(row);
+      return { key, listings: apps.map(app => ({ country: app.countryCode, app: app.appName, entity: app.isBbva ? 'BBVA Empresas' : app.appName })),
         entities: apps.length ? [...new Set(apps.map(app => app.isBbva ? 'BBVA Empresas' : app.appName))] : [String(row[4])],
         blocks: marketsReviewBlocks_(ids, knownBlocks), app: apps[0]?.appName || String(row[4]), countries: [country], storefronts,
         attributionMethod, confidence: country === 'UNKNOWN' ? 'unknown' : 'inferred',
         platform: row[3], date, rating: row[7], version: String(row[8]),
         title: row[9], original: row[10], text: row[languageColumn] || row[10], url,
-        author, helpful, reply, replyDate, replyAuthor,
+        author, helpful, reply: replyTranslations?.[filters.language || 'es'] || reply, replyDate, replyAuthor,
+        ...(includeTranslations && replyTranslations ? { replyTranslations } : {}),
         sharedListing,
         ...(filters.includeTopics ? { topicIds: ids } : {}),
         updatedAt: row[6] instanceof Date ? row[6].toISOString() : String(row[6]),
         ...(includeTranslations ? { translations: { es: row[11], en: row[12], tr: row[13] } } : {}),
         capturedAt: row[14] ? String(row[14]).slice(0, 10) : '',
-        translated: Boolean(row[languageColumn] && row[languageColumn] !== row[10]) }];
+        translated: Boolean(row[languageColumn] && row[languageColumn] !== row[10]) };
     })
     .sort(compareMarketsReviewRows_);
   console.log(JSON.stringify({ operation: 'review-query', readMs, durationMs: Date.now() - started + readMs,
@@ -533,7 +597,7 @@ function hydrateMarketsReviewPage_(sheet, width, rows) {
     for (const candidate of ordered.slice(first, end)) {
       const current = values[candidate.rowNumber - startRow];
       // A capture can update a row while the page is being read.
-      if (!current || candidate.row.slice(0, 8).some((value, index) => String(value) !== String(current[index]))) return false;
+      if (!current || candidate.row.some((value, index) => String(value) !== String(current[index]))) return false;
       candidate.row = current;
     }
     first = end;

@@ -80,6 +80,7 @@ function getMarketsAdminDashboard(includeUsage = true) {
       timeZone: trimString_(access.control.TIME_ZONE) || MARKETS_CONFIG.timeZone,
       reviewPipeline: marketsAdminReviewPipeline_(access.email),
       functionalJobs: typeof marketsFunctionalJobStatus_ === 'function' ? marketsFunctionalJobStatus_() : [],
+      operations: typeof marketsAdminReviewOperations_ === 'function' ? marketsAdminReviewOperations_(access.email) : null,
       dailySchedule: String(MARKETS_CONFIG.runHour).padStart(2, '0') + ':' + String(MARKETS_CONFIG.runMinute).padStart(2, '0'),
       healthSchedule: String(MARKETS_CONFIG.healthCheckHour).padStart(2, '0') + ':' + String(MARKETS_CONFIG.healthCheckMinute).padStart(2, '0'),
       newsletterSchedule: 'Día 1 · ' + String(MARKETS_CONFIG.newsletterHour).padStart(2, '0') + ':' +

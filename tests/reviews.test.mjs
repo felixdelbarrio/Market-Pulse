@@ -345,6 +345,20 @@ test("country pages and snapshots partition each review by its own storefront ev
   assert.equal(runtime.getMarketsReviewAnalytics({...npsScope,audience:"BEI_ONLY"}).nps.current,null);
   assert.equal(runtime.getMarketsReviewAnalytics({...npsScope,audience:"ALL"}).total,2);
   assert.throws(()=>runtime.getMarketsReviewPage({...extended,audience:"UNKNOWN"}),/Audiencia/);
+  const many = Array.from({length:100}, (_, index) => {
+    const row = review("page-" + String(index).padStart(3,"0"), tr, "TR");
+    row[10] = [4, 53, 95].includes(index) ? "No puedo hacer transferencias a mis proveedores. Caso buscado" : "Caso buscado";
+    return row;
+  });
+  rows.push(...many);
+  const pageScope = {country:"TR",platform:"ALL",audience:"BEI_ONLY",topic:"03",
+    search:"caso buscado",rating:"1",start:"2026-11-01",end:"2026-11-01"};
+  const filtered = runtime.getMarketsReviewPage({...pageScope,page:2});
+  assert.equal(filtered.total,3);
+  assert.equal(filtered.counts.TR,3);
+  assert.equal(filtered.page,0);
+  assert.deepEqual(Array.from(filtered.rows,row=>row.key),["page-004","page-053","page-095"]);
+  rows.splice(-many.length);
   const provisional=rows.find(row=>row[0]==="solo-observada-es");
   provisional[2]="ES,CO";
   const changed=runtime.queryMarketsReviews_(ss,{country:"ALL",platform:"ALL"},window);
@@ -493,7 +507,7 @@ test("the persistent snapshot requires the matching schema and generations", () 
   api.readMarketsWebCache_ = (_key,build)=>build();
   api.readMarketsPersistentCache_ = () => ({ schema, end: window.end, versions: ["1", "", catalogVersion], values: { "page:ES:es": staticPage } });
   assert.equal(api.readMarketsReviewCache_(ss, "page", filters, window, () => null), null);
-  schema = 8;
+  schema = 9;
   assert.equal(api.readMarketsReviewCache_(ss, "page", filters, window, () => null), staticPage);
   generation = "2";
   assert.equal(api.readMarketsReviewCache_(ss, "page", filters, window, () => null), null);
@@ -596,7 +610,6 @@ test("country-wide annual analytics counts each review once and retains the lead
 
 test("audience requires evidence in the original and keeps salary accounts separate from employer payroll", () => {
   const rules = api.compileReviewRules_([["16.05", "Seguridad", "Firma electrónica"]]);
-  const blocks = new Set(["02", "03", "04", "05", "06", "08", "09", "11", "14", "16"]);
   const cases = [
     ["No puedo abrir mi cuenta nómina", "RETAIL", false, "02"],
     ["Me cobran comisión en mi cuenta de nomina por una transferencia SPEI", "RETAIL", false, "02"],
@@ -607,8 +620,8 @@ test("audience requires evidence in the original and keeps salary accounts separ
     ["Pago la nómina de mis empleados", "BEI_CONFIRMED", true, "04"],
     ["Transferencias de nóminas de mi empresa", "BEI_CONFIRMED", true, "04"],
     ["Çalışanlarımın maaş ödemesi başarısız", "BEI_CONFIRMED", true, "04"],
-    ["No he recibido el pago de la nómina", "UNDETERMINED", false],
-    ["Mi nómina no llega a mi cuenta", "UNDETERMINED", true, "02"],
+    ["No he recibido el pago de la nómina", "RETAIL", false],
+    ["Mi nómina no llega a mi cuenta", "RETAIL", false, "02"],
     ["No puedo hacer una transferencia", "UNDETERMINED", true, "03"],
     ["Havale yapamıyorum", "UNDETERMINED", true, "03"],
     ["No funciona mi cuenta", "UNDETERMINED", true, "02"],
@@ -627,14 +640,26 @@ test("audience requires evidence in the original and keeps salary accounts separ
     ["No puedo pagar el alquiler de mi vivienda", "RETAIL", false, "06"],
     ["Pago el alquiler del local de mi negocio", "BEI_CONFIRMED", true, "06"],
     ["No soy empresa, quiero hacer una transferencia", "UNDETERMINED", true, "03"],
-    ["No abre mi cuenta nómina y falla el pago de nóminas de mi empresa", "UNDETERMINED", false, "04"],
+    ["No abre mi cuenta nómina y falla el pago de nóminas de mi empresa", "BEI_CONFIRMED", true, "04"],
+    ["Emekli olmama rağmen EFT ücreti kesiliyor", "RETAIL", false],
+    ["Emekli maaşım için havale ücreti kesiliyor", "RETAIL", false],
+    ["KOBİ kredisine başvuramıyorum", "BEI_CONFIRMED", true],
+    ["Esnaf kredisi başvurusu başarısız", "BEI_CONFIRMED", true],
+    ["Ticari kredilerimi Halkbank’tan çektim", "BEI_CONFIRMED", true],
+    ["Personel maaşları ödenmiyor", "BEI_CONFIRMED", true],
+    ["Ben emekliyim. Şirket hesabımdan tedarikçime ödeme yapamıyorum", "BEI_CONFIRMED", true],
+    ["Ticari değil, EFT ücreti alıyorsunuz", "UNDETERMINED", true],
+    ["La empresa del banco cobra una comisión por transferir dinero a mi hija", "RETAIL", false],
+    ["My paycheck was deposited but the bank charged transfer fees", "RETAIL", false],
+    ["Minha aposentadoria caiu e cobraram uma taxa no PIX", "RETAIL", false],
+    ["Não consigo pagar meus fornecedores", "BEI_CONFIRMED", true],
     ["POS", "UNDETERMINED", false],
     ["La app es mala", "UNDETERMINED", false]
   ];
   for (const [text, audience, extended, block] of cases) {
     const normalized = api.normalizeReviewEvidence_(text);
     const ids = api.classifyNormalizedReviewEvidence_(normalized, rules);
-    const decision = api.classifyMarketsReviewAudience_(normalized, ids, blocks);
+    const decision = api.classifyMarketsReviewAudience_(text);
     assert.equal(decision.audience, audience, text);
     assert.equal(api.matchesMarketsReviewAudience_("BEI_ONLY", decision), audience === "BEI_CONFIRMED", text);
     assert.equal(api.matchesMarketsReviewAudience_("BEI_EXTENDED", decision), extended, text);
@@ -642,7 +667,7 @@ test("audience requires evidence in the original and keeps salary accounts separ
     if (block) assert.ok(ids.some(id => id.startsWith(block)), text);
     if (audience === "RETAIL") assert.ok(!ids.some(id => id.startsWith("04.")), text);
   }
-  const unconfigured = api.classifyMarketsReviewAudience_("mi cuenta", ["02.xx"], new Set());
+  const unconfigured = api.classifyMarketsReviewAudience_("mi cuenta");
   assert.equal(api.matchesMarketsReviewAudience_("BEI_EXTENDED", unconfigured), false);
 });
 
@@ -681,4 +706,37 @@ test("catalogue TF-IDF assigns rare descriptive evidence, abstains on ties and r
   assert.deepEqual(classify("documentaria embarque aduanas", [excluded]), ["10.01"]);
   const contextRequired = ["01.01","Inicio","Posición global","documentaria embarque aduanas"];
   assert.deepEqual(classify("documentaria embarque aduanas", [contextRequired]), []);
+});
+
+test("Android geography only proposes a local rail for human review", () => {
+  const runtime = vm.createContext({});
+  for (const file of ["52_ReviewInsights.gs", "55_ReviewIndex.gs"]) {
+    vm.runInContext(fs.readFileSync(new URL("../src/" + file, import.meta.url), "utf8"), runtime);
+  }
+  const eligible = ["AR","CO","ES","MX","PE","UY"];
+  for (const [text, status, country] of [
+    ["No llega el Plin de mi empresa", "VALIDAR", "PE"],
+    ["No puedo pagar con PSE", "VALIDAR", "CO"],
+    ["Mi SPEI se quedó pendiente", "VALIDAR", "MX"],
+    ["Mi Yape y mi SPEI fallan", "CONFLICTO"],
+    ["No uso Bizum", "CONTEXTO_NEGATIVO"],
+    ["Mi amigo paga con PSE", "CONTEXTO_NEGATIVO"],
+    ["La app no funciona en mi móvil, tenés que arreglarla", "SIN_EVIDENCIA"],
+    ["CURP", "SIN_CONTEXTO", "MX"]
+  ]) {
+    const result = runtime.marketsAndroidGeographyCandidate_(text, eligible);
+    assert.equal(result.status, status, text);
+    assert.equal(result.candidate, country, text);
+  }
+  assert.equal(runtime.marketsAndroidGeographyCandidate_("Mi Yape falla", ["ES","MX"]).status, "FUERA_DE_CATALOGO");
+});
+
+test("edited developer replies only invalidate their own translations", () => {
+  const before = { author:"reviewer", reply:"old", replyDate:"2026-11-10", replyTranslations:{ es:"vieja" } };
+  const unchanged = JSON.parse(api.mergeMarketsReviewMetadata_(before, { reply:"old", replyDate:"2026-11-10" }));
+  assert.deepEqual(unchanged.replyTranslations, before.replyTranslations);
+  const updated = JSON.parse(api.mergeMarketsReviewMetadata_(before, { reply:"new", replyDate:"2026-11-12" }));
+  assert.equal(updated.reply, "new");
+  assert.equal(updated.author, "reviewer");
+  assert.equal(updated.replyTranslations, undefined);
 });
