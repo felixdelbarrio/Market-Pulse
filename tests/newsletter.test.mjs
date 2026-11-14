@@ -469,10 +469,13 @@ test("newsletter links are edition-bound, expire, and use the same footer in all
     assert.equal(isolated.parseMarketsNewsletterInteraction_(token.replace(/\.\d{10}\./, ".1000000000.")), null);
   }
   for (const language of ["es","en","tr"]) {
-    const footer = isolated.renderMarketsNewsletterFeedback_(links, language);
-    assert.match(footer,/👍/);
-    assert.match(footer,/👎/);
+    const footer = isolated.renderMarketsEmailFooter_(links, language);
+    assert.match(footer,/cid:feedbackPositive/);
+    assert.match(footer,/cid:feedbackNegative/);
+    assert.match(footer,/cid:biaLogo/);
     assert.match(footer,/newsletterInteraction=/);
   }
-  assert.equal(isolated.renderMarketsNewsletterFeedback_(null,"es"),"");
+  assert.match(isolated.renderMarketsEmailFooter_(null,"es"),/cid:biaLogo/);
+  const preview = isolated.marketsNewsletterInteractionLinks_("reader@bbva.com", "2026-10", "secret", true);
+  assert.equal(isolated.parseMarketsNewsletterInteraction_(new URL(preview.positive).searchParams.get("newsletterInteraction")).preview, true);
 });

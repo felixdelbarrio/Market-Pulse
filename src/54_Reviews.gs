@@ -231,6 +231,9 @@ function storeMarketsIosReviews_(sheet, properties, known, reviews, summary, wid
     if (newer && !textChanged) updatedRow.splice(11, 3, ...previous.row.slice(11, 14));
     updatedRow[14] = captured;
     if (width === MARKETS_REVIEW_METADATA_COLUMN) updatedRow[15] = merged;
+    if (newer && (textChanged || row[9] !== previous.row[9]) && typeof invalidateMarketsReviewIndexFrom_ === 'function') {
+      invalidateMarketsReviewIndexFrom_(properties, previous.index);
+    }
     const update = updatedRow.slice(6);
     sheet.getRange(previous.index, 7, 1, update.length).setValues([update.map(marketsReviewLiteral_)]);
     known.set(row[0], { index: previous.index, row: updatedRow });
@@ -403,6 +406,11 @@ function marketsReviewClassification_(ss) {
     ? taxonomy.getRange(2, 1, taxonomy.getLastRow() - 1, 4).getDisplayValues() : [];
   const knownBlocks = new Set(entries.filter(([id, label]) => /^\d{2}\./.test(id) && label).map(([id]) => id.slice(0, 2)));
   const aliases = marketsBusinessAliases_(ss);
+  const translations = ['en', 'tr'].map(language => marketsFunctionalTranslations_(ss, language));
+  for (const [id, , name] of entries) {
+    const localized = translations.map(names => names.get(name)).filter(Boolean);
+    if (localized.length) aliases[id] = [...(aliases[id] || []), ...localized];
+  }
   return { rules: compileReviewRules_(entries, aliases), knownBlocks,
     version: typeof Utilities === 'object' && Utilities.computeDigest ?
       marketsReviewDigest_([MARKETS_REVIEW_SNAPSHOT_SCHEMA, entries, aliases]) : '' };
@@ -497,10 +505,11 @@ function queryMarketsReviews_(ss, filters, window, includeTranslations = false, 
       const eligible = approval && (byPackage.get(row[4]) || []).map(app => app.countryCode);
       if (approval && approval.packageName === row[4] && new Set(eligible).size > 1 &&
           eligible.includes(approval.country) && approval.digest === marketsReviewTextDigest_(row)) {
-        const evidence = marketsAndroidGeographyCandidate_(row[10], eligible);
-        if (evidence.status === 'VALIDAR' && evidence.candidate === approval.country) {
+        const evidence = approval.automatic ? inferMarketsAndroidCountry_(row[10], eligible) :
+          marketsAndroidGeographyCandidate_(row[10], eligible);
+        if (evidence?.status === 'VALIDAR' && evidence.candidate === approval.country) {
           country = approval.country;
-          attributionMethod = 'review_evidence_validated';
+          attributionMethod = approval.automatic ? 'review_evidence_inferred' : 'review_evidence_validated';
         }
       }
       if (filters.country !== 'ALL' && filters.country !== country) return [];

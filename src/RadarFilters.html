@@ -225,6 +225,8 @@ window.MarketRadarFilters = (() => {
         ).join(", ");
         entries.push([key,readable]);
       }
+      const period = ['year', 'month', 'start', 'end'];
+      entries.sort(([a], [b]) => (period.indexOf(a) + 1) - (period.indexOf(b) + 1));
       const signature = JSON.stringify(entries.map(([key,readable]) => [translate(labels[key]),translate(readable)]));
       if (signature === previousChips) return;
       previousChips = signature;

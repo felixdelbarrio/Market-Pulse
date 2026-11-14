@@ -4,7 +4,7 @@
 <body>
   <main>
     <h1><?= newsletter ? "Newsletter de Market Pulse" : "¿Te ha resultado útil la alerta?" ?></h1>
-    <p>Confirma la valoración desde la cuenta corporativa que recibió el correo.</p>
+    <p><?= unsubscribe ? 'Confirma la baja desde la cuenta corporativa que recibió el correo.' : 'Confirma la acción desde la cuenta corporativa que recibió el correo.' ?></p>
     <button type="button" id="vote" data-token="<?= token ?>" data-newsletter="<?= newsletter ? "yes" : "no" ?>"><?= choice ?></button>
     <p id="status" role="status"></p>
     <a id="destination" href="<?= destination ?>" hidden>Abrir Market Pulse</a>
@@ -16,7 +16,7 @@
       vote.disabled = true;
       status.textContent = "Guardando valoración…";
       const runner = google.script.run.withSuccessHandler(result => {
-        status.textContent = result?.open ? "Acceso registrado." : "Valoración registrada.";
+        status.textContent = result?.preview ? "Enlace de prueba verificado." : result?.unsubscribed ? "Suscripción desactivada." : result?.open ? "Acceso registrado." : "Valoración registrada.";
         if (result?.open) document.getElementById("destination").hidden = false;
       }).withFailureHandler(error => {
         status.textContent = error.message;

@@ -660,7 +660,8 @@ test("alert feedback tokens bind the vote to the recipient and deduplicate acros
   const links = context.marketsAlertFeedbackLinks_(active, id);
   const token = vote => new URL(links[vote]).searchParams.get("alertFeedback");
   assert.doesNotMatch(links.positive, /recipient|%40/);
-  assert.match(context.renderMarketsAlertFeedbackFooter_(links), /¿Te ha resultado útil/);
+  assert.equal(context.parseMarketsAlertFeedback_(token("unsubscribe")).vote, "unsubscribe");
+  assert.match(context.renderMarketsEmailFooter_(links), /¿Te ha resultado útil/);
   assert.throws(() => context.saveMarketsAlertFeedback(token("positive").replace(".positive.", ".negative.")), /no corresponde/);
   active = "another@bbva.com";
   assert.throws(() => context.saveMarketsAlertFeedback(token("positive")), /no corresponde/);

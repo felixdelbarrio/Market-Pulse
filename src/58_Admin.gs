@@ -205,7 +205,11 @@ function marketsAdminReviewPipeline_(email) {
     }
   }
   const state = readMarketsReviewPipeline_(PropertiesService.getScriptProperties());
-  const jobs = state?.jobs || newMarketsReviewPipeline_('').jobs;
+  const definitions = newMarketsReviewPipeline_('').jobs;
+  const jobs = definitions.map(definition => {
+    const current = state?.jobs.find(job => job.id === definition.id);
+    return { ...definition, ...current, label: definition.label, priority: definition.priority };
+  });
   return { day: state?.day || '', installed, canRestart: owner && installed === true,
     jobs: [{ id: 'supervisor', label: 'Supervisor de reseñas', priority: 0,
       status: installed === null ? 'Activador sin verificar' : installed ? 'Activo' : 'Sin activador instalado' }, ...jobs] };
@@ -319,7 +323,7 @@ function getMarketsBusinessCatalog(section, language) {
         ['Todos', 'Audiencia inicial de Comentarios'],
         ['Solo BEI', 'Evidencia empresarial directa en el original'],
         ['BEI extendido', 'Evidencia directa, contextual u operativa compartida sin señal retail explícita'],
-        ['Operativa compartida', [...MARKETS_SHARED_REVIEW_OPERATIONS].join(', ')],
+        ['Operativa compartida', 'Transferencias, pagos, cuentas o tarjetas con contexto operativo y sin uso particular explícito'],
         ['NPS de opiniones', MARKETS_DEFAULT_REVIEW_SEGMENTS.map(group => group.label + ': ' + group.stars.join(', ')).join(' · ')]
       ]);
     case 'storage':
@@ -336,8 +340,9 @@ function getMarketsBusinessCatalog(section, language) {
       ]);
     }
     case 'retention':
-      return table(['Conjunto', 'Política'], [['Ratings y reseñas', 'Histórico conservado'],
-        ['Acceso y voto de newsletter', 'Enlaces válidos durante 30 días'], ['Registros de Administración', 'Ventanas de consulta limitadas; sin borrado desde esta pantalla']]);
+      return table(['Parámetro', 'Valor', 'Descripción'], [
+        [MARKETS_LOG_RETENTION, marketsLogRetentionDays_(PropertiesService.getScriptProperties()), 'Días antes de archivar registros operativos']
+      ], 'retention');
     case 'languages':
       return table(['Idioma', 'Uso'], ['es', 'en', 'tr'].map(lang => [lang, 'Interfaz, traducciones de reseñas y newsletter']));
     default: throw new Error('Catálogo desconocido.');
@@ -350,6 +355,14 @@ function saveMarketsBusinessCatalogEntry(input) {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(5000)) throw new Error('Configuración ocupada. Inténtalo de nuevo.');
   try {
+    if (section === 'retention' && key === MARKETS_LOG_RETENTION) {
+      const days = Number(value);
+      if (!Number.isInteger(days) || days < 1 || days > 3650) throw new Error('Introduce un número de días entre 1 y 3650.');
+      const properties = PropertiesService.getScriptProperties();
+      if (String(marketsLogRetentionDays_(properties)) !== String(expected)) throw new Error('El parámetro cambió. Actualiza el catálogo.');
+      properties.setProperty(MARKETS_LOG_RETENTION, String(days));
+      return { saved: true };
+    }
     if (section === 'operation' && MARKETS_BUSINESS_CONTROL.includes(key)) {
       const raw = String(value).trim();
       const valid = key === 'RATING_LOOKBACK_DAYS' ? /^\d{1,3}$/.test(raw) && Number(raw) >= 1 && Number(raw) <= 365

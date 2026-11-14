@@ -290,14 +290,14 @@ const MARKETS_REVIEW_AUDIENCE_RULES = {
     /\b(?:cuentas? (?:de (?:mi |nuestra |la )?empresas?|de negocios?|empresarial(?:es)?|comercial(?:es)?|pyme)|(?:tarjeta|banca) (?:de (?:mi |nuestra )?empresas?|corporativa|para empresas)|(?:pago|pagos|pagar|transferencias) a (?:mis |nuestros )?(?:empleados|proveedores)|(?:facturas? a|cobrar a) mis clientes|(?:nominas? de (?:mi |nuestra )?empresa|nominas? de mis empleados)|(?:seguro|alquiler|iva) de (?:mi|nuestro) (?:comercio|negocio|empresa)|suscripcion de software de mi empresa|gestion de tesoreria|conciliacion de cobros|terminal de cobro)\b/u,
     /\b(?:(?:business|corporate|merchant) (?:bank account|account|card|loan)|payroll processing|paying (?:my |our )?employees|supplier payments|merchant settlement|cash pooling|invoic\w* (?:my|our) (?:customers|clients))\b/u,
     /\b(?:conta (?:empresarial|pj)|folha de pagamento|pag\w* (?:aos |meus )?(?:funcionarios|fornecedores)|emit\w* nota fiscal)\b/u,
-    /\b(?:ticari (?:hesap\w*|kredi\w*|kart\w*)|(?:sirket|isletme) (?:hesab\w*|kredi\w*)|(?:esnaf|kobi) kred\w*|(?:sirket\w*|isletme\w*) (?:yurtdisindan |duzenli olarak )?tahsilat\w*|sirket(?:im|imiz)\w* (?:\w+ ){0,6}(?:tahsilat\w*|tedarikci\w*|ihracat\w*)|tedarikci\w* (?:\w+ ){0,2}ode\w*|(?:calisanlar\w*|personel) maas\w*|ihracat finansman\w*|e fatura (?:kes\w*|entegrasyon\w*)|(?:sanal pos|pos cihaz\w*) (?:basvur\w*|kurulum\w*|entegrasyon\w*|odeme al\w*))\b/u
+    /\b(?:ticari (?:hesa[bp]\w*|kredi\w*|kart\w*)|(?:sirket|isletme) (?:hesab\w*|kredi\w*)|(?:esnaf|kobi) kred\w*|(?:sirket\w*|isletme\w*) (?:yurtdisindan |duzenli olarak )?tahsilat\w*|sirket(?:im|imiz)\w* (?:\w+ ){0,6}(?:tahsilat\w*|tedarikci\w*|ihracat\w*)|tedarikci\w* (?:\w+ ){0,2}ode\w*|(?:calisanlar\w*|personel) maas\w*|ihracat finansman\w*|e fatura (?:kes\w*|entegrasyon\w*)|(?:sanal pos|pos cihaz\w*) (?:basvur\w*|kurulum\w*|entegrasyon\w*|odeme al\w*))\b/u
   ],
-  context: /\b(?:(?:mi|nuestro|nuestra) (?:empresa|negocio|comercio|pyme)|(?:soy|como) (?:autonom[oa]|comerciante|profesional independiente)|(?:my|our) (?:business|company)|self employed|(?:minha|nossa) empresa|(?:sirketim|isletmem)\w*|isletme sahib\w*|(?:esnaf|kobi)(?:yim|yiz|nin|m)?|ticari)\b/u,
+  context: /\b(?:(?:mi|nuestro|nuestra) (?:empresa|negocio|comercio|pyme)|(?:soy|como) (?:autonom[oa]|comerciante|profesional independiente)|(?:my|our) (?:business|company)|self employed|(?:minha|nossa) empresa|(?:sirketim|isletmem)\w*|isletme sahib\w*|(?:esnaf|kobi)(?:yim|yiz|nin|m|im|imiz)?|ticari)\b/u,
   banking: /\b(?:transfer\w*|traspas\w*|enviar dinero|spei|eft|havale\w*|swift|fast odeme\w*|(?:para|havale) gonder\w*|pix|pag[oa]\w*|cobr[oa]\w*|odeme\w*|hesa[bp]\w*|cuentas?|accounts?|contas?|tarjetas?|cards?|cartao|kart\w*|impuestos?|tax(?:es)?|vergi\w*|factur\w*|fatura\w*|credit\w*|kredi\w*|prestam\w*|loans?|emprest\w*)\b/u,
   action: /\b(?:no puedo|no (?:abre|funciona|llega|deja)|puedo|falla\w*|error\w*|comisi\w*|cobr\w*|pag\w*|envi\w*|hac\w*|abr\w*|bloque\w*|gestion\w*|emit\w*|recib\w*|deposit\w*|fail\w*|can(?:not| t)|unable|charge\w*|fee\w*|pay\w*|send\w*|receiv\w*|open\w*|block\w*|yap\w*|gonder\w*|acil\w*|ac(?:am|mak|tim)\w*|al(?:am|in|iyor)\w*|ucret\w*|komisyon\w*|masraf\w*|kes\w*|od[ea]\w*|basvur\w*|limit\w*)\b/u,
   pension: /\b(?:jubil(?:ad[oa]s?|acion)|pension(?:es|ista[s]?)?|emekli\w*|aposentad\w*|aposentadoria|retired|retirement|pensioner[s]?)\b/u,
   personalContext: /\b(?:(?:a |para )mi (?:hij[oa]|madre|padre|familia|espos[oa])|(?:to|for) my (?:family|son|daughter|mother|father|wife|husband)|(?:mi|nuestra) (?:casa|vivienda)|(?:my|our) (?:home mortgage|mortgage|rent)|(?:minha|nossa) (?:casa|familia)|konut kred\w*|emekli\w*|alisveris\w*|pago de mi nomina)\b/u,
-  retail: /\b(?:cuentas? (?:de (?:la )?)?nominas?|cuentas? sueldo|conta salario|salary account|maas hesab\w*|prestamos? personal(?:es)?|creditos? (?:personal(?:es)?|al consumo)|personal loans?|consumer credit|ihtiyac kredisi|bireysel kredi|kisisel kredi|cuentas? (?:infantil(?:es)?|personal(?:es)?)|para uso personal|(?:uso|utilizo) (?:la app )?personal y|tarjeta (?:personal|de estudiante)|student card|seguro de (?:mi )?hogar|home insurance|alquiler de (?:mi|nuestra) vivienda|(?:transferir|enviar dinero) a mi hij[oa]|(?:recibo|factura) (?:de (?:luz|gas|internet) de mi casa|del hogar)|(?:hipoteca|prestamo) (?:de|para) (?:mi|nuestra) vivienda|(?:ahorrar|ahorro) para (?:mi jubilacion|mis vacaciones)|(?:credito|prestamo) (?:para|de) (?:estudios|mi boda|mis vacaciones)|gastos (?:domesticos|familiares|personales)|(?:vacaciones|viaje personal) (?:de mi familia|en familia)|(?:netflix|spotify) (?:me cobra|subscription|abonelig\w*)|(?:cobro|pago|pagar|planes) (?:a |de )?(?:netflix|spotify)|suscripcion (?:personal|de netflix|de spotify)|ev kira(?:si|m)\w*|ogrenci kart\w*)\b/u,
+  retail: /\b(?:cuentas? (?:de (?:la )?)?nominas?|cuentas? sueldo|conta salario|salary account|maas hesab\w*|prestamos? personal(?:es)?|creditos? (?:personal(?:es)?|al consumo)|personal loans?|consumer credit|ihtiyac kredisi|bireysel kredi|kisisel kredi|cuentas? (?:infantil(?:es)?|personal(?:es)?)|para uso personal|(?:uso|utilizo) (?:la app )?personal y|tarjeta (?:personal|de estudiante)|student card|seguro de (?:mi )?hogar|home insurance|alquiler de (?:mi|nuestra) vivienda|(?:transferir|enviar dinero) a mi hij[oa]|(?:recibo|factura) (?:de (?:luz|gas|internet) de mi casa|del hogar)|(?:hipoteca|prestamo) (?:de|para) (?:mi|nuestra) vivienda|(?:ahorrar|ahorro) para (?:mi jubilacion|mis vacaciones)|(?:credito|prestamo) (?:para|de) (?:estudios|mi boda|mis vacaciones)|gastos (?:domesticos|familiares|personales)|(?:vacaciones|viaje personal) (?:de mi familia|en familia)|(?:netflix|spotify) (?:me cobra|subscription|abonelig\w*)|(?:cobro|pago|pagar|planes) (?:a |de )?(?:netflix|spotify)|suscripcion (?:personal|de netflix|de spotify)|ev kira(?:si|m)\w*|ogrenci kart\w*|ogrenci (?:hesa[bp]\w*|kred\w*|burs\w*)|(?:ogrenciyim|universite ogrencisi) (?:\w+ ){0,5}(?:burs\w*|harc\w*|kartim\w*)|(?:mi|para mi) (?:beca|prestamo estudiantil)|cuenta (?:para |de )?estudiantes|student (?:loan|bank account))\b/u,
   salaryReceived: /\b(?:mi nomina|mi salario|mi sueldo|my (?:paycheck|salary|wages)|meu salario|maasim\w*|maas musterisi\w*|maasli musteriyim|(?:recib\w*|cobr\w*|deposit\w*|ingres\w*|acredit\w*) (?:\w+ ){0,4}(?:la nomina|nomina|(?:el )?pago de (?:mi |la )?nomina))\b/u,
   negatedBusiness: /\b(?:no (?:soy|somos|tengo|tenemos|poseo|es) (?:una? )?(?:empresa|autonom[oa]|negocio)|not (?:a business|self employed|for (?:my |our )?business)|(?:sirket|esnaf|kobi) degilim|(?:ticari|sirket hesab\w*) degil)\b/u
 };
@@ -462,6 +462,7 @@ function advanceMarketsFunctionalCatalog_(allow = { sync: true, translate: true 
       ensureSheetCapacity_(sheet, lastRow + batch.length, 3);
       sheet.getRange(lastRow + 1, 1, batch.length, 3).setValues(batch);
       SpreadsheetApp.flush();
+      properties.setProperty('MARKETS_FUNCTIONAL_TRANSLATIONS_REVISION', Utilities.getUuid());
     }
     job.done = cursor;
     job.status = cursor === job.total ? 'Completado' : job.calls >= 100 ? 'En pausa por límite diario' : 'Pendiente';
@@ -586,7 +587,7 @@ function getMarketsReviewHeatmap(filters) {
 }
 
 const MARKETS_REVIEW_ENTITY = 'BBVA Empresas';
-const MARKETS_REVIEW_SNAPSHOT_SCHEMA = 9;
+const MARKETS_REVIEW_SNAPSHOT_SCHEMA = 10;
 const MARKETS_REVIEW_HELPFUL_MIN = 5;
 const MARKETS_REVIEW_PAGE_SIZE = 25;
 
@@ -626,7 +627,7 @@ function marketsReviewCatalogVersion_(catalog) {
 
 function marketsReviewVersions_(properties, catalogVersion) {
   return [properties.MARKETS_REVIEWS_GENERATION || '', properties.MARKETS_FUNCTIONAL_REVISION || '', catalogVersion,
-    ...['MARKETS_FUNCTIONAL_ALIASES_REVISION', 'MARKETS_REVIEW_GEOGRAPHY_REVISION'].flatMap(key =>
+    ...['MARKETS_FUNCTIONAL_ALIASES_REVISION', 'MARKETS_REVIEW_GEOGRAPHY_REVISION', 'MARKETS_FUNCTIONAL_TRANSLATIONS_REVISION'].flatMap(key =>
       properties[key] ? [[key, properties[key]]] : [])];
 }
 
