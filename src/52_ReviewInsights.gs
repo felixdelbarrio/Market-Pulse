@@ -290,7 +290,7 @@ const MARKETS_REVIEW_AUDIENCE_RULES = {
     /\b(?:cuentas? (?:de (?:mi |nuestra |la )?empresas?|de negocios?|empresarial(?:es)?|comercial(?:es)?|pyme)|(?:tarjeta|banca) (?:de (?:mi |nuestra )?empresas?|corporativa|para empresas)|(?:pago|pagos|pagar|transferencias) a (?:mis |nuestros )?(?:empleados|proveedores)|(?:facturas? a|cobrar a) mis clientes|(?:nominas? de (?:mi |nuestra )?empresa|nominas? de mis empleados)|(?:seguro|alquiler|iva) de (?:mi|nuestro) (?:comercio|negocio|empresa)|suscripcion de software de mi empresa|gestion de tesoreria|conciliacion de cobros|terminal de cobro)\b/u,
     /\b(?:(?:business|corporate|merchant) (?:bank account|account|card|loan)|payroll processing|paying (?:my |our )?employees|supplier payments|merchant settlement|cash pooling|invoic\w* (?:my|our) (?:customers|clients))\b/u,
     /\b(?:conta (?:empresarial|pj)|folha de pagamento|pag\w* (?:aos |meus )?(?:funcionarios|fornecedores)|emit\w* nota fiscal)\b/u,
-    /\b(?:ticari (?:hesap\w*|kredi\w*|kart\w*)|(?:sirket|isletme) (?:hesab\w*|kredi\w*)|(?:esnaf|kobi) kred\w*|(?:sirket\w*|isletme\w*) (?:yurtdisindan |duzenli olarak )?tahsilat\w*|tedarikci\w* (?:\w+ ){0,2}ode\w*|(?:calisanlar\w*|personel) maas\w*|ihracat finansman\w*|e fatura (?:kes\w*|entegrasyon\w*)|(?:sanal pos|pos cihaz\w*) (?:basvur\w*|kurulum\w*|entegrasyon\w*|odeme al\w*))\b/u
+    /\b(?:ticari (?:hesap\w*|kredi\w*|kart\w*)|(?:sirket|isletme) (?:hesab\w*|kredi\w*)|(?:esnaf|kobi) kred\w*|(?:sirket\w*|isletme\w*) (?:yurtdisindan |duzenli olarak )?tahsilat\w*|sirket(?:im|imiz)\w* (?:\w+ ){0,6}(?:tahsilat\w*|tedarikci\w*|ihracat\w*)|tedarikci\w* (?:\w+ ){0,2}ode\w*|(?:calisanlar\w*|personel) maas\w*|ihracat finansman\w*|e fatura (?:kes\w*|entegrasyon\w*)|(?:sanal pos|pos cihaz\w*) (?:basvur\w*|kurulum\w*|entegrasyon\w*|odeme al\w*))\b/u
   ],
   context: /\b(?:(?:mi|nuestro|nuestra) (?:empresa|negocio|comercio|pyme)|(?:soy|como) (?:autonom[oa]|comerciante|profesional independiente)|(?:my|our) (?:business|company)|self employed|(?:minha|nossa) empresa|(?:sirketim|isletmem)\w*|isletme sahib\w*|(?:esnaf|kobi)(?:yim|yiz|nin|m)?|ticari)\b/u,
   banking: /\b(?:transfer\w*|traspas\w*|enviar dinero|spei|eft|havale\w*|swift|fast odeme\w*|(?:para|havale) gonder\w*|pix|pag[oa]\w*|cobr[oa]\w*|odeme\w*|hesa[bp]\w*|cuentas?|accounts?|contas?|tarjetas?|cards?|cartao|kart\w*|impuestos?|tax(?:es)?|vergi\w*|factur\w*|fatura\w*|credit\w*|kredi\w*|prestam\w*|loans?|emprest\w*)\b/u,
@@ -322,7 +322,11 @@ function classifyMarketsReviewAudience_(original) {
       sharedOperation = true;
     }
     if (rules.negatedBusiness.test(clause)) continue;
-    const strong = rules.direct.map(pattern => pattern.exec(clause)).find(Boolean)?.[0];
+    let strong = '';
+    for (const pattern of rules.direct) {
+      const match = pattern.exec(clause);
+      if (match) { strong = match[0]; break; }
+    }
     const personal = rules.retail.test(clause) || rules.salaryReceived.test(clause) ||
       rules.pension.test(clause) || rules.personalContext.test(clause);
     const context = !evidence.retail && rules.context.exec(clause)?.[0];

@@ -169,16 +169,15 @@ function advanceMarketsReviewPipeline_() {
         return !index.complete;
       }},
       { id: 'geography', priority: 3, run: () => typeof advanceMarketsAndroidGeography_ === 'function' && advanceMarketsAndroidGeography_(now) },
-      { id: 'taxonomy', priority: 6, run: () => advanceMarketsFunctionalCatalog_({
-        sync: true, translate: marketsReviewJobReady_(settings, 'taxonomyTranslation', now)
-      }) },
+      { id: 'taxonomy', priority: 6, run: () => advanceMarketsFunctionalCatalog_({ sync: true, translate: false }) },
+      { id: 'taxonomyTranslation', priority: 6, run: () => advanceMarketsFunctionalCatalog_({ sync: false, translate: true }) },
       { id: 'maintenance', priority: 6, run: () => typeof advanceMarketsReviewMaintenance_ === 'function' && advanceMarketsReviewMaintenance_(now) },
       { id: 'backup', priority: 6, run: () => typeof advanceMarketsMonthlyBackup_ === 'function' && advanceMarketsMonthlyBackup_(now) }
     ].filter(task => marketsReviewJobReady_(settings, task.id, now))
       .sort((a, b) => (settings[a.id]?.priority || a.priority) - (settings[b.id]?.priority || b.priority));
     // Even during a lengthy backfill, reserve one tick per hour for maintenance.
     if (Utilities.formatDate(now, MARKETS_CONFIG.timeZone, 'mm') < '05') {
-      tasks.sort((a, b) => Number(a.id === 'index') - Number(b.id === 'index'));
+      tasks.sort((a, b) => Number(a.priority < 6) - Number(b.priority < 6));
     }
     for (const task of tasks) if (task.run()) break;
     return;

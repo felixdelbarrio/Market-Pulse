@@ -519,8 +519,7 @@ function queryMarketsReviews_(ss, filters, window, includeTranslations = false, 
   function matchingEvidence(candidate) {
     const { row } = candidate;
     const original = [row[9], row[10]].join(' ');
-    const normalized = search || rules ? normalizeReviewEvidence_(original) : '';
-    if (search && !normalized.includes(search)) return false;
+    if (search && !normalizeReviewEvidence_(original).includes(search)) return false;
     const saved = derivedRows[candidate.rowNumber - 2];
     const indexed = saved && saved[0] === row[0] && saved[2] === classification.version &&
       saved[1] === marketsReviewTextDigest_(row);
@@ -531,7 +530,7 @@ function queryMarketsReviews_(ss, filters, window, includeTranslations = false, 
     const decision = filters.audience && (indexed ? { audience: saved[4], sharedOperation: saved[5] === true }
       : classifyMarketsReviewAudience_(original));
     if (decision && !matchesMarketsReviewAudience_(filters.audience, decision)) return false;
-    const ids = indexed ? JSON.parse(saved[3]) : rules ? classifyNormalizedReviewEvidence_(normalized, rules) : [];
+    const ids = indexed ? JSON.parse(saved[3]) : rules ? classifyReviewEvidence_(original, rules) : [];
     if (window && filters.topic === 'general' && marketsReviewBlocks_(ids, knownBlocks).length) return false;
     if (topic && ((!window && !(row[7] >= 1 && row[7] <= 3)) ||
         !ids.some(id => id === topic || id.slice(0, 2) === topic))) return false;

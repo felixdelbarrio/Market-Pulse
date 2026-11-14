@@ -206,7 +206,7 @@ test("supervisor resumes pending translations after quota and publishes without 
     PropertiesService:{getScriptProperties:()=>({getProperty:key=>props.get(key),setProperty:(key,value)=>props.set(key,value)})},
     translateMarketsReviews_:()=>{calls.push("translate");return {eligible:10,checked:10,translated:1,failed:0,pending:0,complete:true}},
     publishMarketsReviewSnapshot_:()=>{calls.push("publish");return {complete:true,published:1}},
-    advanceMarketsFunctionalCatalog_:()=>calls.push("catalog")
+    advanceMarketsFunctionalCatalog_:({sync})=>sync&&calls.push("catalog")
   });
   vm.runInContext(fs.readFileSync(new URL("../src/51_ReviewOperations.gs",import.meta.url),"utf8"),local);
   const pipeline=local.newMarketsReviewPipeline_("2026-11-12");
