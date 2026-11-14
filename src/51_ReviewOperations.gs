@@ -482,6 +482,13 @@ function runMarketsPanelJob(id) {
       const state = safeJsonParse_(properties.getProperty(MARKETS_GEO_AUDIT_PROPERTY));
       return { message: state?.complete ? 'Inferencia completada.' : 'Lote de inferencia procesado. El supervisor continuará.' };
     }
+    case 'backup': {
+      const previous = safeJsonParse_(PropertiesService.getScriptProperties().getProperty(MARKETS_BACKUP_PROPERTY));
+      advanceMarketsMonthlyBackup_(new Date(), true);
+      const current = safeJsonParse_(PropertiesService.getScriptProperties().getProperty(MARKETS_BACKUP_PROPERTY));
+      return { message: current?.error || (current?.id ? 'Backup mensual verificado: ' + current.name :
+        previous?.status || 'Backup en espera.') };
+    }
     case 'maintenance': {
       advanceMarketsReviewMaintenance_(new Date(), true);
       const state = safeJsonParse_(PropertiesService.getScriptProperties().getProperty(MARKETS_MAINTENANCE_PROPERTY));

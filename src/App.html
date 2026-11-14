@@ -40,7 +40,7 @@
       "Ejemplos del mes seleccionado":["Examples from the selected month","Seçilen aydan örnekler"],
       "Indicadores del periodo":["Period metrics","Dönem göstergeleri"],
       "NPS de opiniones":["Review NPS","Yorum NPS'si"],
-      "Audiencia":["Audience","Hedef kitle"],
+      "Comentarios":["Audience","Hedef kitle"],
       "Solo BEI":["Business banking only","Yalnızca işletme bankacılığı"],
       "BEI extendido":["Extended business banking","Genişletilmiş işletme bankacılığı"],
       "BEI extendido incluye señales empresariales y operaciones bancarias compartidas sin evidencia de uso personal.":["Extended business banking includes business signals and shared banking operations without evidence of personal use.","Genişletilmiş işletme bankacılığı, işletme sinyallerini ve kişisel kullanıma dair kanıt bulunmayan ortak bankacılık işlemlerini içerir."],
@@ -424,7 +424,7 @@
 
     function adminSubscriberScopeMarkup(){return`<legend>Ámbito de la suscripción</legend><p class="admin-scope-intro">Selecciona “Todos” o combina únicamente los mercados y plataformas que debe recibir esta cuenta.</p><div class="admin-scope-grid"><section class="admin-scope-card" aria-labelledby="admin-country-scope-title"><header><div><strong id="admin-country-scope-title">Mercados</strong><span>Uno, varios o todos</span></div><b id="admin-country-scope-summary" aria-live="polite">Todos</b></header><div id="admin-country-pills" class="admin-scope-pills" role="group" aria-labelledby="admin-country-scope-title"></div></section><section class="admin-scope-card" aria-labelledby="admin-platform-scope-title"><header><div><strong id="admin-platform-scope-title">Plataformas</strong><span>Una, varias o todas</span></div><b id="admin-platform-scope-summary" aria-live="polite">Todas</b></header><div id="admin-platform-pills" class="admin-scope-pills" role="group" aria-labelledby="admin-platform-scope-title"></div></section></div>`}
     function ensureAdminSubscriberUi(){if(!$("admin-country-pills")){const legacy=$("admin-subscriber-countries")||$("admin-subscriber-platforms"),body=$("admin-subscriber-form")?.querySelector(".admin-subscriber-form-body"),fieldset=legacy?.closest("fieldset");if(fieldset){fieldset.className="admin-scope-fieldset";fieldset.innerHTML=adminSubscriberScopeMarkup()}else if(body){const scope=document.createElement("fieldset"),first=body.querySelector("fieldset");scope.className="admin-scope-fieldset";scope.innerHTML=adminSubscriberScopeMarkup();if(first)first.before(scope);else body.append(scope)}}}
-    function bindNavigation(){ensureAdminSubscriberUi();document.querySelectorAll(".nav-button").forEach(button=>button.addEventListener("click",()=>activateView(button.dataset.view)));document.querySelectorAll(".admin-tab").forEach(button=>button.addEventListener("click",()=>activateAdminTab(button.dataset.adminTab,true)));$("admin-tabs").addEventListener("keydown",handleAdminTabKeydown);$("admin-refresh").addEventListener("click",()=>loadAdmin(true));$("admin-recovery").addEventListener("click",requestAdminRatingRecovery);$("admin-add-subscriber").addEventListener("click",()=>openAdminSubscriber());$("admin-subscriber-form").addEventListener("submit",saveAdminSubscriber);$("admin-subscriber-close").addEventListener("click",closeAdminSubscriber);$("admin-subscriber-cancel").addEventListener("click",closeAdminSubscriber);$("admin-subscriber-dialog").addEventListener("click",handleAdminScopeClick);$("admin-subscribers").addEventListener("click",event=>{const newsletter=event.target.closest("[data-admin-test-newsletter]");if(newsletter){testAdminNewsletter(newsletter.dataset.adminTestNewsletter,newsletter);return}const button=event.target.closest("[data-admin-edit-subscriber]");if(button)openAdminSubscriber(button.dataset.adminEditSubscriber)});syncViewControls()}
+    function bindNavigation(){ensureAdminSubscriberUi();document.querySelectorAll(".nav-button").forEach(button=>button.addEventListener("click",()=>activateView(button.dataset.view)));document.querySelectorAll(".admin-tab").forEach(button=>button.addEventListener("click",()=>activateAdminTab(button.dataset.adminTab,true)));$("admin-tabs").addEventListener("keydown",handleAdminTabKeydown);$("admin-add-subscriber").addEventListener("click",()=>openAdminSubscriber());$("admin-subscriber-form").addEventListener("submit",saveAdminSubscriber);$("admin-subscriber-close").addEventListener("click",closeAdminSubscriber);$("admin-subscriber-cancel").addEventListener("click",closeAdminSubscriber);$("admin-subscriber-dialog").addEventListener("click",handleAdminScopeClick);$("admin-subscribers").addEventListener("click",event=>{const newsletter=event.target.closest("[data-admin-test-newsletter]");if(newsletter){testAdminNewsletter(newsletter.dataset.adminTestNewsletter,newsletter);return}const button=event.target.closest("[data-admin-edit-subscriber]");if(button)openAdminSubscriber(button.dataset.adminEditSubscriber)});syncViewControls()}
     function activateView(view){if(view==="admin"&&!state.userContext?.isAdmin)return;const changed=state.view!==view;if(changed){
       radarFilters[state.view]?.close();
       if(state.view==="evolution"&&monthlyReviewsLoading){evolutionRender=null;resetMonthlyReviews()}
@@ -441,7 +441,6 @@
       bindOptional("admin-business-form","submit",saveAdminBusiness);
       bindOptional("admin-business-cancel","click",()=>$("admin-business-dialog").close());
       for(const tab of ["newsletter-access","feedback"])bindOptional("admin-"+tab+"-period","change",()=>loadAdminNewsletterInteractions(tab));
-      bindOptional("admin-review-restart","click",restartReviewPipeline);
       bindOptional("admin-review-recovery","toggle",loadReviewRecoveryOptions);
       bindOptional("admin-review-recovery-form","submit",submitReviewRecovery);
       bindOptional("admin-review-recovery-close","click",closeReviewRecovery);
@@ -592,7 +591,7 @@
     const defaultAnalyticsEntity="BBVA Empresas";
     let analyticsSelection=null, analyticsEntity=defaultAnalyticsEntity, resizeReviewBalance;
     let annualTrends=[], annualYears=[], heatmapSegment="DETRACTOR", annualAppControl;
-    const monthlyFilterDefaults={audience:"",inferGeography:"",segment:"DETRACTOR"};
+    const monthlyFilterDefaults={audience:"",inferGeography:""};
     let monthlyFilters={...monthlyFilterDefaults};
     let monthlyRequest=0, monthlyReviewKey="", monthlyBalanceKey="";
     const analyticsInitial=()=>({country:browserMarket(),year:reviewDates().end.slice(0,4),audience:""});
@@ -772,7 +771,10 @@
       finally{if(token===reviewsRequest)results.setAttribute("aria-busy","false")}
     }
     function renderReviewMarkets(data,scope){
-      renderGeographyTabs($("review-markets"),reviewCountries(),scope.country,
+      const android = state.snapshot.filter(row=>row.platform==="Android"&&(!scope.app||D.appName(row)===scope.app));
+      const shared = scope.platform!=="iOS" && android.some(row=>row.countryCode===scope.country&&row.volumeScope==="SHARED_LISTING");
+      const markets=reviewCountries().filter(code=>code!=="UNKNOWN"||scope.country==="UNKNOWN"||shared);
+      renderGeographyTabs($("review-markets"),markets,scope.country,
         code=>{if(code!==scope.country)updateReviewScope({...scope,country:code,audience:""})},data.counts);
     }
     function renderGeographyTabs(target,codes,country,onSelect,counts){
@@ -825,7 +827,7 @@
         ${row.title?`<h4 data-review-content>${U.esc(row.title)}</h4>`:""}<p data-review-content>${U.esc(row.text)}</p>
         ${row.translated?`<details><summary>Ver original</summary><p data-review-content>${U.esc(row.original)}</p></details>`:""}
         ${Number.isInteger(row.helpful)?`<small>${U.esc(translate("{count} personas han encontrado útil esta reseña",{count:integer(row.helpful)}))}</small>`:""}
-        <div class="review-blocks radar-filters">${blocks.map(block=>`<span class="filter-chip">Bloque funcional · ${U.esc(block)}</span>`).join("")}</div>
+        <div class="review-blocks radar-filters">${row.attributionMethod?.startsWith("review_evidence_")?'<span class="filter-chip">Inferido</span>':""}${blocks.map(block=>`<span class="filter-chip">Bloque funcional · ${U.esc(block)}</span>`).join("")}</div>
         ${row.reply?`<blockquote><strong>${U.esc(row.replyAuthor||entity)}</strong> ${row.replyDate?`<time datetime="${U.esc(row.replyDate)}">${U.esc(dateLabel(row.replyDate.slice(0,10)))}</time>`:""}<p>${U.esc(row.reply)}</p></blockquote>`:""}</article>`;
     }
     async function loadAnalytics(localOnly=false, heatmapOnly=false){
@@ -928,7 +930,7 @@
       const analysisMonth=period||current;
       const balanceScope={...selection(),analysisMonth,audience:monthlyFilters.audience,inferGeography:monthlyFilters.inferGeography,entity:state.evolutionApp,language:appLanguage};
       const balanceKey=JSON.stringify(balanceScope);
-      const scope={...balanceScope,segment:monthlyFilters.segment};
+      const scope={...balanceScope,segment:$("monthly-review-segment").value};
       const key=JSON.stringify(scope);
       if(key===monthlyReviewKey&&(monthlyReviewsLoading||Date.now()-monthlyReviewLoadedAt<reviewResponseTtl))return;
       monthlyReviewKey=key;
@@ -963,7 +965,7 @@
             current:value(nps.current),dates:dates(nps.start,nps.end),previous:value(nps.previous),
             previousDates:dates(nps.previousStart,nps.previousEnd),delta:nps.delta===null?"N/D":signed(nps.delta)+" pp"
           });
-          const filters=[...exportDates(applied),["Mes",analysisMonth],["Aplicación",scope.entity],["Audiencia",reviewFilterLabel("audience",scope.audience)],["Inferir geografía",scope.inferGeography==="NO"?"No":"Sí"]];
+          const filters=[...exportDates(applied),["Mes",analysisMonth],["Aplicación",scope.entity],["Comentarios",reviewFilterLabel("audience",scope.audience)],["Inferir datos",scope.inferGeography==="NO"?"No":"Sí"]];
           setExportSheet("evolution","Comparativa NPS",scope.country,filters,
             ["Desde","Hasta","NPS de opiniones","Desde (mes anterior)","Hasta (mes anterior)","NPS anterior","Variación (pp)"],
             [[nps.start,nps.end,nps.current,nps.previousStart,nps.previousEnd,nps.previous,nps.delta]]);
@@ -978,7 +980,7 @@
         $("review-examples-panel").classList.toggle("hidden",!data.examples.length);
         examples.innerHTML=data.examples.map(({review})=>renderReviewCard(review,data.topics)).join("");
         const recentFilters=[...exportDates({start:data.window.recent,end:applied.end}),["Mes",analysisMonth],
-          ["Aplicación",scope.entity],["Audiencia",reviewFilterLabel("audience",scope.audience)],["Inferir geografía",scope.inferGeography==="NO"?"No":"Sí"],["Sentimiento",reviewFilterLabel("segment",scope.segment)]];
+          ["Aplicación",scope.entity],["Comentarios",reviewFilterLabel("audience",scope.audience)],["Inferir datos",scope.inferGeography==="NO"?"No":"Sí"],["Sentimiento",reviewFilterLabel("segment",scope.segment)]];
         setExportSheet("evolution","Brechas",scope.country,recentFilters,
           ["Bloque","Peso (%)","Reseñas","Detractoras","Promotoras (%)","Detractoras (%)","NPS (pp)","Brecha (pp)"],
           data.deltas.map(row=>[row.label,row.weight,row.total,row.detractors,100*row.promoters/row.total,100*row.detractors/row.total,row.balance,row.gap]));
@@ -1031,7 +1033,7 @@
         ]}
       ];
       const authors=annual.topAuthors.filter(row=>row.count>1);
-      const filters=[...exportDates(annual),["Aplicación",annualEntityLabel(analyticsEntity)],["Audiencia",reviewFilterLabel("audience",scope.audience)],["Inferir geografía",scope.inferGeography==="NO"?"No":"Sí"]];
+      const filters=[...exportDates(annual),["Aplicación",annualEntityLabel(analyticsEntity)],["Comentarios",reviewFilterLabel("audience",scope.audience)],["Inferir datos",scope.inferGeography==="NO"?"No":"Sí"]];
       setExportSheet("analytics","Indicadores del periodo",scope.country,filters,["Indicador","Valor","Variación","Cierre"],
         annual.total||annual.previousTotal||D.finite(openingRating)||D.finite(closingRating)?
           groups.flatMap(({stats})=>stats.map(({label,number,delta,rating,foot})=>[label,number,delta,rating?foot:""])):[]);
@@ -1168,7 +1170,7 @@
             return `<td>${count?`<button class="heat-cell heat-${heat}" type="button" data-cell="${index}|${id}" title="${U.esc(label)}" aria-label="${U.esc(label)}">${content}</button>`:`<span class="heat-cell heat-0">${content}</span>`}</td>`;
           }).join("")}</tr>`).join("")}</tbody></table>`:U.empty("Sin reseñas","No hay opiniones para este ámbito.");
         setExportSheet("analytics","Mapa de calor",scope.country,
-          [...exportDates(scope),["Audiencia",reviewFilterLabel("audience",scope.audience)],["Inferir geografía",scope.inferGeography==="NO"?"No":"Sí"],["Sentimiento",sentiment.selectedOptions[0]?.textContent],["Medida",measure.selectedOptions[0]?.textContent]],
+          [...exportDates(scope),["Comentarios",reviewFilterLabel("audience",scope.audience)],["Inferir datos",scope.inferGeography==="NO"?"No":"Sí"],["Sentimiento",sentiment.selectedOptions[0]?.textContent],["Medida",measure.selectedOptions[0]?.textContent]],
           ["Entidad","Reseñas",...ids.map(id=>data.topics[id])],ids.length?rows.map(group=>[group.label,group.total,...ids.map(id=>{
             const count=group.counts[id]||0;
             return measure.value==="share"?Math.round(100*count/group.total):count;
@@ -1267,10 +1269,14 @@
       $("month-filter").innerHTML=model.months.map(month=>U.option(month,monthName(month),month===model.month)).join("");
     }
     function bindEvolutionFilters(){
+      window.MarketRadarFilters.searchable($("monthly-review-segment"));
+      $("monthly-review-segment").addEventListener("change",()=>{
+        if(state.evolutionApp)loadMonthlyReviews(evolutionPeriod(state.evolutionApp,state.periodYear,state.periodMonth).period);
+      });
       const current=()=>({app:state.evolutionApp,year:state.periodYear,month:state.periodMonth,...monthlyFilters});
       const reset=()=>({app:state.evolutionApp,year:"",month:"",...monthlyFilterDefaults});
       radarFilters.evolution=window.MarketRadarFilters.create($("evolution-filters"),{translate,
-        applied:current,initial:()=>({...reset(),app:preferredEvolutionApp(evolutionApps())}),all:reset,fixedChips:["app"],alwaysChips:["app","year","month","audience","inferGeography","segment"],
+        applied:current,initial:()=>({...reset(),app:preferredEvolutionApp(evolutionApps())}),all:reset,fixedChips:["app"],alwaysChips:["app","year","month","audience","inferGeography"],
         labelValue:(key,value)=>["audience","inferGeography","segment"].includes(key)?reviewFilterLabel(key,value):value?(key==="month"?monthName(value):value):key==="app"?"Sin aplicaciones":"Sin cierre",
         prepare:()=>{
           $("evolution-app").innerHTML=evolutionApps().map(app=>U.option(app,app,app===state.evolutionApp)).join("");
@@ -1340,6 +1346,7 @@
       const selected=$("admin-log-section").value;
       document.querySelectorAll("[data-admin-log]").forEach(panel=>panel.classList.toggle("hidden",state.adminTab!=="logs"||panel.dataset.adminLog!==selected));
       if(state.adminTab==="logs"&&selected==="performance")loadPerformance();
+      if(state.adminTab==="logs"&&selected==="experience")loadAdminUsage();
     }
     let businessRequest=0,businessDraft;
     function adminDataTable(columns,rows,action){
@@ -1349,6 +1356,10 @@
     }
     async function loadAdminBusiness(){
       const token=++businessRequest, section=$("admin-business-section").value, target=$("admin-business-results");
+      $("admin-business-system").classList.toggle("hidden",section!=="system");
+      $("admin-job-settings").classList.toggle("hidden",!state.adminCenter?.system?.operations?.owner||!["schedule","storage"].includes(section));
+      renderAdminJobSettings(state.adminCenter?.system?.operations,state.adminCenter?.system?.reviewPipeline,state.adminCenter?.system||{});
+      if(section==="system"){target.replaceChildren();return;}
       target.innerHTML=U.loading(translate("Cargando el catálogo"));
       try{
         const data=await callServer("admin:business",section);
@@ -1421,16 +1432,6 @@
     async function loadAdmin(force=false){const started=performance.now();if(!state.userContext?.isAdmin)return;if(state.adminLoading||state.adminLoaded&&!force){if(state.adminLoaded)trackReady("admin","Mostrar administración",started);return}state.adminLoading=true;$("admin-loading").classList.remove("hidden");try{state.adminCenter=await callServer("admin:get");state.adminLoaded=true;renderAdmin();trackReady("admin","Mostrar administración",started)}catch(error){$("admin-loading").textContent=error?.message||String(error);showError(error)}finally{state.adminLoading=false}}
     function statusBadge(value){const text=String(value||"—"),tone=/^(OK|ACTIVE|VERIFIED|SENT)$/i.test(text)?"ok":/PARTIAL|WARN|PENDING/i.test(text)?"warn":/ERROR|FAIL|DENIED|DISABLED/i.test(text)?"bad":"";return`<span class="admin-status ${tone}">${U.esc(text)}</span>`}
     function renderAdmin(){const center=state.adminCenter;if(!center)return;$("admin-loading").classList.add("hidden");$("admin-content").classList.remove("hidden");$("admin-generated-at").textContent=`Generado ${dateTimeLabel(center.generatedAt)} · ${center.administrator}`;renderAdminSystem(center.system);renderAdminJobs(center.system,center.recentRuns||[]);renderAdminRuns(center.recentRuns||[]);renderAdminIssues(center.fetchIssues||[]);radarFilters.admin.render();renderAdminSubscribers(center.subscribers||[]);renderAdminAlerts(center.recentAlerts||[])}
-    async function restartReviewPipeline(event){
-      const button=event.currentTarget;
-      button.disabled=true;
-      try{
-        const result=await callServer("admin:reviews:restart");
-        $("admin-review-status").textContent=result.queued?"Relanzamiento en cola":"Ya hay una ejecución pendiente";
-        await loadAdmin(true);
-      }catch(error){$("admin-review-status").textContent=error.message}
-      finally{button.disabled=false}
-    }
     let reviewRecoveryLoaded=false,reviewRecoveryBusy=false;
     function setReviewRecoveryBusy(busy){
       reviewRecoveryBusy=busy;
@@ -1485,36 +1486,40 @@
       }catch(error){$("admin-review-recovery-result").textContent=error.message}
       finally{setReviewRecoveryBusy(false)}
     }
+    let runningPanelJob = false;
+    window.setInterval?.(()=>{
+      if(state.view==="admin"&&state.adminTab==="health"&&!document.hidden&&!runningPanelJob) loadAdmin(true);
+    },30000);
     function renderAdminJobs(system,runs){
       const pipeline=system.reviewPipeline, operations=system.operations;
       renderAdminJobSettings(operations, pipeline, system);
-      $("admin-review-restart").classList.toggle("hidden",!pipeline?.canRestart);
       $("admin-review-recovery").classList.toggle("hidden",!pipeline?.canRestart);
       const latest=runs[0], config=operations?.config||{};
       const index=operations?.index, geo=operations?.geography, maintenance=operations?.maintenance, backup=operations?.backup;
       const jobs=[
-        {id:"ratings",priority:1,group:"Ratings",name:"Carga diaria de ratings",schedule:system.dailySchedule,
+        {id:"ratings",priority:1,group:"Ratings",name:"Carga diaria de ratings",detail:latest?`${latest.appsError} con error · ${latest.appsNoRating} sin rating · ${latest.rowsUpserted} filas actualizadas`:"",schedule:system.dailySchedule,
           status:latest?.status||"Sin ejecuciones",done:latest?latest.appsOk+latest.appsNoRating+latest.appsError:0,total:latest?.appsTotal},
         {id:"newsletter",priority:2,group:"Envíos planificados",name:"Newsletter mensual",schedule:system.newsletterSchedule,enabled:system.newsletterDeliveryEnabled},
-        {id:"health",priority:6,group:"Mantenimiento y backup",name:"Monitor de salud",schedule:system.healthSchedule,enabled:system.healthMonitorEnabled},
         ...(pipeline?.jobs||[]).map(job=>({...job,name:job.label,
           group:({supervisor:"Supervisor de colas",ios:"Recopilación de reseñas",android:"Recopilación de reseñas",
             alerts:"Envíos planificados",translate:"Traducción de reseñas y respuestas",publish:"Generación de snapshots"})[job.id],
           schedule:job.id==="supervisor"?`Cada ${operations?.interval||15} minutos`:pipeline.day,
           enabled:job.id==="supervisor"?pipeline.installed!==false:undefined,
           updatedAt:job.id==="supervisor"?operations?.supervisorLast:job.lastAttemptAt,
-          detail:job.replyPending==null?"":job.replyPending+" respuestas pendientes"})),
-        {id:"index",priority:3,group:"Clasificación de reseñas",name:"Clasificación funcional y de audiencia",...index,status:index?.complete?"Completado":"Pendiente"},
+          detail:job.id==="supervisor"?(system.healthMonitorEnabled?"Monitor de salud · "+system.healthSchedule:"Monitor de salud desactivado"):
+            [job.id==="ios"||job.id==="android"?`${job.added||0} nuevas · ${job.updated||0} actualizadas · ${job.failures||0} errores`:"",
+             job.replyPending==null?"":job.replyPending+" respuestas pendientes"].filter(Boolean).join(" · ")})),
+        {id:"index",priority:3,group:"Clasificación de reseñas",name:"Clasificación de comentarios",...index,status:index?.complete?"Completado":"Pendiente"},
         {id:"geography",priority:3,group:"Inferencia geográfica",name:"Inferencia geográfica Android",...geo,status:geo?.complete?"Completado":"Pendiente",
           done:geo?.next?geo.next-2:undefined,total:geo?.total,
-          detail:geo?`${geo.processed} revisadas · ${geo.counts.VALIDAR||0} candidatas · ${geo.counts.CONFLICTO||0} conflictos`:""},
+          detail:geo?`${geo.processed} revisadas · ${geo.counts.INFERIDO||0} inferidas · ${geo.counts.NO_ATRIBUIBLE||0} no atribuibles`:""},
         {id:"maintenance",priority:6,group:"Mantenimiento y backup",name:"Mantenimiento incremental",...maintenance,done:maintenance?.total,
           detail:maintenance?.total==null?"":`${maintenance.invalid} inválidas · ${maintenance.duplicates} duplicadas · ${maintenance.archived||0} archivadas`},
         {...backup,id:"backup",priority:6,group:"Mantenimiento y backup",name:"Backup mensual",done:backup?.id?1:0,total:1},
         ...(system.functionalJobs||[]).map(job=>({...job,group:"Catálogo global de funcionalidades",
           detail:job.changed==null?"":job.changed?"Cambios detectados":"Sin cambios"}))
       ];
-      const actions={index:"Clasificar pendientes",geography:"Iniciar inferencia",maintenance:"Iniciar mantenimiento",
+      const actions={backup:"Crear copia mensual",index:"Clasificar pendientes",geography:"Iniciar inferencia",maintenance:"Iniciar mantenimiento",
         publish:"Generar snapshots",taxonomy:"Actualizar catálogo",taxonomyTranslation:"Traducir pendientes"};
       const groups=new Map();
       for(const job of jobs){
@@ -1541,7 +1546,7 @@
           ${statusLine("Última ejecución",job.updatedAt)}${statusLine("Último avance",job.lastProgressAt)}${statusLine("Último éxito",job.lastSuccessAt)}
           ${statusLine("Reintento",job.retryAt?new Date(job.retryAt).toISOString():"")}
           ${job.detail?`<p class="admin-process-meta">${U.esc(job.detail)}</p>`:""}${job.error?`<p>${U.esc(job.error)}</p>`:""}
-          ${operations?.owner&&actions[job.id]?`<button class="alert-button secondary" type="button" data-run-job="${job.id}" ${!job.enabled||status==="En curso"?"disabled":""}>${actions[job.id]}</button>`:""}</article>`;
+          ${job.id==="ratings"?'<button id="admin-recovery" class="alert-button secondary" type="button" data-run-job="ratings">Recuperar ratings ahora</button>':operations?.owner&&actions[job.id]?`<button class="alert-button secondary" type="button" data-run-job="${job.id}" ${!job.enabled||status==="En curso"?"disabled":""}>${actions[job.id]}</button>`:""}</article>`;
       };
       const root=$("admin-jobs");
       root.innerHTML=[...groups.values()].sort((a,b)=>a.priority-b.priority).map(group=>`<section class="admin-process-group">
@@ -1549,22 +1554,24 @@
         <div class="admin-process-grid">${group.jobs.map(processCard).join("")}</div></section>`).join("");
       root.onclick=async event=>{
         const button=event.target.closest("[data-run-job]");
-        if(!button)return;
+        if(!button||runningPanelJob)return;
+        if(button.dataset.runJob==="ratings"){await requestAdminRatingRecovery();return;}
+        runningPanelJob=true;
         const result=$("admin-jobs-result");
         button.disabled=true;
         result.textContent="Ejecutando…";
         try{
           const response=await callServer("admin:jobs:run",button.dataset.runJob);
-          result.textContent=response.message;
+          result.textContent=response.message.startsWith("Lote de clasificación")?"":response.message;
           await loadAdmin(true);
         }catch(error){result.textContent=error.message}
-        finally{button.disabled=false}
+        finally{button.disabled=false;runningPanelJob=false}
       };
     }
     function renderAdminJobSettings(operations, pipeline, system) {
       const panel=$("admin-job-settings");
       if(!panel)return;
-      panel.classList.toggle("hidden",!operations?.owner);
+      panel.classList.toggle("hidden",!operations?.owner||!["schedule","storage"].includes($("admin-business-section").value));
       if(!operations?.owner)return;
       const interval=`<form data-job-action="interval"><label for="job-interval">Supervisor (minutos)</label>
         <select id="job-interval" name="minutes">${[1,5,10,15,30].map(value=>U.option(value,value,value===operations.interval)).join("")}</select>
@@ -1586,7 +1593,7 @@
         <label>${U.esc(labels[kind])} <input name="folder" value="${U.esc(id)}" required></label>
         <button class="alert-button secondary" type="submit">Guardar</button></form>`);
       const target=$("admin-job-settings-body");
-      target.innerHTML=[interval,...forms,...folders].join("");
+      target.innerHTML=[$("admin-business-section").value==="storage"?folders.join(""):[interval,...forms].join("")].join("");
       target.onsubmit=async event=>{
         event.preventDefault();
         const form=event.target, action=form.dataset.jobAction;
@@ -1670,7 +1677,7 @@
           const {rows,topics,window:dates}=await callServer("review:export",scope);
           const filters=[["Geografía",countryLabel(country)],...exportDates(dates)];
           for(const key of ["app","platform","segment","audience","inferGeography","topic","rating","search","reviewKey"]){
-            if(scope[key])filters.push([({app:"Aplicación",platform:"Plataforma",segment:"Sentimiento",audience:"Audiencia",inferGeography:"Inferir geografía",topic:"Bloque funcional",rating:"Estrellas",search:"Buscar",reviewKey:"Reseña"})[key],reviewFilterLabel(key,scope[key])||$(`review-${key}`)?.selectedOptions?.[0]?.textContent||scope[key]]);
+            if(scope[key])filters.push([({app:"Aplicación",platform:"Plataforma",segment:"Sentimiento",audience:"Comentarios",inferGeography:"Inferir datos",topic:"Bloque funcional",rating:"Estrellas",search:"Buscar",reviewKey:"Reseña"})[key],reviewFilterLabel(key,scope[key])||$(`review-${key}`)?.selectedOptions?.[0]?.textContent||scope[key]]);
           }
           sheets=[{name:"Comentarios",filters,header:reviewExportHeader,rows:rows.map(row=>reviewExportRow(row,topics))}];
         }else{

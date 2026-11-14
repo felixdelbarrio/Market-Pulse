@@ -165,6 +165,7 @@ function collectMarketsPlayReviews_(limit = Infinity) {
 function storePlayReviews_(sheet, properties, known, listing, reviews, summary, width = 15) {
   const changes = new Map();
   const captured = new Date().toISOString();
+  let firstEdit = Infinity;
   let nextIndex = sheet.getLastRow() + 1;
   for (const review of reviews) {
     const key = JSON.stringify(['Android', listing.packageName, review.id]);
@@ -179,6 +180,7 @@ function storePlayReviews_(sheet, properties, known, listing, reviews, summary, 
     const row = newer ? [key, listing.appKey, '', 'Android', listing.packageName, review.id, review.date,
       review.rating, review.version, '', review.text, '', '', '', captured] : previous.row.slice();
     const index = previous ? previous.index : nextIndex++;
+    if (previous && newer && previous.row[10] !== row[10]) firstEdit = Math.min(firstEdit, index);
     if (previous && newer && previous.row[10] === review.text) {
       row.splice(11, 3, ...previous.row.slice(11, 14));
     }
@@ -188,6 +190,9 @@ function storePlayReviews_(sheet, properties, known, listing, reviews, summary, 
     changes.set(key, { row, index });
   }
   if (!changes.size) return;
+  if (Number.isFinite(firstEdit) && typeof invalidateMarketsReviewIndexFrom_ === 'function') {
+    invalidateMarketsReviewIndexFrom_(properties, firstEdit);
+  }
   ensureSheetCapacity_(sheet, nextIndex - 1, width);
   const ordered = [...changes.values()].sort((a, b) => a.index - b.index);
   for (let start = 0; start < ordered.length;) {

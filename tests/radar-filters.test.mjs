@@ -220,7 +220,7 @@ test('monthly audience and inference are applied and reset independently of annu
     assert.ok(view.alwaysChips.includes('inferGeography'));
   }
   monthly.commit({...monthly.applied(), audience:'BEI_ONLY', inferGeography:'NO'});
-  assert.deepEqual(copy(calls.at(-1)), {audience:'BEI_ONLY',inferGeography:'NO',segment:'DETRACTOR'});
+  assert.deepEqual(copy(calls.at(-1)), {audience:'BEI_ONLY',inferGeography:'NO'});
   assert.equal(annual.applied().inferGeography, undefined);
   assert.equal(comments.applied().inferGeography, undefined);
   monthly.commit(monthly.all());

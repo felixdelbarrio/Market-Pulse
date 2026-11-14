@@ -507,7 +507,7 @@ test("the persistent snapshot requires the matching schema and generations", () 
   api.readMarketsWebCache_ = (_key,build)=>build();
   api.readMarketsPersistentCache_ = () => ({ schema, end: window.end, versions: ["1", "", catalogVersion], values: { "page:ES:es": staticPage } });
   assert.equal(api.readMarketsReviewCache_(ss, "page", filters, window, () => null), null);
-  schema = 9;
+  schema = 10;
   assert.equal(api.readMarketsReviewCache_(ss, "page", filters, window, () => null), staticPage);
   generation = "2";
   assert.equal(api.readMarketsReviewCache_(ss, "page", filters, window, () => null), null);
@@ -739,4 +739,35 @@ test("edited developer replies only invalidate their own translations", () => {
   assert.equal(updated.reply, "new");
   assert.equal(updated.author, "reviewer");
   assert.equal(updated.replyTranslations, undefined);
+});
+
+test("automatic Android inference requires own use of one compatible payment rail", () => {
+  const runtime = vm.createContext({});
+  for (const file of ["52_ReviewInsights.gs", "55_ReviewIndex.gs"]) {
+    vm.runInContext(fs.readFileSync(new URL("../src/" + file, import.meta.url), "utf8"), runtime);
+  }
+  assert.equal(runtime.inferMarketsAndroidCountry_("Mi Bizum no funciona", ["ES","MX"]).candidate, "ES");
+  assert.equal(runtime.inferMarketsAndroidCountry_("Pagué con PSE y falló", ["CO","MX"]).candidate, "CO");
+  for (const text of ["Mi amigo usa Bizum", "Mi Bizum y mi SPEI", "Mi CURP no funciona", "En mi móvil aparece Bizum"]) {
+    assert.equal(runtime.inferMarketsAndroidCountry_(text, ["ES","MX"]), null, text);
+  }
+  assert.equal(runtime.inferMarketsAndroidCountry_("Mi Yape no funciona", ["ES","MX"]), null);
+});
+
+test("student banking is personal but a separate company operation remains in BEI", () => {
+  const personal = api.classifyMarketsReviewAudience_("Öğrenci hesabımdan EFT yapamıyorum");
+  assert.equal(api.matchesMarketsReviewAudience_("BEI_EXTENDED", personal), false);
+  const both = api.classifyMarketsReviewAudience_("Öğrenci hesabımdan EFT yapamıyorum. Ticari hesabım açılmıyor.");
+  assert.equal(api.matchesMarketsReviewAudience_("BEI_ONLY", both), true);
+});
+
+test("index invalidation rewinds only for edits within the completed range", () => {
+  const runtime = vm.createContext({safeJsonParse_:JSON.parse});
+  vm.runInContext(fs.readFileSync(new URL("../src/55_ReviewIndex.gs", import.meta.url), "utf8"), runtime);
+  const props = new Map([["MARKETS_REVIEW_INDEX_CURSOR",'{"version":"a","next":8100}']]);
+  const store = {getProperty:key=>props.get(key),setProperty:(key,value)=>props.set(key,value)};
+  runtime.invalidateMarketsReviewIndexFrom_(store, 9000);
+  assert.equal(JSON.parse(props.get("MARKETS_REVIEW_INDEX_CURSOR")).next,8100);
+  runtime.invalidateMarketsReviewIndexFrom_(store, 8090);
+  assert.deepEqual(JSON.parse(props.get("MARKETS_REVIEW_INDEX_CURSOR")),{version:"a",next:8090});
 });

@@ -30,10 +30,10 @@ function saveMarketsStorageFolder(kind, id) {
   }
 }
 
-function advanceMarketsMonthlyBackup_(now = new Date()) {
+function advanceMarketsMonthlyBackup_(now = new Date(), manual = false) {
   const properties = PropertiesService.getScriptProperties();
   const job = marketsReviewJobSettings_(properties).backup;
-  if (!job?.enabled || !marketsReviewJobReady_({ backup: job }, 'backup', now)) return;
+  if (!job?.enabled || (!manual && !marketsReviewJobReady_({ backup: job }, 'backup', now))) return;
   const month = Utilities.formatDate(now, job.timeZone, 'yyyyMM');
   const lock = LockService.getUserLock();
   if (!lock.tryLock(1000)) return;
@@ -59,6 +59,9 @@ function advanceMarketsMonthlyBackup_(now = new Date()) {
       } else {
         properties.setProperty(MARKETS_BACKUP_PROPERTY, JSON.stringify({ ...state, retryAt: now.getTime() + 3600000 }));
         backup = DriveApp.getFileById(ss.getId()).makeCopy(name, folder);
+      }
+      if (backup.getMimeType() !== MimeType.GOOGLE_SHEETS || backup.getName() !== name) {
+        throw new Error('No se pudo verificar la copia del Google Sheet.');
       }
       state.id = backup.getId();
       state.sizeBytes = backup.getSize();

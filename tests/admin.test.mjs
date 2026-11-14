@@ -59,7 +59,7 @@ test("admin client exposes subscriber maintenance and manual rating recovery", (
   assert.match(app, /requestMarketsAdminRatingRecovery\(\)/);
   assert.match(app, /function openAdminSubscriber/);
   assert.match(index, /id="admin-add-subscriber"/);
-  assert.match(index, /id="admin-recovery"/);
+  assert.match(app, /id="admin-recovery"/);
   assert.match(index, /id="admin-subscriber-dialog"/);
   assert.match(index, /id="admin-country-pills"/);
   assert.match(index, /id="admin-platform-pills"/);
