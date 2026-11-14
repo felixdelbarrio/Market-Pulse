@@ -157,3 +157,54 @@ test('monthly balance does not bridge missing months and the legend matches the 
   assert.ok(legend.includes('background:' + color));
   assert.doesNotMatch(legend,/<button/);
 });
+
+test('comments keep filters editable and ignore out-of-order results and errors after navigation', async () => {
+  const nodes = new Map(), pending = [];
+  const getNode = id => {
+    if (!nodes.has(id)) nodes.set(id, {
+      options:[{}], innerHTML:'', busy:'false', replaceChildren(){ this.innerHTML=''; },
+      setAttribute(name,value){ if (name==='aria-busy') this.busy=value; }
+    });
+    return nodes.get(id);
+  };
+  const context = vm.createContext({
+    navigator:{language:'es'}, performance, pending,
+    document:{addEventListener(){},getElementById:getNode},
+    window:{matchMedia(){}, MarketsDomain:{}, MarketsUI:{loading:()=> 'loading',empty:()=> 'empty'}}
+  });
+  const script = clientScript(read('App')).replace(/\}\)\(\);\s*$/, `
+    renderReviewMarkets=()=>{};
+    renderReviewCard=row=>row.key;
+    trackReady=()=>{};
+    radarFilters.reviews={render(){}};
+    fetchReviewData=(_method,scope)=>new Promise((resolve,reject)=>pending.push({scope,resolve,reject}));
+    globalThis.select=(country,audience="")=>{
+      state.view="reviews";
+      reviewSelection={country,audience};
+      return loadReviews();
+    };
+    globalThis.navigate=()=>{state.view="analytics"};
+  })();`);
+  vm.runInContext(script, context);
+  const a=context.select('ES'), b=context.select('MX','BEI_ONLY'), c=context.select('TR','BEI_EXTENDED');
+  await Promise.resolve();
+  assert.equal(pending.length,1);
+  assert.equal(pending[0].scope.country,'TR');
+  assert.equal(pending[0].scope.audience,'BEI_EXTENDED');
+  const d=context.select('CO');
+  await Promise.resolve();
+  assert.equal(getNode('review-results').busy,'true');
+  pending[1].resolve({topics:{},counts:{CO:1},rows:[{key:'new'}],total:1,size:25});
+  await d;
+  pending[0].resolve({topics:{},counts:{TR:1},rows:[{key:'old'}],total:1,size:25});
+  await Promise.all([a,b,c]);
+  assert.equal(getNode('review-results').innerHTML,'new');
+  assert.equal(getNode('review-results').busy,'false');
+  const e=context.select('ES');
+  await Promise.resolve();
+  context.navigate();
+  pending[2].reject(new Error('late'));
+  await e;
+  assert.equal(getNode('review-results').innerHTML,'loading');
+  assert.equal(getNode('review-results').busy,'false');
+});

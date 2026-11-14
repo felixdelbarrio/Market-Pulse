@@ -372,7 +372,7 @@ function readMarketsReviewsForWeb_(filters) {
 function marketsReviewClassification_(ss) {
   const taxonomy = ss.getSheetByName('FUNCTIONAL_CATALOG');
   const entries = taxonomy && taxonomy.getLastRow() > 1
-    ? taxonomy.getRange(2, 1, taxonomy.getLastRow() - 1, 3).getDisplayValues() : [];
+    ? taxonomy.getRange(2, 1, taxonomy.getLastRow() - 1, 4).getDisplayValues() : [];
   const knownBlocks = new Set(entries.filter(([id, label]) => /^\d{2}\./.test(id) && label).map(([id]) => id.slice(0, 2)));
   return { rules: compileReviewRules_(entries), knownBlocks };
 }
@@ -391,8 +391,9 @@ function queryMarketsReviews_(ss, filters, window, includeTranslations = false, 
   if (lastRow < 2) return paging ? paginateMarketsReviews_([], paging, window) : [];
   marketsReviewSheet_(ss);
   const topic = /^(?:\d{2})(?:\.(?:\d{2}|xx))?$/.test(filters.topic) ? filters.topic : "";
-  const classification = (window && !filters.deferBlocks) || filters.includeTopics ? marketsReviewClassification_(ss) : null;
-  const rules = classification?.rules || (topic ? reviewTopicRules_(ss) : null);
+  const classification = ((window && !filters.deferBlocks) || filters.includeTopics || filters.audience || topic)
+    ? marketsReviewClassification_(ss) : null;
+  const rules = classification?.rules;
   const knownBlocks = window ? classification?.knownBlocks : null;
   const languageColumn = { es: 11, en: 12, tr: 13 }[filters.language] || 11;
   const androidListings = new Map(apps.filter(app => app.platform === 'Android')
@@ -482,9 +483,12 @@ function queryMarketsReviews_(ss, filters, window, includeTranslations = false, 
   const results = (page?.rows || candidates).flatMap(({ row, key, date, countries, android, storefronts, attributionMethod, sharedListing, apps }) => {
       const [country] = countries;
       const original = [row[9], row[10]].join(' ');
-      if (search && !normalizeReviewEvidence_(original).includes(search)) return [];
+      const normalized = search || rules ? normalizeReviewEvidence_(original) : '';
+      if (search && !normalized.includes(search)) return [];
       if (rules) classified++;
-      const ids = rules ? classifyReviewEvidence_(original, rules) : [];
+      const ids = rules ? classifyNormalizedReviewEvidence_(normalized, rules) : [];
+      if (filters.audience && !matchesMarketsReviewAudience_(filters.audience,
+          classifyMarketsReviewAudience_(normalized, ids, classification.knownBlocks))) return [];
       if (window && filters.topic === "general" && marketsReviewBlocks_(ids, knownBlocks).length) return [];
       if (topic && ((!window && !(row[7] >= 1 && row[7] <= 3)) ||
           !ids.some(id => id === topic || id.slice(0, 2) === topic))) return [];
