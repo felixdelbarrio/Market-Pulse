@@ -1447,6 +1447,19 @@
       button.onclick=()=>exportAdminRows(name,header,rows.map(fields));
     }
     let businessRequest=0,businessDraft,businessFilters={query:""},businessCatalog;
+    const businessCatalogDescriptions={
+      functional:"Bloques y funcionalidades que se usan para clasificar las reseñas.",
+      operation:"Parámetros del cálculo de ratings y del monitor de salud.",
+      geography:"Geografías definidas en el catálogo de aplicaciones.",
+      relevance:"Criterios de audiencia y agrupaciones que se aplican al analizar reseñas.",
+      aliases:"Equivalencias que complementan las reglas de clasificación.",
+      storage:"Hojas que utiliza la aplicación y carpetas operativas.",
+      system:"Estado del despliegue, remitente y administradores.",
+      schedule:"Programación de capturas, comprobaciones de salud y newsletters.",
+      retention:"Reglas de conservación del histórico.",
+      markets:"Aplicaciones y tiendas consultadas en cada geografía.",
+      languages:"Reglas para la interfaz y las comunicaciones."
+    };
     function renderBusinessCatalog(){
       if(!businessCatalog)return;
       const {section,data}=businessCatalog,target=$("admin-business-results");
@@ -1472,6 +1485,7 @@
     async function loadAdminBusiness(){
       const token=++businessRequest, section=$("admin-business-section").value, target=$("admin-business-results");
       businessCatalog=null;
+      $("admin-business-description").textContent=translate(businessCatalogDescriptions[section]||"");
       $("admin-business-filters").classList.toggle("hidden",section==="system");
       $("admin-business-export").disabled=true;
       $("admin-business-system").classList.toggle("hidden",section!=="system");
@@ -1632,7 +1646,7 @@
         matched.slice(adoptionPage*adminPageSize,(adoptionPage+1)*adminPageSize).map(row=>[row.email,dateTimeLabel(row.lastSeenAt),row.sessions,row.events,dateTimeLabel(row.firstSeenAt)]));
 
     }
-    async function loadAdminNewsletterInteractions(tab){
+    async function loadAdminNewsletterInteractions(tab,initialPage=0){
       const token=new Object();
       newsletterRequests[tab]=token;
       const target=$("admin-"+tab+"-results"), filters=newsletterFilters[tab]||{}, feedback=tab==="feedback";
@@ -1666,17 +1680,22 @@
           [dateTimeLabel(date),metadata?.email||"—",edition||"Alerta",metadata?.sentAt?dateTimeLabel(metadata.sentAt):"—",
             edition?"Mensual":"—",metadata?.countries||"—","—",labels[action],comment,status]:
           [dateTimeLabel(date),edition,labels[action]]);
-        const cards='<div class="metrics">'+adminMetricCards(feedback?[
+        const cards=`<div class="metrics${feedback?" feedback-metrics":""}">`+adminMetricCards(feedback?[
           {label:"Total",value:integer(data.total)},{label:"Útil",value:integer(data.positive)},{label:"Mejorable",value:integer(data.negative)},
           {label:"% útil",value:data.total?fmt(100*data.positive/data.total,0)+"%":"—"},
           {label:"Pendientes",value:integer(data.pending||0)},{label:"Atendidos",value:integer(data.resolved||0)}]:
           [{label:"Accesos confirmados",value:integer(data.total)},{label:"Ediciones",value:integer(data.editions||0)}])+'</div>';
         const render=page=>{
           const renderCell=(value,column,index)=>{
-            const summary=feedback&&column===2&&data.rows[page*adminPageSize+index][6]?.summary;
+            const entry=data.rows[page*adminPageSize+index];
+            if(feedback&&column===9) {
+              return `<select class="select-control" data-feedback-entry="${index}" aria-label="Estado de la valoración">
+                ${U.option("pendiente","Pendiente",entry[3]!=="atendido")}${U.option("atendido","Atendido",entry[3]==="atendido")}</select>`;
+            }
+            const summary=feedback&&column===2&&entry[6]?.summary;
             return summary?`<details><summary>${U.esc(value)}</summary><p>${U.esc(summary)}</p></details>`:undefined;
           };
-          target.innerHTML=cards+(data.rows.length?adminDataTable(columns,rows.slice(page*adminPageSize,(page+1)*adminPageSize),feedback,renderCell):
+          target.innerHTML=cards+(data.rows.length?adminDataTable(columns,rows.slice(page*adminPageSize,(page+1)*adminPageSize),false,renderCell):
             U.empty("Sin registros","Las interacciones aparecerán después de los próximos envíos."));
           renderAdminPagination("admin-"+tab+"-pagination",rows.length,page,render);
           bindFeedbackActions(page);
@@ -1685,18 +1704,22 @@
         download.onclick=()=>exportAdminRows(feedback?"Feedback":"Accesos desde newsletters",
           feedback?[...columns,"Resumen"]:columns,
           feedback?rows.map((row,index)=>[...row,data.rows[index][6]?.summary||""]):rows);
-        const bindFeedbackActions=page=>target.querySelectorAll("[data-entry]").forEach(button=>{
-          const row=data.rows[page*adminPageSize+Number(button.dataset.entry)], next=row[3]==="atendido"?"pendiente":"atendido";
-          button.textContent=next==="atendido"?"Marcar atendido":"Reabrir";
-          button.onclick=async()=>{
-            button.disabled=true;
+        const bindFeedbackActions=page=>target.querySelectorAll("[data-feedback-entry]").forEach(select=>{
+          const row=data.rows[page*adminPageSize+Number(select.dataset.feedbackEntry)];
+          select.onchange=async()=>{
+            const next=select.value;
+            select.disabled=true;
             try{
               await callServer("admin:newsletter:feedback-state",{id:row[4],state:next});
-              if(newsletterRequests[tab]===token)loadAdminNewsletterInteractions(tab);
-            }catch(error){showError(error);button.disabled=false}
+              if(newsletterRequests[tab]===token)loadAdminNewsletterInteractions(tab,page);
+            }catch(error){
+              select.value=row[3];
+              showError(error);
+              select.disabled=false;
+            }
           };
         });
-        render(0);
+        render(Math.min(initialPage,Math.max(0,Math.ceil(rows.length/adminPageSize)-1)));
       }catch(error){if(newsletterRequests[tab]===token)target.textContent=error.message}
     }
     function activateAdminTab(name,focus=false){const tabs=[...document.querySelectorAll(".admin-tab")],selected=tabs.find(tab=>tab.dataset.adminTab===name)||tabs[0];if(!selected||!state.userContext?.isAdmin)return;if(focus&&state.adminTab===name)return;state.adminTab=selected.dataset.adminTab;tabs.forEach(tab=>{const active=tab===selected;tab.classList.toggle("active",active);tab.setAttribute("aria-selected",String(active));tab.tabIndex=active?0:-1});document.querySelectorAll(".admin-tab-panel").forEach(panel=>panel.classList.toggle("hidden",panel.dataset.adminPanel!==state.adminTab));selected.scrollIntoView?.({block:"nearest",inline:"nearest"});renderAdminLog();if(state.adminTab==="business")loadAdminBusiness();if(state.adminTab==="subscribers")renderAdminSubscriptionTab();if(["newsletter-access","feedback"].includes(state.adminTab))loadAdminNewsletterInteractions(state.adminTab);if(["usage","usage-analysis"].includes(state.adminTab))loadAdminUsage();if(focus){trackUsage("ACTION","admin","ADMIN_TAB",state.adminTab);selected.focus()}}
