@@ -805,6 +805,12 @@ test("Android inference uses a localized support contact and rejects contradicto
   row[10] = "La app no deja pagar a proveedores.";
   row[15] = {reply:"Comunícate con nuestra línea especializada (601) 307 8071."};
   assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["ES","CO"]).evidence,"support-co");
+  row[15] = {reply:"Contáctanos por la línea de atención 601 555 1234."};
+  assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["ES","CO"]).candidate,"CO");
+  row[15] = {reply:"El indicativo telefónico es 601."};
+  assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["ES","CO"]).candidate,"CO");
+  row[15] = {reply:"Hemos corregido el error 601."};
+  assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["ES","CO"]),null);
   row[15] = {reply:"Contacta a la línea empresarial de Bogotá 3078071."};
   assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["ES","CO"]).evidence,"support-co");
   row[15] = {reply:"Gracias por tu reseña. Trabajamos diariamente para hacerte la vida más fácil."};

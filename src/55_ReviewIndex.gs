@@ -201,7 +201,11 @@ function marketsAndroidReplyEvidence_(reply) {
       text.includes('para nosotros tu opinion es muy importante')) matches.set('ES', 'support-es-template');
   if (MARKETS_CO_SUPPORT_TEMPLATES.some(parts => parts.every(part => text.includes(part)))) matches.set('CO', 'support-co-template');
   if (/\bbbvaempresasresponde@bbva\.com\b/i.test(reply) || /(?:^|[^\d])(?:\+34)?912249802(?!\d)/.test(value)) matches.set('ES', 'support-es');
-  if (/(?:^|[^\d])(?:\+57)?6013078071(?!\d)|\+57601\d{7}(?!\d)/.test(value) ||
+  const coLocalPhone = /(?:^|[^\d])601\d{7}(?!\d)/.test(value) &&
+    /\b(?:linea|llamanos|llamar|telefono|comunicate|contactanos|atencion)\b/u.test(text);
+  const coAreaCode = /\b(?:prefijo|indicativo)(?: telefonico)?(?: es| de)? 601\b/u.test(text) ||
+    /\b(?:llamanos al|llamar al|contactanos al|telefono|linea especializada) 601\b/u.test(text);
+  if (/(?:^|[^\d])(?:\+57)?6013078071(?!\d)|\+57601\d{7}(?!\d)/.test(value) || coLocalPhone || coAreaCode ||
       /\b(?:linea (?:empresarial|especializada)|bogota)\b/u.test(text) && /(?:^|[^\d])3078071(?!\d)/.test(value)) {
     matches.set('CO', 'support-co');
   }
