@@ -1564,7 +1564,23 @@
       }finally{state.adminLoading=false}
     }
     function statusBadge(value){const text=String(value||"—"),tone=/^(OK|ACTIVE|VERIFIED|SENT)$/i.test(text)?"ok":/PARTIAL|WARN|PENDING/i.test(text)?"warn":/ERROR|FAIL|DENIED|DISABLED/i.test(text)?"bad":"";return`<span class="admin-status ${tone}">${U.esc(text)}</span>`}
-    function renderAdmin(){const center=state.adminCenter;if(!center)return;$("admin-loading").classList.add("hidden");$("admin-content").classList.remove("hidden");$("admin-generated-at").textContent=`Generado ${dateTimeLabel(center.generatedAt)} · ${center.administrator}`;renderAdminSystem(center.system);renderAdminJobs(center.system,center.recentRuns||[]);renderAdminRuns(center.recentRuns||[]);renderAdminIssues(center.fetchIssues||[]);radarFilters.admin.render();renderAdminSubscribers(center.subscribers||[]);renderAdminAlerts(center.recentAlerts||[])}
+    function renderAdmin(){
+      const center=state.adminCenter;
+      if(!center)return;
+      $("admin-loading").classList.add("hidden");
+      $("admin-content").classList.remove("hidden");
+      $("admin-generated-at").textContent=`Generado ${dateTimeLabel(center.generatedAt)} · ${center.administrator}`;
+      renderAdminSystem(center.system);
+      renderAdminJobs(center.system,center.recentRuns||[]);
+      renderAdminRuns(center.recentRuns||[]);
+      renderAdminIssues(center.fetchIssues||[]);
+      renderAdminAlerts(center.recentAlerts||[]);
+      radarFilters.admin.render();
+      renderAdminSubscribers(center.subscribers||[]);
+      if(["usage","usage-analysis"].includes(state.adminTab))loadAdminUsage();
+      if(state.adminTab==="logs")renderAdminLog();
+      if(state.adminTab==="business")loadAdminBusiness();
+    }
     let reviewRecoveryLoaded=false,reviewRecoveryBusy=false;
     function setReviewRecoveryBusy(busy){
       reviewRecoveryBusy=busy;
