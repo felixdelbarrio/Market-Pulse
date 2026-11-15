@@ -4,12 +4,12 @@ Comparación local del 15 de noviembre de 2026 sobre `develop`, con base `178c7d
 
 | Objetivo | Implementado y comprobado localmente | Producción |
 | --- | --- | --- |
-| Filtro BEI y reproceso del índice | Selector único, compatibilidad de filtros antiguos, evidencia y relevancia versionadas. Dry run del corpus completo y pruebas de migración, reanudación y paridad | Pendiente de despliegue y reproceso |
-| Geografía Android | Título y cuerpo, contactos localizados, conflictos y revocación automática. Pruebas de lotes, manuales y consumidores | Pendiente de despliegue y reproceso |
-| Correos en modo oscuro | Alertas, newsletter y salud con colores explícitos. Pruebas de render y MIME | Pendiente de despliegue y validación en clientes móviles |
-| Feedback y accesos | Identidad autenticada, cabeceras aditivas, visualización, reintento e idempotencia | Esquema productivo inspeccionado en lectura. Migración y smoke test pendientes |
-| Análisis mensual | Orden de los cinco bloques comprobado en dos tamaños. Pruebas de selección y volúmenes geográficos | Pendiente de despliegue |
-| Entrega | Suite local con 173 aprobadas y 0 fallidas. Informe y secuencia operativa | Aplicación web activa en versión 79 |
+| Filtro BEI y reproceso del índice | Selector único, compatibilidad de filtros antiguos, evidencia y relevancia versionadas. Dry run del corpus completo y pruebas de migración, reanudación y paridad | v80. Índice reconstruido y conciliado con 77.264 claves |
+| Geografía Android | Título y cuerpo, contactos localizados, conflictos y revocación automática. Pruebas de lotes, manuales y consumidores | v80. 6.854 evaluadas, 37 atribuidas y 141 atribuciones automáticas revocadas |
+| Correos en modo oscuro | Alertas, newsletter y salud con colores explícitos. Pruebas de render y MIME | v80. Validación visual pendiente en clientes móviles |
+| Feedback y accesos | Identidad autenticada, cabeceras aditivas, visualización, reintento e idempotencia | v80. Feedback histórico comprobado. Migración en primera escritura autenticada. Alta de feedback y clic firmado sin prueba productiva |
+| Análisis mensual | Orden de los cinco bloques comprobado en dos tamaños. Pruebas de selección y volúmenes geográficos | v80. Orden comprobado con datos reales |
+| Entrega | Suite local con 173 aprobadas y 0 fallidas. Informe y secuencia operativa | Aplicación web activa en v80. PR #44 abierto |
 
 ## BEI · dry run del corpus
 
@@ -49,7 +49,7 @@ Los siete campos históricos de `MARKET_REVIEW_INDEX` mantienen sus posiciones. 
 
 ## Geografía Android
 
-El corpus carece de package ID, escaparates y respuestas de soporte por reseña. La comparación controlada utiliza una ficha Android compartida simulada, con las mismas entradas en el código de `develop` y en Iteración 22. De 12 casos, la atribución baja de 8 a 5. Los casos sin país pasan de 4 a 7, incluidos 2 conflictos explícitos. No hay conteos por app de producción.
+El corpus carece de package ID, escaparates y respuestas de soporte por reseña. La comparación controlada utiliza una ficha Android compartida simulada, con las mismas entradas en el código de `develop` y en Iteración 22. De 12 casos, la atribución baja de 8 a 5. Los casos sin país pasan de 4 a 7, incluidos 2 conflictos explícitos. El desglose por aplicación de las atribuciones anteriores no se capturó antes de reprocesar.
 
 | Caso Android compartido | Antes | Después |
 | --- | --- | --- |
@@ -68,11 +68,23 @@ El corpus carece de package ID, escaparates y respuestas de soporte por reseña.
 
 En la prueba de escritura, una fila automática sin evidencia queda con país vacío y motivo `revoked`. Una aprobación manual permanece en su fila. Volver a ejecutar el lote finalizado no duplica escrituras. El código conserva escenario `UNKNOWN`, origen de escaparate y país atribuido como conceptos separados.
 
+En producción, el último recorrido anterior mostraba **6.407 evaluadas, 178 inferidas y 6.229 no atribuibles**. El nuevo recorrido evaluó **6.854**, con **37 inferidas**, **6.817 no atribuibles** y **141 revocaciones automáticas**. Hay 447 elegibles adicionales respecto al estado previo del supervisor. El recuento de nuevas reglas por evidencia fue:
+
+| País | Evidencia | Atribuidas |
+| --- | --- | ---: |
+| ES | Contacto de soporte localizado | 32 |
+| CO | Contacto de soporte localizado | 2 |
+| PE | Uso de bancos locales | 1 |
+| PE | Solicitud de activación de un medio de pago local | 1 |
+| AR | Uso de la aplicación para el país | 1 |
+
+La conciliación posterior encontró 37 aprobaciones automáticas activas, 141 filas automáticas neutralizadas, cero aprobaciones manuales en el histórico operativo y cero filas de geografía ambiguas o inválidas. La preservación de aprobaciones manuales se comprobó con datos de prueba.
+
 ## Feedback y accesos
 
-La hoja productiva tiene `ALERT_FEEDBACK` con `message_id, vote, recorded_at, observation, status` y una fila histórica sin correo. `NEWSLETTER_INTERACTIONS` no figuraba entre las pestañas. El editor remoto confirmó el contrato de newsletter sin `user_email`. La ausencia de esa pestaña no demuestra por sí sola qué ocurrió con el clic concreto.
+Antes de publicar, la hoja productiva tenía `ALERT_FEEDBACK` con `message_id, vote, recorded_at, observation, status` y una fila histórica sin correo. `NEWSLETTER_INTERACTIONS` no figuraba entre las pestañas. El editor remoto confirmó el contrato de newsletter sin `user_email`. La ausencia de esa pestaña no demuestra por sí sola qué ocurrió con el clic concreto.
 
-La migración se ejecuta con la primera escritura autenticada. Admite feedback de alertas de 3 o 5 columnas y newsletter de 5 o 6 columnas. Añade los campos al final, comprobando el prefijo. La tabla de Administración y su exportación usan el correo registrado. En históricos de newsletter, la recuperación cruza el HMAC con el destinatario y la edición de un envío aceptado. Los identificadores MIME históricos de alertas carecen de una clave de unión en el `ALERT_LOG` actual, por lo que los casos sin identidad recuperable muestran «desconocido».
+La migración se ejecuta con la primera escritura autenticada. Admite feedback de alertas de 3 o 5 columnas y newsletter de 5 o 6 columnas. Añade los campos al final, comprobando el prefijo. La tabla de Administración y su exportación usan el correo registrado. En históricos de newsletter, la recuperación cruza el HMAC con el destinatario y la edición de un envío aceptado. Los identificadores MIME históricos de alertas carecen de una clave de unión en el `ALERT_LOG` actual, por lo que los casos sin identidad recuperable muestran «desconocido». Se verificó esa etiqueta en Administración de la v80.
 
 El acceso se confirma desde la página visible una vez validado el token de la cuenta activa. El RPC arranca antes de bootstrap y permite hasta tres intentos, con esperas de 500 y 1.000 ms. El token permanece disponible hasta la confirmación. Una apertura repetida conserva el identificador y fecha originales. La carga inicial de la página por sí sola no escribe un acceso. Si se cierra la página antes de que llegue el primer RPC, volver a abrir el enlace permite confirmarlo. Las previsualizaciones conservan su espacio de identificadores separado.
 
@@ -91,12 +103,12 @@ La paridad en clientes con inversión forzada queda pendiente de prueba visual. 
 
 En el navegador integrado, una vista local con HTML y estilos del proyecto confirmó el orden a **1.024 px y 390 px**. Evolución por entidad → Brecha de NPS por bloque → Ejemplos del mes en curso → Pulso mensual → Voz nueva del mes. Las pruebas del dominio y del cliente ejercitan el país activo, inferencia, periodos y exportación. La vista estática comprueba la disposición pero no sustituye la prueba con datos y RPC de Apps Script.
 
-## Verificación y secuencia pendiente para producción
+## Producción, verificación y pull request
 
-- `npm test` con Node 24.1.0. Base `develop` con 167 aprobadas, Iteración 22 con 173 aprobadas y 0 fallidas. El job CI del repositorio usa ese comando. La política GitFlow impide un PR de `develop` a `develop`. El trabajo se entregó localmente sobre la única rama solicitada, sin push ni checks remotos.
-- Apps Script abrió con la sesión corporativa y mostró la aplicación web activa en **versión 79**. El editor guarda el esquema de snapshots 11 frente al 12 de la base local, e inferencia `storefront-reply-v4` frente a v5. Las diferencias afectan a los recuentos locales de Análisis mensual en `52_ReviewInsights.gs` y a la huella de atribución en `54_Reviews.gs` y `55_ReviewIndex.gs`. El manifiesto solo difiere en el orden de los campos `access` y `executeAs`. El acceso `DOMAIN` y la ejecución como propietario se verificaron en la implementación activa.
-- Antes de guardar en el editor, aprobar la promoción desde el contrato remoto anterior al candidato de `develop`. Tomar un respaldo corporativo autorizado de los índices, cabeceras y aprobaciones, y registrar cardinalidad, claves únicas, versiones, país y evidencia de atribuciones existentes, sin exportar texto ni identidad fuera del entorno. Los activadores pueden ejecutar el código guardado en HEAD antes de la publicación de la web.
-- Validar los contratos de `MARKET_REVIEWS`, `MARKET_REVIEW_INDEX`, `MARKET_REVIEW_GEOGRAPHY` y feedback contra las cabeceras reales. Tras aprobar el candidato, sincronizar desde el editor de Apps Script y publicar una nueva versión de la **implementación web existente**, con acceso `DOMAIN` y ejecución como propietario.
-- En Administración como propietario, ejecutar los trabajos existentes `runMarketsPanelJob('index')` y `runMarketsPanelJob('geography')` hasta que ambos marquen completado. Ambos usan ventanas de 50 segundos sobre lotes reanudables. Verificar los estados `MARKETS_REVIEW_INDEX_STATUS` y `MARKETS_ANDROID_GEO_AUDIT` y los recuentos por evidencia antes y después. Ejecutar `runMarketsPanelJob('publish')` tras la conciliación para reconstruir la vista persistente.
-- Conciliar claves, digests, versiones y duplicados con la fuente. Confirmar país vacío para revocadas, aprobaciones manuales intactas y ausencia de cambios de atribución fuera del catálogo. Comprobar el selector en Comentarios, Analítica y Análisis mensual y un enlace de newsletter autenticado que falle en el primer RPC y se registre una vez tras el reintento. Validar feedback con datos de prueba autorizados y comprobar que la tabla y el CSV muestran el correo.
-- Si se revierte el código, conservar las columnas y filas nuevas en el respaldo aprobado antes de restaurar un contrato previo. Versiones antiguas pueden rechazar cabeceras ampliadas. El Sheet y la implementación quedaron sin cambios en esta entrega.
+- `npm test` con Node 24.1.0. La base `develop` pasó 167 pruebas. La iteración pasó 173 sin fallos. Se dejó fuera el cambio previo en `dist.txt`.
+- El editor remoto guardaba el esquema de snapshots 11 frente al 12 de la base local e inferencia `storefront-reply-v4` frente a v5. El manifiesto solo difería en el orden de `access` y `executeAs`. Antes de sincronizar, se verificaron los once archivos del candidato y sus diferencias con el editor.
+- Se verificó el respaldo **Antes de Iteración 22 · f9db0f2** en el historial de versiones de Sheets. La aplicación web existente pasó de v79 a **v80** el **15 de noviembre de 2026 a las 14:43** de Madrid, desde el commit `f9db0f2`, con acceso corporativo y ejecución como propietario.
+- Los dos reprocesos acabaron a las **14:53:54**. Dos ejecuciones del propietario reanudaron los trabajadores existentes tras un primer tramo con 54.000 filas de índice y 5.157 evaluaciones geográficas. Se conciliaron **77.264 filas de fuente e índice y 77.264 claves únicas**, con cero duplicados, cero desalineaciones y cero versiones de clasificación obsoletas o digests vacíos. Las escrituras se limitaron a los derivados y a sus checkpoints.
+- A las **14:57:13** se confirmó la reconstrucción de **37 vistas persistentes**. Se retiraron las funciones temporales de ejecución y conciliación, y se verificó que el archivo del trabajador en el editor coincidía con el código publicado.
+- Se verificaron `/exec`, los cinco bloques en orden con datos reales, el filtro BEI de Comentarios y el histórico de Feedback. La migración de Feedback y Newsletter se realizará con la primera escritura autenticada. Queda pendiente validar ese ciclo con un enlace firmado en producción y la paridad en clientes móviles de correo.
+- Rama `codex/iteracion-22` y [PR #44 a develop](https://github.com/felixdelbarrio/Market-Pulse/pull/44). Los workflows CI y GitFlow pasaron para `f9db0f2`. El PR queda abierto, sin merge.
