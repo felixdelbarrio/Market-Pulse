@@ -88,6 +88,9 @@ test("single-country newsletter uses real closes, reliable review effect and com
     /Las nuevas valoraciones se sitúan por encima del rating previo y refuerzan el cierre/);
   assert.doesNotMatch(brief.summary, /4,11|4,21|4,81|20 nuevas valoraciones/);
   const html = context.renderMarketsNewsletterHtml_(model);
+  assert.match(html, /<meta name="color-scheme" content="light only">/);
+  assert.match(html, /<img src="cid:bbvaLogo"[^>]*background-image:linear-gradient\(#001391,#001391\)/);
+  assert.doesNotMatch(html, /<(?!img\b)[a-z][^>]*background-image:linear-gradient/);
   assert.match(html, /España · Todas las plataformas|España · iOS/);
   assert.match(html, /Cierre anterior[\s\S]*4,11[\s\S]*Voz nueva[\s\S]*4,81\/5/);
   assert.match(html, /Cierre[\s\S]*4,21[\s\S]*\+0,10 en el mes/);
@@ -436,6 +439,9 @@ test("localized newsletter renders subject, plain text and HTML in the chosen la
     assert.match(rendered.subject, new RegExp(title));
     assert.match(rendered.plain, new RegExp(title));
     assert.match(rendered.html, new RegExp('<html lang="' + language + '"'));
+    assert.match(rendered.html, /<meta name="color-scheme" content="light only">/);
+    assert.match(rendered.html, /<img src="cid:bbvaLogo"[^>]*background-image:linear-gradient\(#070e46,#070e46\)/);
+    assert.doesNotMatch(rendered.html, /<(?!img\b)[a-z][^>]*background-image:linear-gradient/);
     assert.match(rendered.html, /iOS/);
     assert.match(rendered.html, /<header[^>]*bgcolor="#070e46"/i);
     assert.match(rendered.html, /<th scope="col"[^>]*bgcolor="#ffffff"[^>]*color:#070e46/i);
@@ -508,7 +514,6 @@ test("the Spanish Argentina closing uses the requested subject and email light c
   const model = { periodLabel: "octubre 2026", scope: { type: "SINGLE", countryLabel: "Argentina", platformLabel: "Todas las plataformas" } };
   assert.equal(context.marketsNewsletterSpanishSubject_(model),
     "[bIA]🚀🚀🚀 [Market Pulse] · Cierre octubre 2026 · Argentina · Todas las plataformas");
-  assert.match(context.marketsLightEmailDocument_("es"), /name="color-scheme" content="light"/);
   assert.match(context.marketsLightEmailDocument_("en"), /bgcolor="#F7F8F8"/);
 });
 
