@@ -307,3 +307,16 @@ test("log archive verifies complete rows and refuses deletion if the sheet chang
   assert.equal(files.size,1);
   assert.equal(JSON.parse(runtime.readMarketsLogArchive_(files.get("1"))).rows[0][2],"=full detail");
 });
+
+
+test("review alert progress reads actual sent and total counts from the audit", () => {
+  const indexes = {timestamp:0,metric_value:1,threshold:2,detail:3};
+  const row = [new Date("2026-11-15T07:00:00Z"), 5, 8,
+    JSON.stringify({status:"PARTIAL",deliveredAt:"2026-11-15T07:00:06Z"})];
+  const audit = context.parseMarketsReviewAlertRun_(row,indexes);
+  assert.equal(audit.startedAt,"2026-11-15T07:00:00.000Z");
+  assert.equal(audit.sent,5);
+  assert.equal(audit.total,8);
+  assert.equal(audit.status,"PARTIAL");
+  assert.equal(context.parseMarketsReviewAlertRun_([row[0],9,8,row[3]],indexes),null);
+});

@@ -50,29 +50,53 @@ function processMarketsReviewAlerts_(day) {
   return result.events;
 }
 
+const MARKETS_REVIEW_ALERTS_RUN = 'REVIEW_ALERTS_RUN';
+
 function deliverMarketsReviewAlertBatch_(day) {
   const empty = { events: 0, sent: 0, total: 0, status: 'NOT_REQUIRED' };
   const now = new Date();
   if (Utilities.formatDate(now, MARKETS_CONFIG.timeZone, 'yyyy-MM-dd') !== day) return empty;
   const ss = openMarketsSpreadsheet_(), control = readControl_(ss);
   const subscribers = readAllMarketsAlertPreferences_(ss).filter(item => item.active && item.reviewShareEnabled);
-  if (!subscribers.length) return empty;
-  const window = { start: shiftReviewDay_(day, -2), end: shiftReviewDay_(day, 1) };
-  const rows = queryMarketsReviews_(ss, { country: 'ALL', platform: 'ALL', app: 'BBVA Empresas', deferBlocks: true }, window);
-  const groups = summarizeMarketsReviewAlerts_(rows, now);
-  if (!groups.length) return empty;
+  let groups = [];
+  if (subscribers.length) {
+    const window = { start: shiftReviewDay_(day, -2), end: shiftReviewDay_(day, 1) };
+    const rows = queryMarketsReviews_(ss, { country: 'ALL', platform: 'ALL', app: 'BBVA Empresas', deferBlocks: true }, window);
+    groups = summarizeMarketsReviewAlerts_(rows, now);
+  }
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(1000)) throw new Error('La auditoría de alertas está ocupada.');
   try {
-    const existing = readExistingAlertKeys_(ss);
-    const events = subscribers.flatMap(preferences => buildMarketsReviewAlertEvents_(groups, preferences, existing, now, day));
-    const result = deliverMarketsAlertEvents_(ss, events, control, subscribers.length);
-    return { events: result.length, sent: result.deliveryCount, status: result.deliveryStatus,
-      total: new Set(events.flatMap(event => trimString_(event.recipients).split(/[;,]/).map(normalizeEmailForComparison_).filter(Boolean))).size,
-      detail: result.deliveryDetail };
+    let summary = empty;
+    if (groups.length) {
+      const existing = readExistingAlertKeys_(ss);
+      const events = subscribers.flatMap(preferences => buildMarketsReviewAlertEvents_(groups, preferences, existing, now, day));
+      const result = deliverMarketsAlertEvents_(ss, events, control, subscribers.length);
+      summary = { events: result.length, sent: result.deliveryCount, status: result.deliveryStatus,
+        total: new Set(events.map(event => normalizeEmailForComparison_(event.recipients)).filter(Boolean)).size,
+        detail: result.deliveryDetail };
+    }
+    // An audit error must not invalidate deliveries that Gmail already accepted.
+    try {
+      appendAlertEvents_(ss, [marketsReviewAlertRunEvent_(day, now, summary)]);
+    } catch (error) {
+      console.warn('No se pudo guardar la auditoría de alertas de reseñas: ' + errorToString_(error));
+    }
+    return summary;
   } finally {
     lock.releaseLock();
   }
+}
+
+function marketsReviewAlertRunEvent_(day, startedAt, summary) {
+  return {
+    timestamp: startedAt, eventKey: [MARKETS_REVIEW_ALERTS_RUN, startedAt.toISOString()].join('|'),
+    referenceDate: dateFromKey_(day), platform: '', countryCode: '', type: MARKETS_REVIEW_ALERTS_RUN,
+    severity: summary.status === 'ERROR' ? 'CRITICAL' : summary.status === 'PARTIAL' ? 'WARNING' : '',
+    detail: JSON.stringify({ status: summary.status, deliveredAt: summary.sent ? new Date().toISOString() : '' }),
+    recipients: '', runId: 'review-' + day, source: MARKETS_REVIEW_ALERTS_RUN, userEmail: '', ruleId: '',
+    metricValue: summary.sent, threshold: summary.total, appKey: '', direction: ''
+  };
 }
 
 function buildAndProcessAlerts_(ss, referenceDate, catalog, runId, control, ratingObjects) {
