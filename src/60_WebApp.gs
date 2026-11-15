@@ -16,10 +16,28 @@ var MARKETS_WEB = Object.freeze({
 
 /** Publica el dashboard bajo el control de acceso del despliegue de Apps Script. */
 function doGet(event) {
-  if (event?.parameter?.newsletterInteraction) return renderMarketsNewsletterInteractionPage_(event.parameter.newsletterInteraction);
-  if (event?.parameter?.alertFeedback) return renderMarketsAlertFeedbackPage_(event.parameter.alertFeedback);
+  const params = event?.parameter || {};
+  const newsletter = Boolean(params.newsletterInteraction);
+  const token = params.newsletterInteraction || params.alertFeedback;
+  const link = token && (newsletter ? parseMarketsNewsletterInteraction_(token) : parseMarketsAlertFeedback_(token));
+  const vote = newsletter ? link?.action : link?.vote;
+  let feedback = null;
+  if (token) {
+    if (!['positive', 'negative'].includes(vote)) {
+      return newsletter ? renderMarketsNewsletterInteractionPage_(token) : renderMarketsAlertFeedbackPage_(token);
+    }
+    try {
+      const email = currentMarketsUserEmail_();
+      if (newsletter) requireMarketsNewsletterInteractionLink_(token, email);
+      else requireMarketsAlertFeedbackLink_(token, email);
+      feedback = { token, vote, newsletter };
+    } catch (error) {
+      return HtmlService.createHtmlOutput('<p>El enlace de valoración no es válido para la cuenta conectada.</p>');
+    }
+  }
   const template = HtmlService.createTemplateFromFile('Index');
-  template.initialView = event?.parameter?.view === 'alerts' ? 'alerts' : '';
+  template.feedback = feedback;
+  template.initialView = params.view === 'alerts' ? 'alerts' : '';
   const page = template.evaluate()
     .setTitle('Market Pulse · BBVA Banca de Empresas e Instituciones')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover')
@@ -786,7 +804,8 @@ function measureMarketsScheduledJob_(name, run) {
   } finally {
     try {
       const properties = PropertiesService.getScriptProperties();
-      const state = { startedAt: started.toISOString(), durationMs: Date.now() - started.getTime(), status, sent: result?.sent,
+      const state = { startedAt: started.toISOString(), durationMs: Date.now() - started.getTime(), status, period: result?.period, sent: result?.sent, attempted: result?.attempted, failed: result?.failed ?? result?.failures?.length,
+        lastDeliveryAt: result?.lastDeliveryAt,
         total: result?.total ?? (Number.isInteger(result?.sent) && Array.isArray(result.failures) ? result.sent + result.failures.length : undefined) };
       properties.setProperty('MARKETS_JOB_TIMING:' + name, JSON.stringify(state));
       if (state.sent > 0) properties.setProperty('MARKETS_JOB_DELIVERY:' + name, JSON.stringify(state));

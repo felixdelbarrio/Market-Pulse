@@ -74,3 +74,22 @@ test("admin analytics calculate comparable WoW, adoption rankings and incidents"
   assert.equal(result.recentIncidents[0].detail, "Fallo visible");
   assert.equal(result.dailyTrend.length, 14);
 });
+
+test("adoption counts rolling visits and deduplicates sessions per corporate account", () => {
+  const rows = [
+    row({ at: "2026-06-22T11:59:59Z", email: "alice@bbva.com", session: "old", type: "VIEW" }),
+    row({ at: "2026-06-22T12:00:00Z", email: "alice@bbva.com", session: "shared", type: "VIEW" }),
+    row({ at: "2026-07-22T11:00:00Z", email: "alice@bbva.com", session: "shared", type: "VIEW" }),
+    row({ at: "2026-07-22T11:00:00Z", email: "bob@bbva.com", session: "shared", type: "VIEW" }),
+    row({ at: "2026-07-22T13:00:00Z", email: "future@bbva.com", session: "future", type: "VIEW" })
+  ];
+  const result = context.buildMarketsUsageAnalytics_(rows, "Europe/Madrid", new Date("2026-07-22T12:00:00Z"),
+    { truncated: true, rowsAnalyzed: 5, totalRows: 6 });
+  const alice = result.adoptionUsers.find(user => user.email === "alice@bbva.com");
+  assert.equal(result.adoptionUsers.length, 2);
+  assert.equal(alice.sessions, 2);
+  assert.equal(alice.recentSessions, 1);
+  assert.equal(alice.recentEvents, 2);
+  assert.equal(result.kpis.sessionsToday, 2);
+  assert.equal(result.tracking.truncated, true);
+});

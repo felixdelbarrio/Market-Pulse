@@ -427,60 +427,76 @@ function advanceMarketsFunctionalCatalog_(allow = { sync: true, translate: true 
       Number(properties.getProperty(MARKETS_TRANSLATION_QUOTA_RETRY_KEY)) > Date.now()) return;
   const lock = LockService.getUserLock();
   if (!lock.tryLock(1000)) return;
-  const started = Date.now();
-  const job = previous?.revision === revision ? previous : { revision, done: 0, total: 0, day: previous?.day, calls: previous?.calls || 0 };
   try {
-    const ss = openMarketsSpreadsheet_();
-    const catalog = requireCurrentSheetContract_(ss, 'FUNCTIONAL_CATALOG', MARKETS_FUNCTIONAL_HEADERS);
-    const originals = [...new Set(catalog.getRange(2, 2, catalog.getLastRow() - 1, 2).getDisplayValues().flat().filter(Boolean))].sort();
-    const languages = ['en', 'tr'];
-    job.total = originals.length * languages.length;
-    if (job.day !== today) { job.day = today; job.calls = 0; }
-    const existing = ss.getSheetByName(MARKETS_FUNCTIONAL_TRANSLATIONS);
-    const sheet = existing ? requireCurrentSheetContract_(ss, MARKETS_FUNCTIONAL_TRANSLATIONS, MARKETS_FUNCTIONAL_TRANSLATION_HEADERS)
-      : ss.insertSheet(MARKETS_FUNCTIONAL_TRANSLATIONS);
-    if (!existing) sheet.getRange(1, 1, 1, 3).setValues([MARKETS_FUNCTIONAL_TRANSLATION_HEADERS]);
-    const lastRow = sheet.getLastRow();
-    const rows = lastRow > 1 ? sheet.getRange(2, 1, lastRow - 1, 3).getDisplayValues() : [];
-    const known = new Set(rows.map(([lang, original]) => JSON.stringify([lang, original])));
-    const batch = [];
-    let cursor = job.done;
-    let failure;
-    try {
-      while (cursor < job.total && batch.length < 20 && job.calls < 100 && Date.now() - started < 10000) {
-        const original = originals[Math.floor(cursor / languages.length)], language = languages[cursor % languages.length];
-        if (!known.has(JSON.stringify([language, original]))) {
-          job.calls++;
-          const translated = String(LanguageApp.translate(original, 'es', language) || '').trim();
-          if (!translated) throw new Error('Traducción vacía.');
-          batch.push([language, original, translated].map(marketsReviewLiteral_));
-        }
-        cursor++;
-      }
-    } catch (error) { failure = error; }
-    if (batch.length) {
-      ensureSheetCapacity_(sheet, lastRow + batch.length, 3);
-      sheet.getRange(lastRow + 1, 1, batch.length, 3).setValues(batch);
-      SpreadsheetApp.flush();
-      properties.setProperty('MARKETS_FUNCTIONAL_TRANSLATIONS_REVISION', Utilities.getUuid());
+    const started = Date.now();
+    const current = safeJsonParse_(properties.getProperty(MARKETS_FUNCTIONAL_JOB));
+    if ((current?.revision === revision && (current.status === 'Completado' || current.retryAt > started)) ||
+        Number(properties.getProperty(MARKETS_TRANSLATION_QUOTA_RETRY_KEY)) > started ||
+        properties.getProperty('MARKETS_FUNCTIONAL_REVISION') !== revision) {
+      return false;
     }
-    job.done = cursor;
-    job.status = cursor === job.total ? 'Completado' : job.calls >= 100 ? 'En pausa por límite diario' : 'Pendiente';
-    job.error = '';
-    job.retryAt = 0;
-    if (failure) throw failure;
-  } catch (error) {
-    job.status = 'Reintento pendiente';
-    job.error = errorToString_(error).slice(0, 180);
-    job.retryAt = Date.now() + 3600000;
-    if (/quota|cuota|too many times|limit exceeded/i.test(job.error)) {
-      properties.setProperty(MARKETS_TRANSLATION_QUOTA_RETRY_KEY, String(job.retryAt));
+    const job = current?.revision === revision ? current : { revision, done: 0, total: 0, day: current?.day, calls: current?.calls || 0 };
+    try {
+      const ss = openMarketsSpreadsheet_();
+      const catalog = requireCurrentSheetContract_(ss, 'FUNCTIONAL_CATALOG', MARKETS_FUNCTIONAL_HEADERS);
+      const sourceCount = catalog.getLastRow() - 1;
+      const labels = sourceCount > 0 ? catalog.getRange(2, 2, sourceCount, 2).getDisplayValues().flat() : [];
+      const originals = [...new Set(labels.filter(Boolean))].sort();
+      const languages = ['en', 'tr'];
+      job.total = originals.length * languages.length;
+      if (job.day !== today) { job.day = today; job.calls = 0; }
+      const existing = ss.getSheetByName(MARKETS_FUNCTIONAL_TRANSLATIONS);
+      const sheet = existing ? requireCurrentSheetContract_(ss, MARKETS_FUNCTIONAL_TRANSLATIONS, MARKETS_FUNCTIONAL_TRANSLATION_HEADERS)
+        : ss.insertSheet(MARKETS_FUNCTIONAL_TRANSLATIONS);
+      if (!existing) sheet.getRange(1, 1, 1, 3).setValues([MARKETS_FUNCTIONAL_TRANSLATION_HEADERS]);
+      const lastRow = sheet.getLastRow();
+      const rows = lastRow > 1 ? sheet.getRange(2, 1, lastRow - 1, 3).getDisplayValues() : [];
+      const known = new Set(rows.map(([lang, original]) => JSON.stringify([lang, original])));
+      const batch = [];
+      let cursor = Math.max(0, Math.min(job.total, job.done || 0));
+      job.done = cursor;
+      job.startedAt = new Date(started).toISOString();
+      job.runningUntil = started + 6 * 60 * 1000;
+      properties.setProperty(MARKETS_FUNCTIONAL_JOB, JSON.stringify(job));
+      let failure;
+      try {
+        while (cursor < job.total && batch.length < 20 && job.calls < 100 && Date.now() - started < 10000) {
+          const original = originals[Math.floor(cursor / languages.length)], language = languages[cursor % languages.length];
+          if (!known.has(JSON.stringify([language, original]))) {
+            job.calls++;
+            const translated = String(LanguageApp.translate(original, 'es', language) || '').trim();
+            if (!translated) throw new Error('Traducción vacía.');
+            batch.push([language, original, translated].map(marketsReviewLiteral_));
+          }
+          cursor++;
+        }
+      } catch (error) { failure = error; }
+      if (batch.length) {
+        ensureSheetCapacity_(sheet, lastRow + batch.length, 3);
+        sheet.getRange(lastRow + 1, 1, batch.length, 3).setValues(batch);
+        SpreadsheetApp.flush();
+        properties.setProperty('MARKETS_FUNCTIONAL_TRANSLATIONS_REVISION', Utilities.getUuid());
+      }
+      job.done = cursor;
+      job.status = cursor === job.total ? 'Completado' : job.calls >= 100 ? 'En pausa por límite diario' : 'Pendiente';
+      job.error = '';
+      job.retryAt = 0;
+      if (failure) throw failure;
+    } catch (error) {
+      job.status = 'Reintento pendiente';
+      job.error = errorToString_(error).slice(0, 180);
+      job.retryAt = Date.now() + 3600000;
+      if (/quota|cuota|too many times|limit exceeded/i.test(job.error)) {
+        properties.setProperty(MARKETS_TRANSLATION_QUOTA_RETRY_KEY, String(job.retryAt));
+      }
+    } finally {
+      delete job.runningUntil;
+      job.updatedAt = new Date().toISOString();
+      job.durationMs = Date.now() - started;
+      properties.setProperty(MARKETS_FUNCTIONAL_JOB, JSON.stringify(job));
     }
   } finally {
-    job.updatedAt = new Date().toISOString();
-    job.durationMs = Date.now() - started;
-    try { properties.setProperty(MARKETS_FUNCTIONAL_JOB, JSON.stringify(job)); }
-    finally { lock.releaseLock(); }
+    lock.releaseLock();
   }
   return true;
 }
@@ -501,8 +517,9 @@ function marketsFunctionalJobStatus_() {
       updatedAt: synced, done: sync.functions, total: sync.functions, changed: sync.changed, error: sync.error, retryAt: sync.retryAt, durationMs: sync.durationMs },
     { id: 'taxonomyTranslation', priority: 6, schedule: 'Tras sincronizar el catálogo',
       name: 'Traducción del catálogo funcional', status: awaitingSync ? 'Esperando catálogo' :
-        waitingQuota ? 'Esperando cuota de traducción' : pendingTranslation ? 'Pendiente' : translation.status || 'Pendiente',
-      updatedAt: translation.updatedAt, error: translation.error, retryAt: waitingQuota ? quotaRetryAt : translation.retryAt, durationMs: translation.durationMs,
+        !pendingTranslation && translation.runningUntil > Date.now() ? 'En curso' : waitingQuota ? 'Esperando cuota de traducción' : pendingTranslation ? 'Pendiente' : translation.status || 'Pendiente',
+      startedAt: pendingTranslation ? undefined : translation.startedAt,
+      updatedAt: pendingTranslation ? undefined : translation.updatedAt, error: pendingTranslation ? undefined : translation.error, retryAt: waitingQuota ? quotaRetryAt : translation.retryAt, durationMs: translation.durationMs,
       done: pendingTranslation ? undefined : translation.done, total: pendingTranslation ? undefined : translation.total }
   ];
 }
