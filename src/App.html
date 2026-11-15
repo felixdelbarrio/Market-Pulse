@@ -1289,7 +1289,7 @@
       $("month-filter").innerHTML=model.months.map(month=>U.option(month,monthName(month),month===model.month)).join("");
     }
     function bindEvolutionFilters(){
-      window.MarketRadarFilters.searchable($("monthly-review-segment"));
+      window.MarketRadarFilters.searchable($("monthly-review-segment")).refresh();
       $("monthly-review-segment").addEventListener("change",()=>{
         if(state.evolutionApp)loadMonthlyReviews(evolutionPeriod(state.evolutionApp,state.periodYear,state.periodMonth).period);
       });

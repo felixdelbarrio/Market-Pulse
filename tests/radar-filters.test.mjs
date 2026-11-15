@@ -24,7 +24,7 @@ function filterBindings({ crypto, sessionStorage, browserCountry = "ES" } = {}) 
       MarketsUI: { option() { return ''; } },
       MarketsDomain: { browserMarket: () => browserCountry, config: { countries: { ES: 'España', MX: 'México' }, platforms: ['iOS', 'Android'] } },
       MarketRadarFilters: {
-        searchable() { return {}; },
+        searchable() { return { refresh() {} }; },
         create(root, binding) {
           bindings[root.id] = binding;
           return { render() {} };
