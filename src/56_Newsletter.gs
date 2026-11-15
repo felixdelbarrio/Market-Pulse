@@ -1024,14 +1024,14 @@ function parseMarketsNewsletterInteraction_(token) {
 
 function renderMarketsNewsletterInteractionPage_(token) {
   const interaction = parseMarketsNewsletterInteraction_(token);
-  if (!interaction) return HtmlService.createHtmlOutput('<p>Este enlace de la newsletter ha caducado o no es válido.</p>');
+  if (interaction?.action !== 'unsubscribe') return HtmlService.createHtmlOutput('<p>Este enlace de la newsletter ha caducado o no es válido.</p>');
   const page = HtmlService.createTemplateFromFile('AlertFeedback');
   page.token = token;
   page.newsletter = true;
-  page.unsubscribe = interaction.action === 'unsubscribe';
-  page.rating = ['positive', 'negative'].includes(interaction.action) ? interaction.action : '';
+  page.unsubscribe = true;
+  page.rating = '';
   page.destination = marketsWebAppUrl_();
-  page.choice = { open: 'Continuar a Market Pulse', positive: '👍 Útil', negative: '👎 Mejorable', unsubscribe: 'Dar de baja la newsletter' }[interaction.action];
+  page.choice = 'Dar de baja la newsletter';
   return page.evaluate().setTitle('Newsletter de Market Pulse').addMetaTag('viewport', 'width=device-width, initial-scale=1');
 }
 
@@ -1065,6 +1065,11 @@ function requireMarketsNewsletterInteractionLink_(token, email) {
   return { interaction, secret };
 }
 
+function recordMarketsNewsletterOpen(token) {
+  if (parseMarketsNewsletterInteraction_(token)?.action !== 'open') throw new Error('Enlace de acceso no válido.');
+  return saveMarketsNewsletterInteraction(token);
+}
+
 function saveMarketsNewsletterInteraction(token, vote, observation) {
   const email = currentMarketsUserEmail_();
   const { interaction, secret } = requireMarketsNewsletterInteractionLink_(token, email);
@@ -1074,8 +1079,8 @@ function saveMarketsNewsletterInteraction(token, vote, observation) {
   const comment = trimString_(observation);
   if (comment && (!rating || comment.length > 1000)) throw new Error('Observaciones no válidas.');
   const action = vote || interaction.action;
-  if (interaction.preview) return { open: action === 'open', preview: true };
-  const id = marketsNewsletterInteractionId_(period, action === 'open' ? 'open' : 'vote', email, secret);
+  if (interaction.preview && action === 'unsubscribe') return { open: false, preview: true };
+  const id = marketsNewsletterInteractionId_(period, action === 'open' ? 'open' : 'vote', email, secret, interaction.preview);
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(5000)) throw new Error('No se pudo guardar. Inténtalo de nuevo.');
   try {
@@ -1094,14 +1099,15 @@ function saveMarketsNewsletterInteraction(token, vote, observation) {
       sheet.getRange(row, 1, 1, headers.length).setValues([values]);
       SpreadsheetApp.flush();
     }
-    return { open: action === 'open' };
+    return { open: action === 'open', preview: interaction.preview };
   } finally {
     lock.releaseLock();
   }
 }
 
-function marketsNewsletterInteractionId_(period, kind, email, secret) {
-  return 'n_' + signMarketsAlertFeedback_(['newsletter', period, kind].join('.'), email, secret);
+function marketsNewsletterInteractionId_(period, kind, email, secret, preview = false) {
+  const scope = preview ? 'newsletter-preview' : 'newsletter';
+  return (preview ? 'np_' : 'n_') + signMarketsAlertFeedback_([scope, period, kind].join('.'), email, secret);
 }
 
 /** Match the recipient-bound interaction identifier against accepted newsletter deliveries. */
@@ -1117,8 +1123,10 @@ function marketsNewsletterInteractionEditions_(ss, interactions, kind) {
   const headers = MARKETS_CONFIG.headers.alerts, indexes = indexHeaders_(headers);
   requireCurrentSheetContract_(ss, MARKETS_CONFIG.sheets.alerts, headers);
   const last = sheet.getLastRow();
-  const matches = sheet.getRange(2, indexes.source + 1, last - 1, 1)
-    .createTextFinder('MONTHLY_NEWSLETTER').matchEntireCell(true).findAll().map(cell => cell.getRow());
+  const sources = new Set(newsletterRows.map(row => row[0].startsWith('np_') ? 'NEWSLETTER_TEST' : 'MONTHLY_NEWSLETTER'));
+  const sourceColumn = sheet.getRange(2, indexes.source + 1, last - 1, 1);
+  const matches = [...sources].flatMap(source => sourceColumn.createTextFinder(source).matchEntireCell(true)
+    .findAll().map(cell => cell.getRow())).sort((a, b) => a - b);
   const windowSize = 250;
   for (let start = 0; start < matches.length;) {
     const first = matches[start];
@@ -1127,13 +1135,14 @@ function marketsNewsletterInteractionEditions_(ss, interactions, kind) {
     const values = sheet.getRange(first, 1, matches[end - 1] - first + 1, headers.length).getValues();
     for (; start < end; start++) {
       const row = values[matches[start] - first];
-      if (row[indexes.type] !== 'NEWSLETTER_MONTHLY') continue;
-      const period = /^NEWS-(\d{4}-(?:0[1-9]|1[0-2]))$/.exec(row[indexes.run_id])?.[1];
+      const preview = row[indexes.source] === 'NEWSLETTER_TEST';
+      if (row[indexes.type] !== (preview ? 'NEWSLETTER_TEST' : 'NEWSLETTER_MONTHLY')) continue;
+      const period = /^NEWS-(?:TEST-)?(\d{4}-(?:0[1-9]|1[0-2]))$/.exec(row[indexes.run_id])?.[1];
       const email = normalizeEmailForComparison_(row[indexes.user_email] || row[indexes.recipients]);
       const sentAt = adminDateTime_(row[indexes.timestamp]);
       const time = Date.parse(sentAt);
       if (!periods.has(period) || !email || !Number.isFinite(time)) continue;
-      const id = marketsNewsletterInteractionId_(period, kind, email, secret);
+      const id = marketsNewsletterInteractionId_(period, kind, email, secret, preview);
       if (!recordedAt.has(id) || time > recordedAt.get(id) || (matched.has(id) && time <= Date.parse(matched.get(id).sentAt))) continue;
       matched.set(id, kind === 'open' ? { email, sentAt } : {
         email, sentAt, countries: trimString_(row[indexes.country_code]), summary: trimString_(row[indexes.detail])
@@ -1210,13 +1219,13 @@ function getMarketsNewsletterInteractions(kind, period, vote, status, start = ''
     negative: selected.filter(row => row[2] === 'negative').length,
     pending: selected.filter(row => row[4] === 'pendiente').length,
     resolved: selected.filter(row => row[4] === 'atendido').length,
-    rows: selected.sort((a, b) => new Date(b[3]) - new Date(a[3])).map(([id, edition, action, date, state, comment]) => [edition, action, adminDateTime_(date), state, kind === 'feedback' ? id : '', comment || '', kind === 'feedback' ? editions.get(id) || null : null]) };
+    rows: selected.sort((a, b) => new Date(b[3]) - new Date(a[3])).map(([id, edition, action, date, state, comment]) => [edition, action, adminDateTime_(date), state, kind === 'feedback' ? id : '', comment || '', id.startsWith('np_') ? { ...editions.get(id), preview: true } : kind === 'feedback' ? editions.get(id) || null : null]) };
 }
 
 function setMarketsNewsletterFeedbackState(id, state) {
   const { ss } = requireMarketsAdministrator_();
   const isAlert = /^[a-f0-9]{32}$/.test(String(id));
-  if (!(isAlert || /^n_[A-Za-z0-9_-]{43}$/.test(String(id))) || !['pendiente', 'atendido'].includes(state)) throw new Error('Seguimiento no válido.');
+  if (!(isAlert || /^np?_[A-Za-z0-9_-]{43}$/.test(String(id))) || !['pendiente', 'atendido'].includes(state)) throw new Error('Seguimiento no válido.');
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(5000)) throw new Error('Feedback ocupado. Inténtalo de nuevo.');
   try {

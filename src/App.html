@@ -319,6 +319,14 @@
 
     document.addEventListener("DOMContentLoaded",initializeApp);
 
+    function recordNewsletterOpen(){
+      const token=document.body.dataset.newsletterOpen;
+      if(!token)return;
+      delete document.body.dataset.newsletterOpen;
+      google.script.run.withFailureHandler(()=>showToast("No se pudo registrar el acceso desde la newsletter. Recarga la página para reintentar.",false))
+        .recordMarketsNewsletterOpen(token);
+    }
+
     function openEmailFeedback(){
       const dialog=$("feedback-dialog");
       if(!dialog)return;
@@ -339,7 +347,7 @@
         };
         const run=google.script.run.withSuccessHandler(result=>{
           dialog.close();
-          showToast(result?.preview?"Valoración de prueba completada.":"Valoración guardada.",true);
+          showToast(result?.preview?"Valoración de prueba guardada.":"Valoración guardada.",true);
         }).withFailureHandler(failure);
         const args=[token,form.elements.rating.value,form.elements.comment.value];
         if(newsletter)run.saveMarketsNewsletterInteraction(...args);
@@ -414,7 +422,7 @@
       }));
     }
     function validateBootstrap(data){if(!data||!data.meta||!Array.isArray(data.snapshot)||!Array.isArray(data.trends))throw new Error("El servidor ha devuelto una respuesta incompleta. Actualiza el despliegue de Market Pulse.");return data}
-    async function loadBootstrap(){if(state.bootstrapLoading)return;state.bootstrapLoading=true;const loader=$("loader");loader.classList.remove("done","failed");$("loader-title").textContent="Preparando Market Pulse…";$("loader-detail").classList.add("hidden");$("loader-retry").classList.add("hidden");try{const data=validateBootstrap(await callServer("bootstrap"));state.meta=data.meta;state.userContext=data.userContext||{email:"",isAdmin:false};if(Array.isArray(data.reviewSegments)){state.reviewSegments=data.reviewSegments;reviewSegments=Promise.resolve(data.reviewSegments)}state.snapshot=data.snapshot;benchmarkModels.clear();state.trends=data.trends;state.consolidated=data.consolidated||null;state.trendsLoading=false;state.trendCache.clear();state.trendCache.set("ALL|ALL|ALL|BBVA|18",state.trends);state.country=browserMarket();if(state.country==="ALL")state.country=data.meta.countries.find(item=>item.code==="ES")?.code||data.meta.countries[0]?.code;configureAdminNavigation();renderRunStatus();renderDashboard();startUsageTracking();$("footer-version").textContent=`Contrato ${data.meta.codeVersion} · Web ${data.meta.webVersion||"1"}`;loader.classList.add("done")}catch(error){showStartupFailure(error)}finally{state.bootstrapLoading=false}}
+    async function loadBootstrap(){if(state.bootstrapLoading)return;state.bootstrapLoading=true;const loader=$("loader");loader.classList.remove("done","failed");$("loader-title").textContent="Preparando Market Pulse…";$("loader-detail").classList.add("hidden");$("loader-retry").classList.add("hidden");try{const data=validateBootstrap(await callServer("bootstrap"));state.meta=data.meta;state.userContext=data.userContext||{email:"",isAdmin:false};if(Array.isArray(data.reviewSegments)){state.reviewSegments=data.reviewSegments;reviewSegments=Promise.resolve(data.reviewSegments)}state.snapshot=data.snapshot;benchmarkModels.clear();state.trends=data.trends;state.consolidated=data.consolidated||null;state.trendsLoading=false;state.trendCache.clear();state.trendCache.set("ALL|ALL|ALL|BBVA|18",state.trends);state.country=browserMarket();if(state.country==="ALL")state.country=data.meta.countries.find(item=>item.code==="ES")?.code||data.meta.countries[0]?.code;configureAdminNavigation();renderRunStatus();renderDashboard();startUsageTracking();recordNewsletterOpen();$("footer-version").textContent=`Contrato ${data.meta.codeVersion} · Web ${data.meta.webVersion||"1"}`;loader.classList.add("done")}catch(error){showStartupFailure(error)}finally{state.bootstrapLoading=false}}
     function showStartupFailure(error){const loader=$("loader");if(!loader)return;loader.classList.remove("done");loader.classList.add("failed");$("loader-title").textContent="No hemos podido iniciar Market Pulse";$("loader-detail").textContent=error?.message||String(error);$("loader-detail").classList.remove("hidden");$("loader-retry").classList.remove("hidden")}
 
     let usageSession="";
@@ -1708,9 +1716,9 @@
         const columns=feedback?["Fecha","Correo","Edición","Fecha de envío","Periodicidad","País","Idioma","Valoración","Observaciones","Estado"]:
           ["Fecha","Edición","Interacción"];
         const rows=data.rows.map(([edition,action,date,status,,comment,metadata])=>feedback?
-          [dateTimeLabel(date),metadata?.email||"—",edition||"Alerta",metadata?.sentAt?dateTimeLabel(metadata.sentAt):"—",
+          [dateTimeLabel(date),metadata?.email||"—",metadata?.preview?edition+" · Prueba":edition||"Alerta",metadata?.sentAt?dateTimeLabel(metadata.sentAt):"—",
             edition?"Mensual":"—",metadata?.countries||"—","—",labels[action],comment,status]:
-          [dateTimeLabel(date),edition,labels[action]]);
+          [dateTimeLabel(date),metadata?.preview?edition+" · Prueba":edition,labels[action]]);
         const cards=`<div class="metrics${feedback?" feedback-metrics":""}">`+adminMetricCards(feedback?[
           {label:"Total",value:integer(data.total)},{label:"Útil",value:integer(data.positive)},{label:"Mejorable",value:integer(data.negative)},
           {label:"% útil",value:data.total?fmt(100*data.positive/data.total,0)+"%":"—"},

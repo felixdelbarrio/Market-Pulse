@@ -21,22 +21,25 @@ function doGet(event) {
   const token = params.newsletterInteraction || params.alertFeedback;
   const link = token && (newsletter ? parseMarketsNewsletterInteraction_(token) : parseMarketsAlertFeedback_(token));
   const vote = newsletter ? link?.action : link?.vote;
-  let feedback = null;
+  let feedback = null, newsletterOpen = '';
   if (token) {
-    if (!['positive', 'negative'].includes(vote)) {
+    const open = newsletter && vote === 'open';
+    if (!open && !['positive', 'negative'].includes(vote)) {
       return newsletter ? renderMarketsNewsletterInteractionPage_(token) : renderMarketsAlertFeedbackPage_(token);
     }
     try {
       const email = currentMarketsUserEmail_();
       if (newsletter) requireMarketsNewsletterInteractionLink_(token, email);
       else requireMarketsAlertFeedbackLink_(token, email);
-      feedback = { token, vote, newsletter };
+      if (open) newsletterOpen = token;
+      else feedback = { token, vote, newsletter };
     } catch (error) {
-      return HtmlService.createHtmlOutput('<p>El enlace de valoración no es válido para la cuenta conectada.</p>');
+      return HtmlService.createHtmlOutput('<p>El enlace no es válido para la cuenta conectada.</p>');
     }
   }
   const template = HtmlService.createTemplateFromFile('Index');
   template.feedback = feedback;
+  template.newsletterOpen = newsletterOpen;
   template.initialView = params.view === 'alerts' ? 'alerts' : '';
   const page = template.evaluate()
     .setTitle('Market Pulse · BBVA Banca de Empresas e Instituciones')

@@ -854,7 +854,7 @@ test("Spanish review labels use reseñas in the UI, charts, exports and communic
   assert.match(app, /setExportSheet\("evolution","NPS de reseñas"/);
 });
 
-test("doGet overlays only a verified vote and keeps open and unsubscribe on their existing routes", () => {
+test("doGet opens the dashboard for authenticated newsletter access and overlays verified votes", () => {
   const runtime = vm.createContext({
     currentMarketsUserEmail_: () => "recipient@bbva.com",
     parseMarketsNewsletterInteraction_: token => ({ action: token }),
@@ -868,7 +868,7 @@ test("doGet overlays only a verified vote and keeps open and unsubscribe on thei
     createHtmlOutput: html => ({ html }),
     createTemplateFromFile: name => ({
       evaluate() { return {
-        name, feedback: this.feedback, initialView: this.initialView,
+        name, feedback: this.feedback, newsletterOpen: this.newsletterOpen, initialView: this.initialView,
         setTitle() { return this; }, addMetaTag() { return this; }, setFaviconUrl() { return this; }
       }; }
     })
@@ -880,7 +880,11 @@ test("doGet overlays only a verified vote and keeps open and unsubscribe on thei
   assert.equal(verified.feedback.newsletter, true);
   assert.equal(verified.initialView, "alerts");
   assert.match(runtime.doGet({ parameter: { alertFeedback: "positive" } }).html, /cuenta conectada/);
-  assert.equal(runtime.doGet({ parameter: { newsletterInteraction: "open" } }).route, "newsletter");
+  const open = runtime.doGet({ parameter: { newsletterInteraction: "open" } });
+  assert.equal(open.name, "Index");
+  assert.equal(open.newsletterOpen, "open");
+  assert.equal(open.feedback, null);
+  assert.equal(runtime.doGet({ parameter: { newsletterInteraction: "unsubscribe" } }).route, "newsletter");
   assert.equal(runtime.doGet({ parameter: { alertFeedback: "unsubscribe" } }).route, "alert");
 });
 

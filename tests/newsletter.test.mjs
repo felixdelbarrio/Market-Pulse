@@ -509,3 +509,54 @@ test("the Spanish Argentina closing uses the requested subject and email light c
   assert.match(context.marketsLightEmailDocument_("es"), /name="color-scheme" content="light"/);
   assert.match(context.marketsLightEmailDocument_("en"), /bgcolor="#F7F8F8"/);
 });
+
+test("preview opens and feedback persist separately from the live edition; preview unsubscribe is inert", () => {
+  const rows = [["id", "period", "action", "recorded_at", "state", "observation"]];
+  const sheet = {
+    getLastRow: () => rows.length,
+    getRange: row => ({
+      getValues: () => [rows[row - 1]],
+      setValues: ([values]) => { rows[row - 1] = values; },
+      createTextFinder: id => ({
+        matchEntireCell: () => ({
+          findNext: () => {
+            const index = rows.findIndex(value => value[0] === id);
+            return index < 0 ? null : { getRow: () => index + 1 };
+          }
+        })
+      })
+    })
+  };
+  const runtime = vm.createContext({
+    ...context, currentMarketsUserEmail_: () => "reader@bbva.com",
+    PropertiesService: { getScriptProperties: () => ({ getProperty: () => "secret" }) },
+    LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock() {} }) },
+    SpreadsheetApp: { flush() {} }, openMarketsSpreadsheet_: () => ({}),
+    ensureSheetCapacity_: () => {}, marketsReviewLiteral_: value => value,
+    Utilities: {
+      computeHmacSha256Signature: payload => payload,
+      base64EncodeWebSafe: payload => Buffer.from(payload).toString("base64url").slice(-43).padStart(43, "a")
+    }
+  });
+  vm.runInContext(source, runtime);
+  runtime.marketsNewsletterInteractionSheet_ = () => ({ sheet, headers: rows[0] });
+  runtime.unsubscribeMarketsEmail_ = () => assert.fail("Preview must not change subscriptions");
+  const token = (action, preview) => new URL(runtime.marketsNewsletterInteractionLinks_(
+    "reader@bbva.com", "2026-10", "secret", preview
+  )[action]).searchParams.get("newsletterInteraction");
+
+  runtime.saveMarketsNewsletterInteraction(token("positive", false), "positive", "Real");
+  const previewVote = token("negative", true);
+  assert.equal(runtime.saveMarketsNewsletterInteraction(previewVote, "negative", "Prueba").preview, true);
+  assert.throws(() => runtime.recordMarketsNewsletterOpen(previewVote), /acceso no válido/);
+  const previewOpen = token("open", true);
+  assert.equal(runtime.recordMarketsNewsletterOpen(previewOpen).open, true);
+  runtime.recordMarketsNewsletterOpen(previewOpen);
+  runtime.saveMarketsNewsletterInteraction(token("unsubscribe", true));
+  runtime.currentMarketsUserEmail_ = () => "another@bbva.com";
+  assert.throws(() => runtime.recordMarketsNewsletterOpen(previewOpen), /cuenta conectada/);
+
+  assert.deepEqual(rows.slice(1).map(row => [row[0].split("_")[0], row[2], row[5]]), [
+    ["n", "positive", "Real"], ["np", "negative", "Prueba"], ["np", "open", ""]
+  ]);
+});
