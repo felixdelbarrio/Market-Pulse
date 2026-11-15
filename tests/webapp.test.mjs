@@ -848,3 +848,27 @@ test("doGet overlays only a verified vote and keeps open and unsubscribe on thei
   assert.equal(runtime.doGet({ parameter: { newsletterInteraction: "open" } }).route, "newsletter");
   assert.equal(runtime.doGet({ parameter: { alertFeedback: "unsubscribe" } }).route, "alert");
 });
+
+test("trend cache reuses a matching global series without another country RPC", async () => {
+  const script = clientScript(fs.readFileSync(new URL("../src/App.html", import.meta.url), "utf8"));
+  const helper = script.slice(script.indexOf("    function trendKey("), script.indexOf("    async function loadTrends("));
+  let requests = 0, settle;
+  const runtime = vm.createContext({
+    state: { trendCache: new Map() },
+    callServer: () => { requests++; return new Promise(resolve => { settle = resolve; }); }
+  });
+  vm.runInContext(helper, runtime);
+  const global = { countryCode: "", platform: "", segment: "ALL", months: 36, bbvaOnly: false };
+  const argentina = { ...global, countryCode: "AR" };
+  const pendingGlobal = runtime.fetchTrends(global);
+  const pendingCountry = runtime.fetchTrends(argentina);
+  settle([{ countryCode: "ES" }, { countryCode: "AR" }]);
+  await pendingGlobal;
+  assert.deepEqual(Array.from(await pendingCountry, row => row.countryCode), ["AR"]);
+  assert.deepEqual(Array.from(await runtime.fetchTrends(argentina), row => row.countryCode), ["AR"]);
+  assert.equal(requests, 1);
+  const differentScope = runtime.fetchTrends({ ...argentina, months: 18 });
+  settle([]);
+  await differentScope;
+  assert.equal(requests, 2);
+});

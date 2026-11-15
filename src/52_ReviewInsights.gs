@@ -750,7 +750,8 @@ function getMarketsReviewPage(filters) {
   if (filters.start && filters.start < window.start) window.start = filters.start;
   const timing = {};
   const page = readMarketsReviewCache_(ss, 'page', filters, window, catalog => {
-    const deferBlocks = !filters.topic && !filters.audience && !filters.search;
+    // Text search matches original review text. Only the visible page needs block labels.
+    const deferBlocks = !filters.topic && !filters.audience;
     const query = { ...filters, country: 'ALL', deferBlocks };
     const paging = { ...filters, topics: marketsReviewTopics_(ss) };
     const page = queryMarketsReviews_(ss, query, window, false, catalog, paging);
@@ -965,7 +966,7 @@ function readMarketsReviewCache_(ss, operation, filters, window, builder, timing
           Object.hasOwn(snapshot.values, snapshotScope)) { source = 'snapshot'; return snapshot.values[snapshotScope]; }
     }
     return builder(catalog, versions);
-  });
+  }, operation === 'analytics' || operation === 'page' ? 6 : 1);
   timing.source = timing.source || source;
   timing.durationMs = Date.now() - started;
   console.log(JSON.stringify({ operation: 'review-' + operation, source: timing.source, key, durationMs: timing.durationMs }));
