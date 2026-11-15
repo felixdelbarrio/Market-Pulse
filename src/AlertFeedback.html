@@ -19,7 +19,6 @@
   </style>
 </head>
 <body>
-  <?!= includeMarketsWebPartial_('BrandIdentity'); ?>
   <header class="feedback-brand">BBVA · Market Pulse</header>
   <dialog id="feedback-dialog" aria-labelledby="feedback-title">
     <div class="dialog-head">
@@ -27,10 +26,10 @@
       <button class="dialog-close" id="feedback-close" type="button" aria-label="Cerrar"></button>
     </div>
     <form id="edition-feedback" data-token="<?= token ?>" data-newsletter="<?= newsletter ? 'yes' : 'no' ?>">
-      <? if (rating) { ?>
+      <? if (rating) { const thumbs = marketsEmailFooterImages_(includeMarketsWebPartial_('BrandIdentity')); ?>
         <fieldset class="edition-rating"><legend>Valoración</legend>
-          <label><input type="radio" name="rating" value="positive" <? if (rating === 'positive') { ?>checked<? } ?> required><img data-thumb="Positive" alt="Útil"></label>
-          <label><input type="radio" name="rating" value="negative" <? if (rating === 'negative') { ?>checked<? } ?> required><img data-thumb="Negative" alt="Mejorable"></label>
+          <label><input type="radio" name="rating" value="positive" <? if (rating === 'positive') { ?>checked<? } ?> required><img src="data:image/png;base64,<?!= thumbs.feedbackPositive || '' ?>" alt="Útil"></label>
+          <label><input type="radio" name="rating" value="negative" <? if (rating === 'negative') { ?>checked<? } ?> required><img src="data:image/png;base64,<?!= thumbs.feedbackNegative || '' ?>" alt="Mejorable"></label>
         </fieldset>
         <label>Observaciones (opcional)<textarea name="observation" rows="4" maxlength="1000"></textarea></label>
       <? } else { ?>
@@ -46,9 +45,6 @@
     const form = document.getElementById("edition-feedback");
     const vote = document.getElementById("vote");
     const status = document.getElementById("status");
-    for (const icon of dialog.querySelectorAll("[data-thumb]")) {
-      icon.src = "data:image/png;base64," + document.getElementById("mail-feedback" + icon.dataset.thumb).content.textContent.trim();
-    }
     document.getElementById("feedback-close").onclick = () => dialog.close();
     dialog.showModal();
     form.onsubmit = event => {

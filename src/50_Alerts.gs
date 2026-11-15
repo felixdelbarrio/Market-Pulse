@@ -988,10 +988,15 @@ function buildMarketsAlertInlineImages_() {
   const match = html.match(/--asset-bbva-bei-logo:url\("data:image\/png;base64,([^"\)]+)"\)/);
   if (!match) throw new Error('No se ha encontrado el logotipo oficial de BBVA Banca de Empresas e Instituciones.');
   const images = { bbvaLogo: Utilities.newBlob(Utilities.base64Decode(match[1]), 'image/png', 'bbva-bei.png') };
-  for (const [, id, data] of html.matchAll(/<template id="mail-(biaLogo|feedbackPositive|feedbackNegative)">([A-Za-z0-9+/=]+)<\/template>/g)) {
+  for (const [id, data] of Object.entries(marketsEmailFooterImages_(html))) {
     images[id] = Utilities.newBlob(Utilities.base64Decode(data), 'image/png', id + '.png');
   }
   return images;
+}
+
+function marketsEmailFooterImages_(html) {
+  const entries = html.matchAll(/<template id="mail-(biaLogo|feedbackPositive|feedbackNegative)">([A-Za-z0-9+/=]+)<\/template>/g);
+  return Object.fromEntries([...entries].map(([, id, data]) => [id, data]));
 }
 
 function escapeMarketsAlertHtml_(value) {
