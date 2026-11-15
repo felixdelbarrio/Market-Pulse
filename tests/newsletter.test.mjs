@@ -4,7 +4,7 @@ import test from "node:test";
 import vm from "node:vm";
 
 const newsletterSource = fs.readFileSync(new URL("../src/56_Newsletter.gs", import.meta.url), "utf8");
-const source = ["../src/99_Core.gs", "../src/50_Alerts.gs"]
+const source = ["../src/99_Core.gs", "../src/40_Sheets.gs", "../src/55_AlertPreferences.gs", "../src/50_Alerts.gs"]
   .map(file => fs.readFileSync(new URL(file, import.meta.url), "utf8"))
   .concat(newsletterSource)
   .join("\n");
@@ -370,8 +370,8 @@ test("every geography renders Android, iOS and then Huawei only when data exists
   const volumeStart = html.indexOf("Valoraciones por plataforma");
   const groupStart = html.indexOf(">España</strong>", volumeStart);
   const volumes = html.slice(volumeStart, groupStart);
-  assert.ok(volumes.indexOf("<strong>Android</strong>") < volumes.indexOf("<strong>iOS</strong>"));
-  assert.ok(volumes.indexOf("<strong>iOS</strong>") < volumes.indexOf("<strong>Huawei</strong>"));
+  assert.ok(volumes.indexOf(">Android</strong>") < volumes.indexOf(">iOS</strong>"));
+  assert.ok(volumes.indexOf(">iOS</strong>") < volumes.indexOf(">Huawei</strong>"));
   const geography = html.slice(groupStart);
   assert.ok(geography.indexOf(">Android</strong>") < geography.indexOf(">iOS</strong>"));
   assert.ok(geography.indexOf(">iOS</strong>") < geography.indexOf(">Huawei</strong>"));
@@ -437,6 +437,8 @@ test("localized newsletter renders subject, plain text and HTML in the chosen la
     assert.match(rendered.plain, new RegExp(title));
     assert.match(rendered.html, new RegExp('<html lang="' + language + '"'));
     assert.match(rendered.html, /iOS/);
+    assert.match(rendered.html, /<header[^>]*bgcolor="#070e46"/i);
+    assert.match(rendered.html, /<th scope="col"[^>]*bgcolor="#ffffff"[^>]*color:#070e46/i);
   }
 });
 
@@ -513,10 +515,15 @@ test("the Spanish Argentina closing uses the requested subject and email light c
 test("preview opens and feedback persist separately from the live edition; preview unsubscribe is inert", () => {
   const rows = [["id", "period", "action", "recorded_at", "state", "observation"]];
   const sheet = {
+    getName: () => "NEWSLETTER_INTERACTIONS",
     getLastRow: () => rows.length,
-    getRange: row => ({
-      getValues: () => [rows[row - 1]],
-      setValues: ([values]) => { rows[row - 1] = values; },
+    getLastColumn: () => rows[0].length,
+    getRange: (row, col, _count, width) => ({
+      getValues: () => [Array.from({ length: width }, (_, i) => rows[row - 1]?.[col - 1 + i] || "")],
+      setValues: ([values]) => {
+        rows[row - 1] ||= [];
+        values.forEach((value, i) => { rows[row - 1][col - 1 + i] = value; });
+      },
       createTextFinder: id => ({
         matchEntireCell: () => ({
           findNext: () => {
@@ -539,13 +546,21 @@ test("preview opens and feedback persist separately from the live edition; previ
     }
   });
   vm.runInContext(source, runtime);
-  runtime.marketsNewsletterInteractionSheet_ = () => ({ sheet, headers: rows[0] });
+  runtime.currentMarketsUserEmail_ = () => "reader@bbva.com";
+  runtime.openMarketsSpreadsheet_ = () => ({ getSheetByName: () => sheet });
+  runtime.ensureSheetCapacity_ = () => {};
   runtime.unsubscribeMarketsEmail_ = () => assert.fail("Preview must not change subscriptions");
   const token = (action, preview) => new URL(runtime.marketsNewsletterInteractionLinks_(
     "reader@bbva.com", "2026-10", "secret", preview
   )[action]).searchParams.get("newsletterInteraction");
 
+  const identifier = runtime.marketsNewsletterInteractionId_("2026-10", "vote", "reader@bbva.com", "secret");
+  const recorded = new Date("2026-10-20T09:00:00Z");
+  rows.push([identifier, "2026-10", "positive", recorded, "atendido", "Real"]);
   runtime.saveMarketsNewsletterInteraction(token("positive", false), "positive", "Real");
+  assert.equal(rows[0][6], "user_email");
+  assert.equal(rows[1][3], recorded);
+  assert.equal(rows[1][4], "atendido");
   const previewVote = token("negative", true);
   assert.equal(runtime.saveMarketsNewsletterInteraction(previewVote, "negative", "Prueba").preview, true);
   assert.throws(() => runtime.recordMarketsNewsletterOpen(previewVote), /acceso no válido/);
@@ -556,6 +571,7 @@ test("preview opens and feedback persist separately from the live edition; previ
   runtime.currentMarketsUserEmail_ = () => "another@bbva.com";
   assert.throws(() => runtime.recordMarketsNewsletterOpen(previewOpen), /cuenta conectada/);
 
+  assert.ok(rows.slice(1).every(row => row[6] === "reader@bbva.com"));
   assert.deepEqual(rows.slice(1).map(row => [row[0].split("_")[0], row[2], row[5]]), [
     ["n", "positive", "Real"], ["np", "negative", "Prueba"], ["np", "open", ""]
   ]);

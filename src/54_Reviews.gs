@@ -413,7 +413,7 @@ function marketsReviewClassification_(ss) {
   }
   return { rules: compileReviewRules_(entries, aliases), knownBlocks,
     version: typeof Utilities === 'object' && Utilities.computeDigest ?
-      marketsReviewDigest_([MARKETS_REVIEW_SNAPSHOT_SCHEMA, entries, aliases]) : '' };
+      marketsReviewDigest_([MARKETS_REVIEW_SNAPSHOT_SCHEMA, MARKETS_REVIEW_AUDIENCE_VERSION, entries, aliases]) : '' };
 }
 
 function marketsReviewBlocks_(ids, knownBlocks) {
@@ -466,7 +466,7 @@ function queryMarketsReviews_(ss, filters, window, includeTranslations = false, 
   }
   const derived = Boolean(classification?.version) && typeof marketsReviewIndexSheet_ === 'function' && marketsReviewIndexSheet_(ss);
   const derivedCount = derived ? Math.max(0, Math.min(stored.length, derived.getLastRow() - 1)) : 0;
-  const derivedRows = derivedCount ? derived.getRange(2, 1, derivedCount, MARKETS_REVIEW_INDEX_HEADERS.length).getValues() : [];
+  const derivedRows = derivedCount ? derived.getRange(2, 1, derivedCount, derived.getLastColumn()).getValues() : [];
   let classified = 0;
   const started = Date.now();
   const identities = new Map();
@@ -512,7 +512,7 @@ function queryMarketsReviews_(ss, filters, window, includeTranslations = false, 
       if (approval && approval.packageName === row[4] && new Set(eligible).size > 1 &&
           eligible.includes(approval.country) && approval.digest === marketsAndroidGeographyDigest_(row, approval.automatic)) {
         const evidence = approval.automatic ? marketsAndroidGeographyEvidence_(row, eligible) :
-          marketsAndroidGeographyCandidate_(row[10], eligible);
+          marketsAndroidGeographyCandidate_(marketsReviewOriginalText_(row), eligible);
         if (evidence?.status === 'VALIDAR' && evidence.candidate === approval.country) {
           country = approval.country;
           attributionMethod = approval.automatic ? 'review_evidence_inferred' : 'review_evidence_validated';
@@ -533,13 +533,15 @@ function queryMarketsReviews_(ss, filters, window, includeTranslations = false, 
     });
   function matchingEvidence(candidate) {
     const { row } = candidate;
-    const original = [row[9], row[10]].join(' ');
+    const original = marketsReviewOriginalText_(row);
     if (search && !normalizeReviewEvidence_(original).includes(search)) return false;
     const saved = derivedRows[candidate.rowNumber - 2];
     const indexed = saved && saved[0] === row[0] && saved[2] === classification.version &&
-      saved[1] === marketsReviewTextDigest_(row);
+      saved[1] === marketsReviewTextDigest_(row) && Boolean(saved[7]);
     if (!indexed && rules) classified++;
-    const decision = filters.audience && (indexed ? { audience: saved[4], sharedOperation: saved[5] === true }
+    const indexedEvidence = filters.audience && indexed && safeJsonParse_(saved[8]);
+    const decision = filters.audience && (indexedEvidence ? { audience: saved[4], sharedOperation: saved[5] === true, reason: saved[6],
+      relevance: saved[7], evidence: indexedEvidence }
       : classifyMarketsReviewAudience_(original));
     if (decision && !matchesMarketsReviewAudience_(filters.audience, decision)) return false;
     const ids = indexed ? JSON.parse(saved[3]) : rules ? classifyReviewEvidence_(original, rules) : [];

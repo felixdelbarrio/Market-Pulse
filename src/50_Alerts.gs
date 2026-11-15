@@ -796,6 +796,41 @@ function marketsLightEmailDocument_(language = 'es') {
     "font-family:'BBVABentonSans','Benton Sans BBVA',Arial,Helvetica,sans-serif;\">";
 }
 
+/** Materialize the existing palette in generated email markup for clients that drop inheritance. */
+function protectMarketsEmailColors_(html) {
+  const stack = [];
+  const voidTags = new Set(['area', 'base', 'br', 'col', 'hr', 'img', 'input', 'link', 'meta', 'wbr']);
+  const paint = new Set(['body', 'table', 'tr', 'td', 'th', 'header']);
+  const colored = new Set([...paint, 'a', 'div', 'p', 'h1', 'h2', 'h3', 'span', 'strong', 'b', 'small']);
+  return html.replace(/<(\/?)([a-z][a-z0-9]*)(\s+(?:"[^"]*"|'[^']*'|[^'"<>])*)?>/gi, (tag, closing, name, attributes = '') => {
+    name = name.toLowerCase();
+    if (closing) {
+      if (stack.at(-1)?.name === name) stack.pop();
+      return tag;
+    }
+    if (voidTags.has(name)) return tag;
+    const parent = stack.at(-1) || { background: '#F7F8F8', color: '#000519' };
+    const style = /\sstyle="([^"]*)"/i.exec(attributes);
+    const bgcolor = /\sbgcolor="(#[0-9a-f]{3,6})"/i.exec(attributes);
+    const backgroundValue = /(?:^|;)\s*background(?:-color)?\s*:\s*(#[0-9a-f]{3,6})(?=\s*(?:;|$))/i.exec(style?.[1] || '')?.[1];
+    const explicitColor = /(?:^|;)\s*color\s*:\s*(#[0-9a-f]{3,6})(?=\s*(?:;|$))/i.exec(style?.[1] || '')?.[1];
+    const background = backgroundValue || bgcolor?.[1] || parent.background;
+    const color = explicitColor || parent.color;
+    stack.push({ name, background, color });
+    if (!colored.has(name)) return tag;
+    const solid = paint.has(name) || backgroundValue || bgcolor;
+    let additions = explicitColor ? '' : 'color:' + color + ';';
+    if (solid) {
+      additions += 'background-color:' + background + ';background-image:linear-gradient(' + background + ',' + background + ');';
+      if (!bgcolor) attributes += ' bgcolor="' + background + '"';
+    }
+    if (!additions) return tag;
+    attributes = style ? attributes.replace(style[0], () => ' style="' + style[1].replace(/;?$/, ';') + additions + '"')
+      : attributes + ' style="' + additions + '"';
+    return '<' + name + attributes + '>';
+  });
+}
+
 function renderMarketsAlertEmail_(events, recipient, feedback) {
   const isTest = marketsAlertIsTest_(events);
   const noSignals = marketsAlertPreviewHasNoSignals_(events);
@@ -820,14 +855,14 @@ function renderMarketsAlertEmail_(events, recipient, feedback) {
     marketsAlertSummaryCell_('Críticas', critical, '#B92A45', '#F9E9ED') +
     marketsAlertSummaryCell_('Advertencias', warning, '#946200', '#FFF4CC') +
     marketsAlertSummaryCell_('Positivas', positive, '#277A49', '#E6F4EA') + '</tr></table>';
-  return marketsLightEmailDocument_() +
+  return protectMarketsEmailColors_(marketsLightEmailDocument_() +
     '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" bgcolor="#F7F8F8" style="background:#F7F8F8;"><tr><td align="center" style="padding:28px 12px;">' +
     '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" bgcolor="#FFFFFF" style="width:100%;max-width:640px;background:#FFFFFF;color:#000519;border-radius:16px;overflow:hidden;">' +
     '<tr><td width="100%" bgcolor="#001391" style="padding:24px 28px;background:#001391;color:#FFFFFF;"><img src="cid:bbvaLogo" width="156" alt="BBVA Banca de Empresas e Instituciones" style="display:block;width:156px;height:auto;"><div style="margin-top:22px;color:#8BE1E9;font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">MARKET PULSE · ' + (isTest ? 'PRUEBA DE CANAL' : reviewShare ? 'ALERTAS DE RESEÑAS' : 'ALERTAS DE RATINGS') + '</div><h1 style="margin:8px 0 0;color:#FFFFFF;font-size:28px;line-height:34px;">' + (noSignals ? 'Sin alertas activas' : marketsAlertPreviewIsBelowThreshold_(events) ? 'Prueba con datos reales' : reviewShare ? 'Alerta de reseñas' : 'Alerta por cambios en ratings') + '</h1><p style="margin:10px 0 0;color:#85C8FF;font-size:15px;line-height:22px;">' + escapeMarketsAlertHtml_(subtitle) + '</p></td></tr>' +
     '<tr><td width="100%" style="padding:22px 28px 8px;">' + summary + '</td></tr>' +
     '<tr><td width="100%" style="padding:14px 28px 8px;">' + cards + '</td></tr>' +
     '<tr><td width="100%" style="padding:18px 28px 30px;">' + cta + '<p style="margin:18px 0 0;color:#46536D;font-size:12px;line-height:18px;">Este correo es privado y contiene únicamente señales configuradas para tu cuenta. Las preferencias de otros usuarios nunca son visibles.</p><p style="margin:7px 0 0;color:#ADB8C2;font-size:10px;line-height:15px;">Datos obtenidos el ' + escapeMarketsAlertHtml_(marketsAlertDataDateLabel_(events)) + ' · backend ' + escapeMarketsAlertHtml_(MARKETS_CONFIG.codeVersion) + ' / web ' + escapeMarketsAlertHtml_(marketsAlertWebVersion_()) + '.</p></td></tr>' +
-    '<tr><td style="padding:0 28px 28px;">' + renderMarketsEmailFooter_(feedback) + '</td></tr></table></td></tr></table></body></html>';
+    '<tr><td style="padding:0 28px 28px;">' + renderMarketsEmailFooter_(feedback) + '</td></tr></table></td></tr></table></body></html>');
 }
 
 function marketsAlertIsReviewShare_(events) {
@@ -1123,30 +1158,14 @@ function requireMarketsAlertFeedbackLink_(token, recipient) {
 }
 
 const MARKETS_ALERT_FEEDBACK_BASE = ['message_id', 'vote', 'recorded_at'];
-const MARKETS_ALERT_FEEDBACK_HEADERS = [...MARKETS_ALERT_FEEDBACK_BASE, 'observation', 'status'];
+const MARKETS_ALERT_FEEDBACK_HEADERS = [...MARKETS_ALERT_FEEDBACK_BASE, 'observation', 'status', 'user_email'];
 
 function marketsAlertFeedbackSheet_(ss, extend = false) {
   const name = 'ALERT_FEEDBACK';
   const existing = ss.getSheetByName(name);
   if (!existing && !extend) return null;
   const sheet = existing || ss.insertSheet(name);
-  if (sheet.getLastRow() === 0) {
-    if (!extend) return null;
-    ensureSheetCapacity_(sheet, 1, MARKETS_ALERT_FEEDBACK_HEADERS.length);
-    sheet.getRange(1, 1, 1, MARKETS_ALERT_FEEDBACK_HEADERS.length).setValues([MARKETS_ALERT_FEEDBACK_HEADERS]);
-    return { sheet, headers: MARKETS_ALERT_FEEDBACK_HEADERS };
-  }
-  const current = readSheetHeader_(sheet);
-  if (current.length > MARKETS_ALERT_FEEDBACK_BASE.length) {
-    assertCurrentSheetContract_(sheet, MARKETS_ALERT_FEEDBACK_HEADERS, current);
-    return { sheet, headers: MARKETS_ALERT_FEEDBACK_HEADERS };
-  }
-  assertCurrentSheetContract_(sheet, MARKETS_ALERT_FEEDBACK_BASE, current);
-  if (!extend) return { sheet, headers: MARKETS_ALERT_FEEDBACK_BASE };
-  const extra = MARKETS_ALERT_FEEDBACK_HEADERS.slice(MARKETS_ALERT_FEEDBACK_BASE.length);
-  ensureSheetCapacity_(sheet, 1, MARKETS_ALERT_FEEDBACK_HEADERS.length);
-  sheet.getRange(1, MARKETS_ALERT_FEEDBACK_BASE.length + 1, 1, extra.length).setValues([extra]);
-  return { sheet, headers: MARKETS_ALERT_FEEDBACK_HEADERS };
+  return marketsAppendSheetHeaders_(sheet, MARKETS_ALERT_FEEDBACK_HEADERS, [MARKETS_ALERT_FEEDBACK_BASE.length, 5], extend);
 }
 
 function findMarketsAlertFeedback_(sheet, id) {
@@ -1170,11 +1189,13 @@ function saveMarketsAlertFeedback(token, vote, observation) {
     const previous = found && current.sheet.getRange(found.getRow(), 1, 1, current.headers.length).getValues()[0];
     const choice = vote || request.vote;
     const note = observation === undefined ? previous?.[3] || '' : comment;
-    if (previous && previous[1] === choice && (previous[3] || '') === note) return { recorded: true };
+    const unchanged = previous && previous[1] === choice && (previous[3] || '') === note;
+    if (unchanged && previous[5] === recipient) return { recorded: true };
     const { sheet, headers } = marketsAlertFeedbackSheet_(ss, true);
     const row = found ? found.getRow() : sheet.getLastRow() + 1;
     ensureSheetCapacity_(sheet, row, headers.length);
-    sheet.getRange(row, 1, 1, headers.length).setValues([[request.id, choice, new Date(), marketsReviewLiteral_(note), 'pendiente']]);
+    sheet.getRange(row, 1, 1, headers.length).setValues([[request.id, choice, unchanged ? previous[2] : new Date(), marketsReviewLiteral_(note),
+      unchanged ? previous[4] || 'pendiente' : 'pendiente', marketsReviewLiteral_(recipient)]]);
     SpreadsheetApp.flush();
     return { recorded: true };
   } finally {

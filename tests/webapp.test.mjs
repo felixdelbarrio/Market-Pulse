@@ -375,7 +375,7 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(evolutionMarkup, /class="panel-body radar-filters review-gap-controls"[\s\S]*id="monthly-review-segment"/);
   assert.match(app, /searchable\(\$\("monthly-review-segment"\)\)\.refresh\(\)/);
   assert.match(evolutionMarkup, /id="evolution-filters"[\s\S]*name="audience"[\s\S]*name="inferGeography"[\s\S]*<\/form>/);
-  assert.match(evolutionMarkup, /id="monthly-matrix"[\s\S]*id="new-review-impact"[\s\S]*id="review-balance"[\s\S]*id="review-deltas"[\s\S]*id="review-examples"/);
+  assert.match(evolutionMarkup, /id="review-balance"[\s\S]*id="review-deltas"[\s\S]*id="review-examples"[\s\S]*id="monthly-matrix"[\s\S]*id="new-review-impact"/);
   assert.match(analyticsMarkup, /class="annual-chart-layout">\s*<div id="annual-chart"[^>]*><\/div>\s*<aside id="annual-series"[^>]*><\/aside>/);
   assert.match(analyticsMarkup, /id="review-heatmap"[\s\S]*id="analytics-entity"[\s\S]*id="annual-chart"[\s\S]*id="review-annual"/);
   const charts = fs.readFileSync(new URL("../src/Charts.html", import.meta.url), "utf8");
@@ -910,4 +910,35 @@ test("trend cache reuses a matching global series without another country RPC", 
   settle([]);
   await differentScope;
   assert.equal(requests, 2);
+});
+
+test("newsletter access is recorded before bootstrap and a failed RPC retains the token for retry", () => {
+  const source = fs.readFileSync(new URL("../src/App.html", import.meta.url), "utf8");
+  const handler = source.slice(source.indexOf("    function recordNewsletterOpen()"), source.indexOf("    function openEmailFeedback()"));
+  const timers = [], attempts = [], dataset = { newsletterOpen: "signed-token" };
+  let success, failure;
+  const run = {
+    withSuccessHandler(fn) { success = fn; return this; },
+    withFailureHandler(fn) { failure = fn; return this; },
+    recordMarketsNewsletterOpen(token) { attempts.push(token); }
+  };
+  const sandbox = vm.createContext({
+    document: { body: { dataset }, visibilityState: "hidden", removeEventListener() {} },
+    google: { script: { run } }, setTimeout: (callback, time) => timers.push([callback,time]),
+    showToast: () => assert.fail("The first failure should be retried silently")
+  });
+  vm.runInContext(handler, sandbox);
+  sandbox.recordNewsletterOpen();
+  assert.deepEqual(attempts, []);
+  sandbox.document.visibilityState = "visible";
+  sandbox.recordNewsletterOpen();
+  failure(new Error("RPC unavailable"));
+  assert.equal(dataset.newsletterOpen, "signed-token");
+  assert.equal(timers[0][1], 500);
+  timers[0][0]();
+  success({ open: true });
+  assert.equal(dataset.newsletterOpen, undefined);
+  assert.deepEqual(attempts, ["signed-token", "signed-token"]);
+  const init = source.match(/function initializeApp\(\).*?loadBootstrap\(\)/s)[0];
+  assert.match(init, /recordNewsletterOpen\(\).*loadBootstrap\(\)/s);
 });

@@ -388,9 +388,9 @@ function getMarketsBusinessCatalog(section, language) {
     case 'relevance':
       return table(['Criterio', 'Regla'], [
         ['Todos', 'Audiencia inicial de Comentarios'],
-        ['Solo BEI', 'Evidencia empresarial directa en el original'],
-        ['BEI extendido', 'Evidencia directa, contextual u operativa compartida sin señal retail explícita'],
-        ['Operativa compartida', 'Transferencias, pagos, cuentas o tarjetas con contexto operativo y sin uso particular explícito'],
+        ['BEI', 'Actividad empresarial explícita o experiencia funcional concreta sin evidencia de uso exclusivamente personal'],
+        ['Audiencia', 'Empresa, personal, mixta o desconocida según el título y cuerpo originales'],
+        ['Relevancia', 'Empresarial, transversal, dudosa o ninguna. La relevancia transversal no identifica al autor como empresa'],
         ['NPS de reseñas', MARKETS_DEFAULT_REVIEW_SEGMENTS.map(group => group.label + ': ' + group.stars.join(', ')).join(' · ')]
       ]);
     case 'storage':

@@ -588,7 +588,7 @@ function renderMarketsNewsletterHtml_(model) {
         (item.shared ? ' sobre la ficha compartida completa, sin atribución geográfica.' : '.') + '</div>';
     }).join('') + '</div></td></tr>' : '';
   const appUrl = escapeMarketsAlertHtml_(model.interactions?.open || marketsWebAppLoginUrl_(model.configuredFor || ''));
-  return marketsLightEmailDocument_() +
+  return protectMarketsEmailColors_(marketsLightEmailDocument_() +
     '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" bgcolor="#F7F8F8" style="background:#F7F8F8;"><tr><td align="center" style="padding:28px 10px;">' +
     '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" bgcolor="#FFFFFF" style="width:100%;max-width:720px;background:#FFFFFF;color:#000519;border-radius:16px;overflow:hidden;">' +
     preview +
@@ -612,7 +612,7 @@ function renderMarketsNewsletterHtml_(model) {
     appUrl + '" style="display:block;padding:13px 22px;color:#FFFFFF;text-decoration:none;font-weight:700;">Abrir Market Pulse</a></td></tr></table>' +
     '<p style="margin:16px 0 0;color:#ADB8C2;font-size:10px;line-height:15px;">La lectura ejecutiva se genera exclusivamente a partir de las cifras mostradas. Ratings y volúmenes de Android, iOS y Huawei nunca se combinan. Solo se publican posiciones con cobertura competitiva completa; los volúmenes no atribuibles y los efectos no fiables se presentan como N/D o se omiten.</p></td></tr>' +
     '<tr><td style="padding:0 30px 28px;">' + renderMarketsEmailFooter_(model.interactions, model.language) + '</td></tr>' +
-    '</table></td></tr></table></body></html>';
+    '</table></td></tr></table></body></html>');
 }
 
 function marketsNewsletterGroups_(items) {
@@ -990,19 +990,18 @@ function localizedMarketsNewsletter_(model) {
   const coverage = model.coverage ? copy.coverage + ' ' + model.coverage.observed + '/' + model.coverage.expected : '';
   const url = model.interactions?.open || marketsWebAppUrl_(), esc = escapeMarketsAlertHtml_;
   const plain = [subject, coverage, headers.join(' | '), ...rows.map(row => row.join(' | ')), marketsNewsletterInteractionText_(model)].filter(Boolean).join('\n');
-  const html = marketsLightEmailDocument_(language) +
+  const html = protectMarketsEmailColors_(marketsLightEmailDocument_(language) +
     '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" bgcolor="#FFFFFF" style="background-color:#FFFFFF;color:#070E46;"><tr><td>' +
     '<header style="background:#070e46;padding:20px;color:#fff"><img src="cid:bbvaLogo" alt="BBVA" width="112"><h1>' +
     esc(subject) + '</h1></header><p>' + esc(coverage) + '</p><table cellpadding="8"><thead><tr>' +
     headers.map(value => '<th scope="col">' + esc(value) + '</th>').join('') + '</tr></thead><tbody>' +
     rows.map(row => '<tr>' + row.map(value => '<td>' + esc(value) + '</td>').join('') + '</tr>').join('') +
-    '</tbody></table><p><a style="color:#001391;" href="' + esc(url) + '">' + esc(copy.link) + '</a></p>' + renderMarketsEmailFooter_(model.interactions, language) + '</td></tr></table></body></html>';
+    '</tbody></table><p><a style="color:#001391;" href="' + esc(url) + '">' + esc(copy.link) + '</a></p>' + renderMarketsEmailFooter_(model.interactions, language) + '</td></tr></table></body></html>');
   return { subject, plain, html };
 }
 
 const MARKETS_NEWSLETTER_INTERACTIONS = 'NEWSLETTER_INTERACTIONS';
-const MARKETS_NEWSLETTER_INTERACTION_HEADERS = ['id', 'period', 'action', 'recorded_at', 'state'];
-const MARKETS_NEWSLETTER_NOTE_HEADER = 'observation';
+const MARKETS_NEWSLETTER_INTERACTION_HEADERS = ['id', 'period', 'action', 'recorded_at', 'state', 'observation', 'user_email'];
 const MARKETS_NEWSLETTER_SECRET = 'MARKETS_NEWSLETTER_INTERACTION_SECRET';
 
 function marketsNewsletterInteractionLinks_(recipient, period, secret, preview = false) {
@@ -1036,22 +1035,9 @@ function renderMarketsNewsletterInteractionPage_(token) {
 }
 
 function marketsNewsletterInteractionSheet_(ss, extend = false) {
-  const name = MARKETS_NEWSLETTER_INTERACTIONS, base = MARKETS_NEWSLETTER_INTERACTION_HEADERS;
-  const existing = ss.getSheetByName(name);
-  if (existing && existing.getLastColumn() !== base.length) {
-    const headers = [...base, MARKETS_NEWSLETTER_NOTE_HEADER];
-    return { sheet: requireCurrentSheetContract_(ss, name, headers), headers };
-  }
-  const sheet = existing ? requireCurrentSheetContract_(ss, name, base) : ss.insertSheet(name);
-  const headers = extend ? [...base, MARKETS_NEWSLETTER_NOTE_HEADER] : base;
-  if (!existing) sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
-  if (existing && extend) {
-    ensureSheetCapacity_(sheet, 1, headers.length);
-    sheet.getRange(1, headers.length).setValue(MARKETS_NEWSLETTER_NOTE_HEADER);
-    SpreadsheetApp.flush();
-    requireCurrentSheetContract_(ss, name, headers);
-  }
-  return { sheet, headers };
+  const name = MARKETS_NEWSLETTER_INTERACTIONS;
+  const sheet = ss.getSheetByName(name) || (extend ? ss.insertSheet(name) : null);
+  return sheet && marketsAppendSheetHeaders_(sheet, MARKETS_NEWSLETTER_INTERACTION_HEADERS, [5, 6], extend);
 }
 
 function requireMarketsNewsletterInteractionLink_(token, email) {
@@ -1086,15 +1072,16 @@ function saveMarketsNewsletterInteraction(token, vote, observation) {
   try {
     const ss = openMarketsSpreadsheet_();
     if (action === 'unsubscribe') return unsubscribeMarketsEmail_(ss, email, true);
-    const { sheet, headers } = marketsNewsletterInteractionSheet_(ss, Boolean(comment));
+    const { sheet, headers } = marketsNewsletterInteractionSheet_(ss, true);
     const last = sheet.getLastRow();
     const found = last > 1 ? sheet.getRange(2, 1, last - 1, 1).createTextFinder(id).matchEntireCell(true).findNext() : null;
-    const before = found && rating ? sheet.getRange(found.getRow(), 1, 1, headers.length).getValues()[0] : null;
-    const withNotes = headers.length > MARKETS_NEWSLETTER_INTERACTION_HEADERS.length;
-    if (!found || (rating && (before[2] !== action || (observation !== undefined && (before[5] || '') !== comment)))) {
+    const before = found && sheet.getRange(found.getRow(), 1, 1, headers.length).getValues()[0];
+    const note = observation === undefined ? before?.[5] || '' : comment;
+    const changed = before && rating && (before[2] !== action || (before[5] || '') !== note);
+    if (!before || changed || before[6] !== email) {
       const row = found ? found.getRow() : last + 1;
-      const values = [id, period, action, new Date(), action === 'open' ? '' : 'pendiente'];
-      if (withNotes) values.push(marketsReviewLiteral_(observation === undefined ? before?.[5] || '' : comment));
+      const values = [id, period, action, before && !changed ? before[3] : new Date(),
+        action === 'open' ? '' : changed ? 'pendiente' : before?.[4] || 'pendiente', marketsReviewLiteral_(note), marketsReviewLiteral_(email)];
       ensureSheetCapacity_(sheet, row, headers.length);
       sheet.getRange(row, 1, 1, headers.length).setValues([values]);
       SpreadsheetApp.flush();
@@ -1156,8 +1143,8 @@ function marketsNewsletterAccessUsers_(rows, editions, asOf) {
   const users = new Map(), seen = new Set();
   const recentStart = asOf.getTime() - 30 * 86400000;
   let identified = 0;
-  for (const [id, , , date] of rows) {
-    const email = editions.get(id)?.email;
+  for (const [id, , , date, , , storedEmail] of rows) {
+    const email = normalizeEmailForComparison_(storedEmail) || editions.get(id)?.email;
     if (!email || seen.has(id)) continue;
     const time = new Date(date).getTime();
     if (!Number.isFinite(time) || time > asOf.getTime()) continue;
@@ -1188,9 +1175,9 @@ function getMarketsNewsletterInteractions(kind, period, vote, status, start = ''
     const alert = marketsAlertFeedbackSheet_(ss);
     const count = alert ? alert.sheet.getLastRow() - 1 : 0;
     if (count > 0) {
-      for (const [id, action, date, comment, state] of alert.sheet.getRange(2, 1, count, alert.headers.length).getValues()) {
+      for (const [id, action, date, comment, state, email] of alert.sheet.getRange(2, 1, count, alert.headers.length).getValues()) {
         if (/^[a-f0-9]{32}$/.test(id) && ['positive', 'negative'].includes(action)) {
-          rows.push([id, '', action, date, state || 'pendiente', comment]);
+          rows.push([id, '', action, date, state || 'pendiente', comment, email]);
         }
       }
     }
@@ -1219,7 +1206,14 @@ function getMarketsNewsletterInteractions(kind, period, vote, status, start = ''
     negative: selected.filter(row => row[2] === 'negative').length,
     pending: selected.filter(row => row[4] === 'pendiente').length,
     resolved: selected.filter(row => row[4] === 'atendido').length,
-    rows: selected.sort((a, b) => new Date(b[3]) - new Date(a[3])).map(([id, edition, action, date, state, comment]) => [edition, action, adminDateTime_(date), state, kind === 'feedback' ? id : '', comment || '', id.startsWith('np_') ? { ...editions.get(id), preview: true } : kind === 'feedback' ? editions.get(id) || null : null]) };
+    rows: selected.sort((a, b) => new Date(b[3]) - new Date(a[3])).map(([id, edition, action, date, state, comment, storedEmail]) => {
+      const preview = id.startsWith('np_');
+      const delivery = editions.get(id);
+      const metadata = kind === 'feedback' ? {
+        ...delivery, email: normalizeEmailForComparison_(storedEmail) || delivery?.email || 'desconocido', preview
+      } : preview ? { preview: true } : null;
+      return [edition, action, adminDateTime_(date), state, kind === 'feedback' ? id : '', comment || '', metadata];
+    }) };
 }
 
 function setMarketsNewsletterFeedbackState(id, state) {
@@ -1236,7 +1230,7 @@ function setMarketsNewsletterFeedbackState(id, state) {
         throw new Error('Valoración no disponible.');
       }
       const { sheet, headers } = marketsAlertFeedbackSheet_(ss, true);
-      sheet.getRange(found.getRow(), headers.length).setValue(state);
+      sheet.getRange(found.getRow(), headers.indexOf('status') + 1).setValue(state);
       SpreadsheetApp.flush();
       return { saved: true };
     }

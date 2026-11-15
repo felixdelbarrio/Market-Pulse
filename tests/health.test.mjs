@@ -71,3 +71,30 @@ test("trigger installation replaces daily, health and monthly schedules and pres
     { handler: "runMarketsMonthlyNewsletter", hour: 8, minute: 15, days: undefined, monthDay: 1, zone: "Europe/Madrid" }
   ]);
 });
+
+test("health email wraps the existing report with explicit light colors in the actual MIME message", () => {
+  const runtime = vm.createContext({ ...context });
+  vm.runInContext(["55_AlertPreferences.gs", "50_Alerts.gs", "57_MonitorHealth.gs"]
+    .map(file => fs.readFileSync(new URL("../src/" + file, import.meta.url), "utf8")).join("\n"), runtime);
+  let mime;
+  Object.assign(runtime, {
+    Session: { getEffectiveUser: () => ({ getEmail: () => "owner@bbva.com" }) },
+    Utilities: { getUuid: () => "message", Charset: { UTF_8: "UTF_8" }, base64EncodeWebSafe: value => value },
+    Gmail: { Users: { Messages: { send: ({ raw }) => { mime = raw; return { id: "accepted" }; } } } },
+    marketsWebAppUrl_: () => "https://example.test/exec",
+    marketsWebAppLoginUrl_: () => "https://example.test/login",
+    marketsAlertDateLabel_: () => "15/11/2026",
+    marketsAlertEncodedHeader_: value => value,
+    marketsAlertMimeText_: value => value,
+    marketsAlertMimeBytes_: () => "inline-png",
+    buildMarketsAlertInlineImages_: () => ({ bbvaLogo: { getBytes: () => [] } })
+  });
+  const result = runtime.sendMarketsMonitorHealthEmail_("reader@bbva.com",
+    { dateKey: "2026-11-15", reason: "Error <de prueba>" }, new Date("2026-11-15T07:40:00Z"));
+  assert.equal(result.messageId, "accepted");
+  assert.match(mime, /<body bgcolor="#F7F8F8"/);
+  assert.match(mime, /<table[^>]*bgcolor="#F7F8F8"/);
+  assert.match(mime, /linear-gradient\(#001391,#001391\)/);
+  assert.match(mime, /Error &lt;de prueba&gt;/);
+  assert.match(mime, /Content-ID: <bbvaLogo>/);
+});

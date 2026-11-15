@@ -683,12 +683,31 @@ test("alert feedback tokens bind the vote to the recipient and deduplicate acros
   writes.push(["message_id", "vote", "recorded_at"], [id, "positive", new Date("2026-01-01")]);
   assert.equal(context.saveMarketsAlertFeedback(token("positive"), "negative", "=Comentario").recorded, true);
   assert.equal(writes.length, 2);
-  assert.deepEqual(writes[0], ["message_id", "vote", "recorded_at", "observation", "status"]);
+  assert.deepEqual(writes[0], ["message_id", "vote", "recorded_at", "observation", "status", "user_email"]);
   assert.deepEqual(Array.from(writes[1].slice(0, 2)), [id, "negative"]);
-  assert.deepEqual(writes[1].slice(3), ["'=Comentario", "pendiente"]);
+  assert.deepEqual(writes[1].slice(3), ["'=Comentario", "pendiente", "recipient@bbva.com"]);
   const updated = writes[1][2];
   writes[1][3] = "=Comentario"; // getValues returns the literal without the escape prefix
   assert.equal(context.saveMarketsAlertFeedback(token("positive"), "negative", "=Comentario").recorded, true);
   assert.equal(writes[1][2], updated);
   assert.equal(context.parseMarketsAlertFeedback_(token("positive").replace(/\.\d{10}\./, ".1000000000.")), null);
+});
+
+test("alert envelopes materialize the light palette for operational and preview email", () => {
+  const event = { type: "TEST_SNAPSHOT", country: "España", countryCode: "ES", platform: "iOS",
+    rating: 4, previousRating: 4, referenceDate: new Date("2026-11-01"), severity: "WARNING", isTest: true };
+  for (const sample of [event, { ...event, type: "TEST_BELOW_THRESHOLD" }, { ...event, type: "RATING_DROP", isTest: false }]) {
+    const html = context.renderMarketsAlertEmail_([sample], "reader@bbva.com", {
+      positive: "https://example.test/positive", negative: "https://example.test/negative"
+    });
+    assert.match(html, /name="color-scheme" content="light"/);
+    assert.match(html, /background-image:linear-gradient\(#001391,#001391\)/);
+    for (const node of html.match(/<(?:table|tr|td|th)\b[^>]*>/g)) {
+      assert.match(node, /bgcolor="#[0-9a-f]{3,6}"/i);
+      assert.match(node, /background-color:#[0-9a-f]{3,6}/i);
+      assert.match(node, /(?:[";])color:#[0-9a-f]{3,6}/i);
+    }
+    assert.match(html, /cid:bbvaLogo/);
+    assert.match(html, /cid:feedbackPositive/);
+  }
 });

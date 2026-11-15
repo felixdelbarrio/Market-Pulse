@@ -72,16 +72,14 @@
             <div class="filter-field"><label for="evolution-app">Aplicación</label><select id="evolution-app" name="app"></select></div>
             <div class="filter-field"><label for="year-filter">Año</label><select id="year-filter" name="year"></select></div>
             <div class="filter-field"><label for="month-filter">Mes</label><select id="month-filter" name="month"></select></div>
-            <div class="filter-field"><label for="monthly-review-audience">Comentarios</label><select id="monthly-review-audience" name="audience" aria-describedby="monthly-review-audience-help"><option value="">Todos</option><option value="BEI_ONLY">Solo BEI</option><option value="BEI_EXTENDED">BEI extendido</option></select>
-            <small id="monthly-review-audience-help">BEI extendido incluye señales empresariales y operaciones bancarias compartidas sin evidencia de uso personal.</small></div>
+            <div class="filter-field"><label for="monthly-review-audience">Comentarios</label><select id="monthly-review-audience" name="audience" aria-describedby="monthly-review-audience-help"><option value="">Todos</option><option value="BEI">BEI</option></select>
+            <small id="monthly-review-audience-help">BEI incluye reseñas empresariales y experiencias funcionales útiles sin evidencia de uso exclusivamente personal.</small></div>
           <div class="filter-field"><label for="monthly-review-infer">Inferir datos</label><select id="monthly-review-infer" name="inferGeography"><option value="YES">Sí</option><option value="NO">No</option></select><small>Incluye geografías inferidas de Android.</small></div>
 
           </form>
         </div>
         </div>
         <div id="evolution-markets" class="geography-tabs" role="group" aria-label="Geografías"></div>
-        <section class="section panel monthly-pulse-panel"><div class="panel-head"><div><h3 id="monthly-pulse-title">Pulso mensual de BBVA Empresas</h3><span>Histórico hasta el cierre seleccionado · rating y reseñas por plataforma</span></div><span id="monthly-matrix-meta" class="panel-meta">Últimos cierres</span></div><div id="monthly-matrix" class="monthly-matrix-wrap"></div><div class="monthly-matrix-note"><span><b>Lectura:</b> la variación solo aparece cuando existe movimiento real.</span><span id="monthly-shared-note" class="hidden"><b>N/D:</b> listing Android compartido sin desglose fiable por geografía.</span></div></section>
-        <section class="section panel new-review-panel" aria-labelledby="new-review-title"><div class="panel-head"><div><span class="section-kicker">Voz nueva del mes</span><h3 id="new-review-title">Qué nota dejan las nuevas reseñas</h3><span>Diferencia entre la nota del mes y el rating previo de la misma ficha.</span></div><span id="new-review-meta" class="panel-meta">Cierre seleccionado</span></div><div id="new-review-impact" class="new-review-impact"></div><div class="new-review-note"><strong>Cómo leerlo</strong><span>La nota del mes se calcula con dos cierres acumulados consecutivos. En una ficha Android multipaís, la nota y el efecto corresponden a toda la ficha. El volumen local queda en N/D cuando no puede verificarse o estimarse de forma fiable.</span></div></section>
         <section id="review-balance-panel" class="section panel trend-panel">
           <div class="panel-header"><div><p class="eyebrow">EVOLUCIÓN POR ENTIDAD</p><h3>NPS de reseñas</h3></div><span id="review-balance-period" class="chart-period"></span></div>
           <p id="review-nps" class="review-chart-note" role="status"></p>
@@ -100,6 +98,8 @@
             <div id="review-deltas" class="panel-body" aria-live="polite"></div>
           </section>
           <section class="panel hidden" id="review-examples-panel"><div class="panel-head"><h3 id="review-examples-title">Ejemplos del mes en curso</h3></div><div id="review-examples" class="panel-body"></div></section>
+        <section class="section panel monthly-pulse-panel"><div class="panel-head"><div><h3 id="monthly-pulse-title">Pulso mensual de BBVA Empresas</h3><span>Histórico hasta el cierre seleccionado · rating y reseñas por plataforma</span></div><span id="monthly-matrix-meta" class="panel-meta">Últimos cierres</span></div><div id="monthly-matrix" class="monthly-matrix-wrap"></div><div class="monthly-matrix-note"><span><b>Lectura:</b> la variación solo aparece cuando existe movimiento real.</span><span id="monthly-shared-note" class="hidden"><b>N/D:</b> listing Android compartido sin desglose fiable por geografía.</span></div></section>
+        <section class="section panel new-review-panel" aria-labelledby="new-review-title"><div class="panel-head"><div><span class="section-kicker">Voz nueva del mes</span><h3 id="new-review-title">Qué nota dejan las nuevas reseñas</h3><span>Diferencia entre la nota del mes y el rating previo de la misma ficha.</span></div><span id="new-review-meta" class="panel-meta">Cierre seleccionado</span></div><div id="new-review-impact" class="new-review-impact"></div><div class="new-review-note"><strong>Cómo leerlo</strong><span>La nota del mes se calcula con dos cierres acumulados consecutivos. En una ficha Android multipaís, la nota y el efecto corresponden a toda la ficha. El volumen local queda en N/D cuando no puede verificarse o estimarse de forma fiable.</span></div></section>
       </section>
 
       <section id="view-alerts" class="view hidden">
@@ -172,8 +172,8 @@
         <div class="report-slot"></div>
         <div id="analytics-filters" class="radar-filters">
           <form class="filter-panel" hidden>
-            <div class="filter-field"><label for="analytics-audience">Comentarios</label><select id="analytics-audience" name="audience" aria-describedby="analytics-audience-help"><option value="">Todos</option><option value="BEI_ONLY">Solo BEI</option><option value="BEI_EXTENDED">BEI extendido</option></select>
-            <small id="analytics-audience-help">BEI extendido incluye señales empresariales y operaciones bancarias compartidas sin evidencia de uso personal.</small></div>
+            <div class="filter-field"><label for="analytics-audience">Comentarios</label><select id="analytics-audience" name="audience" aria-describedby="analytics-audience-help"><option value="">Todos</option><option value="BEI">BEI</option></select>
+            <small id="analytics-audience-help">BEI incluye reseñas empresariales y experiencias funcionales útiles sin evidencia de uso exclusivamente personal.</small></div>
             <div class="filter-field"><label for="analytics-year">Año</label><select id="analytics-year" name="year"></select></div>
             <div class="filter-field"><label for="analytics-infer">Inferir datos</label><select id="analytics-infer" name="inferGeography"><option value="">Sí</option><option value="NO">No</option></select><small>Incluye geografías inferidas de Android.</small></div>
             <div class="filter-field"><label for="analytics-country">Geografía</label><select id="analytics-country" name="country"></select></div>
@@ -201,8 +201,8 @@
           <form class="filter-panel" hidden>
             <div class="filter-field"><label for="review-app">Aplicación</label><select id="review-app" name="app"></select></div>
             <div class="filter-field"><label for="review-segment">Sentimiento</label><select id="review-segment" name="segment"></select></div>
-            <div class="filter-field"><label for="review-audience">Comentarios</label><select id="review-audience" name="audience" aria-describedby="review-audience-help"><option value="">Todos</option><option value="BEI_ONLY">Solo BEI</option><option value="BEI_EXTENDED">BEI extendido</option></select>
-            <small id="review-audience-help">BEI extendido incluye señales empresariales y operaciones bancarias compartidas sin evidencia de uso personal.</small></div>
+            <div class="filter-field"><label for="review-audience">Comentarios</label><select id="review-audience" name="audience" aria-describedby="review-audience-help"><option value="">Todos</option><option value="BEI">BEI</option></select>
+            <small id="review-audience-help">BEI incluye reseñas empresariales y experiencias funcionales útiles sin evidencia de uso exclusivamente personal.</small></div>
             <div class="filter-field"><label for="review-infer">Inferir datos</label><select id="review-infer" name="inferGeography"><option value="">Sí</option><option value="NO">No</option></select><small>Incluye geografías inferidas de Android.</small></div>
             <div class="filter-field"><label for="review-country">Geografía</label><select id="review-country" name="country"></select></div>
             <div class="filter-field"><label for="review-platform">Plataforma</label><select id="review-platform" name="platform"></select></div>
