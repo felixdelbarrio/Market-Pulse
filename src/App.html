@@ -195,7 +195,18 @@
       "Voz nueva del mes":["New feedback this month","Ayın yeni geri bildirimleri"],
       "Qué nota dejan las nuevas reseñas":["What rating do new reviews give?","Yeni yorumların puanı nedir?"],
       "Histórico hasta el cierre seleccionado · rating y reseñas por plataforma":["History through the selected close · ratings and reviews by platform","Seçili kapanışa kadar geçmiş · platforma göre puan ve yorumlar"],
-      "Calidad del feedback recibido y su efecto observable en el rating acumulado.":["Quality of recent feedback and its observed effect on the cumulative rating.","Geri bildirimin niteliği ve birikimli puana gözlemlenen etkisi."],
+      "Diferencia entre la nota del mes y el rating previo de la misma ficha.":["Difference between the month's rating and the previous rating for the same listing.","Ayın puanı ile aynı mağaza kaydının önceki puanı arasındaki fark."],
+      "Cómo leerlo":["How to read this","Nasıl okunur"],
+      "La nota del mes se calcula con dos cierres acumulados consecutivos. En una ficha Android multipaís, la nota y el efecto corresponden a toda la ficha. El volumen local queda en N/D cuando no puede verificarse o estimarse de forma fiable.":["The monthly rating uses two consecutive cumulative closes. For a multi-country Android listing, the rating and effect apply to the entire listing. Local volume is N/A when it cannot be verified or reliably estimated.","Ayın puanı art arda iki birikimli kapanıştan hesaplanır. Çok ülkeli Android kaydında puan ve etki tüm kayıt için geçerlidir. Güvenilir yerel hacim yoksa N/D gösterilir."],
+      "Ficha Android multipaís":["Multi-country Android listing","Çok ülkeli Android kaydı"],
+      "Ficha independiente":["Independent listing","Bağımsız mağaza kaydı"],
+      "Volumen local N/D: inferencia desactivada":["Local volume N/A: inference disabled","Yerel hacim N/D: çıkarım kapalı"],
+      "Volumen local N/D: falta una muestra representativa de valoraciones":["Local volume N/A: no representative ratings sample","Yerel hacim N/D: temsili puan örneklemi yok"],
+      "Incremento observado en la ficha":["Observed increase for the listing","Kayıt için gözlemlenen artış"],
+      "Volumen de la ficha N/D":["Listing volume N/A","Kayıt hacmi N/D"],
+      "Valoraciones":["Ratings","Puanlamalar"],
+      "valoraciones":["ratings","puanlama"],
+      "vs. rating previo de la misma ficha":["vs. the previous rating for the same listing","aynı kaydın önceki puanına göre"],
       "Incidencias de la última carga":["Issues from the last collection","Son veri toplama sorunları"],
       "Sin incidencias":["No issues","Sorun yok"],
       "Descargar Excel":["Download Excel","Excel indir"],
@@ -576,10 +587,22 @@
       setExportSheet("evolution","Pulso mensual",state.country,[["Mes de cierre",period],["Aplicación",state.evolutionApp]],
         ["Mes","Rating consolidado","Variación",...model.platforms.flatMap(platform=>[`Rating ${platform}`,`Reseñas ${platform}`])],
         model.rows.flatMap(row=>row.cells.map(cell=>[cell.month,cell.rating,cell.delta,...cell.platforms.flatMap(item=>[item.rating,item.value])])))}
-    function renderNewReviewImpact(period,trends,inferredVolumes=monthlyVolume?.key===JSON.stringify([state.country,state.evolutionApp,period,monthlyFilters])?monthlyVolume.values:{}){if(state.trendsLoading){$("new-review-meta").textContent="Actualizando cierres";$("new-review-impact").innerHTML=U.loading("Calculando la voz nueva del mes","Se validan volumen, continuidad y precisión antes de publicar el resultado.");return}const model=D.monthlyNewReviewImpact(trends,state.snapshot,{...selection(),app:state.evolutionApp,inferGeography:monthlyFilters.inferGeography},period,inferredVolumes);$("new-review-meta").textContent=model.previousPeriod?`${monthLabel(model.previousPeriod)} → ${monthLabel(model.period)} · ${D.config.platformLabels.ALL}`:"Sin base mensual";$("new-review-impact").innerHTML=C.newReviewImpact(model,{format:fmt,integer,monthLabel,signed,showScopes:state.country==="ALL"});
-      setExportSheet("evolution","Voz nueva del mes",state.country,[["Mes de cierre",period],["Aplicación",state.evolutionApp]],
-        ["Aplicación (clave)","Plataforma","Rating anterior","Rating actual","Rating nuevas reseñas","Nuevas reseñas","Impacto","Procedencia del volumen"],
-        model.rows.filter(row=>row.available||D.finite(row.rating)).map(row=>[row.appKey,row.platform,row.previousRating,row.currentRating,row.rating,row.newReviews,row.impact,row.volumeInferred?"Inferido (comentarios capturados)":row.sharedMarket?"No disponible":"Observado"]))}
+    function renderNewReviewImpact(period,trends){
+      if(state.trendsLoading){
+        $("new-review-meta").textContent="Actualizando cierres";
+        $("new-review-impact").innerHTML=U.loading("Calculando la voz nueva del mes","Se validan volumen, continuidad y precisión antes de publicar el resultado.");
+        return;
+      }
+      const inferGeography=monthlyFilters.inferGeography;
+      const model=D.monthlyNewReviewImpact(trends,state.snapshot,{...selection(),app:state.evolutionApp,inferGeography},period);
+      $("new-review-meta").textContent=model.previousPeriod?`${monthLabel(model.previousPeriod)} → ${monthLabel(model.period)} · ${countryLabel(state.country)}`:"Sin base mensual";
+      $("new-review-impact").innerHTML=C.newReviewImpact(model,{format:fmt,integer,signed,showScopes:state.country==="ALL",translate});
+      setExportSheet("evolution","Voz nueva del mes",state.country,
+        [["Mes de cierre",period],["Aplicación",state.evolutionApp],["Inferir datos",reviewFilterLabel("inferGeography",inferGeography)]],
+        ["Aplicación (clave)","Plataforma","Alcance de la ficha","Rating anterior","Rating actual","Rating del mes","Valoraciones","Efecto","Procedencia del volumen"],
+        model.rows.map(row=>[row.appKey,row.platform,D.monthlyVoiceScope(row),row.previousRating,row.currentRating,
+          row.rating??"N/D",row.newReviews??"N/D",row.impact??"N/D",D.monthlyVoiceVolumeDetail(row)]));
+    }
 
     const benchmarkModels=new Map();
     function renderBenchmark(){
@@ -996,7 +1019,6 @@
           ["Mes",...chart.series.map(item=>item.label)],months.map(month=>[month,...points.map(values=>values.get(month))]),true);
       }
     }
-    let monthlyVolume;
     async function loadMonthlyReviews(period){
       const started=performance.now(), current=reviewDates().end.slice(0,7);
       const analysisMonth=period||current;
@@ -1027,8 +1049,6 @@
       try{
         const data=await fetchReviewData("review:analytics",scope);
         if(token!==monthlyRequest||state.view!=="evolution")return;
-        monthlyVolume={key:JSON.stringify([state.country,state.evolutionApp,analysisMonth,monthlyFilters]),values:data.inferredAndroidVolumes||{}};
-        renderNewReviewImpact(analysisMonth,withPublishedRatings(state.trends,selection()),monthlyVolume.values);
         const applied={country:scope.country,platform:scope.platform,start:data.window.start,end:data.window.end,segment:"",audience:scope.audience,inferGeography:scope.inferGeography};
         if(balanceKey!==monthlyBalanceKey){
           resizeReviewBalance=renderReviewBalance(balance,data,applied);
