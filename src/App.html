@@ -520,9 +520,19 @@
     function trendRequest(){return{countryCode:state.country==="ALL"?"":state.country,platform:"",segment:"ALL",months:36,bbvaOnly:false}}
     function trendKey(request){return[request.countryCode||"ALL",request.platform||"ALL",request.segment,request.bbvaOnly?"BBVA":"ALL",request.months].join("|")}
     const trendRequests=new Map();
-    function fetchTrends(request){
+    function cachedTrendRows(request){
       const key=trendKey(request);
-      if(state.trendCache.has(key))return Promise.resolve(state.trendCache.get(key));
+      if(state.trendCache.has(key))return state.trendCache.get(key);
+      if(!request.countryCode)return undefined;
+      const broadKey=trendKey({...request,countryCode:""});
+      const broad=state.trendCache.get(broadKey);
+      return broad?.filter(row=>row.countryCode===request.countryCode);
+    }
+    function fetchTrends(request){
+      const key=trendKey(request), cached=cachedTrendRows(request);
+      if(cached)return Promise.resolve(cached);
+      const broadPending=request.countryCode&&trendRequests.get(trendKey({...request,countryCode:""}));
+      if(broadPending)return broadPending.then(rows=>rows.filter(row=>row.countryCode===request.countryCode),()=>fetchTrends(request));
       if(!trendRequests.has(key)){
         const pending=callServer("trends",request).then(rows=>{
           state.trendCache.set(key,rows||[]);
@@ -535,10 +545,11 @@
     }
     async function loadTrends(){
       const started=performance.now();
-      const request=trendRequest(),key=trendKey(request),token=++state.trendToken;
-      if(state.trendCache.has(key)){
+      const request=trendRequest(),token=++state.trendToken;
+      const cached=cachedTrendRows(request);
+      if(cached){
         trackUsage("PERFORMANCE",state.view,"trends","CACHE 0 OK");
-        state.trends=state.trendCache.get(key);state.trendsLoading=false;renderDashboard();
+        state.trends=cached;state.trendsLoading=false;renderDashboard();
         trackReady("evolution","Mostrar pulso mensual",started);
         return;
       }
@@ -549,7 +560,7 @@
       }catch(error){
         if(token===state.trendToken){state.trends=[];showError(error)}
       }finally{
-        if(token===state.trendToken){state.trendsLoading=false;renderDashboard();if(state.trendCache.has(key))trackReady("evolution","Mostrar pulso mensual",started)}
+        if(token===state.trendToken){state.trendsLoading=false;renderDashboard();if(cachedTrendRows(request))trackReady("evolution","Mostrar pulso mensual",started)}
       }
     }
 

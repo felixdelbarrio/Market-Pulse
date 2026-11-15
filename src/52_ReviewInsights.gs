@@ -965,7 +965,7 @@ function readMarketsReviewCache_(ss, operation, filters, window, builder, timing
           Object.hasOwn(snapshot.values, snapshotScope)) { source = 'snapshot'; return snapshot.values[snapshotScope]; }
     }
     return builder(catalog, versions);
-  });
+  }, operation === 'analytics' || operation === 'page' ? 6 : 1);
   timing.source = timing.source || source;
   timing.durationMs = Date.now() - started;
   console.log(JSON.stringify({ operation: 'review-' + operation, source: timing.source, key, durationMs: timing.durationMs }));

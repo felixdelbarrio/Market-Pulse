@@ -622,7 +622,7 @@ function marketsAlertEmailMessage_(recipient, events, inlineImages, sender) {
   const mime = [
     'From: ' + marketsAlertEncodedHeader_(sender.name) + ' <' + sender.address + '>',
     'To: ' + normalizedRecipient,
-    'Subject: ' + marketsAlertEncodedHeader_(subject),
+    'Subject: ' + marketsAlertEncodedHeader_(subject, true),
     'Date: ' + new Date().toUTCString(),
     'Message-ID: <' + token + '@voc-commercial.bbva.com>',
     'X-Market-Pulse-Code-Version: ' + MARKETS_CONFIG.codeVersion,
@@ -663,8 +663,9 @@ function marketsAlertEmailMessage_(recipient, events, inlineImages, sender) {
   };
 }
 
-function marketsAlertEncodedHeader_(value) {
-  return '=?UTF-8?B?' + Utilities.base64Encode(trimString_(value), Utilities.Charset.UTF_8) + '?=';
+function marketsAlertEncodedHeader_(value, preserveWhitespace = false) {
+  const text = preserveWhitespace ? String(value) : trimString_(value);
+  return '=?UTF-8?B?' + Utilities.base64Encode(text, Utilities.Charset.UTF_8) + '?=';
 }
 
 function marketsAlertMimeText_(value) {
@@ -733,16 +734,17 @@ function validateMarketsAlertSender() {
 }
 
 function marketsAlertEmailSubject_(events) {
+  const prefix = '[bIA] 🚀[Market Pulse]  ·Alertas personalizadas · ';
   const tests = (events || []).filter(function (event) { return event.type === 'TEST' || event.isTest; });
   if (tests.length === (events || []).length && tests.length) {
     const result = marketsAlertPreviewHasNoSignals_(events) ? 'Sin alertas activas' :
       marketsAlertPreviewIsBelowThreshold_(events) ? 'Datos reales bajo umbral' : 'Datos reales';
-    return '[PRUEBA] [bIA] [Market Pulse] ‼ ‼ ‼ · Alertas personalizadas · ' + result + ' · ' +
+    return '[PRUEBA] ' + prefix + result + ' · ' +
       trimString_(tests[0].testId || tests[0].ruleId || 'verificación');
   }
-  if (marketsAlertIsReviewShare_(events)) return '[bIA] [Market Pulse] ‼ ‼ ‼ · Alertas personalizadas · Alertas de reseñas';
-  return '[bIA] [Market Pulse] ‼ ‼ ‼ · Alertas personalizadas · ' + events.length + ' cambio' +
-    (events.length === 1 ? '' : 's') + ' en ratings';
+  if (marketsAlertIsReviewShare_(events)) return prefix + 'Alertas de reseñas';
+  return prefix + events.length + ' cambio' +
+    (events.length === 1 ? '' : 's') + ' en ratings ';
 }
 
 function renderMarketsAlertPlainText_(events, recipient) {
@@ -784,6 +786,16 @@ function renderMarketsAlertPlainText_(events, recipient) {
     '\nGestiona tus alertas desde Market Pulse.\nAbrir con la cuenta corporativa: ' + loginUrl + '\nURL directa: ' + appUrl;
 }
 
+/** Common light canvas for clients that honor email color-scheme hints. */
+function marketsLightEmailDocument_(language = 'es') {
+  return '<!doctype html><html lang="' + language + '" style="color-scheme:light only;background-color:#F7F8F8;">' +
+    '<head><meta charset="UTF-8"><meta name="color-scheme" content="light">' +
+    '<meta name="supported-color-schemes" content="light">' +
+    '<style>:root{color-scheme:light only;supported-color-schemes:light}</style></head>' +
+    '<body bgcolor="#F7F8F8" style="margin:0;background-color:#F7F8F8;color:#000519;color-scheme:light only;' +
+    "font-family:'BBVABentonSans','Benton Sans BBVA',Arial,Helvetica,sans-serif;\">";
+}
+
 function renderMarketsAlertEmail_(events, recipient, feedback) {
   const isTest = marketsAlertIsTest_(events);
   const noSignals = marketsAlertPreviewHasNoSignals_(events);
@@ -808,10 +820,10 @@ function renderMarketsAlertEmail_(events, recipient, feedback) {
     marketsAlertSummaryCell_('Críticas', critical, '#B92A45', '#F9E9ED') +
     marketsAlertSummaryCell_('Advertencias', warning, '#946200', '#FFF4CC') +
     marketsAlertSummaryCell_('Positivas', positive, '#277A49', '#E6F4EA') + '</tr></table>';
-  return '<!doctype html><html><body style="margin:0;background:#F7F8F8;font-family:\'BBVABentonSans\',\'Benton Sans BBVA\',Arial,Helvetica,sans-serif;color:#000519;">' +
-    '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#F7F8F8;"><tr><td align="center" style="padding:28px 12px;">' +
-    '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="width:100%;max-width:640px;background:#FFFFFF;border-radius:16px;overflow:hidden;">' +
-    '<tr><td width="100%" style="padding:24px 28px;background:#001391;"><img src="cid:bbvaLogo" width="156" alt="BBVA Banca de Empresas e Instituciones" style="display:block;width:156px;height:auto;"><div style="margin-top:22px;color:#8BE1E9;font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">MARKET PULSE · ' + (isTest ? 'PRUEBA DE CANAL' : reviewShare ? 'ALERTAS DE RESEÑAS' : 'ALERTAS DE RATINGS') + '</div><h1 style="margin:8px 0 0;color:#FFFFFF;font-size:28px;line-height:34px;">' + (noSignals ? 'Sin alertas activas' : marketsAlertPreviewIsBelowThreshold_(events) ? 'Prueba con datos reales' : reviewShare ? 'Alerta de reseñas' : 'Alerta por cambios en ratings') + '</h1><p style="margin:10px 0 0;color:#85C8FF;font-size:15px;line-height:22px;">' + escapeMarketsAlertHtml_(subtitle) + '</p></td></tr>' +
+  return marketsLightEmailDocument_() +
+    '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" bgcolor="#F7F8F8" style="background:#F7F8F8;"><tr><td align="center" style="padding:28px 12px;">' +
+    '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" bgcolor="#FFFFFF" style="width:100%;max-width:640px;background:#FFFFFF;color:#000519;border-radius:16px;overflow:hidden;">' +
+    '<tr><td width="100%" bgcolor="#001391" style="padding:24px 28px;background:#001391;color:#FFFFFF;"><img src="cid:bbvaLogo" width="156" alt="BBVA Banca de Empresas e Instituciones" style="display:block;width:156px;height:auto;"><div style="margin-top:22px;color:#8BE1E9;font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">MARKET PULSE · ' + (isTest ? 'PRUEBA DE CANAL' : reviewShare ? 'ALERTAS DE RESEÑAS' : 'ALERTAS DE RATINGS') + '</div><h1 style="margin:8px 0 0;color:#FFFFFF;font-size:28px;line-height:34px;">' + (noSignals ? 'Sin alertas activas' : marketsAlertPreviewIsBelowThreshold_(events) ? 'Prueba con datos reales' : reviewShare ? 'Alerta de reseñas' : 'Alerta por cambios en ratings') + '</h1><p style="margin:10px 0 0;color:#85C8FF;font-size:15px;line-height:22px;">' + escapeMarketsAlertHtml_(subtitle) + '</p></td></tr>' +
     '<tr><td width="100%" style="padding:22px 28px 8px;">' + summary + '</td></tr>' +
     '<tr><td width="100%" style="padding:14px 28px 8px;">' + cards + '</td></tr>' +
     '<tr><td width="100%" style="padding:18px 28px 30px;">' + cta + '<p style="margin:18px 0 0;color:#46536D;font-size:12px;line-height:18px;">Este correo es privado y contiene únicamente señales configuradas para tu cuenta. Las preferencias de otros usuarios nunca son visibles.</p><p style="margin:7px 0 0;color:#ADB8C2;font-size:10px;line-height:15px;">Datos obtenidos el ' + escapeMarketsAlertHtml_(marketsAlertDataDateLabel_(events)) + ' · backend ' + escapeMarketsAlertHtml_(MARKETS_CONFIG.codeVersion) + ' / web ' + escapeMarketsAlertHtml_(marketsAlertWebVersion_()) + '.</p></td></tr>' +

@@ -466,10 +466,16 @@ function marketsNewsletterRawCountDelta_(startCount, endCount) {
   return first === null || last === null || last < first ? null : Math.round(last - first);
 }
 
+const MARKETS_NEWSLETTER_SUBJECT_PREFIX = '[bIA]🚀🚀🚀 [Market Pulse] · ';
+
+function marketsNewsletterSpanishSubject_(model) {
+  return (model.isTest ? '[PRUEBA] ' : '') + MARKETS_NEWSLETTER_SUBJECT_PREFIX + 'Cierre ' +
+    model.periodLabel + ' · ' + marketsNewsletterScopeTitle_(model);
+}
+
 function marketsNewsletterEmailMessage_(recipient, model, inlineImages, sender) {
   const localized = model.language && model.language !== "es" ? localizedMarketsNewsletter_(model) : null;
-  const subject = localized?.subject || (model.isTest ? '[PRUEBA] ' : '') + '[bIA] [Market Pulse] 📆📆📆 · Cierre ' +
-    model.periodLabel + ' · ' + marketsNewsletterScopeTitle_(model);
+  const subject = localized?.subject || marketsNewsletterSpanishSubject_(model);
   const plain = localized?.plain || renderMarketsNewsletterPlainText_(model);
   const html = localized?.html || renderMarketsNewsletterHtml_(model);
   const image = inlineImages && inlineImages.bbvaLogo;
@@ -582,11 +588,11 @@ function renderMarketsNewsletterHtml_(model) {
         (item.shared ? ' sobre la ficha compartida completa, sin atribución geográfica.' : '.') + '</div>';
     }).join('') + '</div></td></tr>' : '';
   const appUrl = escapeMarketsAlertHtml_(model.interactions?.open || marketsWebAppLoginUrl_(model.configuredFor || ''));
-  return '<!doctype html><html><body style="margin:0;background:#F7F8F8;font-family:\'BBVABentonSans\',\'Benton Sans BBVA\',Arial,Helvetica,sans-serif;color:#000519;">' +
-    '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#F7F8F8;"><tr><td align="center" style="padding:28px 10px;">' +
-    '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="width:100%;max-width:720px;background:#FFFFFF;border-radius:16px;overflow:hidden;">' +
+  return marketsLightEmailDocument_() +
+    '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" bgcolor="#F7F8F8" style="background:#F7F8F8;"><tr><td align="center" style="padding:28px 10px;">' +
+    '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" bgcolor="#FFFFFF" style="width:100%;max-width:720px;background:#FFFFFF;color:#000519;border-radius:16px;overflow:hidden;">' +
     preview +
-    '<tr><td style="padding:26px 30px;background:#001391;color:#FFFFFF;"><img src="cid:bbvaLogo" width="168" alt="BBVA Banca de Empresas e Instituciones" style="display:block;width:168px;height:auto;">' +
+    '<tr><td bgcolor="#001391" style="padding:26px 30px;background:#001391;color:#FFFFFF;"><img src="cid:bbvaLogo" width="168" alt="BBVA Banca de Empresas e Instituciones" style="display:block;width:168px;height:auto;">' +
     '<div style="margin-top:24px;color:#8BE1E9;font-size:11px;font-weight:700;letter-spacing:1px;">MARKET PULSE · CIERRE MENSUAL</div>' +
     '<h1 style="margin:8px 0 0;font-family:Georgia,serif;font-size:31px;line-height:37px;">' +
     escapeMarketsAlertHtml_(model.periodLabel) + '</h1><p style="margin:9px 0 0;color:#85C8FF;font-size:15px;line-height:22px;">' +
@@ -980,16 +986,17 @@ function localizedMarketsNewsletter_(model) {
     number(item.monthDelta, 2), number(item.yearDelta, 2), number(item.newReviews),
     item.position?.rank ? item.position.rank + ' / ' + (item.position.apps || item.position.total || '—') : '—'
   ]);
-  const subject = (model.isTest ? '[' + copy.preview + '] ' : '') + '[bIA] [Market Pulse] 📆📆📆 · ' + copy.title + ' · ' + period;
+  const subject = (model.isTest ? '[' + copy.preview + '] ' : '') + MARKETS_NEWSLETTER_SUBJECT_PREFIX + copy.title + ' · ' + period;
   const coverage = model.coverage ? copy.coverage + ' ' + model.coverage.observed + '/' + model.coverage.expected : '';
   const url = model.interactions?.open || marketsWebAppUrl_(), esc = escapeMarketsAlertHtml_;
   const plain = [subject, coverage, headers.join(' | '), ...rows.map(row => row.join(' | ')), marketsNewsletterInteractionText_(model)].filter(Boolean).join('\n');
-  const html = '<!doctype html><html lang="' + language + '"><body style="font-family:Arial,sans-serif;color:#070e46">' +
+  const html = marketsLightEmailDocument_(language) +
+    '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" bgcolor="#FFFFFF" style="background-color:#FFFFFF;color:#070E46;"><tr><td>' +
     '<header style="background:#070e46;padding:20px;color:#fff"><img src="cid:bbvaLogo" alt="BBVA" width="112"><h1>' +
     esc(subject) + '</h1></header><p>' + esc(coverage) + '</p><table cellpadding="8"><thead><tr>' +
     headers.map(value => '<th scope="col">' + esc(value) + '</th>').join('') + '</tr></thead><tbody>' +
     rows.map(row => '<tr>' + row.map(value => '<td>' + esc(value) + '</td>').join('') + '</tr>').join('') +
-    '</tbody></table><p><a href="' + esc(url) + '">' + esc(copy.link) + '</a></p>' + renderMarketsEmailFooter_(model.interactions, language) + '</body></html>';
+    '</tbody></table><p><a style="color:#001391;" href="' + esc(url) + '">' + esc(copy.link) + '</a></p>' + renderMarketsEmailFooter_(model.interactions, language) + '</td></tr></table></body></html>';
   return { subject, plain, html };
 }
 
