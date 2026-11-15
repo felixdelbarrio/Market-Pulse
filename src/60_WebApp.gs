@@ -1,6 +1,6 @@
 /** Web app de lectura para el dashboard de ratings. */
 var MARKETS_WEB = Object.freeze({
-  version: '2026.11.14.71',
+  version: '2026.11.15.76',
   // Solo debe cambiar si cambia el formato serializado. Un cambio visual no
   // puede obligar al primer usuario a reconstruir la cache desde Sheets.
   cacheSchemaVersion: '2026.10.21.41',
@@ -778,16 +778,18 @@ const MARKETS_MEASURED_JOBS = Object.freeze({ health: 'Comprobación de salud', 
 
 function measureMarketsScheduledJob_(name, run) {
   const started = new Date();
-  let status = 'ERROR';
+  let status = 'ERROR', result;
   try {
-    const result = run();
+    result = run();
     status = result?.status || 'OK';
     return result;
   } finally {
     try {
-      PropertiesService.getScriptProperties().setProperty('MARKETS_JOB_TIMING:' + name, JSON.stringify({
-        startedAt: started.toISOString(), durationMs: Date.now() - started.getTime(), status
-      }));
+      const properties = PropertiesService.getScriptProperties();
+      const state = { startedAt: started.toISOString(), durationMs: Date.now() - started.getTime(), status, sent: result?.sent,
+        total: result?.total ?? (Number.isInteger(result?.sent) && Array.isArray(result.failures) ? result.sent + result.failures.length : undefined) };
+      properties.setProperty('MARKETS_JOB_TIMING:' + name, JSON.stringify(state));
+      if (state.sent > 0) properties.setProperty('MARKETS_JOB_DELIVERY:' + name, JSON.stringify(state));
     } catch (error) {
       console.warn('No se pudo registrar la duración de ' + name + ': ' + errorToString_(error));
     }

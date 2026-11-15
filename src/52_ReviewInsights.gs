@@ -494,13 +494,15 @@ function marketsFunctionalJobStatus_() {
   const revision = properties.getProperty('MARKETS_FUNCTIONAL_REVISION');
   const awaitingSync = !revision || Boolean(requested);
   const pendingTranslation = translation.revision !== revision;
+  const quotaRetryAt = Number(properties.getProperty(MARKETS_TRANSLATION_QUOTA_RETRY_KEY)) || 0;
+  const waitingQuota = quotaRetryAt > Date.now() && translation.status !== 'Completado';
   return [
     { id: 'taxonomy', priority: 6, schedule: 'Comprobación diaria y tras cambios', name: 'Catálogo global de funcionalidades', status: sync.status || (synced ? 'Completado' : 'Sin ejecución registrada'),
       updatedAt: synced, done: sync.functions, total: sync.functions, changed: sync.changed, error: sync.error, retryAt: sync.retryAt, durationMs: sync.durationMs },
     { id: 'taxonomyTranslation', priority: 6, schedule: 'Tras sincronizar el catálogo',
       name: 'Traducción del catálogo funcional', status: awaitingSync ? 'Esperando catálogo' :
-        pendingTranslation ? 'Pendiente' : translation.status || 'Pendiente',
-      updatedAt: translation.updatedAt, error: translation.error, retryAt: translation.retryAt, durationMs: translation.durationMs,
+        waitingQuota ? 'Esperando cuota de traducción' : pendingTranslation ? 'Pendiente' : translation.status || 'Pendiente',
+      updatedAt: translation.updatedAt, error: translation.error, retryAt: waitingQuota ? quotaRetryAt : translation.retryAt, durationMs: translation.durationMs,
       done: pendingTranslation ? undefined : translation.done, total: pendingTranslation ? undefined : translation.total }
   ];
 }

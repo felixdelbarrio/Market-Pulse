@@ -177,6 +177,8 @@
         if(!current)return;
         const meta=metadata.get(current.appKey)||current,base={appKey:current.appKey,volumeKey:meta.volumeKey||current.appKey,volumeScope:meta.volumeScope||"MARKET",countryCode:current.countryCode,country:config.countries[current.countryCode]||current.country||current.countryCode,platform:current.platform,previousRating:previous?.ratingEom,currentRating:current.ratingEom,rating:null,newReviews:null,impact:null,confidence:"NONE"};
         const sharedMarket=meta.volumeScope==="SHARED_LISTING"&&selection.country!=="ALL";
+        const inferred=sharedMarket&&selection.inferGeography==="YES"?inferredVolumes[base.volumeKey]:null;
+        Object.assign(base,{sharedMarket,volumeInferred:inferred>0,newReviews:inferred>0?inferred:null});
         if(!previous||![current.ratingEom,current.ratingCountEom,previous.ratingEom,previous.ratingCountEom].every(finite)){rawItems.push({...base,available:false,reason:"MISSING_BASE"});return}
         const newReviews=current.ratingCountEom-previous.ratingCountEom;
         const inputSignature=[previous.ratingEom,previous.ratingCountEom,current.ratingEom,current.ratingCountEom].join("|");
@@ -184,9 +186,8 @@
         const rating=(current.ratingCountEom*current.ratingEom-previous.ratingCountEom*previous.ratingEom)/newReviews;
         const currentHalfStep=ratingRoundingHalfStep(current.ratingEom,current.platform),previousHalfStep=ratingRoundingHalfStep(previous.ratingEom,previous.platform);
         const roundingUncertainty=(current.ratingCountEom*currentHalfStep+previous.ratingCountEom*previousHalfStep)/newReviews;
-        if(!finite(rating)||rating<1||rating>5||roundingUncertainty>.5){rawItems.push({...base,inputSignature,newReviews:sharedMarket?null:newReviews,available:false,reason:"ROUNDING"});return}
-        const inferred=sharedMarket&&selection.inferGeography!=="NO"?inferredVolumes[base.volumeKey]:null;
-        rawItems.push({...base,inputSignature,newReviews:sharedMarket?(inferred>0?inferred:null):newReviews,volumeInferred:inferred>0,
+        if(!finite(rating)||rating<1||rating>5||roundingUncertainty>.5){rawItems.push({...base,inputSignature,newReviews:sharedMarket?base.newReviews:newReviews,available:false,reason:"ROUNDING"});return}
+        rawItems.push({...base,inputSignature,newReviews:sharedMarket?base.newReviews:newReviews,
           sharedMarket,reason:sharedMarket?"SHARED_LISTING":undefined,rating,impact:rating-previous.ratingEom,available:!sharedMarket,confidence:roundingUncertainty<=.1?"HIGH":roundingUncertainty<=.25?"MEDIUM":"INDICATIVE"});
       });
       let items=rawItems;
@@ -194,7 +195,7 @@
         const independent=rawItems.filter(item=>item.volumeScope!=="SHARED_LISTING"),shared=groupBy(rawItems.filter(item=>item.volumeScope==="SHARED_LISTING"),item=>item.volumeKey);
         items=independent.concat(Object.values(shared).map(group=>{
           const first=group[0],countries=[...new Set(group.map(item=>item.country))].sort((a,b)=>a.localeCompare(b,"es")),consistent=new Set(group.map(item=>item.inputSignature)).size===1;
-          return{...first,appKey:first.volumeKey,countryCode:"SHARED",country:"Ficha compartida multipaís",scopeLabel:countries.join(" · "),sharedMarkets:countries,available:consistent&&first.available,reason:consistent?first.reason:"SHARED_CONFLICT"};
+          return{...first,appKey:first.volumeKey,countryCode:"SHARED",country:"Ficha compartida multipaís",scopeLabel:countries.join(" · "),sharedMarkets:countries,...(consistent?{}:{rating:null,impact:null,newReviews:null}),available:consistent&&first.available,reason:consistent?first.reason:"SHARED_CONFLICT"};
         }));
       }
       const rows=items.filter(item=>isCriticalPlatform(item.platform)||item.available).map(item=>({...item,reasons:item.available||!item.reason?[]:[item.reason]})).sort((a,b)=>{
@@ -202,6 +203,9 @@
       });
       const platformSummaries=config.platforms.map(platform=>{
         const platformRows=rows.filter(item=>item.platform===platform),valid=platformRows.filter(item=>item.available),newReviews=sum(valid.map(item=>item.newReviews)),rating=newReviews?sum(valid.map(item=>item.rating*item.newReviews))/newReviews:null,referenceRating=newReviews?sum(valid.map(item=>item.previousRating*item.newReviews))/newReviews:null;
+        const shared=platformRows.length===1&&platformRows[0].sharedMarket?platformRows[0]:null;
+        if(shared)return{platform,rating:shared.rating,newReviews:shared.newReviews,impact:shared.impact,volumeInferred:shared.volumeInferred,
+          sharedMarket:true,availableSeries:Number(finite(shared.rating)),totalSeries:1};
         return{platform,rating,newReviews,impact:finite(rating)&&finite(referenceRating)?rating-referenceRating:null,availableSeries:valid.length,totalSeries:platformRows.length};
       }).filter(item=>item.totalSeries);
       const validItems=rows.filter(item=>item.available);

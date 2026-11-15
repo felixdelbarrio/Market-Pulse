@@ -24,7 +24,7 @@ function filterBindings({ crypto, sessionStorage, browserCountry = "ES" } = {}) 
       MarketsUI: { option() { return ''; } },
       MarketsDomain: { browserMarket: () => browserCountry, config: { countries: { ES: 'España', MX: 'México' }, platforms: ['iOS', 'Android'] } },
       MarketRadarFilters: {
-        searchable() { return {}; },
+        searchable() { return { refresh() {} }; },
         create(root, binding) {
           bindings[root.id] = binding;
           return { render() {} };
@@ -224,6 +224,6 @@ test('monthly audience and inference are applied and reset independently of annu
   assert.equal(annual.applied().inferGeography, undefined);
   assert.equal(comments.applied().inferGeography, undefined);
   monthly.commit(monthly.all());
-  assert.equal(monthly.applied().inferGeography,'');
+  assert.equal(monthly.applied().inferGeography,'YES');
   assert.equal(monthly.applied().audience,'');
 });

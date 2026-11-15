@@ -45,26 +45,58 @@ function buildMarketsReviewAlertEvents_(groups, preferences, existing, now, day)
 }
 
 function processMarketsReviewAlerts_(day) {
+  const result = measureMarketsScheduledJob_('reviewAlerts', () => deliverMarketsReviewAlertBatch_(day));
+  if (['PARTIAL', 'ERROR'].includes(result.status)) throw new Error(result.detail || 'Fallo en el envío de las alertas de reseñas.');
+  return result.events;
+}
+
+const MARKETS_REVIEW_ALERTS_RUN = 'REVIEW_ALERTS_RUN';
+
+function deliverMarketsReviewAlertBatch_(day) {
+  const empty = { events: 0, sent: 0, total: 0, status: 'NOT_REQUIRED' };
   const now = new Date();
-  if (Utilities.formatDate(now, MARKETS_CONFIG.timeZone, 'yyyy-MM-dd') !== day) return 0;
+  if (Utilities.formatDate(now, MARKETS_CONFIG.timeZone, 'yyyy-MM-dd') !== day) return empty;
   const ss = openMarketsSpreadsheet_(), control = readControl_(ss);
   const subscribers = readAllMarketsAlertPreferences_(ss).filter(item => item.active && item.reviewShareEnabled);
-  if (!subscribers.length) return 0;
-  const window = { start: shiftReviewDay_(day, -2), end: shiftReviewDay_(day, 1) };
-  const rows = queryMarketsReviews_(ss, { country: 'ALL', platform: 'ALL', app: 'BBVA Empresas', deferBlocks: true }, window);
-  const groups = summarizeMarketsReviewAlerts_(rows, now);
-  if (!groups.length) return 0;
+  let groups = [];
+  if (subscribers.length) {
+    const window = { start: shiftReviewDay_(day, -2), end: shiftReviewDay_(day, 1) };
+    const rows = queryMarketsReviews_(ss, { country: 'ALL', platform: 'ALL', app: 'BBVA Empresas', deferBlocks: true }, window);
+    groups = summarizeMarketsReviewAlerts_(rows, now);
+  }
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(1000)) throw new Error('La auditoría de alertas está ocupada.');
   try {
-    const existing = readExistingAlertKeys_(ss);
-    const events = subscribers.flatMap(preferences => buildMarketsReviewAlertEvents_(groups, preferences, existing, now, day));
-    const result = deliverMarketsAlertEvents_(ss, events, control, subscribers.length);
-    if (['PARTIAL', 'ERROR'].includes(result.deliveryStatus)) throw new Error(result.deliveryDetail || 'Fallo en el envío de las alertas de reseñas.');
-    return result.length;
+    let summary = empty;
+    if (groups.length) {
+      const existing = readExistingAlertKeys_(ss);
+      const events = subscribers.flatMap(preferences => buildMarketsReviewAlertEvents_(groups, preferences, existing, now, day));
+      const result = deliverMarketsAlertEvents_(ss, events, control, subscribers.length);
+      summary = { events: result.length, sent: result.deliveryCount, status: result.deliveryStatus,
+        total: new Set(events.map(event => normalizeEmailForComparison_(event.recipients)).filter(Boolean)).size,
+        detail: result.deliveryDetail };
+    }
+    // An audit error must not invalidate deliveries that Gmail already accepted.
+    try {
+      appendAlertEvents_(ss, [marketsReviewAlertRunEvent_(day, now, summary)]);
+    } catch (error) {
+      console.warn('No se pudo guardar la auditoría de alertas de reseñas: ' + errorToString_(error));
+    }
+    return summary;
   } finally {
     lock.releaseLock();
   }
+}
+
+function marketsReviewAlertRunEvent_(day, startedAt, summary) {
+  return {
+    timestamp: startedAt, eventKey: [MARKETS_REVIEW_ALERTS_RUN, startedAt.toISOString()].join('|'),
+    referenceDate: dateFromKey_(day), platform: '', countryCode: '', type: MARKETS_REVIEW_ALERTS_RUN,
+    severity: summary.status === 'ERROR' ? 'CRITICAL' : summary.status === 'PARTIAL' ? 'WARNING' : '',
+    detail: JSON.stringify({ status: summary.status, deliveredAt: summary.sent ? new Date().toISOString() : '' }),
+    recipients: '', runId: 'review-' + day, source: MARKETS_REVIEW_ALERTS_RUN, userEmail: '', ruleId: '',
+    metricValue: summary.sent, threshold: summary.total, appKey: '', direction: ''
+  };
 }
 
 function buildAndProcessAlerts_(ss, referenceDate, catalog, runId, control, ratingObjects) {
@@ -701,11 +733,11 @@ function marketsAlertEmailSubject_(events) {
   if (tests.length === (events || []).length && tests.length) {
     const result = marketsAlertPreviewHasNoSignals_(events) ? 'Sin alertas activas' :
       marketsAlertPreviewIsBelowThreshold_(events) ? 'Datos reales bajo umbral' : 'Datos reales';
-    return '[PRUEBA] Market Pulse · ' + result + ' · ' +
+    return '[PRUEBA] [bIA] [Market Pulse] ‼ ‼ ‼ · Alertas personalizadas · ' + result + ' · ' +
       trimString_(tests[0].testId || tests[0].ruleId || 'verificación');
   }
-  if (marketsAlertIsReviewShare_(events)) return '[Market Pulse] Alertas de reseñas';
-  return '[Market Pulse] Alertas personalizadas · ' + events.length + ' cambio' +
+  if (marketsAlertIsReviewShare_(events)) return '[bIA] [Market Pulse] ‼ ‼ ‼ · Alertas personalizadas · Alertas de reseñas';
+  return '[bIA] [Market Pulse] ‼ ‼ ‼ · Alertas personalizadas · ' + events.length + ' cambio' +
     (events.length === 1 ? '' : 's') + ' en ratings';
 }
 
@@ -980,10 +1012,15 @@ function buildMarketsAlertInlineImages_() {
   const match = html.match(/--asset-bbva-bei-logo:url\("data:image\/png;base64,([^"\)]+)"\)/);
   if (!match) throw new Error('No se ha encontrado el logotipo oficial de BBVA Banca de Empresas e Instituciones.');
   const images = { bbvaLogo: Utilities.newBlob(Utilities.base64Decode(match[1]), 'image/png', 'bbva-bei.png') };
-  for (const [, id, data] of html.matchAll(/<template id="mail-(biaLogo|feedbackPositive|feedbackNegative)">([A-Za-z0-9+/=]+)<\/template>/g)) {
+  for (const [id, data] of Object.entries(marketsEmailFooterImages_(html))) {
     images[id] = Utilities.newBlob(Utilities.base64Decode(data), 'image/png', id + '.png');
   }
   return images;
+}
+
+function marketsEmailFooterImages_(html) {
+  const entries = html.matchAll(/<template id="mail-(biaLogo|feedbackPositive|feedbackNegative)">([A-Za-z0-9+/=]+)<\/template>/g);
+  return Object.fromEntries([...entries].map(([, id, data]) => [id, data]));
 }
 
 function escapeMarketsAlertHtml_(value) {
@@ -1094,6 +1131,7 @@ function renderMarketsAlertFeedbackPage_(token) {
   const page = HtmlService.createTemplateFromFile('AlertFeedback');
   page.token = token;
   page.newsletter = false;
+  page.rating = '';
   page.unsubscribe = request.vote === 'unsubscribe';
   page.destination = '';
   page.choice = page.unsubscribe ? 'Dar de baja las alertas' : request.vote === 'positive' ? 'Sí, me resultó útil' : 'No me resultó útil';

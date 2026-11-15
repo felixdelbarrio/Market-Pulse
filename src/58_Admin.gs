@@ -68,12 +68,14 @@ function getMarketsAdminDashboard(includeUsage = true) {
   const subscribers = readAllMarketsAlertPreferences_(ss);
   const issues = readRecentMarketsAdminFetchIssues_(ss, 40);
   const alerts = readRecentMarketsAdminAlertEvents_(ss, 30);
+  const deliveries = readMarketsAdminDeliveries_(ss);
   const usage = includeUsage ? readMarketsUsageAnalytics_(ss,
     trimString_(access.control.TIME_ZONE) || MARKETS_CONFIG.timeZone) : null;
   return {
     generatedAt: new Date().toISOString(),
     administrator: access.email,
     system: {
+      deliveries,
       codeVersion: MARKETS_CONFIG.codeVersion,
       webVersion: MARKETS_WEB.version,
       webAppUrl: marketsWebAppUrl_(),
@@ -90,6 +92,7 @@ function getMarketsAdminDashboard(includeUsage = true) {
       healthMonitorEnabled: parseBoolean_(access.control.MONITOR_HEALTH_ENABLED, true),
       healthRecipient: trimString_(access.control.MONITOR_ADMIN_EMAIL),
       administratorEmails: marketsAdministratorEmails_(access.control),
+      senderName: sender.name,
       senderAddress: sender.address,
       senderAvailable: Boolean(sender.available),
       senderVerificationStatus: trimString_(sender.verificationStatus),
@@ -115,6 +118,7 @@ function getMarketsAdminDashboard(includeUsage = true) {
       client.lastSeenAt = adminDateTime_(item.lastSeenAt);
       client.lastTestAt = adminDateTime_(item.lastTestAt);
       client.lastDeliveryAt = adminDateTime_(item.lastDeliveryAt);
+      client.lastNewsletterAt = deliveries.newsletter?.recipients?.[item.email] || '';
       client.updatedAt = adminDateTime_(item.updatedAt);
       client.registeredAt = adminDateTime_(item.registeredAt);
       return client;
@@ -195,11 +199,12 @@ function requestMarketsAdminRatingRecovery() {
 
 function marketsAdminReviewPipeline_(email) {
   const owner = email === normalizeEmailForComparison_(Session.getEffectiveUser().getEmail());
-  let installed = null;
+  let installed = null, newsletterInstalled = null;
   if (owner) {
     try {
-      installed = ScriptApp.getProjectTriggers()
-        .some(trigger => trigger.getHandlerFunction() === MARKETS_REVIEW_SUPERVISOR);
+      const handlers = ScriptApp.getProjectTriggers().map(trigger => trigger.getHandlerFunction());
+      installed = handlers.includes(MARKETS_REVIEW_SUPERVISOR);
+      newsletterInstalled = handlers.includes('runMarketsMonthlyNewsletter');
     } catch (error) {
       console.warn('No se pudo consultar la programación de reseñas. ' + error.message);
     }
@@ -210,8 +215,8 @@ function marketsAdminReviewPipeline_(email) {
     const current = state?.jobs.find(job => job.id === definition.id);
     return { ...definition, ...current, label: definition.label, priority: definition.priority };
   });
-  return { day: state?.day || '', installed, canRestart: owner && installed === true,
-    jobs: [{ id: 'supervisor', label: 'Supervisor de reseñas', priority: 0,
+  return { day: state?.day || '', installed, newsletterInstalled, canRestart: owner && installed === true,
+    jobs: [{ id: 'supervisor', label: 'Supervisor', priority: 0,
       status: installed === null ? 'Activador sin verificar' : installed ? 'Activo' : 'Sin activador instalado' }, ...jobs] };
 }
 
@@ -234,6 +239,75 @@ function readRecentMarketsAdminRuns_(ss, limit) {
         detail: trimString_(row[indexes.detail]), deliveryDetail: trimString_(row[indexes.alert_delivery_detail])
       };
     });
+}
+
+function readMarketsAdminDeliveries_(ss) {
+  const sheet = ss.getSheetByName(MARKETS_CONFIG.sheets.alerts);
+  const indexes = indexHeaders_(MARKETS_CONFIG.headers.alerts);
+  const last = sheet.getLastRow();
+  if (last < 2) return {};
+  const properties = PropertiesService.getScriptProperties();
+  const range = sheet.getRange(2, indexes.source + 1, last - 1, 1);
+  return Object.fromEntries([['newsletter', 'MONTHLY_NEWSLETTER'], ['reviewAlerts', 'REVIEW_ALERTS']].map(([id, source]) => {
+    const timing = safeJsonParse_(properties.getProperty('MARKETS_JOB_TIMING:' + id));
+    const delivery = safeJsonParse_(properties.getProperty('MARKETS_JOB_DELIVERY:' + id));
+    const latestOutcome = id === 'reviewAlerts' ? timing : delivery;
+    const result = { ...timing, sent: latestOutcome?.sent, total: latestOutcome?.total, lastDeliveryAt: '' };
+    if (id === 'reviewAlerts') {
+      const latestAudit = range.createTextFinder(MARKETS_REVIEW_ALERTS_RUN).matchEntireCell(true).findAll().at(-1);
+      if (latestAudit) {
+        const [row] = sheet.getRange(latestAudit.getRow(), 1, 1, MARKETS_CONFIG.headers.alerts.length).getValues();
+        const audit = parseMarketsReviewAlertRun_(row, indexes);
+        if (audit) return [id, audit];
+      }
+    }
+    let cells = range.createTextFinder(source).matchEntireCell(true).findAll();
+    if (!cells.length && id === 'reviewAlerts') {
+      cells = sheet.getRange(2, indexes.type + 1, last - 1, 1)
+        .createTextFinder('REVIEW_LOW_SHARE').matchEntireCell(true).findAll();
+    }
+    if (!cells.length) return [id, result];
+    const recent = cells.slice(-100).map(cell => cell.getRow()).sort((a, b) => a - b);
+    const from = recent[0], to = recent.at(-1);
+    const rows = sheet.getRange(from, 1, to - from + 1, MARKETS_CONFIG.headers.alerts.length).getValues();
+    const earliest = delivery ? new Date(delivery.startedAt).getTime() - 60000 : 0;
+    const deliveryRows = recent.map(row => rows[row - from]);
+    if (id === 'reviewAlerts') {
+      const latest = deliveryRows.at(-1);
+      result.startedAt = timing?.startedAt || adminDateTime_(latest[indexes.timestamp]);
+      result.recorded = new Set(deliveryRows.filter(row => row[indexes.run_id] === latest[indexes.run_id])
+        .map(row => normalizeEmailForComparison_(row[indexes.user_email] || row[indexes.recipients])).filter(Boolean)).size;
+      // Historic event rows also existed with delivery disabled. They prove
+      // generation and time, but only the outcome telemetry proves acceptance.
+      result.sent = timing?.sent;
+      result.total = timing?.total;
+      if (!delivery) return [id, result];
+    }
+    if (id === 'newsletter') {
+      result.recipients = Object.fromEntries(deliveryRows.map(row => [
+        normalizeEmailForComparison_(row[indexes.user_email] || row[indexes.recipients]), adminDateTime_(row[indexes.timestamp])
+      ]).filter(([email, date]) => email && date));
+    }
+    let accepted = deliveryRows.filter(row => new Date(row[indexes.timestamp]).getTime() >= earliest);
+    if (delivery && id === 'reviewAlerts') {
+      const day = Utilities.formatDate(new Date(delivery.startedAt), MARKETS_CONFIG.timeZone, 'yyyy-MM-dd');
+      accepted = accepted.filter(row => row[indexes.run_id] === 'review-' + day);
+    }
+    const latest = accepted.at(-1);
+    if (!latest) return [id, result];
+    result.lastDeliveryAt = adminDateTime_(latest[indexes.timestamp]);
+    result.confirmed = new Set(accepted.filter(row => row[indexes.run_id] === latest[indexes.run_id])
+      .map(row => row[indexes.user_email] || row[indexes.recipients]).filter(Boolean)).size;
+    return [id, result];
+  }));
+}
+
+function parseMarketsReviewAlertRun_(row, indexes) {
+  const startedAt = adminDateTime_(row[indexes.timestamp]);
+  const sent = adminNumber_(row[indexes.metric_value]), total = adminNumber_(row[indexes.threshold]);
+  const outcome = safeJsonParse_(row[indexes.detail]);
+  if (!outcome || !startedAt || !Number.isInteger(sent) || !Number.isInteger(total) || sent < 0 || sent > total) return null;
+  return { startedAt, sent, total, status: outcome.status, lastDeliveryAt: outcome.deliveredAt || '' };
 }
 
 function readRecentMarketsAdminFetchIssues_(ss, limit) {
@@ -263,7 +337,7 @@ function readRecentMarketsAdminAlertEvents_(ss, limit) {
   const indexes = indexHeaders_(headers);
   const count = Math.min(limit, sheet.getLastRow() - 1);
   return sheet.getRange(sheet.getLastRow() - count + 1, 1, count, headers.length).getValues().reverse()
-    .filter(function (row) { return trimString_(row[indexes.event_key]); })
+    .filter(function (row) { return trimString_(row[indexes.event_key]) && row[indexes.source] !== MARKETS_REVIEW_ALERTS_RUN; })
     .map(function (row) {
       return {
         timestamp: adminDateTime_(row[indexes.timestamp]), type: trimString_(row[indexes.type]),

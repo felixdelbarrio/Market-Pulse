@@ -195,7 +195,7 @@ test("a test email returns traceable acceptance diagnostics and is audited", () 
   assert.equal(sentEvents[0].isTest, true);
   assert.equal(auditedEvents[0].type, "TEST");
   assert.equal(result.realData, true);
-  assert.equal(context.marketsAlertEmailSubject_(sentEvents), "[PRUEBA] Market Pulse · Datos reales · COM-20260720-141500-ABCD1234");
+  assert.equal(context.marketsAlertEmailSubject_(sentEvents), "[PRUEBA] [bIA] [Market Pulse] ‼ ‼ ‼ · Alertas personalizadas · Datos reales · COM-20260720-141500-ABCD1234");
 
   context.currentMarketsUserEmail_ = original.currentUser;
   context.openMarketsSpreadsheet_ = original.open;
@@ -249,7 +249,7 @@ test("a no-signal preview reports every real series in the saved multi-country s
   assert.deepEqual(plain([...new Set(events.map(event => event.countryCode))].sort()), ["CO", "MX"]);
   assert.ok(events.every(event => event.type === "TEST_SNAPSHOT"));
   assert.equal(context.marketsAlertEmailSubject_(events),
-    "[PRUEBA] Market Pulse · Sin alertas activas · COM-NO-SIGNALS");
+    "[PRUEBA] [bIA] [Market Pulse] ‼ ‼ ‼ · Alertas personalizadas · Sin alertas activas · COM-NO-SIGNALS");
   const html = context.renderMarketsAlertEmail_(events, pref.email);
   assert.match(html, /Sin alertas activas/);
   assert.match(html, /Se han evaluado 4 series reales/);
@@ -295,7 +295,7 @@ test("test alert uses a real below-threshold fall and explains the production li
   assert.equal(events[0].countryCode, "CO");
   assert.equal(events[0].platform, "iOS");
   assert.equal(context.marketsAlertEmailSubject_(events),
-    "[PRUEBA] Market Pulse · Datos reales bajo umbral · COM-BELOW");
+    "[PRUEBA] [bIA] [Market Pulse] ‼ ‼ ‼ · Alertas personalizadas · Datos reales bajo umbral · COM-BELOW");
   const html = context.renderMarketsAlertEmail_(events, pref.email);
   assert.match(html, /este correo no se enviaría/i);
   assert.match(html, /0,10 puntos/);
@@ -407,7 +407,7 @@ test("BBVA alert email uses the official image slot, brand system and safe conte
   assert.doesNotMatch(html, /Tu pulso de mercado requiere atención/);
   assert.doesNotMatch(html, /<script(?:\s|\/?>)/i);
   assert.match(html, /Android &lt;script&gt;/);
-  assert.equal(context.marketsAlertEmailSubject_(events), "[Market Pulse] Alertas personalizadas · 2 cambios en ratings");
+  assert.equal(context.marketsAlertEmailSubject_(events), "[bIA] [Market Pulse] ‼ ‼ ‼ · Alertas personalizadas · 2 cambios en ratings");
   const plainText = context.renderMarketsAlertPlainText_(events, "felix.delbarrio@bbva.com");
   assert.match(plainText, /Datos obtenidos: 21\/07\/2026/);
   assert.ok(plainText.includes(context.MARKETS_CONFIG.webAppUrl));

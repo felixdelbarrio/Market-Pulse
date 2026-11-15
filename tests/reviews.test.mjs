@@ -771,3 +771,56 @@ test("index invalidation rewinds only for edits within the completed range", () 
   runtime.invalidateMarketsReviewIndexFrom_(store, 8090);
   assert.deepEqual(JSON.parse(props.get("MARKETS_REVIEW_INDEX_CURSOR")),{version:"a",next:8090});
 });
+
+
+test("Android inference uses a localized support contact and rejects contradictory evidence", () => {
+  const runtime = vm.createContext({console, normalizeReviewEvidence_: value => String(value).normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "").toLowerCase(), marketsReviewMetadata_: row => row[15] || {},
+    marketsReviewDigest_: values => JSON.stringify(values)});
+  vm.runInContext(fs.readFileSync(new URL("../src/55_ReviewIndex.gs", import.meta.url), "utf8"), runtime);
+  const row = [];
+  row[10] = "Gracias por vuestra ayuda.";
+  row[15] = {reply:"Llámanos al 912 249 802."};
+  assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["ES","CO"]).candidate,"ES");
+  const before = runtime.marketsAndroidGeographyDigest_(row, "support-es");
+  row[15].reply = "Gracias por tu calificación. Usa la app en tu celular.";
+  assert.notEqual(runtime.marketsAndroidGeographyDigest_(row, "support-es"),before);
+  assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["ES","CO"]),null);
+  row[15].reply = "Llámanos al +57 601 123 4567.";
+  assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["ES","CO"]).candidate,"CO");
+  row[10] = "Vivo en España y necesito ayuda.";
+  assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["ES","CO"]),null);
+  row[10] = "La app para Argentina nos impide pagar a proveedores.";
+  row[15] = {};
+  assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["ES","AR"]).candidate,"AR");
+  row[10] = "Cómo hago para tener Plin";
+  assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["ES","PE"]).candidate,"PE");
+  row[10] = "Actualmente tengo cuenta BCP e Interbank.";
+  assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["ES","PE"]).candidate,"PE");
+  row[10] = "Funciona bien";
+  row[15] = {reply:"Para nosotros tu opinión es muy importante. Seguiremos trabajando para ajustarnos a las necesidades de gestión de tu empresa y tu operativa bancaria."};
+  assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["ES","CO"]).evidence,"support-es-template");
+  row[15] = {reply:"¡Gracias por las 5 estrellas y por compartir tu experiencia! Nos alegra que disfrutes tu App BBVA."};
+  assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["ES","CO"]).evidence,"support-co-template");
+  row[10] = "La app no deja pagar a proveedores.";
+  row[15] = {reply:"Comunícate con nuestra línea especializada (601) 307 8071."};
+  assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["ES","CO"]).evidence,"support-co");
+  row[15] = {reply:"Contáctanos por la línea de atención 601 555 1234."};
+  assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["ES","CO"]).candidate,"CO");
+  row[15] = {reply:"El indicativo telefónico es 601."};
+  assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["ES","CO"]).candidate,"CO");
+  row[15] = {reply:"Hemos corregido el error 601."};
+  assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["ES","CO"]),null);
+  row[15] = {reply:"Contacta a la línea empresarial de Bogotá 3078071."};
+  assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["ES","CO"]).evidence,"support-co");
+  row[15] = {reply:"Gracias por tu reseña. Trabajamos diariamente para hacerte la vida más fácil."};
+  assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["ES","CO"]).evidence,"support-co-template");
+  row[15] = {};
+  row[10] = "Falta habilitar Yape.";
+  assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["ES","PE"]).candidate,"PE");
+  assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["ES","CO"]),null);
+  row[10] = "Debería funcionar como Yape Bolivia.";
+  assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["ES","PE"]),null);
+  row[10] = "Yape no funciona en Colombia.";
+  assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["CO","PE"]),null);
+});

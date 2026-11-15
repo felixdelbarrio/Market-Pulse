@@ -372,6 +372,8 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   const evolutionMarkup = index.slice(index.indexOf('id="view-evolution"'), index.indexOf('id="view-alerts"'));
   const analyticsMarkup = index.slice(index.indexOf('id="view-analytics"'), index.indexOf('id="view-reviews"'));
   assert.doesNotMatch(evolutionMarkup + app, /evolution-kpis/);
+  assert.match(evolutionMarkup, /class="panel-body radar-filters review-gap-controls"[\s\S]*id="monthly-review-segment"/);
+  assert.match(app, /searchable\(\$\("monthly-review-segment"\)\)\.refresh\(\)/);
   assert.match(evolutionMarkup, /id="evolution-filters"[\s\S]*name="audience"[\s\S]*name="inferGeography"[\s\S]*<\/form>/);
   assert.match(evolutionMarkup, /id="monthly-matrix"[\s\S]*id="new-review-impact"[\s\S]*id="review-balance"[\s\S]*id="review-deltas"[\s\S]*id="review-examples"/);
   assert.match(analyticsMarkup, /class="annual-chart-layout">\s*<div id="annual-chart"[^>]*><\/div>\s*<aside id="annual-series"[^>]*><\/aside>/);
@@ -411,7 +413,7 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(index, /id="loader-retry"/);
   assert.doesNotMatch(app, /sendMarketsNewsletterTestEmail/);
   assert.match(app, /admin:newsletter:test"\?120000/);
-  assert.match(app, /newsletterRequestId/);
+  assert.match(app, /form\.dataset\.requestId/);
   assert.match(app, /state\.userContext=data\.userContext/);
   assert.match(app, /Market Pulse no ha respondido a tiempo/);
   assert.doesNotMatch(app, /Promise\.all\\(\\[callServer\\("bootstrap"\\),callServer\\("user:context"\\)\\]\\)/);
@@ -666,11 +668,13 @@ test("new-review impact never blends Android, iOS or Huawei and deduplicates a s
   assert.deepEqual(Array.from(spain.rows.find(row => row.platform === "Android").reasons), ["SHARED_LISTING"]);
   const estimate = (inferGeography) => browser.MarketsDomain.monthlyNewReviewImpact(
     trends, snapshot, {country:"ES",platform:"ALL",inferGeography}, "2026-07", {"ANDROID|shared":3}).rows.find(row=>row.platform==="Android");
-  assert.equal(estimate("").newReviews,3);
-  assert.equal(estimate("").volumeInferred,true);
+  assert.equal(estimate("YES").newReviews,3);
+  assert.equal(estimate("YES").volumeInferred,true);
   assert.equal(estimate("NO").newReviews,null);
-  assert.equal(estimate("NO").rating,estimate("").rating);
-  assert.equal(estimate("NO").impact,estimate("").impact);
+  assert.equal(estimate("").newReviews,null);
+  assert.equal(spain.summary.platforms.find(item=>item.platform==="Android").rating, estimate("NO").rating);
+  assert.equal(estimate("NO").rating,estimate("YES").rating);
+  assert.equal(estimate("NO").impact,estimate("YES").impact);
 });
 
 test("evolution includes all apps by default and supports filtering by app", () => {
