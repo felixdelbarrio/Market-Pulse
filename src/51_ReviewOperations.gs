@@ -547,16 +547,16 @@ function marketsAdminReviewOperations_(email) {
 }
 
 /** Manual runs share the owner scope and the same worker locks and checkpoints. */
-function runMarketsIndexWindow_() {
-  const stop = Date.now() + 12000;
+function runMarketsIndexWindow_(budgetMs = 12000) {
+  const stop = Date.now() + budgetMs;
   let result;
   do { result = advanceMarketsReviewIndex_(); }
   while (!result.complete && !result.deferred && Date.now() < stop);
   return result;
 }
 
-function runMarketsGeographyWindow_(now = new Date()) {
-  const stop = Date.now() + 12000;
+function runMarketsGeographyWindow_(now = new Date(), budgetMs = 12000) {
+  const stop = Date.now() + budgetMs;
   let advanced = false;
   while (Date.now() < stop && advanceMarketsAndroidGeography_(now)) advanced = true;
   return advanced;
@@ -566,7 +566,7 @@ function runMarketsPanelJob(id) {
   requireMarketsReviewOwner_();
   switch (id) {
     case 'geography': {
-      const advanced = runMarketsGeographyWindow_();
+      const advanced = runMarketsGeographyWindow_(new Date(), 50000);
       const properties = PropertiesService.getScriptProperties();
       const state = safeJsonParse_(properties.getProperty(MARKETS_GEO_AUDIT_PROPERTY));
       return { message: state?.complete ? 'Inferencia completada.' : advanced ? 'Lote de inferencia procesado. El supervisor continuará.' : 'Esperando el turno de reseñas.' };
@@ -590,7 +590,7 @@ function runMarketsPanelJob(id) {
       advanceMarketsFunctionalCatalog_({ sync: false, translate: true });
       return { message: 'Traducción comprobada.' };
     case 'index':
-      const index = runMarketsIndexWindow_();
+      const index = runMarketsIndexWindow_(50000);
       return { message: index.complete ? 'Clasificación completada.' : index.deferred ?
         'Esperando el turno de reseñas. Se conserva el avance.' : 'Lote de clasificación procesado.' };
     case 'publish':

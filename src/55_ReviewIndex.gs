@@ -2,7 +2,7 @@
 const MARKETS_REVIEW_INDEX = 'MARKET_REVIEW_INDEX';
 const MARKETS_REVIEW_INDEX_HEADERS = ['review_key', 'text_digest', 'classifier_version', 'topic_ids', 'audience', 'shared', 'reason'];
 const MARKETS_REVIEW_INDEX_CURSOR = 'MARKETS_REVIEW_INDEX_CURSOR';
-const MARKETS_REVIEW_INDEX_BATCH = 1000;
+const MARKETS_REVIEW_INDEX_BATCH = 3000;
 const MARKETS_REVIEW_INDEX_STATUS = 'MARKETS_REVIEW_INDEX_STATUS';
 
 function marketsReviewIndexSheet_(ss) {
@@ -186,38 +186,42 @@ function advanceMarketsAndroidGeography_(now = new Date()) {
 
 function marketsAndroidReplyEvidence_(reply) {
   const value = String(reply || '').normalize('NFKC').toLowerCase().replace(/(?<=\d)[\s().-]+(?=\d)/g, '');
-  const matches = [];
-  if (/\bbbvaempresasresponde@bbva\.com\b/i.test(reply) || /(?:^|[^\d])(?:\+34)?912249802(?!\d)/.test(value)) matches.push(['ES', 'support-es']);
-  if (/\+57601\d{7}(?!\d)/.test(value)) matches.push(['CO', 'support-co']);
+  const text = normalizeReviewEvidence_(reply || '');
+  const matches = new Map();
+  if (text.includes('necesidades de gestion de tu empresa') && text.includes('y tu operativa bancaria') &&
+      text.includes('para nosotros tu opinion es muy importante')) matches.set('ES', 'support-es-template');
+  if (text.includes('gracias por las 5 estrellas y por compartir tu experiencia') &&
+      text.includes('nos alegra que disfrutes tu app bbva')) matches.set('CO', 'support-co-template');
+  if (/\bbbvaempresasresponde@bbva\.com\b/i.test(reply) || /(?:^|[^\d])(?:\+34)?912249802(?!\d)/.test(value)) matches.set('ES', 'support-es');
+  if (/\+57601\d{7}(?!\d)/.test(value)) matches.set('CO', 'support-co');
   return matches;
 }
 
 function marketsAndroidGeographyEvidence_(row, eligible) {
   const original = row[10];
   const text = normalizeReviewEvidence_(original);
-  const personal = /\b(?:vivo|resido|estoy viviendo|mi empresa opera) en (espana|colombia|peru|venezuela|argentina|mexico)\b/u.exec(text);
+  if (/\b(?:no (?:vivo|resido|uso)|solo de viaje|si viviera|desde el extranjero|vivo en otro pais)\b/u.test(text)) return null;
   const countries = { espana: 'ES', colombia: 'CO', peru: 'PE', venezuela: 'VE', argentina: 'AR', mexico: 'MX' };
-  const local = personal && eligible.includes(countries[personal[1]]) &&
-    !/\b(?:no (?:vivo|resido)|de viaje|si viviera|otro pais)\b/u.test(text)
-    ? { status: 'VALIDAR', candidate: countries[personal[1]], evidence: 'personal-location' } : null;
+  const matches = marketsAndroidReplyEvidence_(marketsReviewMetadata_(row).reply);
   const rail = inferMarketsAndroidCountry_(original, eligible);
-  if (rail && local && rail.candidate !== local.candidate) return null;
-  const direct = rail || local;
-  const reply = marketsReviewMetadata_(row).reply;
-  const contacts = marketsAndroidReplyEvidence_(reply);
-  if (!contacts.length) {
-    const railHint = marketsAndroidGeographyCandidate_(original, eligible);
-    return railHint.status === 'CONFLICTO' || (direct && railHint.candidate && railHint.candidate !== direct.candidate) ? null : direct;
+  if (rail) matches.set(rail.candidate, rail.evidence);
+  const local = /\b(?:vivo|resido|estoy viviendo|mi empresa opera) en (espana|colombia|peru|venezuela|argentina|mexico)\b/u.exec(text);
+  if (local) matches.set(countries[local[1]], 'personal-location');
+  const appMarket = /\b(?:esta|la|mi) (?:app|aplicacion) para (espana|colombia|peru|venezuela|argentina|mexico)\b/u.exec(text);
+  if (appMarket && /\b(?:me|nos|mi|mis|nuestra|no puedo|no podemos)\b/u.test(text)) matches.set(countries[appMarket[1]], 'local-app-use');
+  if (/\b(?:como (?:hago para|puedo) (?:tener|usar|activar)|permitan que .*? hagan|necesito (?:usar|activar)) (?:plin|yape)\b/u.test(text)) {
+    matches.set('PE', 'local-rail-request');
   }
-  if (contacts.length !== 1 || /\b(?:vivo en otro pais|desde el extranjero|de viaje)\b/u.test(text)) return null;
-  const [country, evidence] = contacts[0];
+  if (/\b(?:mi cuenta|tengo cuenta|uso) (?:en )?bcp (?:e|y) interbank\b/u.test(text)) matches.set('PE', 'local-bank-use');
+  if (matches.size !== 1) return null;
+  const [country, evidence] = matches.entries().next().value;
   const mentions = [
     ['ES', /\b(?:espana|bizum)\b/u], ['MX', /\b(?:mexico|spei|curp)\b/u],
     ['PE', /\b(?:peru|plin|yape)\b/u], ['CO', /\b(?:colombia|bogota|pse)\b/u],
     ['AR', /\b(?:argentina|banco galicia)\b/u], ['VE', /\bvenezuela\b/u]
   ];
-  if (mentions.some(([code, pattern]) => code !== country && pattern.test(text))) return null;
-  return direct || (eligible.includes(country) ? { status: 'VALIDAR', candidate: country, evidence } : null);
+  if (!eligible.includes(country) || mentions.some(([code, pattern]) => code !== country && pattern.test(text))) return null;
+  return { status: 'VALIDAR', candidate: country, evidence };
 }
 
 function marketsAndroidGeographyDigest_(row, evidence) {
@@ -245,7 +249,7 @@ function scanMarketsAndroidGeographyBatch_(now) {
     if (!packages.has(app.packageName)) packages.set(app.packageName, new Set());
     packages.get(app.packageName).add(app.countryCode);
   }
-  const version = marketsReviewDigest_(['storefront-reply-v2', [...packages].map(([id, countries]) => [id, [...countries].sort()])]);
+  const version = marketsReviewDigest_(['storefront-reply-v3', [...packages].map(([id, countries]) => [id, [...countries].sort()])]);
   const revision = properties.getProperty('MARKETS_ANDROID_GEO_SOURCE_REVISION') || '';
   const last = source.getLastRow(), previous = safeJsonParse_(properties.getProperty(MARKETS_GEO_AUDIT_PROPERTY));
   const state = previous?.version === version && previous.revision === revision && previous.last <= last ? previous
@@ -258,7 +262,7 @@ function scanMarketsAndroidGeographyBatch_(now) {
     state.last = last;
   }
   const width = marketsReviewWidth_(source);
-  const count = Math.min(1500, last - state.next + 1);
+  const count = Math.min(3000, last - state.next + 1);
   state.runningUntil = Date.now() + 6 * 60 * 1000;
   state.complete = false;
   properties.setProperty(MARKETS_GEO_AUDIT_PROPERTY, JSON.stringify(state));
