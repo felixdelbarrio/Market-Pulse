@@ -308,7 +308,7 @@
 
     document.addEventListener("DOMContentLoaded",initializeApp);
 
-    function initializeApp(){try{window.addEventListener("error",event=>trackUsage("ERROR",state.view,"RUNTIME_ERROR",event.message));window.addEventListener("unhandledrejection",event=>trackUsage("ERROR",state.view,"PROMISE_REJECTION",event.reason?.message||event.reason));$("view-benchmark").querySelector(".report-slot").append($("report-control").content);bindNavigation();bindFilters();bindInteractions();initializeLanguage();if(document.body.dataset.initialView==="alerts")activateView("alerts");document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="hidden")flushUsage()});const viewportChanged=()=>{syncViewControls();if(state.meta&&state.view==="evolution"){renderEvolution();resizeReviewBalance?.()}};if(typeof mobileViewport.addEventListener==="function")mobileViewport.addEventListener("change",viewportChanged);else if(typeof mobileViewport.addListener==="function")mobileViewport.addListener(viewportChanged);$("dialog-close").innerHTML=U.icon("close");$("admin-subscriber-close").innerHTML=U.icon("close");$("loader-retry").addEventListener("click",loadBootstrap);loadBootstrap()}catch(error){showStartupFailure(error)}}
+    function initializeApp(){try{window.addEventListener("error",event=>trackUsage("ERROR",state.view,"RUNTIME_ERROR",event.message));window.addEventListener("unhandledrejection",event=>trackUsage("ERROR",state.view,"PROMISE_REJECTION",event.reason?.message||event.reason));$("view-benchmark").querySelector(".report-slot").append($("report-control").content);bindNavigation();bindFilters();bindInteractions();initializeLanguage();if(document.body.dataset.initialView==="alerts")activateView("alerts");document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="hidden")flushUsage()});const viewportChanged=()=>{syncViewControls();if(state.meta&&state.view==="evolution"){renderEvolution();resizeReviewBalance?.()}};if(typeof mobileViewport.addEventListener==="function")mobileViewport.addEventListener("change",viewportChanged);else if(typeof mobileViewport.addListener==="function")mobileViewport.addListener(viewportChanged);$("dialog-close").innerHTML=U.icon("close");$("loader-retry").addEventListener("click",loadBootstrap);loadBootstrap()}catch(error){showStartupFailure(error)}}
 
     function serverTimeoutMs(method){return ["admin:ratings:recover","admin:jobs:run"].includes(method)?360000:method==="admin:newsletter:test"?120000:method==="bootstrap"?60000:(method.startsWith("admin:reviews:")||method.startsWith("review:")||method==="trends")?60000:method==="admin:get"?30000:20000}
     let activeRpc=0;
@@ -422,9 +422,23 @@
       google.script.run.withSuccessHandler(result=>finish(Boolean(result?.deferred))).withFailureHandler(()=>finish(true)).recordMarketsUsageEvents(batch);
     }
 
-    function adminSubscriberScopeMarkup(){return`<legend>Ámbito de la suscripción</legend><p class="admin-scope-intro">Selecciona “Todos” o combina únicamente los mercados y plataformas que debe recibir esta cuenta.</p><div class="admin-scope-grid"><section class="admin-scope-card" aria-labelledby="admin-country-scope-title"><header><div><strong id="admin-country-scope-title">Mercados</strong><span>Uno, varios o todos</span></div><b id="admin-country-scope-summary" aria-live="polite">Todos</b></header><div id="admin-country-pills" class="admin-scope-pills" role="group" aria-labelledby="admin-country-scope-title"></div></section><section class="admin-scope-card" aria-labelledby="admin-platform-scope-title"><header><div><strong id="admin-platform-scope-title">Plataformas</strong><span>Una, varias o todas</span></div><b id="admin-platform-scope-summary" aria-live="polite">Todas</b></header><div id="admin-platform-pills" class="admin-scope-pills" role="group" aria-labelledby="admin-platform-scope-title"></div></section></div>`}
-    function ensureAdminSubscriberUi(){if(!$("admin-country-pills")){const legacy=$("admin-subscriber-countries")||$("admin-subscriber-platforms"),body=$("admin-subscriber-form")?.querySelector(".admin-subscriber-form-body"),fieldset=legacy?.closest("fieldset");if(fieldset){fieldset.className="admin-scope-fieldset";fieldset.innerHTML=adminSubscriberScopeMarkup()}else if(body){const scope=document.createElement("fieldset"),first=body.querySelector("fieldset");scope.className="admin-scope-fieldset";scope.innerHTML=adminSubscriberScopeMarkup();if(first)first.before(scope);else body.append(scope)}}}
-    function bindNavigation(){ensureAdminSubscriberUi();document.querySelectorAll(".nav-button").forEach(button=>button.addEventListener("click",()=>activateView(button.dataset.view)));document.querySelectorAll(".admin-tab").forEach(button=>button.addEventListener("click",()=>activateAdminTab(button.dataset.adminTab,true)));$("admin-tabs").addEventListener("keydown",handleAdminTabKeydown);$("admin-add-subscriber").addEventListener("click",()=>openAdminSubscriber());$("admin-subscriber-form").addEventListener("submit",saveAdminSubscriber);$("admin-subscriber-close").addEventListener("click",closeAdminSubscriber);$("admin-subscriber-cancel").addEventListener("click",closeAdminSubscriber);$("admin-subscriber-dialog").addEventListener("click",handleAdminScopeClick);$("admin-subscribers").addEventListener("click",event=>{const newsletter=event.target.closest("[data-admin-test-newsletter]");if(newsletter){testAdminNewsletter(newsletter.dataset.adminTestNewsletter,newsletter);return}const button=event.target.closest("[data-admin-edit-subscriber]");if(button)openAdminSubscriber(button.dataset.adminEditSubscriber)});syncViewControls()}
+    function bindNavigation(){
+      document.querySelectorAll(".nav-button").forEach(button=>button.addEventListener("click",()=>activateView(button.dataset.view)));
+      document.querySelectorAll(".admin-tab").forEach(button=>button.addEventListener("click",()=>activateAdminTab(button.dataset.adminTab,true)));
+      $("admin-tabs").addEventListener("keydown",handleAdminTabKeydown);
+      $("admin-add-subscriber").addEventListener("click",()=>openAdminSubscriber());
+      $("admin-subscriber-form").addEventListener("submit",saveAdminSubscriber);
+      $("admin-subscriber-cancel").addEventListener("click",closeAdminSubscriber);
+      $("admin-subscription-editor").addEventListener("click",handleAdminScopeClick);
+      $("admin-subscribers").addEventListener("click",event=>{
+        const button=event.target.closest("[data-action][data-subscriber]");
+        if(!button)return;
+        if(button.dataset.action==="edit")openAdminSubscriber(button.dataset.subscriber);
+        if(button.dataset.action==="delete")unsubscribeAdminNewsletter(button);
+      });
+      $("newsletter-test-form").addEventListener("submit",testAdminNewsletter);
+      syncViewControls();
+    }
     function activateView(view){if(view==="admin"&&!state.userContext?.isAdmin)return;const changed=state.view!==view;if(changed){
       radarFilters[state.view]?.close();
       if(state.view==="evolution"&&monthlyReviewsLoading){evolutionRender=null;resetMonthlyReviews()}
@@ -1391,7 +1405,7 @@
           (!query||record.some(value=>String(value||"").toLocaleLowerCase().includes(query)));
       });
       radarFilters.log.render();
-      metrics.innerHTML=U.metrics([{label:"Registros",value:integer(rows.length)},{label:"Registros disponibles",value:integer(source.length)}]);
+      metrics.innerHTML=adminMetricCards([{label:"Registros",value:integer(rows.length)},{label:"Registros disponibles",value:integer(source.length)}]);
       render(rows);
       const button=$("admin-log-export");
       button.disabled=!rows.length;
@@ -1408,14 +1422,17 @@
       download.disabled=!rows.length;
       download.onclick=()=>exportAdminRows("Catálogo",data.columns,rows);
       businessCatalog.visibleRows=rows;
-      target.innerHTML=(section==="functional"?'<p><button class="alert-button secondary" type="button" data-sync>Sincronizar desde el catálogo maestro</button></p>':"")+
-        (data.edit==="aliases"?'<p><button type="button" class="alert-button primary" data-entry="-1">Añadir equivalencia</button></p>':'')+
+      target.innerHTML=(section==="functional"?'<p><button class="button" type="button" data-sync>Sincronizar desde el catálogo maestro</button></p>':"")+
+        (data.edit==="aliases"?'<p><button type="button" class="button primary" data-entry="-1">Añadir equivalencia</button></p>':'')+
         (rows.length?adminDataTable(data.columns,rows,Boolean(data.edit)):U.empty("Sin entradas","No hay coincidencias para la selección."));
     }
+    function adminMetricCards(cards){
+      return cards.map(card=>`<article class="metric"><span>${U.esc(card.label)}</span><strong>${U.esc(card.value)}</strong>${card.foot?`<span class="small">${U.esc(card.foot)}</span>`:""}</article>`).join("");
+    }
     function adminDataTable(columns,rows,action){
-      return '<div class="admin-table-wrap"><table class="admin-table"><thead><tr>'+columns.map(x=>'<th scope="col">'+U.esc(x)+'</th>').join("")+
-        (action?'<th scope="col">Acciones</th>':'')+'</tr></thead><tbody>'+rows.map((row,i)=>'<tr>'+row.map(x=>'<td>'+U.esc(String(x??""))+'</td>').join("")+
-          (action?'<td><button class="alert-button secondary" type="button" data-entry="'+i+'">Editar</button></td>':'')+'</tr>').join("")+'</tbody></table></div>';
+      return '<div class="table-wrap"><table><thead><tr>'+columns.map(x=>'<th scope="col">'+U.esc(x)+'</th>').join("")+
+        (action?'<th scope="col">Acciones</th>':'')+'</tr></thead><tbody>'+rows.map((row,i)=>'<tr>'+row.map((x,i)=>'<td data-label="'+U.esc(columns[i])+'">'+U.esc(String(x??""))+'</td>').join("")+
+          (action?'<td><button class="button" type="button" data-entry="'+i+'">Editar</button></td>':'')+'</tr>').join("")+'</tbody></table></div>';
     }
     async function loadAdminBusiness(){
       const token=++businessRequest, section=$("admin-business-section").value, target=$("admin-business-results");
@@ -1489,7 +1506,7 @@
       const selected=cohorts.find(item=>item.key===adoptionCohort), matched=selected.rows;
       renderUsageTrend(trend,"admin-adoption-chart");
       const metrics=$("admin-adoption-metrics");
-      metrics.innerHTML=cohorts.map(item=>`<button type="button" class="kpi-card" data-cohort="${item.key}" aria-pressed="${item===selected}"><span>${item.label}</span><strong>${integer(item.rows.length)}</strong><small>${item.hint}</small></button>`).join("");
+      metrics.innerHTML=cohorts.map(item=>`<button type="button" class="metric" data-cohort="${item.key}" aria-pressed="${item===selected}"><span>${item.label}</span><strong>${integer(item.rows.length)}</strong><small>${item.hint}</small></button>`).join("");
       metrics.onclick=event=>{
         const key=event.target.closest("[data-cohort]")?.dataset.cohort;
         if(key&&key!==adoptionCohort){adoptionCohort=key;adoptionPage=0;renderAdminAdoption(usage);metrics.querySelector(`[data-cohort="${key}"]`)?.focus()}
@@ -1500,8 +1517,8 @@
       $("admin-adoption-rows").innerHTML=adminDataTable(["Usuario","Último acceso","Sesiones registradas","Eventos registrados","Primer acceso"],
         matched.slice(adoptionPage*size,(adoptionPage+1)*size).map(row=>[row.email,dateTimeLabel(row.lastSeenAt),row.sessions,row.events,dateTimeLabel(row.firstSeenAt)]));
       const pagination=$("admin-adoption-pagination");
-      pagination.innerHTML=`<button class="alert-button secondary" data-step="-1" ${adoptionPage?"":"disabled"}>Anterior</button>
-        <span> ${adoptionPage+1} / ${pages} </span><button class="alert-button secondary" data-step="1" ${adoptionPage+1<pages?"":"disabled"}>Siguiente</button>`;
+      pagination.innerHTML=`<button class="button" data-step="-1" ${adoptionPage?"":"disabled"}>Anterior</button>
+        <span> ${adoptionPage+1} / ${pages} </span><button class="button" data-step="1" ${adoptionPage+1<pages?"":"disabled"}>Siguiente</button>`;
       pagination.onclick=event=>{const step=event.target.dataset.step;if(step){adoptionPage+=Number(step);renderAdminAdoption(usage)}};
     }
     async function loadAdminNewsletterInteractions(tab){
@@ -1522,7 +1539,7 @@
         const labels={open:"Acceso confirmado",positive:"Útil",negative:"Mejorable"};
         const columns=["Fecha","Edición",feedback?"Valoración":"Interacción",...(feedback?["Observaciones","Estado"]:[])];
         const rows=data.rows.map(([edition,action,date,status,,comment])=>[dateTimeLabel(date),edition,labels[action],...(feedback?[comment,status]:[])]);
-        target.innerHTML='<div class="kpi-grid">'+U.metrics(feedback?[
+        target.innerHTML='<div class="metrics">'+adminMetricCards(feedback?[
           {label:"Total",value:integer(data.total)},{label:"Útil",value:integer(data.positive)},{label:"Mejorable",value:integer(data.negative)},
           {label:"% útil",value:data.total?fmt(100*data.positive/data.total,0)+"%":"—"},
           {label:"Pendientes",value:integer(data.pending||0)},{label:"Atendidos",value:integer(data.resolved||0)}]:
@@ -1577,6 +1594,7 @@
       renderAdminAlerts(center.recentAlerts||[]);
       radarFilters.admin.render();
       renderAdminSubscribers(center.subscribers||[]);
+      renderAdminNewsletterDelivery(center);
       if(["usage","usage-analysis"].includes(state.adminTab))loadAdminUsage();
       if(state.adminTab==="logs")renderAdminLog();
       if(state.adminTab==="business")loadAdminBusiness();
@@ -1706,26 +1724,26 @@
         if(!groups.has(key))groups.set(key,{name:job.group,priority:job.priority,jobs:[]});
         groups.get(key).jobs.push(job);
       }
-      const statusLine=(label,value)=>value?`<p class="admin-process-meta">${label}: ${U.esc(dateTimeLabel(value))}</p>`:"";
+      const statusLine=(label,value)=>value?`<p class="small muted">${label}: ${U.esc(dateTimeLabel(value))}</p>`:"";
       const processCard=job=>{
         const status=job.status||"Programado";
         const tone=!job.enabled?"inactive":job.error||/ERROR|Fallid|Revisar|Sin activador/i.test(status)?"error":
           /^(Activo|OK|Completad)/i.test(status)?"complete":"pending";
         const progress=Number.isFinite(job.total)&&job.total>0
-          ? `<progress class="admin-job-progress" value="${Math.min(job.total,job.done||0)}" max="${job.total}" aria-label="${U.esc(job.name)}"></progress><p class="admin-process-meta">${job.done||0}/${job.total}</p>`
+          ? `<progress class="admin-job-progress" value="${Math.min(job.total,job.done||0)}" max="${job.total}" aria-label="${U.esc(job.name)}"></progress><p class="small muted">${job.done||0}/${job.total}</p>`
           : status==="En curso"?`<progress class="admin-job-progress" aria-label="${U.esc(job.name)}"></progress>`:"";
-        return `<article class="admin-process-card"><div class="admin-process-heading"><h4>${U.esc(job.name)}</h4>
-          <span class="admin-process-state" data-status="${tone}">${job.enabled?"Activo":"Inactivo"}${status==="Activo"||!job.enabled?"":" · "+U.esc(status)}</span></div>
-          <p class="admin-process-meta">${[job.schedule,job.timeZone].filter(Boolean).map(U.esc).join(" · ")}</p>${progress}
+        return `<article class="process-card"><div class="schedule-heading"><h4>${U.esc(job.name)}</h4>
+          <span class="process-state" data-status="${tone}">${job.enabled?"Activo":"Inactivo"}${status==="Activo"||!job.enabled?"":" · "+U.esc(status)}</span></div>
+          <p class="small muted">${[job.schedule,job.timeZone].filter(Boolean).map(U.esc).join(" · ")}</p>${progress}
           ${statusLine("Última ejecución",job.updatedAt)}${statusLine("Último envío",job.deliveredAt)}${statusLine("Último avance",job.lastProgressAt)}${statusLine("Último éxito",job.lastSuccessAt)}
           ${statusLine("Reintento",job.retryAt?new Date(job.retryAt).toISOString():"")}
-          ${job.detail?`<p class="admin-process-meta">${U.esc(job.detail)}</p>`:""}${job.error?`<p>${U.esc(job.error)}</p>`:""}
-          ${job.id==="ratings"?'<button id="admin-recovery" class="alert-button secondary" type="button" data-run-job="ratings">Recuperar ratings ahora</button>':operations?.owner&&actions[job.id]?`<button class="alert-button secondary" type="button" data-run-job="${job.id}" ${!job.enabled||status==="En curso"||status.startsWith("Esperando ")?"disabled":""}>${actions[job.id]}</button>`:""}</article>`;
+          ${job.detail?`<p class="small muted">${U.esc(job.detail)}</p>`:""}${job.error?`<p>${U.esc(job.error)}</p>`:""}
+          ${job.id==="ratings"?'<button id="admin-recovery" class="button" type="button" data-run-job="ratings">Recuperar ratings ahora</button>':operations?.owner&&actions[job.id]?`<button class="button" type="button" data-run-job="${job.id}" ${!job.enabled||status==="En curso"||status.startsWith("Esperando ")?"disabled":""}>${actions[job.id]}</button>`:""}</article>`;
       };
       const root=$("admin-jobs");
-      root.innerHTML=[...groups.values()].sort((a,b)=>a.priority-b.priority).map(group=>`<section class="admin-process-group">
-        <div class="admin-process-heading"><h3>${U.esc(group.name)}</h3><span class="admin-process-meta">Prioridad ${group.priority}</span></div>
-        <div class="admin-process-grid">${group.jobs.map(processCard).join("")}</div></section>`).join("");
+      root.innerHTML=[...groups.values()].sort((a,b)=>a.priority-b.priority).map(group=>`<section class="process-group">
+        <div class="panel-header"><h3>${U.esc(group.name)}</h3><span class="small muted">Prioridad ${group.priority}</span></div>
+        <div class="process-grid">${group.jobs.map(processCard).join("")}</div></section>`).join("");
       root.onclick=async event=>{
         const button=event.target.closest("[data-run-job]");
         if(!button||runningPanelJob)return;
@@ -1756,7 +1774,7 @@
       if(!operations?.owner)return;
       const interval=`<form data-job-action="interval"><label for="job-interval">Supervisor (minutos)</label>
         <select id="job-interval" name="minutes">${[1,5,10,15,30].map(value=>U.option(value,value,value===operations.interval)).join("")}</select>
-        <button class="alert-button secondary" type="submit">Guardar</button></form>`;
+        <button class="button" type="submit">Guardar</button></form>`;
       const jobs=[...(pipeline?.jobs||[]).filter(job=>job.priority),...(system.functionalJobs||[]),
         {id:"index",name:"Clasificación de reseñas",priority:3},{id:"geography",name:"Inferencia geográfica Android",priority:3},{id:"backup",name:"Backup mensual",priority:6},{id:"maintenance",name:"Mantenimiento",priority:6}];
       const forms=jobs.map(job=>{
@@ -1767,12 +1785,12 @@
           <label>Prioridad <input type="number" name="priority" min="1" max="6" value="${settings.priority||job.priority}" required></label>
           <label>Desde <input type="time" name="time" value="${U.esc(settings.time||"08:00")}" required></label>
           <label>Zona horaria <input name="timeZone" value="${U.esc(settings.timeZone||system.timeZone)}" required></label>
-          <button class="alert-button secondary" type="submit">Guardar</button></fieldset></form>`;
+          <button class="button" type="submit">Guardar</button></fieldset></form>`;
       });
       const labels={telemetry:"Telemetría",executions:"Ejecuciones",backups:"Backups",captures:"Capturas",alerts:"Alertas",experience:"Incidencias de experiencia"};
       const folders=Object.entries(operations.folders||{}).map(([kind,id])=>`<form data-job-action="folder" data-id="${U.esc(kind)}">
         <label>${U.esc(labels[kind])} <input name="folder" value="${U.esc(id)}" required></label>
-        <button class="alert-button secondary" type="submit">Guardar</button></form>`);
+        <button class="button" type="submit">Guardar</button></form>`);
       const target=$("admin-job-settings-body");
       target.innerHTML=[$("admin-business-section").value==="storage"?folders.join(""):[interval,...forms].join("")].join("");
       target.onsubmit=async event=>{
@@ -1807,32 +1825,51 @@
     function nextAdminScopeSelection(current,value){if(value==="ANY")return["ANY"];if(value==="ALL")return["ALL"];const selected=new Set((current||[]).filter(item=>item!=="ALL"&&item!=="ANY"));if(selected.has(value))selected.delete(value);else selected.add(value);return selected.size?[...selected]:["ALL"]}
     function adminSubscriberFilterRows(rows){const filters=state.adminSubscriberFilters,query=filters.query.trim().toLowerCase(),scopeMatches=(values,selected)=>{const configured=values||[];if(selected.includes("ANY"))return true;if(selected.includes("ALL"))return configured.includes("ALL");if(configured.includes("ALL"))return false;return selected.some(value=>configured.includes(value))};return rows.filter(row=>(!query||String(row.email||"").toLowerCase().includes(query))&&(filters.status==="ALL"||(row.active?"ACTIVE":"PAUSED")===filters.status)&&(!filters.newsletter||(row.newsletterEnabled?"YES":"NO")===filters.newsletter)&&scopeMatches(row.countries,filters.countries)&&scopeMatches(row.platforms,filters.platforms))}
     function adminSubscriberScopeText(kind,values){if((values||[]).includes("ALL"))return kind==="country"?"Todos los mercados":"Todas las plataformas";return(values||[]).map(value=>kind==="country"?countryLabel(value):D.config.platformLabels[value]||value).join(", ")}
+    const subscriberLanguageNames={es:"Español",en:"English",tr:"Türkçe"};
+    function renderAdminNewsletterDelivery(center){
+      const system=center.system, pipeline=system.reviewPipeline, operations=system.operations;
+      const scheduled=operations?.unifiedAfter?pipeline?.installed:pipeline?.newsletterInstalled;
+      $("newsletter-sender").textContent=[system.senderName,system.senderAddress&&`<${system.senderAddress}>`].filter(Boolean).join(" ");
+      const checks=[["Remitente",system.senderAvailable?"Configurado":"Pendiente"],["Entrega",system.newsletterDeliveryEnabled?"Activada":"Desactivada"],
+        ["Programación",scheduled===true?"Instalada":scheduled===false?"Sin activador":"Sin verificar"]];
+      $("newsletter-checks").innerHTML=checks.map(([name,value])=>`<div class="delivery-check"><strong>${name}</strong><span>${value}</span></div>`).join("");
+      $("newsletter-sender-status").textContent=system.senderAvailable?"El remitente se utiliza en los envíos automáticos y las pruebas.":system.senderError||"El remitente está pendiente de verificación.";
+      $("newsletter-schedule").textContent=[system.newsletterSchedule,system.timeZone].filter(Boolean).join(" · ");
+      const info=system.deliveries?.newsletter;
+      $("newsletter-history").innerHTML=info?.lastDeliveryAt?`<strong>Último envío · ${U.esc(dateTimeLabel(info.lastDeliveryAt))}</strong>
+        <span>${integer(info.sent??info.confirmed??0)} entregas confirmadas</span>`:"<span>No hay envíos registrados.</span>";
+      const country=$("newsletter-test-country"), known=country.value;
+      country.innerHTML=U.option("","Según suscripción")+Object.entries(D.config.countries).map(([code,label])=>U.option(code,label)).join("");
+      country.value=known;
+    }
     function renderAdminSubscribers(rows){
       const filtered=adminSubscriberFilterRows(rows);
-      $("admin-subscriber-results").textContent=`${filtered.length} de ${rows.length} suscripciones`;
-      const headings=["Usuario","Geografías","Plataformas","Alertas","Newsletter","Idioma","Último acceso","Última entrega"];
-      const record=row=>[row.email,adminSubscriberScopeText("country",row.countries),
-        adminSubscriberScopeText("platform",row.platforms),row.active?"Activas":"Pausadas",
-        row.newsletterEnabled?"Activa":"Desactivada",({es:"Español",en:"Inglés",tr:"Turco"})[row.newsletterLanguage]||"—",dateTimeLabel(row.lastSeenAt),dateTimeLabel(row.lastDeliveryAt)];
-      const size=20, pages=Math.max(1,Math.ceil(filtered.length/size));
+      $("admin-subscriber-results").textContent=`${integer(rows.length)} suscriptores · ${integer(filtered.length)} suscripciones en la selección`;
+      const headings=["Suscriptor","Geografía","Idioma","Estado","Último envío","Acciones"];
+      const geography=row=>adminSubscriberScopeText("country",row.countries);
+      const language=row=>subscriberLanguageNames[row.newsletterLanguage]||"—";
+      const stateLabel=row=>row.newsletterEnabled?"Activa":"Pausada";
+      const lastDelivery=row=>row.lastNewsletterAt?dateTimeLabel(row.lastNewsletterAt):"Sin envío reciente registrado";
+      const size=20,pages=Math.max(1,Math.ceil(filtered.length/size));
       subscriberPage=Math.min(subscriberPage,pages-1);
       const selected=filtered.slice(subscriberPage*size,(subscriberPage+1)*size);
-      const root=$("admin-subscribers");
-      root.innerHTML=selected.length?adminDataTable(headings,selected.map(record),true):U.empty("Sin suscripciones","Verifica la selección de filtros.");
-      root.querySelectorAll("[data-entry]").forEach((button,index)=>{
-        button.textContent="Editar comunicaciones";
-        button.dataset.adminEditSubscriber=selected[index].email;
-        const send=document.createElement("button");
-        send.type="button";send.className="alert-button secondary";send.textContent="Probar newsletter";
-        send.dataset.adminTestNewsletter=selected[index].email;
-        button.after(send);
-      });
+      $("admin-subscribers").innerHTML=selected.length?`<div class="table-wrap"><table class="subscriber-table">
+        <caption class="visually-hidden">Suscripciones del equipo</caption><thead><tr>${headings.map(label=>`<th scope="col">${label}</th>`).join("")}</tr></thead>
+        <tbody>${selected.map(row=>`<tr><td data-label="Suscriptor"><strong>${U.esc(row.email)}</strong></td>
+          <td data-label="Geografía">${U.esc(geography(row))}</td><td data-label="Idioma">${U.esc(language(row))}</td>
+          <td data-label="Estado"><span class="status-pill" data-state="${row.newsletterEnabled?"positive":""}">${stateLabel(row)}</span></td>
+          <td data-label="Último envío">${U.esc(lastDelivery(row))}</td><td data-label="Acciones"><div class="actions">
+            <button type="button" class="button" data-action="edit" data-subscriber="${U.esc(row.email)}" aria-label="Editar ${U.esc(row.email)}">Editar</button>
+            ${row.newsletterEnabled?`<button type="button" class="button" data-action="delete" data-subscriber="${U.esc(row.email)}" aria-label="Dar de baja ${U.esc(row.email)}">Dar de baja</button>`:""}
+          </div></td></tr>`).join("")}</tbody></table></div>`:'<div class="panel empty"><p>Sin suscripciones.</p></div>';
       const exportButton=$("admin-subscriber-export");
       exportButton.disabled=!filtered.length;
-      exportButton.onclick=()=>exportAdminRows("Suscripciones",headings,filtered.map(record));
+      exportButton.onclick=()=>exportAdminRows("Suscripciones",headings.slice(0,-1).concat(["Plataformas","Alertas","Último acceso"]),
+        filtered.map(row=>[row.email,geography(row),language(row),stateLabel(row),lastDelivery(row),adminSubscriberScopeText("platform",row.platforms),
+          row.active?"Activas":"Pausadas",dateTimeLabel(row.lastSeenAt)]));
       const pagination=$("admin-subscriber-pagination");
-      pagination.innerHTML=`<button type="button" class="alert-button secondary" data-step="-1" ${subscriberPage?"":"disabled"}>Anterior</button>
-        <span> ${subscriberPage+1} / ${pages} </span><button type="button" class="alert-button secondary" data-step="1" ${subscriberPage+1<pages?"":"disabled"}>Siguiente</button>`;
+      pagination.innerHTML=`<button type="button" class="button" data-step="-1" ${subscriberPage?"":"disabled"}>Anterior</button>
+        <span> ${subscriberPage+1} / ${pages} </span><button type="button" class="button" data-step="1" ${subscriberPage+1<pages?"":"disabled"}>Siguiente</button>`;
       pagination.onclick=event=>{const step=event.target.dataset.step;if(step){subscriberPage+=Number(step);renderAdminSubscribers(rows)}};
     }
     function adminSubscriberDefault(){return{active:true,newsletterEnabled:true,countries:["ALL"],platforms:["ALL"],reviewShareEnabled:false,reviewWarningPct:15,reviewCriticalPct:30,dailyDropEnabled:true,dailyWarningDrop:.1,dailyCriticalDrop:.15,mtdDropEnabled:true,mtdWarningDrop:.3,mtdCriticalDrop:.5,ytdDropEnabled:true,ytdWarningDrop:.3,ytdCriticalDrop:.5,repeatWhileBreached:false,crossoverEnabled:true,crossoverDirection:"BOTH",deliveryMode:"DAILY_DIGEST"}}
@@ -1842,13 +1879,42 @@
     function adminScopeSummary(kind,values){if(values.includes("ALL"))return kind==="country"?"Todos los mercados":"Todas las plataformas";const labels=values.map(value=>kind==="country"?D.config.countries[value]||value:value);return `${values.length} ${kind==="country"?(values.length===1?"mercado":"mercados"):(values.length===1?"plataforma":"plataformas")} · ${labels.join(", ")}`}
     function renderAdminScope(kind,values){const selected=normalizeAdminScope(kind,values),container=$(`admin-${kind}-pills`);container.innerHTML=adminScopeOptions(kind).map(item=>`<button class="admin-scope-pill${item.value==="ALL"?" all":""}" type="button" data-admin-scope-kind="${kind}" data-admin-scope-value="${U.esc(item.value)}" aria-pressed="${selected.includes(item.value)}"><i aria-hidden="true"></i><span>${kind==="country"?geographyFlag(item.value):""}${U.esc(item.label)}</span>${item.meta?`<small>${U.esc(item.meta)}</small>`:""}</button>`).join("");$(`admin-${kind}-scope-summary`).textContent=adminScopeSummary(kind,selected)}
     function handleAdminScopeClick(event){const button=event.target.closest("[data-admin-scope-kind][data-admin-scope-value]");if(!button)return;renderAdminScope(button.dataset.adminScopeKind,nextAdminScopeSelection(adminScopeSelection(button.dataset.adminScopeKind),button.dataset.adminScopeValue))}
-    function openAdminSubscriber(email=""){const row=(state.adminCenter?.subscribers||[]).find(item=>item.email===email),draft=Object.assign(adminSubscriberDefault(),row||{});state.adminEditingEmail=row?.email||"";$("admin-subscriber-title").textContent=row?`Editar ${row.email}`:"Dar de alta usuario";$("admin-subscriber-email").value=row?.email||"";$("admin-subscriber-email").disabled=Boolean(row);$("admin-newsletter-language").value=row?.newsletterLanguage||appLanguage;$("admin-subscriber-active").checked=Boolean(draft.active);$("admin-newsletter-enabled").checked=Boolean(draft.newsletterEnabled);renderAdminScope("country",draft.countries);renderAdminScope("platform",draft.platforms);[["daily",draft.dailyDropEnabled,draft.dailyWarningDrop,draft.dailyCriticalDrop],["mtd",draft.mtdDropEnabled,draft.mtdWarningDrop,draft.mtdCriticalDrop],["ytd",draft.ytdDropEnabled,draft.ytdWarningDrop,draft.ytdCriticalDrop]].forEach(item=>{$(`admin-${item[0]}-enabled`).checked=Boolean(item[1]);$(`admin-${item[0]}-warning`).value=item[2];$(`admin-${item[0]}-critical`).value=item[3]});$("admin-crossover-enabled").checked=Boolean(draft.crossoverEnabled);$("admin-crossover-direction").value=draft.crossoverDirection||"BOTH";$("admin-repeat-enabled").checked=Boolean(draft.repeatWhileBreached);$("admin-subscriber-error").classList.add("hidden");$("admin-subscriber-dialog").showModal()}
-    function closeAdminSubscriber(){$("admin-subscriber-dialog").close();state.adminEditingEmail=""}
+    function openAdminSubscriber(email=""){const row=(state.adminCenter?.subscribers||[]).find(item=>item.email===email),draft=Object.assign(adminSubscriberDefault(),row||{});state.adminEditingEmail=row?.email||"";$("admin-subscriber-title").textContent=row?"Editar suscripción":"Alta manual";$("admin-subscriber-save").textContent=row?"Guardar cambios":"Crear suscripción";$("admin-subscriber-email").value=row?.email||"";$("admin-subscriber-email").disabled=Boolean(row);$("admin-newsletter-language").value=row?.newsletterLanguage||appLanguage;$("admin-subscriber-active").checked=Boolean(draft.active);$("admin-newsletter-enabled").checked=Boolean(draft.newsletterEnabled);renderAdminScope("country",draft.countries);renderAdminScope("platform",draft.platforms);[["daily",draft.dailyDropEnabled,draft.dailyWarningDrop,draft.dailyCriticalDrop],["mtd",draft.mtdDropEnabled,draft.mtdWarningDrop,draft.mtdCriticalDrop],["ytd",draft.ytdDropEnabled,draft.ytdWarningDrop,draft.ytdCriticalDrop]].forEach(item=>{$(`admin-${item[0]}-enabled`).checked=Boolean(item[1]);$(`admin-${item[0]}-warning`).value=item[2];$(`admin-${item[0]}-critical`).value=item[3]});$("admin-crossover-enabled").checked=Boolean(draft.crossoverEnabled);$("admin-crossover-direction").value=draft.crossoverDirection||"BOTH";$("admin-repeat-enabled").checked=Boolean(draft.repeatWhileBreached);$("admin-subscriber-error").classList.add("hidden");$("admin-subscription-editor").hidden=false;$("admin-subscription-editor").scrollIntoView?.({block:"nearest"});
+      (row?$("admin-newsletter-language"):$("admin-subscriber-email")).focus()}
+    function closeAdminSubscriber(){$("admin-subscription-editor").hidden=true;state.adminEditingEmail=""}
     function adminSubscriberPayload(){const existing=(state.adminCenter?.subscribers||[]).find(item=>item.email===state.adminEditingEmail)||adminSubscriberDefault(),payload=Object.assign({},existing,{newsletterLanguage:$("admin-newsletter-language").value,active:$("admin-subscriber-active").checked,newsletterEnabled:$("admin-newsletter-enabled").checked,countries:normalizeAdminScope("country",adminScopeSelection("country")),platforms:normalizeAdminScope("platform",adminScopeSelection("platform")),dailyDropEnabled:$("admin-daily-enabled").checked,dailyWarningDrop:Number($("admin-daily-warning").value),dailyCriticalDrop:Number($("admin-daily-critical").value),mtdDropEnabled:$("admin-mtd-enabled").checked,mtdWarningDrop:Number($("admin-mtd-warning").value),mtdCriticalDrop:Number($("admin-mtd-critical").value),ytdDropEnabled:$("admin-ytd-enabled").checked,ytdWarningDrop:Number($("admin-ytd-warning").value),ytdCriticalDrop:Number($("admin-ytd-critical").value),repeatWhileBreached:$("admin-repeat-enabled").checked,crossoverEnabled:$("admin-crossover-enabled").checked,crossoverDirection:$("admin-crossover-direction").value});return{email:state.adminEditingEmail||$("admin-subscriber-email").value.trim().toLowerCase(),preferences:payload}}
     async function saveAdminSubscriber(event){event.preventDefault();const button=$("admin-subscriber-save"),errorPanel=$("admin-subscriber-error"),previous=button.textContent;button.disabled=true;button.textContent="Guardando…";errorPanel.classList.add("hidden");try{const saved=await callServer("admin:subscriber:save",adminSubscriberPayload());const rows=state.adminCenter.subscribers||[],index=rows.findIndex(row=>row.email===saved.email);if(index<0)rows.push(saved);else rows[index]=saved;trackUsage("ACTION","admin","SUBSCRIBER_SAVE");closeAdminSubscriber();await loadAdmin(true);showToast(`${saved.email}: alertas ${saved.active?"activas":"pausadas"} y newsletter ${saved.newsletterEnabled?"activa":"desactivada"}.${saved.enrollmentYtdAcknowledged?` ${saved.enrollmentYtdAcknowledged} señales YTD previas reconocidas sin envío.`:""}`,true)}catch(error){trackUsage("ERROR","admin","SUBSCRIBER_ERROR",error?.message||error);errorPanel.textContent=error?.message||String(error);errorPanel.classList.remove("hidden")}finally{button.disabled=false;button.textContent=previous}}
     async function requestAdminRatingRecovery(){if(!window.confirm("Se recuperarán ahora todos los ratings y se registrará una nueva ejecución. ¿Continuar?"))return;const button=$("admin-recovery"),previous=button.textContent;button.disabled=true;button.textContent="Recuperando ratings…";try{const result=await callServer("admin:ratings:recover");trackUsage("ACTION","admin","RATING_RECOVERY");await loadAdmin(true);showToast(`Recuperación ${result.runId} completada: ${result.rowsUpserted} filas actualizadas.`,true)}catch(error){showError(error)}finally{button.disabled=false;button.textContent=previous}}
-    function adminNewsletterRequestId(button){if(button.dataset.newsletterRequestId)return button.dataset.newsletterRequestId;const token=window.crypto?.randomUUID?window.crypto.randomUUID():`${Date.now()}-${Math.random().toString(16).slice(2)}`;return button.dataset.newsletterRequestId=`NEWS-REQ-${token}`}
-    async function testAdminNewsletter(email,button){const previous=button.textContent,requestId=adminNewsletterRequestId(button);button.disabled=true;button.textContent="Preparando…";try{const result=await callServer("admin:newsletter:test",{targetEmail:email,requestId});delete button.dataset.newsletterRequestId;trackUsage("ACTION","admin","NEWSLETTER_TEST",email);showToast(result.alreadyAccepted?`La prueba ${result.deliveryId} ya había sido aceptada; no se ha duplicado.`:`Vista previa de ${email} enviada a ${result.recipient}.`,true)}catch(error){showError(error)}finally{button.disabled=false;button.textContent=previous}}
+    async function unsubscribeAdminNewsletter(button){
+      const rows=state.adminCenter?.subscribers||[];
+      const row=rows.find(item=>item.email===button.dataset.subscriber);
+      if(!row?.newsletterEnabled||!window.confirm(`¿Dar de baja la newsletter de ${row.email}?`))return;
+      button.disabled=true;
+      try{
+        const saved=await callServer("admin:subscriber:save",{email:row.email,preferences:{...row,newsletterEnabled:false}});
+        rows[rows.indexOf(row)]=saved;
+        renderAdminSubscribers(rows);
+      }catch(error){showError(error)}
+      finally{button.disabled=false}
+    }
+    async function testAdminNewsletter(event){
+      event.preventDefault();
+      const form=event.currentTarget, button=event.submitter||form.querySelector('button[type="submit"]');
+      const fields=Object.fromEntries(new FormData(form)), fingerprint=JSON.stringify(fields);
+      if(form.dataset.fingerprint!==fingerprint){
+        form.dataset.fingerprint=fingerprint;
+        form.dataset.requestId="NEWS-REQ-"+(window.crypto?.randomUUID?window.crypto.randomUUID():`${Date.now()}-${Math.random().toString(16).slice(2)}`);
+      }
+      const target=$("newsletter-test-result");
+      target.hidden=false;target.classList.remove("error");target.textContent="Procesando solicitud…";
+      button.disabled=true;
+      try{
+        const result=await callServer("admin:newsletter:test",{...fields,requestId:form.dataset.requestId});
+        delete form.dataset.fingerprint;
+        target.textContent=result.alreadyAccepted?`La prueba ${result.deliveryId} ya había sido aceptada.`:`Gmail ha aceptado la prueba para ${result.recipient}.`;
+      }catch(error){target.textContent=error.message;target.classList.add("error")}
+      finally{button.disabled=false}
+    }
     function renderAdminAlerts(rows){if(!rows.length){$("admin-alerts").innerHTML=U.empty("Sin eventos recientes","ALERT_LOG todavía no contiene señales.");return}$("admin-alerts").innerHTML=`<table class="admin-table"><thead><tr><th>Fecha</th><th>Señal</th><th>Ámbito</th><th>Destinatario</th><th>Detalle</th></tr></thead><tbody>${rows.map(row=>`<tr><td>${U.esc(dateTimeLabel(row.timestamp))}</td><td>${statusBadge(row.severity)}<small>${U.esc(row.type)}</small></td><td>${U.esc(`${row.countryCode} · ${row.platform}`)}</td><td>${U.esc(row.userEmail)}</td><td>${U.esc(row.detail)}</td></tr>`).join("")}</tbody></table>`}
 
     function showChartTooltip(point,event){const tooltip=$("chart-tooltip");tooltip.innerHTML=`<strong>${U.esc(point.dataset.label)}</strong>${U.esc(point.dataset.month)} · ${U.esc(point.dataset.value)}${state.country==="ALL"?" · BBVA Empresas":""}`;tooltip.classList.remove("hidden");positionTooltip(event.clientX,event.clientY)}

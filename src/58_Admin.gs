@@ -68,13 +68,14 @@ function getMarketsAdminDashboard(includeUsage = true) {
   const subscribers = readAllMarketsAlertPreferences_(ss);
   const issues = readRecentMarketsAdminFetchIssues_(ss, 40);
   const alerts = readRecentMarketsAdminAlertEvents_(ss, 30);
+  const deliveries = readMarketsAdminDeliveries_(ss);
   const usage = includeUsage ? readMarketsUsageAnalytics_(ss,
     trimString_(access.control.TIME_ZONE) || MARKETS_CONFIG.timeZone) : null;
   return {
     generatedAt: new Date().toISOString(),
     administrator: access.email,
     system: {
-      deliveries: readMarketsAdminDeliveries_(ss),
+      deliveries,
       codeVersion: MARKETS_CONFIG.codeVersion,
       webVersion: MARKETS_WEB.version,
       webAppUrl: marketsWebAppUrl_(),
@@ -91,6 +92,7 @@ function getMarketsAdminDashboard(includeUsage = true) {
       healthMonitorEnabled: parseBoolean_(access.control.MONITOR_HEALTH_ENABLED, true),
       healthRecipient: trimString_(access.control.MONITOR_ADMIN_EMAIL),
       administratorEmails: marketsAdministratorEmails_(access.control),
+      senderName: sender.name,
       senderAddress: sender.address,
       senderAvailable: Boolean(sender.available),
       senderVerificationStatus: trimString_(sender.verificationStatus),
@@ -116,6 +118,7 @@ function getMarketsAdminDashboard(includeUsage = true) {
       client.lastSeenAt = adminDateTime_(item.lastSeenAt);
       client.lastTestAt = adminDateTime_(item.lastTestAt);
       client.lastDeliveryAt = adminDateTime_(item.lastDeliveryAt);
+      client.lastNewsletterAt = deliveries.newsletter?.recipients?.[item.email] || '';
       client.updatedAt = adminDateTime_(item.updatedAt);
       client.registeredAt = adminDateTime_(item.registeredAt);
       return client;
@@ -196,11 +199,12 @@ function requestMarketsAdminRatingRecovery() {
 
 function marketsAdminReviewPipeline_(email) {
   const owner = email === normalizeEmailForComparison_(Session.getEffectiveUser().getEmail());
-  let installed = null;
+  let installed = null, newsletterInstalled = null;
   if (owner) {
     try {
-      installed = ScriptApp.getProjectTriggers()
-        .some(trigger => trigger.getHandlerFunction() === MARKETS_REVIEW_SUPERVISOR);
+      const handlers = ScriptApp.getProjectTriggers().map(trigger => trigger.getHandlerFunction());
+      installed = handlers.includes(MARKETS_REVIEW_SUPERVISOR);
+      newsletterInstalled = handlers.includes('runMarketsMonthlyNewsletter');
     } catch (error) {
       console.warn('No se pudo consultar la programación de reseñas. ' + error.message);
     }
@@ -211,7 +215,7 @@ function marketsAdminReviewPipeline_(email) {
     const current = state?.jobs.find(job => job.id === definition.id);
     return { ...definition, ...current, label: definition.label, priority: definition.priority };
   });
-  return { day: state?.day || '', installed, canRestart: owner && installed === true,
+  return { day: state?.day || '', installed, newsletterInstalled, canRestart: owner && installed === true,
     jobs: [{ id: 'supervisor', label: 'Supervisor', priority: 0,
       status: installed === null ? 'Activador sin verificar' : installed ? 'Activo' : 'Sin activador instalado' }, ...jobs] };
 }
@@ -257,7 +261,13 @@ function readMarketsAdminDeliveries_(ss) {
     const from = recent[0], to = recent.at(-1);
     const rows = sheet.getRange(from, 1, to - from + 1, MARKETS_CONFIG.headers.alerts.length).getValues();
     const earliest = delivery ? new Date(delivery.startedAt).getTime() - 60000 : 0;
-    let accepted = recent.map(row => rows[row - from]).filter(row => new Date(row[indexes.timestamp]).getTime() >= earliest);
+    const deliveryRows = recent.map(row => rows[row - from]);
+    if (id === 'newsletter') {
+      result.recipients = Object.fromEntries(deliveryRows.map(row => [
+        normalizeEmailForComparison_(row[indexes.user_email] || row[indexes.recipients]), adminDateTime_(row[indexes.timestamp])
+      ]).filter(([email, date]) => email && date));
+    }
+    let accepted = deliveryRows.filter(row => new Date(row[indexes.timestamp]).getTime() >= earliest);
     if (delivery && id === 'reviewAlerts') {
       const day = Utilities.formatDate(new Date(delivery.startedAt), MARKETS_CONFIG.timeZone, 'yyyy-MM-dd');
       accepted = accepted.filter(row => row[indexes.run_id] === 'review-' + day);

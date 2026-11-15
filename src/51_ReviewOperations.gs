@@ -586,9 +586,17 @@ function runMarketsPanelJob(id) {
     case 'taxonomy':
       syncMarketsFunctionalCatalog_();
       return { message: 'Catálogo comprobado.' };
-    case 'taxonomyTranslation':
-      advanceMarketsFunctionalCatalog_({ sync: false, translate: true });
-      return { message: 'Traducción comprobada.' };
+    case 'taxonomyTranslation': {
+      const stop = Date.now() + 45000;
+      let job;
+      do {
+        const advanced = advanceMarketsFunctionalCatalog_({ sync: false, translate: true });
+        job = marketsFunctionalJobStatus_().find(item => item.id === 'taxonomyTranslation');
+        if (!advanced || job.status !== 'Pendiente') break;
+      } while (Date.now() < stop);
+      const progress = Number.isInteger(job.total) ? ' · ' + job.done + '/' + job.total : '';
+      return { message: job.status + progress };
+    }
     case 'index':
       const index = runMarketsIndexWindow_(50000);
       return { message: index.complete ? 'Clasificación completada.' : index.deferred ?

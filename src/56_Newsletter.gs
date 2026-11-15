@@ -90,14 +90,14 @@ function sendMarketsAdminNewsletterTestEmail(request) {
   const access = requireMarketsAdministrator_();
   requireMarketsNewsletterContracts_(access.ss);
   const normalized = normalizeMarketsNewsletterPreviewRequest_(request);
-  const target = normalizeMarketsAlertEmail_(normalized.targetEmail);
+  const target = normalizeMarketsAlertEmail_(normalized.targetEmail || access.email);
   if (!marketsNewsletterDeliveryEnabled_(access.control)) {
     throw new Error('El envío de newsletters está desactivado en CONTROL.');
   }
   const preferences = readMarketsAlertPreferences_(access.ss, target);
-  if (!preferences.persisted) throw new Error('El destinatario seleccionado no está dado de alta.');
-  return withMarketsNewsletterPreviewLock_(
-    access.ss, access.email, preferences, target, normalized.requestId);
+  if (!preferences.persisted && target !== access.email) throw new Error('El destinatario seleccionado no está dado de alta.');
+  const scope = normalized.country ? { ...preferences, countries: [normalized.country] } : preferences;
+  return withMarketsNewsletterPreviewLock_(access.ss, access.email, scope, target, normalized.requestId, normalized);
 }
 
 function normalizeMarketsNewsletterPreviewRequest_(request) {
@@ -107,16 +107,20 @@ function normalizeMarketsNewsletterPreviewRequest_(request) {
   if (!/^[A-Za-z0-9_-]{8,96}$/.test(requestId)) {
     throw new Error('El identificador de la prueba no es válido.');
   }
-  return { targetEmail: input.targetEmail, requestId: requestId };
+  const country = trimString_(input.country), language = trimString_(input.language), period = trimString_(input.period);
+  if (country && !MARKETS_WEB.countryCodes.includes(country)) throw new Error('Geografía no válida.');
+  if (language && !['es', 'en', 'tr'].includes(language)) throw new Error('Idioma no válido.');
+  if (period && !['closed', 'current'].includes(period)) throw new Error('Periodo de prueba no válido.');
+  return { targetEmail: input.targetEmail, requestId, country, language, period };
 }
 
-function withMarketsNewsletterPreviewLock_(ss, recipient, preferences, configuredFor, requestId) {
+function withMarketsNewsletterPreviewLock_(ss, recipient, preferences, configuredFor, requestId, options = {}) {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(MARKETS_CONFIG.lockTimeoutMs)) {
     throw new Error('Otra comunicación sigue preparándose. Reintenta: la misma solicitud no se duplicará.');
   }
   try {
-    return sendMarketsNewsletterPreview_(ss, recipient, preferences, configuredFor, requestId);
+    return sendMarketsNewsletterPreview_(ss, recipient, preferences, configuredFor, requestId, options);
   } finally {
     lock.releaseLock();
   }
@@ -134,7 +138,7 @@ function requireMarketsNewsletterContracts_(ss) {
   });
 }
 
-function sendMarketsNewsletterPreview_(ss, recipient, preferences, configuredFor, requestId) {
+function sendMarketsNewsletterPreview_(ss, recipient, preferences, configuredFor, requestId, options = {}) {
   const deliveryId = 'NEWS-' + trimString_(requestId).replace(/^NEWS-REQ-/, '').slice(0, 72).toUpperCase();
   const eventKey = 'NEWSLETTER_TEST|' + deliveryId + '|' + recipient;
   if (readExistingAlertKeys_(ss)[eventKey]) {
@@ -146,10 +150,12 @@ function sendMarketsNewsletterPreview_(ss, recipient, preferences, configuredFor
   }
   const ratings = readRatingObjects_(ss);
   const catalog = readAppCatalog_(ss);
-  const period = latestMarketsNewsletterPeriod_(ratings, preferences);
-  if (!period) throw new Error('No hay cierres reales disponibles para el ámbito configurado.');
+  const current = options.period ? Utilities.formatDate(new Date(), MARKETS_CONFIG.timeZone, 'yyyy-MM') : '';
+  const available = latestMarketsNewsletterPeriod_(ratings, preferences, options.period, current);
+  if (!available) throw new Error('No hay datos para el periodo y el ámbito seleccionados.');
+  const period = available;
   const model = buildMarketsNewsletterModel_(ratings, catalog, preferences, period, {
-    isTest: true, configuredFor: configuredFor, language: marketsNewsletterLanguageFor_(configuredFor)
+    isTest: true, configuredFor: configuredFor, language: options.language || marketsNewsletterLanguageFor_(configuredFor)
   });
   // Previews use their own signed action so voting cannot overwrite the real edition.
   try { model.interactions = marketsNewsletterInteractionLinks_(recipient, period, marketsEmailSecret_(MARKETS_NEWSLETTER_SECRET), true); }
@@ -191,13 +197,13 @@ function marketsPeriodBefore_(period) {
     year + '-' + String(month - 1).padStart(2, '0');
 }
 
-function latestMarketsNewsletterPeriod_(ratings, preferences) {
+function latestMarketsNewsletterPeriod_(ratings, preferences, selection, current) {
   return (ratings || []).filter(function (item) {
     return item.isBbva && item.observedDate instanceof Date && item.rating !== null &&
       marketsAlertScopeMatches_(preferences, item);
   }).map(function (item) {
     return dateKey_(item.observedDate).slice(0, 7);
-  }).sort().pop() || '';
+  }).filter(period => selection === 'closed' ? period < current : selection === 'current' ? period === current : true).sort().pop() || '';
 }
 
 function buildMarketsNewsletterModel_(ratings, catalog, preferences, period, options) {

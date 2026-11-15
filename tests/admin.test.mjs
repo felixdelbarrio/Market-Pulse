@@ -60,7 +60,11 @@ test("admin client exposes subscriber maintenance and manual rating recovery", (
   assert.match(app, /function openAdminSubscriber/);
   assert.match(index, /id="admin-add-subscriber"/);
   assert.match(app, /id="admin-recovery"/);
-  assert.match(index, /id="admin-subscriber-dialog"/);
+  assert.match(index, /id="admin-subscription-editor" class="panel subscription-editor" hidden/);
+  assert.match(index, /class="panel newsletter-delivery"[\s\S]*id="newsletter-test-form"[\s\S]*Suscripciones del equipo/);
+  assert.match(app, /class="subscriber-table"/);
+  assert.match(app, /class="process-card"/);
+  assert.match(app, /preferences:\{\.\.\.row,newsletterEnabled:false\}/);
   assert.match(index, /id="admin-country-pills"/);
   assert.match(index, /id="admin-platform-pills"/);
   assert.match(index, /id="admin-country-scope-summary"/);
@@ -77,9 +81,6 @@ test("admin client exposes subscriber maintenance and manual rating recovery", (
   assert.match(index, /id="admin-filter-platforms"[^>]*multiple/);
   assert.match(index, /id="admin-subscriber-results"[^>]*aria-live="polite"/);
   assert.match(index, /id="admin-newsletter-enabled"/);
-  assert.match(app, /function adminSubscriberScopeMarkup/);
-  assert.match(app, /function ensureAdminSubscriberUi/);
-  assert.match(app, /fieldset\.innerHTML=adminSubscriberScopeMarkup\(\)/);
   assert.match(index, /id="admin-panel-usage"/);
   assert.match(app, /function renderAdminUsage/);
   assert.match(app, /recordMarketsUsageEvents\(batch\)/);
