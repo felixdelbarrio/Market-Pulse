@@ -1407,10 +1407,10 @@
       const download=$("admin-business-export");
       download.disabled=!rows.length;
       download.onclick=()=>exportAdminRows("Catálogo",data.columns,rows);
+      businessCatalog.visibleRows=rows;
       target.innerHTML=(section==="functional"?'<p><button class="alert-button secondary" type="button" data-sync>Sincronizar desde el catálogo maestro</button></p>':"")+
         (data.edit==="aliases"?'<p><button type="button" class="alert-button primary" data-entry="-1">Añadir equivalencia</button></p>':'')+
         (rows.length?adminDataTable(data.columns,rows,Boolean(data.edit)):U.empty("Sin entradas","No hay coincidencias para la selección."));
-      return rows;
     }
     function adminDataTable(columns,rows,action){
       return '<div class="admin-table-wrap"><table class="admin-table"><thead><tr>'+columns.map(x=>'<th scope="col">'+U.esc(x)+'</th>').join("")+
@@ -1442,9 +1442,7 @@
           }
           const entry=event.target.closest("[data-entry]");
           if(!entry||!data.edit)return;
-          const query=businessFilters.query.trim().toLocaleLowerCase();
-          const rows=data.rows.filter(row=>row.some(value=>String(value??"").toLocaleLowerCase().includes(query)));
-          const row=rows[Number(entry.dataset.entry)]||["",""];
+          const row=businessCatalog.visibleRows[Number(entry.dataset.entry)]||["",""];
           businessDraft={section,expected:String(row[1])};
           $("admin-business-key").value=row[0];
           $("admin-business-key").readOnly=Boolean(row[0]);
@@ -1650,7 +1648,8 @@
         const data=system.deliveries?.[id]||{};
         return {updatedAt:data.startedAt||fallback,deliveredAt:data.lastDeliveryAt,
           done:data.sent||data.confirmed||0,total:data.total||data.confirmed,
-          status:data.status==="DELIVERED"?"Completado":data.status==="NOT_REQUIRED"?"Sin envíos pendientes":data.status||"Programado",
+          status:data.status==="DELIVERED"||(!data.status&&data.confirmed)?"Completado":
+            data.status==="NOT_REQUIRED"?"Sin envíos pendientes":data.status||"Programado",
           detail:data.total==null&&data.confirmed?integer(data.confirmed)+" entregas confirmadas en el log":""};
       };
       const jobs=[

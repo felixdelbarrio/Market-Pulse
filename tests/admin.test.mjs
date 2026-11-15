@@ -279,7 +279,7 @@ test("log archive verifies complete rows and refuses deletion if the sheet chang
   const create=name=>{
     const id=String(++nextId),metadata=tab(),data=tab(),book={getId:()=>id,getSheets:()=>[metadata],
       getSheetByName:name=>name==="Archivo"?metadata:data};
-    const file={name,getId:()=>id,getMimeType:()=>"google",moveTo(parent){this.parent=parent;},
+    const file={name,getName(){return this.name},getId:()=>id,getMimeType:()=>"google",moveTo(parent){this.parent=parent;},
       getParents(){return iterator(this.parent?[this.parent]:[]);}};
     files.set(id,file);books.set(id,book);return book;
   };

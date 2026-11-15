@@ -229,6 +229,7 @@ function writeMarketsLogArchive_(folder, name, material, properties) {
   data.setFrozenRows(1);
   SpreadsheetApp.flush();
   const file = DriveApp.getFileById(id);
+  if (file.getName() !== name) file.setName(name);
   if (readMarketsLogArchive_(file) !== material) throw new Error('Contenido de archivo no verificable: ' + name);
   file.moveTo(folder);
   const parents = file.getParents();
