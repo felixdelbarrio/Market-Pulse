@@ -41,9 +41,8 @@
       "Indicadores del periodo":["Period metrics","Dönem göstergeleri"],
       "NPS de reseñas":["Review NPS","Yorum NPS'si"],
       "Comentarios":["Audience","Hedef kitle"],
-      "Solo BEI":["Business banking only","Yalnızca işletme bankacılığı"],
-      "BEI extendido":["Extended business banking","Genişletilmiş işletme bankacılığı"],
-      "BEI extendido incluye señales empresariales y operaciones bancarias compartidas sin evidencia de uso personal.":["Extended business banking includes business signals and shared banking operations without evidence of personal use.","Genişletilmiş işletme bankacılığı, işletme sinyallerini ve kişisel kullanıma dair kanıt bulunmayan ortak bankacılık işlemlerini içerir."],
+      "BEI":["BEI","BEI"],
+      "BEI incluye reseñas empresariales y experiencias funcionales útiles sin evidencia de uso exclusivamente personal.":["BEI includes business reviews and useful functional experiences without evidence of exclusively personal use.","BEI, işletme yorumlarını ve yalnızca kişisel kullanıma dair kanıt bulunmayan yararlı işlevsel deneyimleri içerir."],
       "NPS: {current} ({dates}) · Mes anterior: {previous} ({previousDates}) · Variación: {delta}":["NPS: {current} ({dates}) · Previous month: {previous} ({previousDates}) · Change: {delta}","NPS: {current} ({dates}) · Önceki ay: {previous} ({previousDates}) · Değişim: {delta}"],
       "Reseñas del año anterior":["Reviews from the previous year","Önceki yılın yorumları"],
       "Reseñas del año seleccionado":["Reviews from the selected year","Seçilen yılın yorumları"],
@@ -321,10 +320,20 @@
 
     function recordNewsletterOpen(){
       const token=document.body.dataset.newsletterOpen;
-      if(!token)return;
-      delete document.body.dataset.newsletterOpen;
-      google.script.run.withFailureHandler(()=>showToast("No se pudo registrar el acceso desde la newsletter. Recarga la página para reintentar.",false))
-        .recordMarketsNewsletterOpen(token);
+      if(!token||document.visibilityState!=="visible"||document.prerendering)return;
+      document.removeEventListener("visibilitychange",recordNewsletterOpen);
+      document.removeEventListener("prerenderingchange",recordNewsletterOpen);
+      const send=attempt=>{
+        const retry=()=>{
+          if(attempt<3)setTimeout(()=>send(attempt+1),500*2**(attempt-1));
+          else showToast("No se pudo registrar el acceso desde la newsletter. Recarga la página para reintentar.",false);
+        };
+        google.script.run.withSuccessHandler(result=>{
+          if(result?.open)delete document.body.dataset.newsletterOpen;
+          else retry();
+        }).withFailureHandler(retry).recordMarketsNewsletterOpen(token);
+      };
+      send(1);
     }
 
     function openEmailFeedback(){
@@ -332,7 +341,6 @@
       if(!dialog)return;
       const form=$("edition-feedback"), close=$("close-feedback"), error=$("feedback-error");
       const token=form.dataset.token, newsletter=form.dataset.newsletter==="true";
-      delete form.dataset.token;
       close.innerHTML=U.icon("close");
       close.addEventListener("click",()=>dialog.close());
       form.addEventListener("submit",event=>{
@@ -346,6 +354,7 @@
           error.classList.remove("hidden");
         };
         const run=google.script.run.withSuccessHandler(result=>{
+          delete form.dataset.token;
           dialog.close();
           showToast(result?.preview?"Valoración de prueba guardada.":"Valoración guardada.",true);
         }).withFailureHandler(failure);
@@ -356,7 +365,7 @@
       dialog.showModal();
     }
 
-    function initializeApp(){try{window.addEventListener("error",event=>trackUsage("ERROR",state.view,"RUNTIME_ERROR",event.message));window.addEventListener("unhandledrejection",event=>trackUsage("ERROR",state.view,"PROMISE_REJECTION",event.reason?.message||event.reason));$("view-benchmark").querySelector(".report-slot").append($("report-control").content);bindNavigation();bindFilters();bindInteractions();initializeLanguage();if(document.body.dataset.initialView==="alerts")activateView("alerts");document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="hidden")flushUsage()});const viewportChanged=()=>{syncViewControls();if(state.meta&&state.view==="evolution"){renderEvolution();resizeReviewBalance?.()}};if(typeof mobileViewport.addEventListener==="function")mobileViewport.addEventListener("change",viewportChanged);else if(typeof mobileViewport.addListener==="function")mobileViewport.addListener(viewportChanged);$("dialog-close").innerHTML=U.icon("close");$("loader-retry").addEventListener("click",loadBootstrap);loadBootstrap();openEmailFeedback()}catch(error){showStartupFailure(error)}}
+    function initializeApp(){try{document.addEventListener("visibilitychange",recordNewsletterOpen);document.addEventListener("prerenderingchange",recordNewsletterOpen);recordNewsletterOpen();window.addEventListener("error",event=>trackUsage("ERROR",state.view,"RUNTIME_ERROR",event.message));window.addEventListener("unhandledrejection",event=>trackUsage("ERROR",state.view,"PROMISE_REJECTION",event.reason?.message||event.reason));$("view-benchmark").querySelector(".report-slot").append($("report-control").content);bindNavigation();bindFilters();bindInteractions();initializeLanguage();if(document.body.dataset.initialView==="alerts")activateView("alerts");document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="hidden")flushUsage()});const viewportChanged=()=>{syncViewControls();if(state.meta&&state.view==="evolution"){renderEvolution();resizeReviewBalance?.()}};if(typeof mobileViewport.addEventListener==="function")mobileViewport.addEventListener("change",viewportChanged);else if(typeof mobileViewport.addListener==="function")mobileViewport.addListener(viewportChanged);$("dialog-close").innerHTML=U.icon("close");$("loader-retry").addEventListener("click",loadBootstrap);loadBootstrap();openEmailFeedback()}catch(error){showStartupFailure(error)}}
 
     function serverTimeoutMs(method){return ["admin:ratings:recover","admin:jobs:run"].includes(method)?360000:method==="admin:newsletter:test"?120000:method==="bootstrap"?60000:(method.startsWith("admin:reviews:")||method.startsWith("review:")||method==="trends")?60000:method==="admin:get"?30000:20000}
     let activeRpc=0;
@@ -422,7 +431,7 @@
       }));
     }
     function validateBootstrap(data){if(!data||!data.meta||!Array.isArray(data.snapshot)||!Array.isArray(data.trends))throw new Error("El servidor ha devuelto una respuesta incompleta. Actualiza el despliegue de Market Pulse.");return data}
-    async function loadBootstrap(){if(state.bootstrapLoading)return;state.bootstrapLoading=true;const loader=$("loader");loader.classList.remove("done","failed");$("loader-title").textContent="Preparando Market Pulse…";$("loader-detail").classList.add("hidden");$("loader-retry").classList.add("hidden");try{const data=validateBootstrap(await callServer("bootstrap"));state.meta=data.meta;state.userContext=data.userContext||{email:"",isAdmin:false};if(Array.isArray(data.reviewSegments)){state.reviewSegments=data.reviewSegments;reviewSegments=Promise.resolve(data.reviewSegments)}state.snapshot=data.snapshot;benchmarkModels.clear();state.trends=data.trends;state.consolidated=data.consolidated||null;state.trendsLoading=false;state.trendCache.clear();state.trendCache.set("ALL|ALL|ALL|BBVA|18",state.trends);state.country=browserMarket();if(state.country==="ALL")state.country=data.meta.countries.find(item=>item.code==="ES")?.code||data.meta.countries[0]?.code;configureAdminNavigation();renderRunStatus();renderDashboard();startUsageTracking();recordNewsletterOpen();$("footer-version").textContent=`Contrato ${data.meta.codeVersion} · Web ${data.meta.webVersion||"1"}`;loader.classList.add("done")}catch(error){showStartupFailure(error)}finally{state.bootstrapLoading=false}}
+    async function loadBootstrap(){if(state.bootstrapLoading)return;state.bootstrapLoading=true;const loader=$("loader");loader.classList.remove("done","failed");$("loader-title").textContent="Preparando Market Pulse…";$("loader-detail").classList.add("hidden");$("loader-retry").classList.add("hidden");try{const data=validateBootstrap(await callServer("bootstrap"));state.meta=data.meta;state.userContext=data.userContext||{email:"",isAdmin:false};if(Array.isArray(data.reviewSegments)){state.reviewSegments=data.reviewSegments;reviewSegments=Promise.resolve(data.reviewSegments)}state.snapshot=data.snapshot;benchmarkModels.clear();state.trends=data.trends;state.consolidated=data.consolidated||null;state.trendsLoading=false;state.trendCache.clear();state.trendCache.set("ALL|ALL|ALL|BBVA|18",state.trends);state.country=browserMarket();if(state.country==="ALL")state.country=data.meta.countries.find(item=>item.code==="ES")?.code||data.meta.countries[0]?.code;configureAdminNavigation();renderRunStatus();renderDashboard();startUsageTracking();$("footer-version").textContent=`Contrato ${data.meta.codeVersion} · Web ${data.meta.webVersion||"1"}`;loader.classList.add("done")}catch(error){showStartupFailure(error)}finally{state.bootstrapLoading=false}}
     function showStartupFailure(error){const loader=$("loader");if(!loader)return;loader.classList.remove("done");loader.classList.add("failed");$("loader-title").textContent="No hemos podido iniciar Market Pulse";$("loader-detail").textContent=error?.message||String(error);$("loader-detail").classList.remove("hidden");$("loader-retry").classList.remove("hidden")}
 
     let usageSession="";
@@ -777,7 +786,7 @@
     }
     function reviewFilterLabel(key,value){
       if(key==="inferGeography")return value==="NO"?"No":"Sí";
-      if(key==="audience")return ({BEI_ONLY:"Solo BEI",BEI_EXTENDED:"BEI extendido"})[value]||"Todos";
+      if(key==="audience")return ["BEI","BEI_ONLY","BEI_EXTENDED"].includes(value)?"BEI":"Todos";
       if(key==="country")return value==="ALL"?"Todas":countryLabel(value);
       if(!value&&["app","segment","topic"].includes(key))return "Todos";
       if(key==="platform")return D.config.platformLabels[value];
@@ -1716,7 +1725,7 @@
         const columns=feedback?["Fecha","Correo","Edición","Fecha de envío","Periodicidad","País","Idioma","Valoración","Observaciones","Estado"]:
           ["Fecha","Edición","Interacción"];
         const rows=data.rows.map(([edition,action,date,status,,comment,metadata])=>feedback?
-          [dateTimeLabel(date),metadata?.email||"—",metadata?.preview?edition+" · Prueba":edition||"Alerta",metadata?.sentAt?dateTimeLabel(metadata.sentAt):"—",
+          [dateTimeLabel(date),metadata?.email||"desconocido",metadata?.preview?edition+" · Prueba":edition||"Alerta",metadata?.sentAt?dateTimeLabel(metadata.sentAt):"—",
             edition?"Mensual":"—",metadata?.countries||"—","—",labels[action],comment,status]:
           [dateTimeLabel(date),metadata?.preview?edition+" · Prueba":edition,labels[action]]);
         const cards=`<div class="metrics${feedback?" feedback-metrics":""}">`+adminMetricCards(feedback?[

@@ -107,6 +107,25 @@ function assertCurrentSheetContract_(sheet, expected, current) {
   }
 }
 
+/** Extend a validated historical header without touching its data rows. */
+function marketsAppendSheetHeaders_(sheet, headers, legacyWidths, extend) {
+  if (!sheet.getLastRow()) {
+    if (!extend) return null;
+    ensureSheetCapacity_(sheet, 1, headers.length);
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    return { sheet, headers };
+  }
+  const current = readSheetHeader_(sheet);
+  const width = current.length;
+  const expected = legacyWidths.includes(width) ? headers.slice(0, width) : headers;
+  assertCurrentSheetContract_(sheet, expected, current);
+  if (width > headers.length) throw new Error('Columnas inesperadas en ' + sheet.getName());
+  if (!extend || expected.length === headers.length) return { sheet, headers: expected };
+  ensureSheetCapacity_(sheet, 1, headers.length);
+  sheet.getRange(1, width + 1, 1, headers.length - width).setValues([headers.slice(width)]);
+  return { sheet, headers };
+}
+
 function seedControl_(sheet) {
   const existingRows = sheet.getLastRow() > 1
     ? sheet.getRange(2, 1, sheet.getLastRow() - 1, 3).getValues() : [];

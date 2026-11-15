@@ -337,12 +337,12 @@ test("country pages and snapshots partition each review by its own storefront ev
   assert.equal(scopedPage.total,1);
   assert.equal(scopedPage.counts.TR,1);
   assert.equal(scopedPage.rows[0].key,"compartida-historica");
-  assert.equal(runtime.getMarketsReviewPage(strict).total,0);
+  assert.equal(runtime.getMarketsReviewPage(strict).total,1);
   assert.equal(runtime.getMarketsReviewPage({...strict,country:"TR"}).total,1);
   assert.deepEqual(runtime.getMarketsReviewExport(extended).rows.map(row=>row.key),scopedPage.rows.map(row=>row.key));
   const npsScope = {...extended,analysisMonth:"2026-11"};
   assert.equal(runtime.getMarketsReviewAnalytics(npsScope).nps.current,-100);
-  assert.equal(runtime.getMarketsReviewAnalytics({...npsScope,audience:"BEI_ONLY"}).nps.current,null);
+  assert.equal(runtime.getMarketsReviewAnalytics({...npsScope,audience:"BEI_ONLY"}).nps.current,-100);
   assert.equal(runtime.getMarketsReviewAnalytics({...npsScope,audience:"ALL"}).total,2);
   assert.throws(()=>runtime.getMarketsReviewPage({...extended,audience:"UNKNOWN"}),/Audiencia/);
   const many = Array.from({length:100}, (_, index) => {
@@ -507,7 +507,7 @@ test("the persistent snapshot requires the matching schema and generations", () 
   api.readMarketsWebCache_ = (_key,build)=>build();
   api.readMarketsPersistentCache_ = () => ({ schema, end: window.end, versions: ["1", "", catalogVersion], values: { "page:ES:es": staticPage } });
   assert.equal(api.readMarketsReviewCache_(ss, "page", filters, window, () => null), null);
-  schema = 12;
+  schema = 13;
   assert.equal(api.readMarketsReviewCache_(ss, "page", filters, window, () => null), staticPage);
   generation = "2";
   assert.equal(api.readMarketsReviewCache_(ss, "page", filters, window, () => null), null);
@@ -648,7 +648,7 @@ test("audience requires evidence in the original and keeps salary accounts separ
     ["No funciona mi cuenta", "UNDETERMINED", true, "02"],
     ["Mi préstamo personal", "RETAIL", false, "08"],
     ["Netflix me cobra la suscripción", "RETAIL", false],
-    ["No puedo entrar en la app", "UNDETERMINED", false],
+    ["No puedo entrar en la app", "UNDETERMINED", true],
     ["No llega el OTP para aprobar pagos", "UNDETERMINED", true, "16"],
     ["Mi tarjeta de empresa no funciona", "BEI_CONFIRMED", true, "09"],
     ["Mi tarjeta no funciona", "UNDETERMINED", true, "09"],
@@ -660,16 +660,16 @@ test("audience requires evidence in the original and keeps salary accounts separ
     ["Suscripción de software de mi empresa", "BEI_CONFIRMED", true],
     ["No puedo pagar el alquiler de mi vivienda", "RETAIL", false, "06"],
     ["Pago el alquiler del local de mi negocio", "BEI_CONFIRMED", true, "06"],
-    ["No soy empresa, quiero hacer una transferencia", "UNDETERMINED", true, "03"],
-    ["No abre mi cuenta nómina y falla el pago de nóminas de mi empresa", "BEI_CONFIRMED", true, "04"],
+    ["No soy empresa, quiero hacer una transferencia", "UNDETERMINED", false, "03"],
+    ["No abre mi cuenta nómina y falla el pago de nóminas de mi empresa", "MIXED", true, "04"],
     ["Emekli olmama rağmen EFT ücreti kesiliyor", "RETAIL", false],
     ["Emekli maaşım için havale ücreti kesiliyor", "RETAIL", false],
     ["KOBİ kredisine başvuramıyorum", "BEI_CONFIRMED", true],
     ["Esnaf kredisi başvurusu başarısız", "BEI_CONFIRMED", true],
     ["Ticari kredilerimi Halkbank’tan çektim", "BEI_CONFIRMED", true],
     ["Personel maaşları ödenmiyor", "BEI_CONFIRMED", true],
-    ["Ben emekliyim. Şirket hesabımdan tedarikçime ödeme yapamıyorum", "BEI_CONFIRMED", true],
-    ["Ticari değil, EFT ücreti alıyorsunuz", "UNDETERMINED", true],
+    ["Ben emekliyim. Şirket hesabımdan tedarikçime ödeme yapamıyorum", "MIXED", true],
+    ["Ticari değil, EFT ücreti alıyorsunuz", "RETAIL", false],
     ["La empresa del banco cobra una comisión por transferir dinero a mi hija", "RETAIL", false],
     ["My paycheck was deposited but the bank charged transfer fees", "RETAIL", false],
     ["Minha aposentadoria caiu e cobraram uma taxa no PIX", "RETAIL", false],
@@ -682,7 +682,7 @@ test("audience requires evidence in the original and keeps salary accounts separ
     const ids = api.classifyNormalizedReviewEvidence_(normalized, rules);
     const decision = api.classifyMarketsReviewAudience_(text);
     assert.equal(decision.audience, audience, text);
-    assert.equal(api.matchesMarketsReviewAudience_("BEI_ONLY", decision), audience === "BEI_CONFIRMED", text);
+    assert.equal(api.matchesMarketsReviewAudience_("BEI", decision), extended, text);
     assert.equal(api.matchesMarketsReviewAudience_("BEI_EXTENDED", decision), extended, text);
     assert.equal(api.matchesMarketsReviewAudience_("ALL", decision), true, text);
     if (block) assert.ok(ids.some(id => id.startsWith(block)), text);
@@ -819,7 +819,12 @@ test("Android inference uses a localized support contact and rejects contradicto
   row[15].reply = "Llámanos al +57 601 123 4567.";
   assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["ES","CO"]).candidate,"CO");
   row[10] = "Vivo en España y necesito ayuda.";
-  assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["ES","CO"]),null);
+  assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["ES","CO"]).status,"CONFLICTO");
+  row[9] = "Resido en España";
+  row[10] = "El acceso falla";
+  row[15] = {};
+  assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["ES","CO"]).candidate,"ES");
+  row[9] = '';
   row[10] = "La app para Argentina nos impide pagar a proveedores.";
   row[15] = {};
   assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["ES","AR"]).candidate,"AR");
@@ -829,9 +834,9 @@ test("Android inference uses a localized support contact and rejects contradicto
   assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["ES","PE"]).candidate,"PE");
   row[10] = "Funciona bien";
   row[15] = {reply:"Para nosotros tu opinión es muy importante. Seguiremos trabajando para ajustarnos a las necesidades de gestión de tu empresa y tu operativa bancaria."};
-  assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["ES","CO"]).evidence,"support-es-template");
+  assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["ES","CO"]),null);
   row[15] = {reply:"¡Gracias por las 5 estrellas y por compartir tu experiencia! Nos alegra que disfrutes tu App BBVA."};
-  assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["ES","CO"]).evidence,"support-co-template");
+  assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["ES","CO"]),null);
   row[10] = "La app no deja pagar a proveedores.";
   row[15] = {reply:"Comunícate con nuestra línea especializada (601) 307 8071."};
   assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["ES","CO"]).evidence,"support-co");
@@ -844,7 +849,7 @@ test("Android inference uses a localized support contact and rejects contradicto
   row[15] = {reply:"Contacta a la línea empresarial de Bogotá 3078071."};
   assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["ES","CO"]).evidence,"support-co");
   row[15] = {reply:"Gracias por tu reseña. Trabajamos diariamente para hacerte la vida más fácil."};
-  assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["ES","CO"]).evidence,"support-co-template");
+  assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["ES","CO"]),null);
   row[15] = {};
   row[10] = "Necesito activar Yape.";
   assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["ES","PE"]).candidate,"PE");
@@ -857,8 +862,8 @@ test("Android inference uses a localized support contact and rejects contradicto
     ["Funciona bien", "Llámanos al +34 (912) 249-802", "ES", "support-es"],
     ["Gracias por la ayuda", "Puedes escribir a bbvaempresasresponde@bbva.com.", "ES", "support-es"],
     ["Esto peta", "Comunícate al +57 (601) 307.80.71", "CO", "support-co"],
-    ["Funciona bien", "Nos alegra la calificación que nos das; tu banco en tu celular. Seguimos trabajando de tu mano para hacerte la vida más fácil.", "CO", "support-co-template"],
-    ["No puedo gestionar mis adeudos SEPA", "", "ES", "own-sepa-use"],
+    ["Funciona bien", "Nos alegra la calificación que nos das; tu banco en tu celular. Seguimos trabajando de tu mano para hacerte la vida más fácil.", null],
+    ["No puedo gestionar mis adeudos SEPA", "", null],
     ["Resido en Madrid", "", "ES", "personal-location"],
     ["Mi empresa opera en Bogotá", "", "CO", "personal-location"],
     ["Vivo en Venezuela", "", "VE", "personal-location"],
@@ -919,6 +924,8 @@ test("Android geography checkpoints physical and eligible rows independently acr
     marketsReviewDigest_: JSON.stringify
   });
   vm.runInContext(fs.readFileSync(new URL("../src/55_ReviewIndex.gs", import.meta.url), "utf8"), runtime);
+  vm.runInContext(fs.readFileSync(new URL("../src/52_ReviewInsights.gs", import.meta.url), "utf8"), runtime);
+  runtime.marketsReviewDigest_ = JSON.stringify;
   runtime.readMarketsAndroidGeography_ = () => new Map([["a", {
     automatic:false, packageName:"shared", country:"ES", digest:"manual"
   }]]);
@@ -944,4 +951,149 @@ test("Android geography checkpoints physical and eligible rows independently acr
   properties.set("MARKETS_ANDROID_GEO_SOURCE_REVISION", "edit");
   assert.equal(scan(), true);
   assert.deepEqual([status().processed, status().total, status().scannedRows, status().complete], [0, 0, 0, true]);
+});
+
+test("audience separates company evidence, personal use and useful transversal content", () => {
+  const cases = [
+    ["Çalışanlarınız çok nazik ve anlayışlı", "UNDETERMINED", "NONE"],
+    ["Banka personeli çok kaba", "UNDETERMINED", "NONE"],
+    ["Şirket haberleri hisse ile aynı sayfada", "UNDETERMINED", "NONE"],
+    ["Es un muy buen negocio", "UNDETERMINED", "NONE"],
+    ["Maaşımı buradan alıyorum, EFT yapamıyorum", "RETAIL", "NONE"],
+    ["Ticari faaliyet gösteriyorum", "BEI_CONFIRMED", "BUSINESS"],
+    ["Ticari kredi kartımın asgari ödemesi yükseldi", "BEI_CONFIRMED", "BUSINESS"],
+    ["Ben emekli müşterinizim, benden havale ücreti alındı", "RETAIL", "NONE"],
+    ["Banka personel maaşları hakkında haber", "UNDETERMINED", "NONE"],
+    ["Aile kartı ekranda görünmüyor", "RETAIL", "NONE"],
+    ["Bireysel olarak hesap açmak istiyorum ama ticari olarak hesap açıyor", "MIXED", "NONE"],
+    ["Cuenta personal y cuenta comercial: no puedo pagar proveedores", "MIXED", "BUSINESS"],
+    ["Mi TPV deja de funcionar", "BEI_CONFIRMED", "BUSINESS"],
+    ["No puedo conectar el ERP", "BEI_CONFIRMED", "BUSINESS"],
+    ["Uso H2H para enviar ficheros", "BEI_CONFIRMED", "BUSINESS"],
+    ["No puedo usar la API bancaria", "BEI_CONFIRMED", "BUSINESS"],
+    ["El fichero de remesas no carga", "BEI_CONFIRMED", "BUSINESS"],
+    ["La app rechaza las transferencias masivas", "BEI_CONFIRMED", "BUSINESS"],
+    ["No tengo una cuenta comercial", "UNDETERMINED", "UNCERTAIN"],
+    ["No puedo iniciar sesión con la huella", "UNDETERMINED", "TRANSVERSAL"],
+    ["No aparecen los recibos", "UNDETERMINED", "TRANSVERSAL"],
+    ["La app es muy lenta y se cierra", "UNDETERMINED", "TRANSVERSAL"],
+    ["No encuentro el buscador de movimientos", "UNDETERMINED", "TRANSVERSAL"],
+    ["👍", "UNDETERMINED", "NONE"],
+    ["Mi tarjeta", "UNDETERMINED", "UNCERTAIN"]
+  ];
+  for (const [text, audience, relevance] of cases) {
+    const decision = api.classifyMarketsReviewAudience_(text);
+    assert.deepEqual([decision.audience, decision.relevance], [audience, relevance], text);
+    assert.equal(api.matchesMarketsReviewAudience_("BEI", decision), ["BUSINESS", "TRANSVERSAL"].includes(relevance), text);
+  }
+});
+
+test("geography reprocessing revokes an invalid automatic row once and retains manual rows", () => {
+  const rows = [
+    ["auto", "app", "ES,CO", "Android", "shared"],
+    ["manual", "app", "ES,CO", "Android", "shared"]
+  ];
+  const source = { getLastRow: () => 3, getRange: (_row, _col, count) => ({ getValues: () => rows.slice(0, count) }) };
+  const writes = [];
+  const target = { getLastRow: () => 3, getRange: row => ({ setValues: ([record]) => {
+    writes.push([row, record]);
+    persisted.set(record[0], { ...persisted.get(record[0]), country: record[3], reason: record[7] });
+  } }) };
+  const persisted = new Map([
+    ["auto", { rowNumber: 2, automatic: true, country: "CO", packageName: "shared" }],
+    ["manual", { rowNumber: 3, automatic: false, country: "ES", packageName: "shared" }]
+  ]);
+  const properties = new Map();
+  const runtime = vm.createContext({
+    PropertiesService: { getScriptProperties: () => ({
+      getProperty: key => properties.get(key), setProperty: (key, value) => properties.set(key, value)
+    }) },
+    Utilities: { getUuid: () => "revised" }, SpreadsheetApp: { flush() {} },
+    openMarketsSpreadsheet_: () => ({ getSheetByName: () => target }), marketsReviewSheet_: () => source,
+    readAppCatalog_: () => ["ES", "CO"].map(countryCode => ({ platform: "Android", packageName: "shared", countryCode })),
+    marketsReviewWidth_: () => 16, safeJsonParse_: value => value ? JSON.parse(value) : null,
+    MARKETS_WEB: { countryCodes: ["ES", "CO"] }
+  });
+  for (const file of ["52_ReviewInsights.gs", "55_ReviewIndex.gs"]) {
+    vm.runInContext(fs.readFileSync(new URL("../src/" + file, import.meta.url), "utf8"), runtime);
+  }
+  runtime.marketsReviewDigest_ = JSON.stringify;
+  runtime.marketsReviewLiteral_ = value => value;
+  runtime.marketsReviewMetadata_ = () => ({ reply: "Gracias por tu calificación" });
+  runtime.readMarketsAndroidGeography_ = () => persisted;
+  assert.equal(runtime.scanMarketsAndroidGeographyBatch_(new Date()), true);
+  assert.equal(runtime.scanMarketsAndroidGeographyBatch_(new Date()), false);
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0][0], 2);
+  assert.equal(writes[0][1][3], "");
+  assert.equal(writes[0][1][7], "revoked");
+  assert.equal(persisted.get("manual").country, "ES");
+});
+
+test("BEI index migrates additively, restarts at the new classifier version and resumes without duplicate writes", () => {
+  const headers = ["review_key", "text_digest", "classifier_version", "topic_ids", "audience", "shared", "reason"];
+  const stored = [headers.slice(), ["first", "stale", "old", "[]", "UNDETERMINED", false, "insufficient_evidence"]];
+  const sourceRows = [
+    Object.assign(Array(11).fill(""), {0: "first", 9: "No puedo iniciar sesión", 10: "Después de la actualización"}),
+    Object.assign(Array(11).fill(""), {0: "second", 9: "Mi TPV no funciona", 10: "También falla mi cuenta personal"})
+  ];
+  const map = new Map([["MARKETS_REVIEW_INDEX_CURSOR", JSON.stringify({version: "old", next: 4})]]);
+  let indexWrites = 0, flushes = 0, generations = 0, version = "new";
+  const index = {
+    getName: () => "MARKET_REVIEW_INDEX", getLastColumn: () => stored[0].length,
+    getLastRow: () => stored.length, getMaxColumns: () => 20, getMaxRows: () => 10,
+    getRange: (row, col, count, width) => ({
+      getValues: () => Array.from({ length: count }, (_, i) =>
+        Array.from({length: width}, (_, j) => stored[row - 1 + i]?.[col - 1 + j] ?? "")),
+      setValues: values => {
+        if (row > 1) indexWrites++;
+        values.forEach((items, i) => {
+          const target = stored[row - 1 + i] ||= [];
+          items.forEach((value, j) => { target[col - 1 + j] = value; });
+        });
+      }
+    })
+  };
+  const source = { getLastRow: () => sourceRows.length + 1, getRange: (row, _col, count) => ({
+    getValues: () => sourceRows.slice(row - 2, row - 2 + count)
+  }) };
+  const runtime = vm.createContext({
+    openMarketsSpreadsheet_: () => ({ getSheetByName: () => index }),
+    marketsReviewSheet_: () => source,
+    marketsReviewClassification_: () => ({ rules: {}, version }),
+    marketsReviewLiteral_: value => value, trimString_: value => String(value || "").trim(),
+    ensureSheetCapacity_: () => {},
+    safeJsonParse_: value => value ? JSON.parse(value) : null,
+    LockService: { getUserLock: () => ({ tryLock: () => true, releaseLock() {} }) },
+    PropertiesService: { getScriptProperties: () => ({
+      getProperty: key => map.get(key), setProperty: (key, value) => map.set(key, value)
+    }) },
+    SpreadsheetApp: { flush() { flushes++; } }
+  });
+  for (const file of ["40_Sheets.gs", "52_ReviewInsights.gs", "55_ReviewIndex.gs"]) {
+    vm.runInContext(fs.readFileSync(new URL("../src/" + file, import.meta.url), "utf8")
+      .replace("MARKETS_REVIEW_INDEX_BATCH = 3000", "MARKETS_REVIEW_INDEX_BATCH = 1"), runtime);
+  }
+  runtime.openMarketsSpreadsheet_ = () => ({ getSheetByName: () => index });
+  runtime.classifyReviewEvidence_ = () => [];
+  runtime.marketsReviewDigest_ = JSON.stringify;
+  runtime.advanceMarketsReviewGeneration_ = () => generations++;
+  assert.equal(runtime.advanceMarketsReviewIndex_().complete, false);
+  assert.deepEqual(stored[0], [...headers, "relevance", "evidence"]);
+  assert.equal(runtime.advanceMarketsReviewIndex_().complete, true);
+  assert.equal(runtime.advanceMarketsReviewIndex_().complete, true);
+  assert.deepEqual([indexWrites, flushes, generations], [2, 2, 1]);
+  assert.deepEqual(stored.slice(1).map(row => row[0]), ["first", "second"]);
+  for (const [i, saved] of stored.slice(1).entries()) {
+    const live = runtime.classifyMarketsReviewAudience_(runtime.marketsReviewOriginalText_(sourceRows[i]));
+    const indexed = { audience: saved[4], sharedOperation: saved[5], reason: saved[6],
+      relevance: saved[7], evidence: JSON.parse(saved[8]) };
+    assert.deepEqual(indexed, JSON.parse(JSON.stringify(live)));
+    assert.equal(runtime.matchesMarketsReviewAudience_("BEI", indexed), runtime.matchesMarketsReviewAudience_("BEI", live));
+  }
+  version = "new-rules";
+  assert.equal(runtime.advanceMarketsReviewIndex_().complete, false);
+  assert.equal(runtime.advanceMarketsReviewIndex_().complete, true);
+  assert.equal(indexWrites, 4);
+  assert.ok(stored.slice(1).every(row => row[2] === "new-rules"));
 });
