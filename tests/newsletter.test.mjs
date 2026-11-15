@@ -4,7 +4,7 @@ import test from "node:test";
 import vm from "node:vm";
 
 const newsletterSource = fs.readFileSync(new URL("../src/56_Newsletter.gs", import.meta.url), "utf8");
-const source = ["../src/99_Core.gs", "../src/50_Alerts.gs"]
+const source = ["../src/99_Core.gs", "../src/40_Sheets.gs", "../src/55_AlertPreferences.gs", "../src/50_Alerts.gs"]
   .map(file => fs.readFileSync(new URL(file, import.meta.url), "utf8"))
   .concat(newsletterSource)
   .join("\n");
@@ -370,8 +370,8 @@ test("every geography renders Android, iOS and then Huawei only when data exists
   const volumeStart = html.indexOf("Valoraciones por plataforma");
   const groupStart = html.indexOf(">España</strong>", volumeStart);
   const volumes = html.slice(volumeStart, groupStart);
-  assert.ok(volumes.indexOf("<strong>Android</strong>") < volumes.indexOf("<strong>iOS</strong>"));
-  assert.ok(volumes.indexOf("<strong>iOS</strong>") < volumes.indexOf("<strong>Huawei</strong>"));
+  assert.ok(volumes.indexOf(">Android</strong>") < volumes.indexOf(">iOS</strong>"));
+  assert.ok(volumes.indexOf(">iOS</strong>") < volumes.indexOf(">Huawei</strong>"));
   const geography = html.slice(groupStart);
   assert.ok(geography.indexOf(">Android</strong>") < geography.indexOf(">iOS</strong>"));
   assert.ok(geography.indexOf(">iOS</strong>") < geography.indexOf(">Huawei</strong>"));
@@ -432,10 +432,13 @@ test("localized newsletter renders subject, plain text and HTML in the chosen la
   const model = { period: "2026-10", items: [{ countryCode: "TR", platform: "iOS", endRating: 4.2 }] };
   for (const [language, title] of [["en", "Monthly review"], ["tr", "Aylık değerlendirme"]]) {
     const rendered = context.localizedMarketsNewsletter_({ ...model, language });
+    assert.match(rendered.subject, /^\[bIA\]🚀🚀🚀 \[Market Pulse\] · /u);
     assert.match(rendered.subject, new RegExp(title));
     assert.match(rendered.plain, new RegExp(title));
-    assert.match(rendered.html, new RegExp('<html lang="' + language + '">'));
+    assert.match(rendered.html, new RegExp('<html lang="' + language + '"'));
     assert.match(rendered.html, /iOS/);
+    assert.match(rendered.html, /<header[^>]*bgcolor="#070e46"/i);
+    assert.match(rendered.html, /<th scope="col"[^>]*bgcolor="#ffffff"[^>]*color:#070e46/i);
   }
 });
 
@@ -478,4 +481,98 @@ test("newsletter links are edition-bound, expire, and use the same footer in all
   assert.match(isolated.renderMarketsEmailFooter_(null,"es"),/cid:biaLogo/);
   const preview = isolated.marketsNewsletterInteractionLinks_("reader@bbva.com", "2026-10", "secret", true);
   assert.equal(isolated.parseMarketsNewsletterInteraction_(new URL(preview.positive).searchParams.get("newsletterInteraction")).preview, true);
+});
+
+test("newsletter access cohorts use verified accounts and count each recorded edition once", () => {
+  const asOf = new Date("2026-11-15T09:00:00Z");
+  const one = ["one", "2026-08", "open", "2026-09-25T08:00:00Z"];
+  const two = ["two", "2026-10", "open", "2026-11-14T12:00:00Z"];
+  const unknown = ["anonymous", "2026-10", "open", "2026-11-14T12:00:00Z"];
+  const editions = new Map([
+    ["one", { email: "subscriber@bbva.com" }],
+    ["two", { email: "subscriber@bbva.com" }]
+  ]);
+  const result = plain(context.marketsNewsletterAccessUsers_([two, one, two, unknown], editions, asOf));
+  assert.deepEqual(result, {
+    identified: 2,
+    asOf: "2026-11-15T09:00:00.000Z",
+    users: [{
+      email: "subscriber@bbva.com", events: 2, recentEvents: 1,
+      firstSeenAt: "2026-09-25T08:00:00.000Z", lastSeenAt: "2026-11-14T12:00:00.000Z"
+    }]
+  });
+});
+
+
+test("the Spanish Argentina closing uses the requested subject and email light canvas", () => {
+  const model = { periodLabel: "octubre 2026", scope: { type: "SINGLE", countryLabel: "Argentina", platformLabel: "Todas las plataformas" } };
+  assert.equal(context.marketsNewsletterSpanishSubject_(model),
+    "[bIA]🚀🚀🚀 [Market Pulse] · Cierre octubre 2026 · Argentina · Todas las plataformas");
+  assert.match(context.marketsLightEmailDocument_("es"), /name="color-scheme" content="light"/);
+  assert.match(context.marketsLightEmailDocument_("en"), /bgcolor="#F7F8F8"/);
+});
+
+test("preview opens and feedback persist separately from the live edition; preview unsubscribe is inert", () => {
+  const rows = [["id", "period", "action", "recorded_at", "state", "observation"]];
+  const sheet = {
+    getName: () => "NEWSLETTER_INTERACTIONS",
+    getLastRow: () => rows.length,
+    getLastColumn: () => rows[0].length,
+    getRange: (row, col, _count, width) => ({
+      getValues: () => [Array.from({ length: width }, (_, i) => rows[row - 1]?.[col - 1 + i] || "")],
+      setValues: ([values]) => {
+        rows[row - 1] ||= [];
+        values.forEach((value, i) => { rows[row - 1][col - 1 + i] = value; });
+      },
+      createTextFinder: id => ({
+        matchEntireCell: () => ({
+          findNext: () => {
+            const index = rows.findIndex(value => value[0] === id);
+            return index < 0 ? null : { getRow: () => index + 1 };
+          }
+        })
+      })
+    })
+  };
+  const runtime = vm.createContext({
+    ...context, currentMarketsUserEmail_: () => "reader@bbva.com",
+    PropertiesService: { getScriptProperties: () => ({ getProperty: () => "secret" }) },
+    LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock() {} }) },
+    SpreadsheetApp: { flush() {} }, openMarketsSpreadsheet_: () => ({}),
+    ensureSheetCapacity_: () => {}, marketsReviewLiteral_: value => value,
+    Utilities: {
+      computeHmacSha256Signature: payload => payload,
+      base64EncodeWebSafe: payload => Buffer.from(payload).toString("base64url").slice(-43).padStart(43, "a")
+    }
+  });
+  vm.runInContext(source, runtime);
+  runtime.currentMarketsUserEmail_ = () => "reader@bbva.com";
+  runtime.openMarketsSpreadsheet_ = () => ({ getSheetByName: () => sheet });
+  runtime.ensureSheetCapacity_ = () => {};
+  runtime.unsubscribeMarketsEmail_ = () => assert.fail("Preview must not change subscriptions");
+  const token = (action, preview) => new URL(runtime.marketsNewsletterInteractionLinks_(
+    "reader@bbva.com", "2026-10", "secret", preview
+  )[action]).searchParams.get("newsletterInteraction");
+
+  const identifier = runtime.marketsNewsletterInteractionId_("2026-10", "vote", "reader@bbva.com", "secret");
+  const recorded = new Date("2026-10-20T09:00:00Z");
+  rows.push([identifier, "2026-10", "positive", recorded, "atendido", "Real"]);
+  runtime.saveMarketsNewsletterInteraction(token("positive", false), "positive", "Real");
+  assert.equal(rows[0][6], "user_email");
+  assert.equal(rows[1][3], recorded);
+  assert.equal(rows[1][4], "atendido");
+  const previewVote = token("negative", true);
+  assert.equal(runtime.saveMarketsNewsletterInteraction(previewVote, "negative", "Prueba").preview, true);
+  assert.throws(() => runtime.recordMarketsNewsletterOpen(previewVote), /acceso no válido/);
+  const previewOpen = token("open", true);
+  assert.equal(runtime.recordMarketsNewsletterOpen(previewOpen).open, true);
+  runtime.recordMarketsNewsletterOpen(previewOpen);
+  runtime.saveMarketsNewsletterInteraction(token("unsubscribe", true));
+  runtime.currentMarketsUserEmail_ = () => "another@bbva.com";
+  assert.throws(() => runtime.recordMarketsNewsletterOpen(previewOpen), /cuenta conectada/);
+
+  assert.ok(rows.slice(1).every(row => row[6] === "reader@bbva.com"));
+  assert.deepEqual(rows.slice(1).map(row => [row[0].split("_")[0], row[2], row[5]]), [
+    ["n", "positive", "Real"], ["np", "negative", "Prueba"], ["np", "open", ""]
+  ]);
 });

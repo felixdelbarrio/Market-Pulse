@@ -61,7 +61,7 @@
       if (form.dataset.newsletter === "yes") {
         const values = new FormData(form);
         runner.saveMarketsNewsletterInteraction(form.dataset.token, values.get("rating") || "", values.get("observation") || "");
-      } else runner.saveMarketsAlertFeedback(form.dataset.token);
+      } else runner.saveMarketsAlertFeedback(form.dataset.token, form.elements.rating?.value, form.elements.observation?.value);
     };
   </script>
 </body>

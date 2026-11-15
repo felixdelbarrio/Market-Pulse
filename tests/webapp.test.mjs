@@ -375,7 +375,7 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(evolutionMarkup, /class="panel-body radar-filters review-gap-controls"[\s\S]*id="monthly-review-segment"/);
   assert.match(app, /searchable\(\$\("monthly-review-segment"\)\)\.refresh\(\)/);
   assert.match(evolutionMarkup, /id="evolution-filters"[\s\S]*name="audience"[\s\S]*name="inferGeography"[\s\S]*<\/form>/);
-  assert.match(evolutionMarkup, /id="monthly-matrix"[\s\S]*id="new-review-impact"[\s\S]*id="review-balance"[\s\S]*id="review-deltas"[\s\S]*id="review-examples"/);
+  assert.match(evolutionMarkup, /id="review-balance"[\s\S]*id="review-deltas"[\s\S]*id="review-examples"[\s\S]*id="monthly-matrix"[\s\S]*id="new-review-impact"/);
   assert.match(analyticsMarkup, /class="annual-chart-layout">\s*<div id="annual-chart"[^>]*><\/div>\s*<aside id="annual-series"[^>]*><\/aside>/);
   assert.match(analyticsMarkup, /id="review-heatmap"[\s\S]*id="analytics-entity"[\s\S]*id="annual-chart"[\s\S]*id="review-annual"/);
   const charts = fs.readFileSync(new URL("../src/Charts.html", import.meta.url), "utf8");
@@ -662,19 +662,54 @@ test("new-review impact never blends Android, iOS or Huawei and deduplicates a s
   assert.equal(global.summary.platforms.find(item => item.platform === "iOS").newReviews, 20);
   assert.notEqual(global.summary.platforms.find(item => item.platform === "Android").rating,
     global.summary.platforms.find(item => item.platform === "iOS").rating);
-  const spain = browser.MarketsDomain.monthlyNewReviewImpact(
-    trends, snapshot, { country: "ES", platform: "ALL" }, "2026-07");
-  assert.equal(spain.rows.find(row => row.platform === "Android").available, false);
-  assert.deepEqual(Array.from(spain.rows.find(row => row.platform === "Android").reasons), ["SHARED_LISTING"]);
-  const estimate = (inferGeography) => browser.MarketsDomain.monthlyNewReviewImpact(
-    trends, snapshot, {country:"ES",platform:"ALL",inferGeography}, "2026-07", {"ANDROID|shared":3}).rows.find(row=>row.platform==="Android");
-  assert.equal(estimate("YES").newReviews,3);
-  assert.equal(estimate("YES").volumeInferred,true);
-  assert.equal(estimate("NO").newReviews,null);
-  assert.equal(estimate("").newReviews,null);
-  assert.equal(spain.summary.platforms.find(item=>item.platform==="Android").rating, estimate("NO").rating);
-  assert.equal(estimate("NO").rating,estimate("YES").rating);
-  assert.equal(estimate("NO").impact,estimate("YES").impact);
+  const voice = (country, inferGeography, period="2026-07", app) => browser.MarketsDomain.monthlyNewReviewImpact(
+    trends, snapshot, {country,platform:"ALL",app,inferGeography}, period);
+  const android = model => model.rows.find(row=>row.platform==="Android");
+  for (const country of ["ES","CO"]) {
+    const yes = voice(country,"YES"), no = voice(country,"NO");
+    assert.equal(android(yes).countryCode,country);
+    assert.equal(android(yes).available,true);
+    assert.equal(android(yes).volumeScope,"SHARED_LISTING");
+    assert.equal(android(yes).newReviews,null);
+    assert.equal(android(no).newReviews,null);
+    assert.equal(android(yes).estimatedCountryRatingVolume,null);
+    assert.equal(android(yes).volumeReason,"NO_REPRESENTATIVE_SAMPLE");
+    assert.equal(android(no).volumeReason,"INFERENCE_DISABLED");
+    assert.equal(android(yes).rating,android(no).rating);
+    assert.equal(android(yes).impact,android(no).impact);
+    assert.equal(yes.summary.platforms.find(item=>item.platform==="Android").rating,android(yes).rating);
+  }
+  assert.equal(android(voice("CO","YES","2026-06")).rating,null);
+  assert.equal(android(voice("CO","YES","2026-06")).impact,null);
+  assert.equal(voice("CO","YES","2026-07","Otra aplicación").rows.length,0);
+
+  const app = fs.readFileSync(new URL("../src/App.html", import.meta.url), "utf8");
+  const render = app.slice(app.indexOf("    function renderNewReviewImpact"),app.indexOf("    const benchmarkModels"));
+  const elements = {"new-review-meta":{},"new-review-impact":{}};
+  let sheet;
+  Object.assign(browser,{
+    state:{country:"ES",snapshot}, monthlyFilters:{inferGeography:"YES"},
+    D:browser.MarketsDomain, $:id=>elements[id], selection:()=>({country:browser.state.country,platform:"ALL"}),
+    fmt:value=>String(value), integer:value=>String(value), signed:value=>String(value),
+    translate:String, countryLabel:String, monthLabel:String, reviewFilterLabel:(_key,value)=>value,
+    MarketsUI:{esc:String}, setExportSheet:(_view,_title,country,filters,header,rows)=>{sheet={country,filters,header,rows};}
+  });
+  vm.runInContext(clientScript(fs.readFileSync(new URL("../src/Charts.html", import.meta.url), "utf8")), browser);
+  browser.C=browser.MarketsCharts;
+  vm.runInContext(render,browser);
+  for (const [country, setting, month] of [["ES","YES","2026-07"],["CO","NO","2026-07"],["CO","YES","2026-06"]]) {
+    browser.state.country=country;
+    browser.monthlyFilters.inferGeography=setting;
+    browser.renderNewReviewImpact(month,trends);
+    const row=sheet.rows.find(row=>row[1]==="Android");
+    assert.equal(sheet.country,country);
+    assert.equal(sheet.filters[0][1],month);
+    assert.equal(row[2],"Ficha Android multipaís");
+    assert.equal(row[6],"N/D");
+    assert.equal(row[5],month==="2026-06"?"N/D":android(voice(country,setting)).rating);
+    assert.ok(elements["new-review-impact"].innerHTML.includes(row[2]));
+    assert.ok(elements["new-review-impact"].innerHTML.includes(row[8]));
+  }
 });
 
 test("evolution includes all apps by default and supports filtering by app", () => {
@@ -817,4 +852,93 @@ test("Spanish review labels use reseñas in the UI, charts, exports and communic
   const app = fs.readFileSync(new URL("../src/App.html", import.meta.url), "utf8");
   assert.match(app, /"Reseñas del año seleccionado":\["Reviews from the selected year"/);
   assert.match(app, /setExportSheet\("evolution","NPS de reseñas"/);
+});
+
+test("doGet opens the dashboard for authenticated newsletter access and overlays verified votes", () => {
+  const runtime = vm.createContext({
+    currentMarketsUserEmail_: () => "recipient@bbva.com",
+    parseMarketsNewsletterInteraction_: token => ({ action: token }),
+    parseMarketsAlertFeedback_: token => ({ vote: token }),
+    requireMarketsNewsletterInteractionLink_: (_token, email) => assert.equal(email, "recipient@bbva.com"),
+    requireMarketsAlertFeedbackLink_: () => { throw new Error("wrong account"); },
+    renderMarketsAlertFeedbackPage_: token => ({ route: "alert", token }),
+    renderMarketsNewsletterInteractionPage_: token => ({ route: "newsletter", token })
+  });
+  runtime.HtmlService = {
+    createHtmlOutput: html => ({ html }),
+    createTemplateFromFile: name => ({
+      evaluate() { return {
+        name, feedback: this.feedback, newsletterOpen: this.newsletterOpen, initialView: this.initialView,
+        setTitle() { return this; }, addMetaTag() { return this; }, setFaviconUrl() { return this; }
+      }; }
+    })
+  };
+  vm.runInContext(sources, runtime);
+  const verified = runtime.doGet({ parameter: { newsletterInteraction: "negative", view: "alerts" } });
+  assert.equal(verified.name, "Index");
+  assert.equal(verified.feedback.vote, "negative");
+  assert.equal(verified.feedback.newsletter, true);
+  assert.equal(verified.initialView, "alerts");
+  assert.match(runtime.doGet({ parameter: { alertFeedback: "positive" } }).html, /cuenta conectada/);
+  const open = runtime.doGet({ parameter: { newsletterInteraction: "open" } });
+  assert.equal(open.name, "Index");
+  assert.equal(open.newsletterOpen, "open");
+  assert.equal(open.feedback, null);
+  assert.equal(runtime.doGet({ parameter: { newsletterInteraction: "unsubscribe" } }).route, "newsletter");
+  assert.equal(runtime.doGet({ parameter: { alertFeedback: "unsubscribe" } }).route, "alert");
+});
+
+test("trend cache reuses a matching global series without another country RPC", async () => {
+  const script = clientScript(fs.readFileSync(new URL("../src/App.html", import.meta.url), "utf8"));
+  const helper = script.slice(script.indexOf("    function trendKey("), script.indexOf("    async function loadTrends("));
+  let requests = 0, settle;
+  const runtime = vm.createContext({
+    state: { trendCache: new Map() },
+    callServer: () => { requests++; return new Promise(resolve => { settle = resolve; }); }
+  });
+  vm.runInContext(helper, runtime);
+  const global = { countryCode: "", platform: "", segment: "ALL", months: 36, bbvaOnly: false };
+  const argentina = { ...global, countryCode: "AR" };
+  const pendingGlobal = runtime.fetchTrends(global);
+  const pendingCountry = runtime.fetchTrends(argentina);
+  settle([{ countryCode: "ES" }, { countryCode: "AR" }]);
+  await pendingGlobal;
+  assert.deepEqual(Array.from(await pendingCountry, row => row.countryCode), ["AR"]);
+  assert.deepEqual(Array.from(await runtime.fetchTrends(argentina), row => row.countryCode), ["AR"]);
+  assert.equal(requests, 1);
+  const differentScope = runtime.fetchTrends({ ...argentina, months: 18 });
+  settle([]);
+  await differentScope;
+  assert.equal(requests, 2);
+});
+
+test("newsletter access is recorded before bootstrap and a failed RPC retains the token for retry", () => {
+  const source = fs.readFileSync(new URL("../src/App.html", import.meta.url), "utf8");
+  const handler = source.slice(source.indexOf("    function recordNewsletterOpen()"), source.indexOf("    function openEmailFeedback()"));
+  const timers = [], attempts = [], dataset = { newsletterOpen: "signed-token" };
+  let success, failure;
+  const run = {
+    withSuccessHandler(fn) { success = fn; return this; },
+    withFailureHandler(fn) { failure = fn; return this; },
+    recordMarketsNewsletterOpen(token) { attempts.push(token); }
+  };
+  const sandbox = vm.createContext({
+    document: { body: { dataset }, visibilityState: "hidden", removeEventListener() {} },
+    google: { script: { run } }, setTimeout: (callback, time) => timers.push([callback,time]),
+    showToast: () => assert.fail("The first failure should be retried silently")
+  });
+  vm.runInContext(handler, sandbox);
+  sandbox.recordNewsletterOpen();
+  assert.deepEqual(attempts, []);
+  sandbox.document.visibilityState = "visible";
+  sandbox.recordNewsletterOpen();
+  failure(new Error("RPC unavailable"));
+  assert.equal(dataset.newsletterOpen, "signed-token");
+  assert.equal(timers[0][1], 500);
+  timers[0][0]();
+  success({ open: true });
+  assert.equal(dataset.newsletterOpen, undefined);
+  assert.deepEqual(attempts, ["signed-token", "signed-token"]);
+  const init = source.match(/function initializeApp\(\).*?loadBootstrap\(\)/s)[0];
+  assert.match(init, /recordNewsletterOpen\(\).*loadBootstrap\(\)/s);
 });

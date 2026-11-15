@@ -4,7 +4,7 @@ import { createHmac } from "node:crypto";
 import test from "node:test";
 import vm from "node:vm";
 
-const source = ["../src/99_Core.gs", "../src/00_Config.gs", "../src/55_AlertPreferences.gs", "../src/50_Alerts.gs", "../src/56_Newsletter.gs", "../src/58_Admin.gs"]
+const source = ["../src/99_Core.gs", "../src/00_Config.gs", "../src/55_AlertPreferences.gs", "../src/40_Sheets.gs", "../src/50_Alerts.gs", "../src/56_Newsletter.gs", "../src/58_Admin.gs"]
   .map(file => fs.readFileSync(new URL(file, import.meta.url), "utf8"))
   .join("\n");
 const context = {
@@ -195,7 +195,7 @@ test("a test email returns traceable acceptance diagnostics and is audited", () 
   assert.equal(sentEvents[0].isTest, true);
   assert.equal(auditedEvents[0].type, "TEST");
   assert.equal(result.realData, true);
-  assert.equal(context.marketsAlertEmailSubject_(sentEvents), "[PRUEBA] [bIA] [Market Pulse] ‼ ‼ ‼ · Alertas personalizadas · Datos reales · COM-20260720-141500-ABCD1234");
+  assert.equal(context.marketsAlertEmailSubject_(sentEvents), "[PRUEBA] [bIA] 🚀[Market Pulse]  ·Alertas personalizadas · Datos reales · COM-20260720-141500-ABCD1234");
 
   context.currentMarketsUserEmail_ = original.currentUser;
   context.openMarketsSpreadsheet_ = original.open;
@@ -249,7 +249,7 @@ test("a no-signal preview reports every real series in the saved multi-country s
   assert.deepEqual(plain([...new Set(events.map(event => event.countryCode))].sort()), ["CO", "MX"]);
   assert.ok(events.every(event => event.type === "TEST_SNAPSHOT"));
   assert.equal(context.marketsAlertEmailSubject_(events),
-    "[PRUEBA] [bIA] [Market Pulse] ‼ ‼ ‼ · Alertas personalizadas · Sin alertas activas · COM-NO-SIGNALS");
+    "[PRUEBA] [bIA] 🚀[Market Pulse]  ·Alertas personalizadas · Sin alertas activas · COM-NO-SIGNALS");
   const html = context.renderMarketsAlertEmail_(events, pref.email);
   assert.match(html, /Sin alertas activas/);
   assert.match(html, /Se han evaluado 4 series reales/);
@@ -295,7 +295,7 @@ test("test alert uses a real below-threshold fall and explains the production li
   assert.equal(events[0].countryCode, "CO");
   assert.equal(events[0].platform, "iOS");
   assert.equal(context.marketsAlertEmailSubject_(events),
-    "[PRUEBA] [bIA] [Market Pulse] ‼ ‼ ‼ · Alertas personalizadas · Datos reales bajo umbral · COM-BELOW");
+    "[PRUEBA] [bIA] 🚀[Market Pulse]  ·Alertas personalizadas · Datos reales bajo umbral · COM-BELOW");
   const html = context.renderMarketsAlertEmail_(events, pref.email);
   assert.match(html, /este correo no se enviaría/i);
   assert.match(html, /0,10 puntos/);
@@ -407,7 +407,8 @@ test("BBVA alert email uses the official image slot, brand system and safe conte
   assert.doesNotMatch(html, /Tu pulso de mercado requiere atención/);
   assert.doesNotMatch(html, /<script(?:\s|\/?>)/i);
   assert.match(html, /Android &lt;script&gt;/);
-  assert.equal(context.marketsAlertEmailSubject_(events), "[bIA] [Market Pulse] ‼ ‼ ‼ · Alertas personalizadas · 2 cambios en ratings");
+  assert.equal(context.marketsAlertEmailSubject_(events), "[bIA] 🚀[Market Pulse]  ·Alertas personalizadas · 2 cambios en ratings ");
+  assert.equal(context.marketsAlertEmailSubject_(events.slice(0, 1)), "[bIA] 🚀[Market Pulse]  ·Alertas personalizadas · 1 cambio en ratings ");
   const plainText = context.renderMarketsAlertPlainText_(events, "felix.delbarrio@bbva.com");
   assert.match(plainText, /Datos obtenidos: 21\/07\/2026/);
   assert.ok(plainText.includes(context.MARKETS_CONFIG.webAppUrl));
@@ -640,13 +641,24 @@ test("alert feedback tokens bind the vote to the recipient and deduplicate acros
   const writes = [];
   const sheet = {
     getLastRow: () => writes.length,
-    getRange: (row) => ({
-      setValues(values) { writes[row - 1] = values[0]; },
-      createTextFinder(id) { return { matchEntireCell: () => ({ findNext: () => writes.find(item => item[0] === id) }) }; }
+    getLastColumn: () => writes[0]?.length || 0,
+    getMaxRows: () => 100,
+    getMaxColumns: () => 10,
+    getRange: (row, col, _count, width) => ({
+      getValues: () => [writes[row - 1].slice(col - 1, col - 1 + width)],
+      setValues(values) {
+        writes[row - 1] ||= [];
+        writes[row - 1].splice(col - 1, values[0].length, ...values[0]);
+      },
+      createTextFinder(id) {
+        const index = writes.findIndex(item => item[0] === id);
+        return { matchEntireCell: () => ({ findNext: () => index >= 1 ? { getRow: () => index + 1 } : null }) };
+      }
     })
   };
   Object.assign(context, {
     currentMarketsUserEmail_: () => active,
+    marketsReviewLiteral_: value => /^[=+@-]/.test(value) ? "'" + value : value,
     PropertiesService: { getScriptProperties: () => ({ getProperty: () => "a".repeat(32) }) },
     LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock() {} }) },
     openMarketsSpreadsheet_: () => ({ getSheetByName: () => sheet }),
@@ -666,9 +678,36 @@ test("alert feedback tokens bind the vote to the recipient and deduplicate acros
   active = "another@bbva.com";
   assert.throws(() => context.saveMarketsAlertFeedback(token("positive")), /no corresponde/);
   active = "recipient@bbva.com";
-  assert.equal(context.saveMarketsAlertFeedback(token("positive")).recorded, true);
-  assert.equal(context.saveMarketsAlertFeedback(token("negative")).recorded, true);
+  assert.throws(() => context.saveMarketsAlertFeedback(token("unsubscribe"), "negative"), /no válida/);
+  assert.throws(() => context.saveMarketsAlertFeedback(token("positive"), "negative", "a".repeat(1001)), /no válida/);
+  writes.push(["message_id", "vote", "recorded_at"], [id, "positive", new Date("2026-01-01")]);
+  assert.equal(context.saveMarketsAlertFeedback(token("positive"), "negative", "=Comentario").recorded, true);
   assert.equal(writes.length, 2);
-  assert.deepEqual(Array.from(writes[1].slice(0, 2)), [id, "positive"]);
+  assert.deepEqual(writes[0], ["message_id", "vote", "recorded_at", "observation", "status", "user_email"]);
+  assert.deepEqual(Array.from(writes[1].slice(0, 2)), [id, "negative"]);
+  assert.deepEqual(writes[1].slice(3), ["'=Comentario", "pendiente", "recipient@bbva.com"]);
+  const updated = writes[1][2];
+  writes[1][3] = "=Comentario"; // getValues returns the literal without the escape prefix
+  assert.equal(context.saveMarketsAlertFeedback(token("positive"), "negative", "=Comentario").recorded, true);
+  assert.equal(writes[1][2], updated);
   assert.equal(context.parseMarketsAlertFeedback_(token("positive").replace(/\.\d{10}\./, ".1000000000.")), null);
+});
+
+test("alert envelopes materialize the light palette for operational and preview email", () => {
+  const event = { type: "TEST_SNAPSHOT", country: "España", countryCode: "ES", platform: "iOS",
+    rating: 4, previousRating: 4, referenceDate: new Date("2026-11-01"), severity: "WARNING", isTest: true };
+  for (const sample of [event, { ...event, type: "TEST_BELOW_THRESHOLD" }, { ...event, type: "RATING_DROP", isTest: false }]) {
+    const html = context.renderMarketsAlertEmail_([sample], "reader@bbva.com", {
+      positive: "https://example.test/positive", negative: "https://example.test/negative"
+    });
+    assert.match(html, /name="color-scheme" content="light"/);
+    assert.match(html, /background-image:linear-gradient\(#001391,#001391\)/);
+    for (const node of html.match(/<(?:table|tr|td|th)\b[^>]*>/g)) {
+      assert.match(node, /bgcolor="#[0-9a-f]{3,6}"/i);
+      assert.match(node, /background-color:#[0-9a-f]{3,6}/i);
+      assert.match(node, /(?:[";])color:#[0-9a-f]{3,6}/i);
+    }
+    assert.match(html, /cid:bbvaLogo/);
+    assert.match(html, /cid:feedbackPositive/);
+  }
 });

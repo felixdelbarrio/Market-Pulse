@@ -64,7 +64,7 @@ function usageDetail_(value, maximum) {
 
 function readMarketsUsageAnalytics_(ss, timeZone, now) {
   const zone = timeZone || MARKETS_CONFIG.timeZone;
-  const cache = !now ? CacheService.getScriptCache() : null;
+  const cache = !now ? CacheService.getUserCache() : null;
   const cacheKey = usageAnalyticsCacheKey_(zone);
   if (cache) {
     const cached = cache.get(cacheKey);
@@ -86,7 +86,7 @@ function readMarketsUsageAnalytics_(ss, timeZone, now) {
 }
 
 function usageAnalyticsCacheKey_(timeZone) {
-  return 'markets:usage:analytics:v3:' + MARKETS_CONFIG.codeVersion + ':' + trimString_(timeZone);
+  return 'markets:usage:analytics:v4:' + MARKETS_CONFIG.codeVersion + ':' + trimString_(timeZone);
 }
 
 function buildMarketsUsageAnalytics_(rows, timeZone, now, tracking) {
@@ -109,27 +109,31 @@ function buildMarketsUsageAnalytics_(rows, timeZone, now, tracking) {
   let errorsMonth = 0;
 
   const adoption = new Map();
-  const adoptionStart = usageOffsetDateKey_(today, -29);
+  const adoptionStart = now.getTime() - 30 * 86400000;
   (rows || []).forEach(function (row) {
     const timestamp = row[indexes.timestamp];
-    if (!(timestamp instanceof Date) || isNaN(timestamp.getTime())) return;
+    if (!(timestamp instanceof Date) || !Number.isFinite(timestamp.getTime()) || timestamp > now) return;
     const dateKey = usageDateKey_(timestamp, timeZone);
     const email = normalizeEmailForComparison_(row[indexes.user_email]);
     if (!email) return;
-    const sessionId = trimString_(row[indexes.session_id]);
-    if (!sessionId) return;
+    const rawSession = trimString_(row[indexes.session_id]);
+    if (!rawSession) return;
+    const sessionId = email + '|' + rawSession;
     if (dateKey >= currentWeek && dateKey <= today) {
       unique.week[email] = true; sessions.week[sessionId] = true;
     } else if (dateKey >= previousWeek && dateKey <= previousComparableEnd) {
       unique.previousWeek[email] = true; sessions.previousWeek[sessionId] = true;
     }
-    if (dateKey >= adoptionStart && dateKey <= today) {
-      if (!adoption.has(email)) adoption.set(email, { email, sessions: new Set(), events: 0, first: timestamp, last: timestamp });
-      const active = adoption.get(email);
-      active.sessions.add(sessionId);
-      active.events++;
-      if (timestamp < active.first) active.first = timestamp;
-      if (timestamp > active.last) active.last = timestamp;
+    if (!adoption.has(email)) adoption.set(email, { email, sessions: new Set(), events: 0, first: timestamp, last: timestamp,
+      recentSessions: new Set(), recentEvents: 0 });
+    const active = adoption.get(email);
+    active.sessions.add(rawSession);
+    active.events++;
+    if (timestamp < active.first) active.first = timestamp;
+    if (timestamp > active.last) active.last = timestamp;
+    if (timestamp.getTime() >= adoptionStart) {
+      active.recentSessions.add(rawSession);
+      active.recentEvents++;
     }
     const day = daily[dateKey] || (daily[dateKey] = { users: {}, sessions: {}, events: 0, errors: 0 });
     day.users[email] = true; day.sessions[sessionId] = true; day.events += 1;
@@ -226,8 +230,8 @@ function buildMarketsUsageAnalytics_(rows, timeZone, now, tracking) {
     devices: usageCountRanking_(devices),
     adoptionUsers: [...adoption.values()].map(row => ({
       email: row.email, sessions: row.sessions.size, events: row.events,
-      firstSeenAt: row.first.toISOString(), lastSeenAt: row.last.toISOString(),
-      lastDay: usageDateKey_(row.last, timeZone)
+      recentSessions: row.recentSessions.size, recentEvents: row.recentEvents,
+      firstSeenAt: row.first.toISOString(), lastSeenAt: row.last.toISOString()
     })).sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt) || a.email.localeCompare(b.email)),
     retainedUsers: ranking,
     mostActive: ranking.slice(0, 10),

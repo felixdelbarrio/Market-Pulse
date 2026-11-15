@@ -38,7 +38,7 @@ function sendMarketsMonthlyNewsletter_(ss, period, isTest) {
     return item.newsletterEnabled;
   });
   const result = { status: 'NOT_REQUIRED', period: period, subscribers: subscribers.length,
-    sent: 0, skipped: 0, failures: [] };
+    sent: 0, skipped: 0, attempted: 0, failures: [] };
   if (!subscribers.length) return result;
   const existing = isTest ? {} : readExistingAlertKeys_(ss);
   const pending = subscribers.map(preferences => ({
@@ -60,6 +60,7 @@ function sendMarketsMonthlyNewsletter_(ss, period, isTest) {
     console.warn('No se pudieron preparar los enlaces de la newsletter: ' + errorToString_(error));
   }
   pending.forEach(function ({ preferences, eventKey }) {
+    result.attempted++;
     try {
       const model = buildMarketsNewsletterModel_(ratings, catalog, preferences, period, {
         isTest: Boolean(isTest), language: marketsNewsletterLanguageFor_(preferences.email)
@@ -69,8 +70,10 @@ function sendMarketsMonthlyNewsletter_(ss, period, isTest) {
       const accepted = Gmail.Users.Messages.send({ raw: message.raw }, 'me');
       if (!accepted || !trimString_(accepted.id)) throw new Error('Gmail no ha devuelto un identificador de mensaje.');
       result.sent += 1;
-      acceptedEvents.push(marketsNewsletterAuditEvent_(preferences.email, model, eventKey,
-        isTest ? 'NEWSLETTER_TEST' : 'MONTHLY_NEWSLETTER'));
+      const event = marketsNewsletterAuditEvent_(preferences.email, model, eventKey,
+        isTest ? 'NEWSLETTER_TEST' : 'MONTHLY_NEWSLETTER');
+      result.lastDeliveryAt = event.timestamp.toISOString();
+      acceptedEvents.push(event);
       try { touchMarketsAlertTimestamp_(ss, preferences.email, 'LAST_DELIVERY_AT', new Date()); }
       catch (auditError) {
         console.error('Newsletter aceptada para ' + preferences.email +
@@ -164,11 +167,11 @@ function sendMarketsNewsletterPreview_(ss, recipient, preferences, configuredFor
   const message = marketsNewsletterEmailMessage_(recipient, model, buildMarketsAlertInlineImages_(), sender);
   const accepted = Gmail.Users.Messages.send({ raw: message.raw }, 'me');
   if (!accepted || !trimString_(accepted.id)) throw new Error('Gmail no ha devuelto un identificador de mensaje.');
-  appendAlertEvents_(ss, [marketsNewsletterAuditEvent_(recipient, model,
-    eventKey, 'NEWSLETTER_TEST')]);
+  const event = marketsNewsletterAuditEvent_(recipient, model, eventKey, 'NEWSLETTER_TEST');
+  appendAlertEvents_(ss, [event]);
   return {
     sent: true, accepted: true, alreadyAccepted: false, recipient: recipient, configuredFor: configuredFor,
-    period: period, deliveryId: deliveryId, messageId: trimString_(accepted.id),
+    period: period, deliveryId: deliveryId, messageId: trimString_(accepted.id), acceptedAt: event.timestamp.toISOString(),
     threadId: trimString_(accepted.threadId), realData: true,
     scopeType: model.scope.type, auditLogged: true, senderName: sender.name,
     senderAddress: sender.address, codeVersion: MARKETS_CONFIG.codeVersion, webVersion: MARKETS_WEB.version
@@ -463,10 +466,16 @@ function marketsNewsletterRawCountDelta_(startCount, endCount) {
   return first === null || last === null || last < first ? null : Math.round(last - first);
 }
 
+const MARKETS_NEWSLETTER_SUBJECT_PREFIX = '[bIA]🚀🚀🚀 [Market Pulse] · ';
+
+function marketsNewsletterSpanishSubject_(model) {
+  return (model.isTest ? '[PRUEBA] ' : '') + MARKETS_NEWSLETTER_SUBJECT_PREFIX + 'Cierre ' +
+    model.periodLabel + ' · ' + marketsNewsletterScopeTitle_(model);
+}
+
 function marketsNewsletterEmailMessage_(recipient, model, inlineImages, sender) {
   const localized = model.language && model.language !== "es" ? localizedMarketsNewsletter_(model) : null;
-  const subject = localized?.subject || (model.isTest ? '[PRUEBA] ' : '') + '[bIA] [Market Pulse] 📆📆📆 · Cierre ' +
-    model.periodLabel + ' · ' + marketsNewsletterScopeTitle_(model);
+  const subject = localized?.subject || marketsNewsletterSpanishSubject_(model);
   const plain = localized?.plain || renderMarketsNewsletterPlainText_(model);
   const html = localized?.html || renderMarketsNewsletterHtml_(model);
   const image = inlineImages && inlineImages.bbvaLogo;
@@ -579,11 +588,11 @@ function renderMarketsNewsletterHtml_(model) {
         (item.shared ? ' sobre la ficha compartida completa, sin atribución geográfica.' : '.') + '</div>';
     }).join('') + '</div></td></tr>' : '';
   const appUrl = escapeMarketsAlertHtml_(model.interactions?.open || marketsWebAppLoginUrl_(model.configuredFor || ''));
-  return '<!doctype html><html><body style="margin:0;background:#F7F8F8;font-family:\'BBVABentonSans\',\'Benton Sans BBVA\',Arial,Helvetica,sans-serif;color:#000519;">' +
-    '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#F7F8F8;"><tr><td align="center" style="padding:28px 10px;">' +
-    '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="width:100%;max-width:720px;background:#FFFFFF;border-radius:16px;overflow:hidden;">' +
+  return protectMarketsEmailColors_(marketsLightEmailDocument_() +
+    '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" bgcolor="#F7F8F8" style="background:#F7F8F8;"><tr><td align="center" style="padding:28px 10px;">' +
+    '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" bgcolor="#FFFFFF" style="width:100%;max-width:720px;background:#FFFFFF;color:#000519;border-radius:16px;overflow:hidden;">' +
     preview +
-    '<tr><td style="padding:26px 30px;background:#001391;color:#FFFFFF;"><img src="cid:bbvaLogo" width="168" alt="BBVA Banca de Empresas e Instituciones" style="display:block;width:168px;height:auto;">' +
+    '<tr><td bgcolor="#001391" style="padding:26px 30px;background:#001391;color:#FFFFFF;"><img src="cid:bbvaLogo" width="168" alt="BBVA Banca de Empresas e Instituciones" style="display:block;width:168px;height:auto;">' +
     '<div style="margin-top:24px;color:#8BE1E9;font-size:11px;font-weight:700;letter-spacing:1px;">MARKET PULSE · CIERRE MENSUAL</div>' +
     '<h1 style="margin:8px 0 0;font-family:Georgia,serif;font-size:31px;line-height:37px;">' +
     escapeMarketsAlertHtml_(model.periodLabel) + '</h1><p style="margin:9px 0 0;color:#85C8FF;font-size:15px;line-height:22px;">' +
@@ -603,7 +612,7 @@ function renderMarketsNewsletterHtml_(model) {
     appUrl + '" style="display:block;padding:13px 22px;color:#FFFFFF;text-decoration:none;font-weight:700;">Abrir Market Pulse</a></td></tr></table>' +
     '<p style="margin:16px 0 0;color:#ADB8C2;font-size:10px;line-height:15px;">La lectura ejecutiva se genera exclusivamente a partir de las cifras mostradas. Ratings y volúmenes de Android, iOS y Huawei nunca se combinan. Solo se publican posiciones con cobertura competitiva completa; los volúmenes no atribuibles y los efectos no fiables se presentan como N/D o se omiten.</p></td></tr>' +
     '<tr><td style="padding:0 30px 28px;">' + renderMarketsEmailFooter_(model.interactions, model.language) + '</td></tr>' +
-    '</table></td></tr></table></body></html>';
+    '</table></td></tr></table></body></html>');
 }
 
 function marketsNewsletterGroups_(items) {
@@ -977,22 +986,22 @@ function localizedMarketsNewsletter_(model) {
     number(item.monthDelta, 2), number(item.yearDelta, 2), number(item.newReviews),
     item.position?.rank ? item.position.rank + ' / ' + (item.position.apps || item.position.total || '—') : '—'
   ]);
-  const subject = (model.isTest ? '[' + copy.preview + '] ' : '') + '[bIA] [Market Pulse] 📆📆📆 · ' + copy.title + ' · ' + period;
+  const subject = (model.isTest ? '[' + copy.preview + '] ' : '') + MARKETS_NEWSLETTER_SUBJECT_PREFIX + copy.title + ' · ' + period;
   const coverage = model.coverage ? copy.coverage + ' ' + model.coverage.observed + '/' + model.coverage.expected : '';
   const url = model.interactions?.open || marketsWebAppUrl_(), esc = escapeMarketsAlertHtml_;
   const plain = [subject, coverage, headers.join(' | '), ...rows.map(row => row.join(' | ')), marketsNewsletterInteractionText_(model)].filter(Boolean).join('\n');
-  const html = '<!doctype html><html lang="' + language + '"><body style="font-family:Arial,sans-serif;color:#070e46">' +
+  const html = protectMarketsEmailColors_(marketsLightEmailDocument_(language) +
+    '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" bgcolor="#FFFFFF" style="background-color:#FFFFFF;color:#070E46;"><tr><td>' +
     '<header style="background:#070e46;padding:20px;color:#fff"><img src="cid:bbvaLogo" alt="BBVA" width="112"><h1>' +
     esc(subject) + '</h1></header><p>' + esc(coverage) + '</p><table cellpadding="8"><thead><tr>' +
     headers.map(value => '<th scope="col">' + esc(value) + '</th>').join('') + '</tr></thead><tbody>' +
     rows.map(row => '<tr>' + row.map(value => '<td>' + esc(value) + '</td>').join('') + '</tr>').join('') +
-    '</tbody></table><p><a href="' + esc(url) + '">' + esc(copy.link) + '</a></p>' + renderMarketsEmailFooter_(model.interactions, language) + '</body></html>';
+    '</tbody></table><p><a style="color:#001391;" href="' + esc(url) + '">' + esc(copy.link) + '</a></p>' + renderMarketsEmailFooter_(model.interactions, language) + '</td></tr></table></body></html>');
   return { subject, plain, html };
 }
 
 const MARKETS_NEWSLETTER_INTERACTIONS = 'NEWSLETTER_INTERACTIONS';
-const MARKETS_NEWSLETTER_INTERACTION_HEADERS = ['id', 'period', 'action', 'recorded_at', 'state'];
-const MARKETS_NEWSLETTER_NOTE_HEADER = 'observation';
+const MARKETS_NEWSLETTER_INTERACTION_HEADERS = ['id', 'period', 'action', 'recorded_at', 'state', 'observation', 'user_email'];
 const MARKETS_NEWSLETTER_SECRET = 'MARKETS_NEWSLETTER_INTERACTION_SECRET';
 
 function marketsNewsletterInteractionLinks_(recipient, period, secret, preview = false) {
@@ -1014,38 +1023,24 @@ function parseMarketsNewsletterInteraction_(token) {
 
 function renderMarketsNewsletterInteractionPage_(token) {
   const interaction = parseMarketsNewsletterInteraction_(token);
-  if (!interaction) return HtmlService.createHtmlOutput('<p>Este enlace de la newsletter ha caducado o no es válido.</p>');
+  if (interaction?.action !== 'unsubscribe') return HtmlService.createHtmlOutput('<p>Este enlace de la newsletter ha caducado o no es válido.</p>');
   const page = HtmlService.createTemplateFromFile('AlertFeedback');
   page.token = token;
   page.newsletter = true;
-  page.unsubscribe = interaction.action === 'unsubscribe';
-  page.rating = ['positive', 'negative'].includes(interaction.action) ? interaction.action : '';
+  page.unsubscribe = true;
+  page.rating = '';
   page.destination = marketsWebAppUrl_();
-  page.choice = { open: 'Continuar a Market Pulse', positive: '👍 Útil', negative: '👎 Mejorable', unsubscribe: 'Dar de baja la newsletter' }[interaction.action];
+  page.choice = 'Dar de baja la newsletter';
   return page.evaluate().setTitle('Newsletter de Market Pulse').addMetaTag('viewport', 'width=device-width, initial-scale=1');
 }
 
 function marketsNewsletterInteractionSheet_(ss, extend = false) {
-  const name = MARKETS_NEWSLETTER_INTERACTIONS, base = MARKETS_NEWSLETTER_INTERACTION_HEADERS;
-  const existing = ss.getSheetByName(name);
-  if (existing && existing.getLastColumn() !== base.length) {
-    const headers = [...base, MARKETS_NEWSLETTER_NOTE_HEADER];
-    return { sheet: requireCurrentSheetContract_(ss, name, headers), headers };
-  }
-  const sheet = existing ? requireCurrentSheetContract_(ss, name, base) : ss.insertSheet(name);
-  const headers = extend ? [...base, MARKETS_NEWSLETTER_NOTE_HEADER] : base;
-  if (!existing) sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
-  if (existing && extend) {
-    ensureSheetCapacity_(sheet, 1, headers.length);
-    sheet.getRange(1, headers.length).setValue(MARKETS_NEWSLETTER_NOTE_HEADER);
-    SpreadsheetApp.flush();
-    requireCurrentSheetContract_(ss, name, headers);
-  }
-  return { sheet, headers };
+  const name = MARKETS_NEWSLETTER_INTERACTIONS;
+  const sheet = ss.getSheetByName(name) || (extend ? ss.insertSheet(name) : null);
+  return sheet && marketsAppendSheetHeaders_(sheet, MARKETS_NEWSLETTER_INTERACTION_HEADERS, [5, 6], extend);
 }
 
-function saveMarketsNewsletterInteraction(token, vote, observation) {
-  const email = currentMarketsUserEmail_();
+function requireMarketsNewsletterInteractionLink_(token, email) {
   const interaction = parseMarketsNewsletterInteraction_(token);
   const secret = PropertiesService.getScriptProperties().getProperty(MARKETS_NEWSLETTER_SECRET);
   if (!interaction || !secret) throw new Error('Enlace no válido o caducado.');
@@ -1053,36 +1048,118 @@ function saveMarketsNewsletterInteraction(token, vote, observation) {
   let diff = 0;
   for (let i = 0; i < expected.length; i++) diff |= expected.charCodeAt(i) ^ interaction.signature.charCodeAt(i);
   if (diff) throw new Error('El enlace no corresponde a la cuenta conectada.');
+  return { interaction, secret };
+}
+
+function recordMarketsNewsletterOpen(token) {
+  if (parseMarketsNewsletterInteraction_(token)?.action !== 'open') throw new Error('Enlace de acceso no válido.');
+  return saveMarketsNewsletterInteraction(token);
+}
+
+function saveMarketsNewsletterInteraction(token, vote, observation) {
+  const email = currentMarketsUserEmail_();
+  const { interaction, secret } = requireMarketsNewsletterInteractionLink_(token, email);
   const period = interaction.period;
   const rating = ['positive', 'negative'].includes(interaction.action);
   if (vote && (!rating || !['positive', 'negative'].includes(vote))) throw new Error('Valoración no válida.');
   const comment = trimString_(observation);
   if (comment && (!rating || comment.length > 1000)) throw new Error('Observaciones no válidas.');
   const action = vote || interaction.action;
-  if (interaction.preview) return { open: action === 'open', preview: true };
-  const id = 'n_' + signMarketsAlertFeedback_(['newsletter', period, action === 'open' ? 'open' : 'vote'].join('.'), email, secret);
+  if (interaction.preview && action === 'unsubscribe') return { open: false, preview: true };
+  const id = marketsNewsletterInteractionId_(period, action === 'open' ? 'open' : 'vote', email, secret, interaction.preview);
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(5000)) throw new Error('No se pudo guardar. Inténtalo de nuevo.');
   try {
     const ss = openMarketsSpreadsheet_();
     if (action === 'unsubscribe') return unsubscribeMarketsEmail_(ss, email, true);
-    const { sheet, headers } = marketsNewsletterInteractionSheet_(ss, Boolean(comment));
+    const { sheet, headers } = marketsNewsletterInteractionSheet_(ss, true);
     const last = sheet.getLastRow();
     const found = last > 1 ? sheet.getRange(2, 1, last - 1, 1).createTextFinder(id).matchEntireCell(true).findNext() : null;
-    const before = found && rating ? sheet.getRange(found.getRow(), 1, 1, headers.length).getValues()[0] : null;
-    const withNotes = headers.length > MARKETS_NEWSLETTER_INTERACTION_HEADERS.length;
-    if (!found || (rating && (before[2] !== action || (observation !== undefined && (before[5] || '') !== comment)))) {
+    const before = found && sheet.getRange(found.getRow(), 1, 1, headers.length).getValues()[0];
+    const note = observation === undefined ? before?.[5] || '' : comment;
+    const changed = before && rating && (before[2] !== action || (before[5] || '') !== note);
+    if (!before || changed || before[6] !== email) {
       const row = found ? found.getRow() : last + 1;
-      const values = [id, period, action, new Date(), action === 'open' ? '' : 'pendiente'];
-      if (withNotes) values.push(marketsReviewLiteral_(observation === undefined ? before?.[5] || '' : comment));
+      const values = [id, period, action, before && !changed ? before[3] : new Date(),
+        action === 'open' ? '' : changed ? 'pendiente' : before?.[4] || 'pendiente', marketsReviewLiteral_(note), marketsReviewLiteral_(email)];
       ensureSheetCapacity_(sheet, row, headers.length);
       sheet.getRange(row, 1, 1, headers.length).setValues([values]);
       SpreadsheetApp.flush();
     }
-    return { open: action === 'open' };
+    return { open: action === 'open', preview: interaction.preview };
   } finally {
     lock.releaseLock();
   }
+}
+
+function marketsNewsletterInteractionId_(period, kind, email, secret, preview = false) {
+  const scope = preview ? 'newsletter-preview' : 'newsletter';
+  return (preview ? 'np_' : 'n_') + signMarketsAlertFeedback_([scope, period, kind].join('.'), email, secret);
+}
+
+/** Match the recipient-bound interaction identifier against accepted newsletter deliveries. */
+function marketsNewsletterInteractionEditions_(ss, interactions, kind) {
+  const newsletterRows = interactions.filter(row => row[1]);
+  const recordedAt = new Map(newsletterRows.map(row => [row[0], new Date(row[3]).getTime()]));
+  const periods = new Set(newsletterRows.map(row => row[1]));
+  const matched = new Map();
+  if (!recordedAt.size) return matched;
+  const secret = PropertiesService.getScriptProperties().getProperty(MARKETS_NEWSLETTER_SECRET);
+  const sheet = ss.getSheetByName(MARKETS_CONFIG.sheets.alerts);
+  if (!secret || !sheet || sheet.getLastRow() < 2) return matched;
+  const headers = MARKETS_CONFIG.headers.alerts, indexes = indexHeaders_(headers);
+  requireCurrentSheetContract_(ss, MARKETS_CONFIG.sheets.alerts, headers);
+  const last = sheet.getLastRow();
+  const sources = new Set(newsletterRows.map(row => row[0].startsWith('np_') ? 'NEWSLETTER_TEST' : 'MONTHLY_NEWSLETTER'));
+  const sourceColumn = sheet.getRange(2, indexes.source + 1, last - 1, 1);
+  const matches = [...sources].flatMap(source => sourceColumn.createTextFinder(source).matchEntireCell(true)
+    .findAll().map(cell => cell.getRow())).sort((a, b) => a - b);
+  const windowSize = 250;
+  for (let start = 0; start < matches.length;) {
+    const first = matches[start];
+    let end = start + 1;
+    while (end < matches.length && matches[end] - first < windowSize) end++;
+    const values = sheet.getRange(first, 1, matches[end - 1] - first + 1, headers.length).getValues();
+    for (; start < end; start++) {
+      const row = values[matches[start] - first];
+      const preview = row[indexes.source] === 'NEWSLETTER_TEST';
+      if (row[indexes.type] !== (preview ? 'NEWSLETTER_TEST' : 'NEWSLETTER_MONTHLY')) continue;
+      const period = /^NEWS-(?:TEST-)?(\d{4}-(?:0[1-9]|1[0-2]))$/.exec(row[indexes.run_id])?.[1];
+      const email = normalizeEmailForComparison_(row[indexes.user_email] || row[indexes.recipients]);
+      const sentAt = adminDateTime_(row[indexes.timestamp]);
+      const time = Date.parse(sentAt);
+      if (!periods.has(period) || !email || !Number.isFinite(time)) continue;
+      const id = marketsNewsletterInteractionId_(period, kind, email, secret, preview);
+      if (!recordedAt.has(id) || time > recordedAt.get(id) || (matched.has(id) && time <= Date.parse(matched.get(id).sentAt))) continue;
+      matched.set(id, kind === 'open' ? { email, sentAt } : {
+        email, sentAt, countries: trimString_(row[indexes.country_code]), summary: trimString_(row[indexes.detail])
+      });
+    }
+  }
+  return matched;
+}
+
+function marketsNewsletterAccessUsers_(rows, editions, asOf) {
+  const users = new Map(), seen = new Set();
+  const recentStart = asOf.getTime() - 30 * 86400000;
+  let identified = 0;
+  for (const [id, , , date, , , storedEmail] of rows) {
+    const email = normalizeEmailForComparison_(storedEmail) || editions.get(id)?.email;
+    if (!email || seen.has(id)) continue;
+    const time = new Date(date).getTime();
+    if (!Number.isFinite(time) || time > asOf.getTime()) continue;
+    seen.add(id);
+    const iso = new Date(time).toISOString();
+    if (!users.has(email)) users.set(email, { email, events: 0, recentEvents: 0, firstSeenAt: iso, lastSeenAt: iso });
+    const user = users.get(email);
+    user.events++;
+    if (time >= recentStart) user.recentEvents++;
+    if (iso < user.firstSeenAt) user.firstSeenAt = iso;
+    if (iso > user.lastSeenAt) user.lastSeenAt = iso;
+    identified++;
+  }
+  return { identified, asOf: asOf.toISOString(), users: [...users.values()].sort((a, b) =>
+    b.lastSeenAt.localeCompare(a.lastSeenAt) || a.email.localeCompare(b.email)) };
 }
 
 function getMarketsNewsletterInteractions(kind, period, vote, status, start = '', end = '') {
@@ -1091,16 +1168,24 @@ function getMarketsNewsletterInteractions(kind, period, vote, status, start = ''
   if ((vote && !['positive', 'negative'].includes(vote)) || (status && !['pendiente', 'atendido'].includes(status))) throw new Error('Filtro no válido.');
   if ([start, end].some(value => value && (!/^\d{4}-\d{2}-\d{2}$/.test(value) || !Number.isFinite(Date.parse(value)) ||
       new Date(value).toISOString().slice(0, 10) !== value)) || (start && end && start > end)) throw new Error('Intervalo no válido.');
-  const name = MARKETS_NEWSLETTER_INTERACTIONS;
-  const sheet = ss.getSheetByName(name);
-  if (!sheet) return { total: 0, positive: 0, negative: 0, rows: [] };
-  const { headers } = marketsNewsletterInteractionSheet_(ss);
-  const last = sheet.getLastRow();
-  const rows = last > 1 ? sheet.getRange(2, 1, last - 1, headers.length).getValues() : [];
+  const sheet = ss.getSheetByName(MARKETS_NEWSLETTER_INTERACTIONS);
+  const last = sheet?.getLastRow() || 0;
+  const rows = last > 1 ? sheet.getRange(2, 1, last - 1, marketsNewsletterInteractionSheet_(ss).headers.length).getValues() : [];
+  if (kind === 'feedback' && !period) {
+    const alert = marketsAlertFeedbackSheet_(ss);
+    const count = alert ? alert.sheet.getLastRow() - 1 : 0;
+    if (count > 0) {
+      for (const [id, action, date, comment, state, email] of alert.sheet.getRange(2, 1, count, alert.headers.length).getValues()) {
+        if (/^[a-f0-9]{32}$/.test(id) && ['positive', 'negative'].includes(action)) {
+          rows.push([id, '', action, date, state || 'pendiente', comment, email]);
+        }
+      }
+    }
+  }
   const dates = new Map();
   const zone = MARKETS_CONFIG.timeZone;
   const selected = rows.filter(row => {
-    if ((kind === 'access') !== (row[2] === 'open') || (period && row[1] !== period) ||
+    if (!(kind === 'access' ? ['open'] : ['positive', 'negative']).includes(row[2]) || (period && row[1] !== period) ||
         (vote && row[2] !== vote) || (status && row[4] !== status)) return false;
     const date = new Date(row[3]);
     if (!Number.isFinite(date.getTime())) return false;
@@ -1109,25 +1194,46 @@ function getMarketsNewsletterInteractions(kind, period, vote, status, start = ''
     dates.set(day, (dates.get(day) || 0) + 1);
     return true;
   });
-  const today = Utilities.formatDate(new Date(), zone, 'yyyy-MM-dd'), through = end || today;
+  const now = new Date();
+  const today = Utilities.formatDate(now, zone, 'yyyy-MM-dd'), through = end || today;
   const daily = kind === 'access' ? Array.from({ length: 30 }, (_, offset) => {
     const date = usageOffsetDateKey_(through, offset - 29);
     return { date, count: dates.get(date) || 0 };
   }).filter(row => !start || row.date >= start) : [];
-  return { total: selected.length, daily, editions: new Set(selected.map(row => row[1])).size, positive: selected.filter(row => row[2] === 'positive').length,
+  const editions = marketsNewsletterInteractionEditions_(ss, selected, kind === 'access' ? 'open' : 'vote');
+  const access = kind === 'access' ? marketsNewsletterAccessUsers_(selected, editions, now) : undefined;
+  return { total: selected.length, daily, access, editions: new Set(selected.map(row => row[1])).size, positive: selected.filter(row => row[2] === 'positive').length,
     negative: selected.filter(row => row[2] === 'negative').length,
     pending: selected.filter(row => row[4] === 'pendiente').length,
     resolved: selected.filter(row => row[4] === 'atendido').length,
-    rows: selected.sort((a, b) => new Date(b[3]) - new Date(a[3])).slice(0, 100)
-      .map(([id, edition, action, date, state, comment]) => [edition, action, adminDateTime_(date), state, kind === 'feedback' ? id : '', comment || '']) };
+    rows: selected.sort((a, b) => new Date(b[3]) - new Date(a[3])).map(([id, edition, action, date, state, comment, storedEmail]) => {
+      const preview = id.startsWith('np_');
+      const delivery = editions.get(id);
+      const metadata = kind === 'feedback' ? {
+        ...delivery, email: normalizeEmailForComparison_(storedEmail) || delivery?.email || 'desconocido', preview
+      } : preview ? { preview: true } : null;
+      return [edition, action, adminDateTime_(date), state, kind === 'feedback' ? id : '', comment || '', metadata];
+    }) };
 }
 
 function setMarketsNewsletterFeedbackState(id, state) {
   const { ss } = requireMarketsAdministrator_();
-  if (!/^n_[A-Za-z0-9_-]{43}$/.test(String(id)) || !['pendiente', 'atendido'].includes(state)) throw new Error('Seguimiento no válido.');
+  const isAlert = /^[a-f0-9]{32}$/.test(String(id));
+  if (!(isAlert || /^np?_[A-Za-z0-9_-]{43}$/.test(String(id))) || !['pendiente', 'atendido'].includes(state)) throw new Error('Seguimiento no válido.');
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(5000)) throw new Error('Feedback ocupado. Inténtalo de nuevo.');
   try {
+    if (isAlert) {
+      const current = marketsAlertFeedbackSheet_(ss);
+      const found = current && findMarketsAlertFeedback_(current.sheet, id);
+      if (!found || !['positive', 'negative'].includes(current.sheet.getRange(found.getRow(), 2).getValue())) {
+        throw new Error('Valoración no disponible.');
+      }
+      const { sheet, headers } = marketsAlertFeedbackSheet_(ss, true);
+      sheet.getRange(found.getRow(), headers.indexOf('status') + 1).setValue(state);
+      SpreadsheetApp.flush();
+      return { saved: true };
+    }
     if (!ss.getSheetByName(MARKETS_NEWSLETTER_INTERACTIONS)) throw new Error('Valoración no disponible.');
     const { sheet } = marketsNewsletterInteractionSheet_(ss);
     const last = sheet.getLastRow();

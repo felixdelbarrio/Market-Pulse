@@ -320,3 +320,37 @@ test("review alert progress reads actual sent and total counts from the audit", 
   assert.equal(audit.status,"PARTIAL");
   assert.equal(context.parseMarketsReviewAlertRun_([row[0],9,8,row[3]],indexes),null);
 });
+
+test("historic newsletter recipients prove a minimum per edition but never supply the latest run denominator", () => {
+  const runtime = vm.createContext({ Date, console, MARKETS_REVIEW_ALERTS_RUN: "REVIEW_ALERTS_RUN",
+    normalizeEmailForComparison_: value => String(value || "").toLowerCase(),
+    MARKETS_CONFIG: { sheets: { alerts: "ALERT_LOG" }, headers: {
+      alerts: ["timestamp", "user_email", "recipients", "type", "run_id", "source"]
+    } },
+    PropertiesService: { getScriptProperties: () => ({ getProperty: key => key === "MARKETS_JOB_TIMING:newsletter"
+      ? JSON.stringify({ startedAt: "2026-11-02T07:00:00.000Z", status: "ERROR" }) : null }) }
+  });
+  vm.runInContext(source, runtime);
+  const rows = [
+    ["2026-10-01T07:00:00.000Z", "old@bbva.com", "", "NEWSLETTER_MONTHLY", "NEWS-2026-09", "MONTHLY_NEWSLETTER"],
+    ["2026-11-01T07:00:00.000Z", "new@bbva.com", "", "NEWSLETTER_MONTHLY", "NEWS-2026-10", "MONTHLY_NEWSLETTER"],
+    ["2026-11-01T07:05:00.000Z", "new@bbva.com", "", "NEWSLETTER_MONTHLY", "NEWS-2026-10", "MONTHLY_NEWSLETTER"],
+    ["2026-11-01T07:07:00.000Z", "test@bbva.com", "", "NEWSLETTER_TEST", "NEWS-TEST-2026-10", "NEWSLETTER_TEST"]
+  ];
+  const sheet = {
+    getLastRow: () => rows.length + 1,
+    getRange: (start, _column, count) => ({
+      getValues: () => rows.slice(start - 2, start - 2 + count),
+      createTextFinder: source => ({ matchEntireCell: () => ({
+        findAll: () => rows.flatMap((row, index) => row[5] === source ? [{ getRow: () => index + 2 }] : [])
+      }) })
+    })
+  };
+  const { newsletter } = runtime.readMarketsAdminDeliveries_({ getSheetByName: () => sheet });
+  assert.equal(newsletter.status, "ERROR");
+  assert.equal(newsletter.lastDeliveryAt, "2026-11-01T07:05:00.000Z");
+  assert.equal(newsletter.sent, undefined);
+  assert.equal(newsletter.total, undefined);
+  assert.equal(newsletter.lastAuditedEdition.period, "2026-10");
+  assert.equal(newsletter.lastAuditedEdition.minimumConfirmed, 1);
+});
