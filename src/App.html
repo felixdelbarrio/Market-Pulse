@@ -1684,7 +1684,7 @@
         const total=review?data.total:data.total??data.confirmed, done=review?data.sent:data.sent??data.confirmed;
         return {updatedAt:data.startedAt||fallback,deliveredAt:data.lastDeliveryAt,done,total,
           status:data.status==="DELIVERED"||data.status==="NOT_REQUIRED"||(!data.status&&data.confirmed)?"Completado":
-            data.status|| (data.recorded?"Envíos históricos sin confirmar":"Programado"),
+            data.status||(data.recorded?"Envíos históricos sin confirmar":review?"Sin ejecución registrada en el log":"Programado"),
           detail:review&&data.total==null&&data.recorded?`${integer(data.recorded)} alertas registradas · envíos confirmados N/D`:
             !review&&data.total==null&&data.confirmed?integer(data.confirmed)+" entregas confirmadas en el log":""};
       };

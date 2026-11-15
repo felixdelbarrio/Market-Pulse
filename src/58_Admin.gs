@@ -261,7 +261,11 @@ function readMarketsAdminDeliveries_(ss) {
         if (audit) return [id, audit];
       }
     }
-    const cells = range.createTextFinder(source).matchEntireCell(true).findAll();
+    let cells = range.createTextFinder(source).matchEntireCell(true).findAll();
+    if (!cells.length && id === 'reviewAlerts') {
+      cells = sheet.getRange(2, indexes.type + 1, last - 1, 1)
+        .createTextFinder('REVIEW_LOW_SHARE').matchEntireCell(true).findAll();
+    }
     if (!cells.length) return [id, result];
     const recent = cells.slice(-100).map(cell => cell.getRow()).sort((a, b) => a - b);
     const from = recent[0], to = recent.at(-1);
