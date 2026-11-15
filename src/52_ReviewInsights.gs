@@ -307,7 +307,8 @@ const MARKETS_REVIEW_AUDIENCE_RULES = {
   pension: /\b(?:(?:soy|estoy) (?:jubilad[oa]|pensionista)|mi (?:jubilacion|pension)|emekli (?:maasim\w*|olmama|musterinizim)|emekliyim|(?:minha|recebo) aposentadoria|i am (?:retired|a pensioner)|my pension)\b/u,
   personalContext: /\b(?:(?:a |para )mi (?:hij[oa]|madre|padre|familia|espos[oa])|(?:to|for) my (?:family|son|daughter|mother|father|wife|husband)|(?:mi|nuestra) (?:casa|vivienda)|(?:my|our) (?:home mortgage|mortgage|rent)|(?:minha|nossa) (?:casa|familia)|konut kred\w*|alisveris\w*|pago de mi nomina)\b/u,
   retail: /\b(?:cuentas? (?:de (?:la )?)?nominas?|cuentas? sueldo|conta salario|salary account|maas hesab\w*|prestamos? personal(?:es)?|creditos? (?:personal(?:es)?|al consumo)|personal loans?|consumer credit|ihtiyac kredisi|bireysel kredi|kisisel kredi|cuentas? (?:infantil(?:es)?|personal(?:es)?)|para uso personal|(?:uso|utilizo) (?:la app )?personal y|tarjeta (?:personal|de estudiante)|student card|seguro de (?:mi )?hogar|home insurance|alquiler de (?:mi|nuestra) vivienda|(?:transferir|enviar dinero) a mi hij[oa]|(?:recibo|factura) (?:de (?:luz|gas|internet) de mi casa|del hogar)|(?:hipoteca|prestamo) (?:de|para) (?:mi|nuestra) vivienda|(?:ahorrar|ahorro) para (?:mi jubilacion|mis vacaciones)|(?:credito|prestamo) (?:para|de) (?:estudios|mi boda|mis vacaciones)|gastos (?:domesticos|familiares|personales)|(?:vacaciones|viaje personal) (?:de mi familia|en familia)|(?:netflix|spotify) (?:me cobra|subscription|abonelig\w*)|(?:cobro|pago|pagar|planes) (?:a |de )?(?:netflix|spotify)|suscripcion (?:personal|de netflix|de spotify)|ev kira(?:si|m)\w*|ogrenci kart\w*|ogrenci (?:hesa[bp]\w*|kred\w*|burs\w*)|(?:ogrenciyim|universite ogrencisi) (?:\w+ ){0,5}(?:burs\w*|harc\w*|kartim\w*)|(?:mi|para mi) (?:beca|prestamo estudiantil)|cuenta (?:para |de )?estudiantes|student (?:loan|bank account))\b/u,
-  salaryReceived: /\b(?:mi nomina|mi salario|mi sueldo|my (?:paycheck|salary|wages)|meu salario|maasim\w*|maas (?:musterisi\w*|bankam\w*|kartim\w*|promosyonum\w*|aldigim|aldigimiz|aliyorum|aliyoruz|almakta(?:yim|yiz)|odememi (?:al\w*|bekliyorum))|maasli (?:musteri\w*|calisanim|calisiyorum|personelim)|bordrolu (?:calisanim|calisiyorum|personelim)|(?:hesabima|hesabimiza) (?:\w+ ){0,3}maas (?:yat\w*|gel\w*)|(?:recib\w*|cobr\w*|deposit\w*|ingres\w*|acredit\w*) (?:\w+ ){0,4}(?:la nomina|nomina|(?:el )?pago de (?:mi |la )?nomina))\b/u,
+  salaryReceived: /\b(?:mi nomina|mi salario|mi sueldo|my (?:paycheck|salary|wages)|meu salario|maasim\w*|maas musterisi\w*|maasli musteriyim|(?:recib\w*|cobr\w*|deposit\w*|ingres\w*|acredit\w*) (?:\w+ ){0,4}(?:la nomina|nomina|(?:el )?pago de (?:mi |la )?nomina))\b/u,
+  turkishSalaryCustomer: /\b(?:maas (?:musterisi\w*|bankam\w*|kartim\w*|promosyonum\w*|aldigim|aldigimiz|aliyorum|aliyoruz|almakta(?:yim|yiz)|odememi (?:al\w*|bekliyorum))|maasli (?:musteri\w*|calisanim|calisiyorum|personelim)|bordrolu (?:calisanim|calisiyorum|personelim)|(?:hesabima|hesabimiza) (?:\w+ ){0,3}maas (?:yat\w*|gel\w*))\b/u,
   negatedBusiness: /\b(?:no (?:soy|somos|tengo|tenemos|poseo|uso|utilizo|es) (?:una? )?(?:empresa|autonom[oa]|negocio|cuenta comercial|tarjeta corporativa)|not (?:a business|self employed|for (?:my |our )?business)|(?:sirket|esnaf|kobi) degilim|(?:ticari (?:hesabim|kartim) yok)|(?:ticari|sirket hesab\w*) degil)\b/u
 };
 
@@ -316,9 +317,9 @@ function classifyMarketsReviewAudience_(original) {
   const evidence = {};
   const clauses = String(original || '').split(/[.!?;\n]+|\b(?:pero|sin embargo|but|however|mas|porem|ama|ancak|fakat)\b/iu);
   const normalized = normalizeReviewEvidence_(original);
-  evidence.retail = (rules.retail.exec(normalized) || rules.salaryReceived.exec(normalized) ||
+  evidence.retail = (rules.retail.exec(normalized) || rules.salaryReceived.exec(normalized) || rules.turkishSalaryCustomer.exec(normalized) ||
     rules.personalUse.exec(normalized) || rules.pension.exec(normalized) || rules.personalContext.exec(normalized))?.[0] || '';
-  const salaryCustomer = rules.salaryReceived.test(normalized) || /\bmaas hesab\w*\b/u.test(normalized);
+  const salaryCustomer = rules.turkishSalaryCustomer.test(normalized) || /\bmaas (?:hesab\w*|musterisi\w*)\b|\bmaasim\w*\b/u.test(normalized);
   for (const text of clauses) {
     const clause = normalizeReviewEvidence_(text);
     if (!clause) continue;
@@ -335,7 +336,7 @@ function classifyMarketsReviewAudience_(original) {
 
     if (evidence.business || rules.negatedBusiness.test(clause)) continue;
     const strong = rules.direct.map(pattern => pattern.exec(clause)?.[0]).find(Boolean);
-    const personal = rules.retail.test(clause) || rules.salaryReceived.test(clause) || rules.personalUse.test(clause) ||
+    const personal = rules.retail.test(clause) || rules.salaryReceived.test(clause) || rules.turkishSalaryCustomer.test(clause) || rules.personalUse.test(clause) ||
       rules.pension.test(clause) || rules.personalContext.test(clause);
     const context = !personal && rules.context.exec(clause)?.[0];
     const bankStaff = /\b(?:calisanlariniz\w*|(?:banka|sube) (?:personel|calisan)\w*)\b/u.test(clause);
