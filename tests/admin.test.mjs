@@ -59,8 +59,12 @@ test("admin client exposes subscriber maintenance and manual rating recovery", (
   assert.match(app, /requestMarketsAdminRatingRecovery\(\)/);
   assert.match(app, /function openAdminSubscriber/);
   assert.match(index, /id="admin-add-subscriber"/);
-  assert.match(index, /id="admin-recovery"/);
-  assert.match(index, /id="admin-subscriber-dialog"/);
+  assert.match(app, /id="admin-recovery"/);
+  assert.match(index, /id="admin-subscription-editor" class="panel subscription-editor" hidden/);
+  assert.match(index, /class="panel newsletter-delivery"[\s\S]*id="newsletter-test-form"[\s\S]*Suscripciones del equipo/);
+  assert.match(app, /class="subscriber-table"/);
+  assert.match(app, /class="process-card"/);
+  assert.match(app, /preferences:\{\.\.\.row,newsletterEnabled:false\}/);
   assert.match(index, /id="admin-country-pills"/);
   assert.match(index, /id="admin-platform-pills"/);
   assert.match(index, /id="admin-country-scope-summary"/);
@@ -77,9 +81,6 @@ test("admin client exposes subscriber maintenance and manual rating recovery", (
   assert.match(index, /id="admin-filter-platforms"[^>]*multiple/);
   assert.match(index, /id="admin-subscriber-results"[^>]*aria-live="polite"/);
   assert.match(index, /id="admin-newsletter-enabled"/);
-  assert.match(app, /function adminSubscriberScopeMarkup/);
-  assert.match(app, /function ensureAdminSubscriberUi/);
-  assert.match(app, /fieldset\.innerHTML=adminSubscriberScopeMarkup\(\)/);
   assert.match(index, /id="admin-panel-usage"/);
   assert.match(app, /function renderAdminUsage/);
   assert.match(app, /recordMarketsUsageEvents\(batch\)/);
@@ -205,16 +206,117 @@ test("supervisor resumes pending translations after quota and publishes without 
     LockService:{getScriptLock:()=>({tryLock:()=>true,releaseLock(){}})},
     PropertiesService:{getScriptProperties:()=>({getProperty:key=>props.get(key),setProperty:(key,value)=>props.set(key,value)})},
     translateMarketsReviews_:()=>{calls.push("translate");return {eligible:10,checked:10,translated:1,failed:0,pending:0,complete:true}},
-    publishMarketsReviewSnapshot_:()=>{calls.push("publish");return {complete:true,published:1}}
+    publishMarketsReviewSnapshot_:()=>{calls.push("publish");return {complete:true,published:1}},
+    advanceMarketsAndroidGeography_:()=>false,
+    advanceMarketsFunctionalCatalog_:({sync})=>sync&&calls.push("catalog")
   });
   vm.runInContext(fs.readFileSync(new URL("../src/51_ReviewOperations.gs",import.meta.url),"utf8"),local);
   const pipeline=local.newMarketsReviewPipeline_("2026-11-12");
   pipeline.stage=pipeline.jobs.length;pipeline.jobs[2].pending=1;
   props.set(key,JSON.stringify(pipeline));props.set(quota,String(Date.now()+60000));
-  local.superviseMarketsReviews_();
-  assert.deepEqual(calls,[]);
+  local.advanceMarketsReviewPipeline_();
+  assert.deepEqual(calls,["catalog"]);
   props.set(quota,"0");
-  for(let i=0;i<3;i++)local.superviseMarketsReviews_();
-  assert.deepEqual(calls,["translate","publish"]);
+  for(let i=0;i<3;i++)local.advanceMarketsReviewPipeline_();
+  assert.deepEqual(calls,["catalog","translate","publish","catalog"]);
   assert.equal(JSON.parse(props.get(key)).stage,pipeline.jobs.length);
+});
+
+test("the supervisor schedules one worker and skips a live lease", () => {
+  const properties = new Map(), triggers = [];
+  const local = vm.createContext({
+    safeJsonParse_: value=>JSON.parse(value||"null"),
+    PropertiesService:{getScriptProperties:()=>({getProperty:key=>properties.get(key),setProperty:(key,value)=>properties.set(key,value)})},
+    LockService:{getScriptLock:()=>({tryLock:()=>true,releaseLock(){}})},
+    ScriptApp:{getProjectTriggers:()=>triggers,newTrigger:handler=>({timeBased:()=>({after:()=>({create:()=>
+      triggers.push({getHandlerFunction:()=>handler})})})})}
+  });
+  vm.runInContext(fs.readFileSync(new URL("../src/51_ReviewOperations.gs",import.meta.url),"utf8"),local);
+  properties.set("MARKETS_REVIEW_PIPELINE",JSON.stringify({leaseUntil:Date.now()+60000}));
+  local.superviseMarketsReviews_();
+  assert.equal(triggers.length,0);
+  properties.delete("MARKETS_REVIEW_PIPELINE");
+  local.superviseMarketsReviews_();
+  local.superviseMarketsReviews_();
+  assert.deepEqual(triggers.map(trigger=>trigger.getHandlerFunction()),["runMarketsReviewWorker_"]);
+});
+
+test("unified supervisor waits for the migration day, then dispatches each scheduled job once", () => {
+  const values = new Map([["MARKETS_UNIFIED_OPERATIONS","2026-11-14"]]), calls = [];
+  const properties = {getProperty:key=>values.get(key),setProperty:(key,value)=>values.set(key,value)};
+  const runtime = vm.createContext({
+    advanceMarketsAndroidGeography_:()=>false,
+    safeJsonParse_:value=>JSON.parse(value||"null"),
+    PropertiesService:{getScriptProperties:()=>properties},
+    LockService:{getScriptLock:()=>({tryLock:()=>true,releaseLock(){}})},
+    Utilities:{formatDate:(date,_,format)=>format==="HHmm"?"1015":date.toISOString().slice(0,10)},
+    MARKETS_CONFIG:{timeZone:"Europe/Madrid",runHour:7,runMinute:5,newsletterHour:8,newsletterMinute:15,healthCheckHour:9,healthCheckMinute:15},
+    runDailyRatingMonitor:()=>calls.push("ratings"),
+    runMarketsMonthlyNewsletter:()=>calls.push("newsletter"),
+    checkDailyRatingMonitorHealth:()=>calls.push("health")
+  });
+  vm.runInContext(fs.readFileSync(new URL("../src/51_ReviewOperations.gs",import.meta.url),"utf8"),runtime);
+  assert.equal(runtime.advanceMarketsScheduledOperations_(new Date("2026-11-14")),false);
+  const first = new Date("2026-12-01");
+  for(let i=0;i<4;i++)runtime.advanceMarketsScheduledOperations_(first);
+  assert.deepEqual(calls,["ratings","newsletter","health"]);
+});
+
+test("log archive verifies complete rows and refuses deletion if the sheet changes", () => {
+  const entries = new Map(), files = new Map(), books = new Map();
+  let nextId=0, changed=false, deleted=0;
+  const iterator=values=>({hasNext:()=>values.length>0,next:()=>values.shift()});
+  const folder={getId:()=>"folder",getFilesByName:name=>iterator([...files.values()].filter(item=>item.name===name&&item.parent===folder))};
+  const tab=()=>{
+    let rows=[];
+    const range=(row,_col,size)=>({
+      setNumberFormat:()=>range(row,_col,size),
+      setValues:data=>{rows=structuredClone(data).map(values=>values.map(value=>typeof value==="string"?value.replace(/^'/,""):value));},
+      getValues:()=>structuredClone(rows.slice(row-1,row-1+size))
+    });
+    return {setName(){return this},getRange:range,getLastRow:()=>rows.length,
+      getDataRange:()=>range(1,1,rows.length),setFrozenRows(){}};
+  };
+  const create=name=>{
+    const id=String(++nextId),metadata=tab(),data=tab(),book={getId:()=>id,getSheets:()=>[metadata],
+      getSheetByName:name=>name==="Archivo"?metadata:data};
+    const file={name,getName(){return this.name},getId:()=>id,getMimeType:()=>"google",moveTo(parent){this.parent=parent;},
+      getParents(){return iterator(this.parent?[this.parent]:[]);}};
+    files.set(id,file);books.set(id,book);return book;
+  };
+  const runtime=vm.createContext({
+    safeJsonParse_:value=>JSON.parse(value||"null"), marketsReviewDigest_:s=>s,
+    MARKETS_CONFIG:{timeZone:"Europe/Madrid"},Utilities:{formatDate:()=>"2026-11-14"},
+    MimeType:{GOOGLE_SHEETS:"google"},SpreadsheetApp:{flush(){},create,openById:id=>books.get(id)},
+    DriveApp:{getFileById:id=>files.get(id),getFolderById:()=>folder},
+    ensureSheetCapacity_(){}, marketsReviewLiteral_:value=>typeof value==="string"&&/^[=+@'-]/.test(value)?"'"+value:value
+  });
+  vm.runInContext(fs.readFileSync(new URL("../src/55_ReviewMaintenance.gs",import.meta.url),"utf8"),runtime);
+  const props={getProperty:k=>entries.get(k),setProperty:(k,v)=>{entries.set(k,v);if(changed&&k.startsWith("MARKETS_FULL_LOG_ARCHIVE:"))rows[0][2]="changed"},deleteProperty:k=>entries.delete(k)};
+  const rows=[["2026-10-01","run-1","=full detail"],["2026-11-13","run-2","recent"]];
+  const sheet={getName:()=>"RUN_LOG",getLastRow:()=>rows.length+1,getRange:(row,_col,count)=>({getValues:()=>rows.slice(row-2,row-2+count).map(r=>r.slice())}),deleteRows:(_,count)=>{deleted+=count;rows.splice(0,count)}};
+  const run=()=>runtime.archiveMarketsLogPrefix_({getId:()=>"source"},sheet,["DATE","ID","DETAIL"],"folder",Date.parse("2026-11-01"),props,new Date("2026-11-14"));
+  changed=true;
+  assert.throws(run,/origen cambió/);
+  assert.equal(deleted,0);
+  rows[0][2]="=full detail";changed=false;
+  assert.equal(run(),1);
+  assert.equal(deleted,1);
+  assert.equal(rows[0][1],"run-2");
+  assert.equal(files.get("1").getMimeType(),"google");
+  assert.equal(files.size,1);
+  assert.equal(JSON.parse(runtime.readMarketsLogArchive_(files.get("1"))).rows[0][2],"=full detail");
+});
+
+
+test("review alert progress reads actual sent and total counts from the audit", () => {
+  const indexes = {timestamp:0,metric_value:1,threshold:2,detail:3};
+  const row = [new Date("2026-11-15T07:00:00Z"), 5, 8,
+    JSON.stringify({status:"PARTIAL",deliveredAt:"2026-11-15T07:00:06Z"})];
+  const audit = context.parseMarketsReviewAlertRun_(row,indexes);
+  assert.equal(audit.startedAt,"2026-11-15T07:00:00.000Z");
+  assert.equal(audit.sent,5);
+  assert.equal(audit.total,8);
+  assert.equal(audit.status,"PARTIAL");
+  assert.equal(context.parseMarketsReviewAlertRun_([row[0],9,8,row[3]],indexes),null);
 });

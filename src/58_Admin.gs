@@ -68,17 +68,21 @@ function getMarketsAdminDashboard(includeUsage = true) {
   const subscribers = readAllMarketsAlertPreferences_(ss);
   const issues = readRecentMarketsAdminFetchIssues_(ss, 40);
   const alerts = readRecentMarketsAdminAlertEvents_(ss, 30);
+  const deliveries = readMarketsAdminDeliveries_(ss);
   const usage = includeUsage ? readMarketsUsageAnalytics_(ss,
     trimString_(access.control.TIME_ZONE) || MARKETS_CONFIG.timeZone) : null;
   return {
     generatedAt: new Date().toISOString(),
     administrator: access.email,
     system: {
+      deliveries,
       codeVersion: MARKETS_CONFIG.codeVersion,
       webVersion: MARKETS_WEB.version,
       webAppUrl: marketsWebAppUrl_(),
       timeZone: trimString_(access.control.TIME_ZONE) || MARKETS_CONFIG.timeZone,
       reviewPipeline: marketsAdminReviewPipeline_(access.email),
+      functionalJobs: typeof marketsFunctionalJobStatus_ === 'function' ? marketsFunctionalJobStatus_() : [],
+      operations: typeof marketsAdminReviewOperations_ === 'function' ? marketsAdminReviewOperations_(access.email) : null,
       dailySchedule: String(MARKETS_CONFIG.runHour).padStart(2, '0') + ':' + String(MARKETS_CONFIG.runMinute).padStart(2, '0'),
       healthSchedule: String(MARKETS_CONFIG.healthCheckHour).padStart(2, '0') + ':' + String(MARKETS_CONFIG.healthCheckMinute).padStart(2, '0'),
       newsletterSchedule: 'Día 1 · ' + String(MARKETS_CONFIG.newsletterHour).padStart(2, '0') + ':' +
@@ -88,6 +92,7 @@ function getMarketsAdminDashboard(includeUsage = true) {
       healthMonitorEnabled: parseBoolean_(access.control.MONITOR_HEALTH_ENABLED, true),
       healthRecipient: trimString_(access.control.MONITOR_ADMIN_EMAIL),
       administratorEmails: marketsAdministratorEmails_(access.control),
+      senderName: sender.name,
       senderAddress: sender.address,
       senderAvailable: Boolean(sender.available),
       senderVerificationStatus: trimString_(sender.verificationStatus),
@@ -113,6 +118,7 @@ function getMarketsAdminDashboard(includeUsage = true) {
       client.lastSeenAt = adminDateTime_(item.lastSeenAt);
       client.lastTestAt = adminDateTime_(item.lastTestAt);
       client.lastDeliveryAt = adminDateTime_(item.lastDeliveryAt);
+      client.lastNewsletterAt = deliveries.newsletter?.recipients?.[item.email] || '';
       client.updatedAt = adminDateTime_(item.updatedAt);
       client.registeredAt = adminDateTime_(item.registeredAt);
       return client;
@@ -193,19 +199,24 @@ function requestMarketsAdminRatingRecovery() {
 
 function marketsAdminReviewPipeline_(email) {
   const owner = email === normalizeEmailForComparison_(Session.getEffectiveUser().getEmail());
-  let installed = null;
+  let installed = null, newsletterInstalled = null;
   if (owner) {
     try {
-      installed = ScriptApp.getProjectTriggers()
-        .some(trigger => trigger.getHandlerFunction() === MARKETS_REVIEW_SUPERVISOR);
+      const handlers = ScriptApp.getProjectTriggers().map(trigger => trigger.getHandlerFunction());
+      installed = handlers.includes(MARKETS_REVIEW_SUPERVISOR);
+      newsletterInstalled = handlers.includes('runMarketsMonthlyNewsletter');
     } catch (error) {
       console.warn('No se pudo consultar la programación de reseñas. ' + error.message);
     }
   }
   const state = readMarketsReviewPipeline_(PropertiesService.getScriptProperties());
-  const jobs = state?.jobs || newMarketsReviewPipeline_('').jobs;
-  return { day: state?.day || '', installed, canRestart: owner && installed === true,
-    jobs: [{ id: 'supervisor', label: 'Supervisor de reseñas', priority: 0,
+  const definitions = newMarketsReviewPipeline_('').jobs;
+  const jobs = definitions.map(definition => {
+    const current = state?.jobs.find(job => job.id === definition.id);
+    return { ...definition, ...current, label: definition.label, priority: definition.priority };
+  });
+  return { day: state?.day || '', installed, newsletterInstalled, canRestart: owner && installed === true,
+    jobs: [{ id: 'supervisor', label: 'Supervisor', priority: 0,
       status: installed === null ? 'Activador sin verificar' : installed ? 'Activo' : 'Sin activador instalado' }, ...jobs] };
 }
 
@@ -228,6 +239,75 @@ function readRecentMarketsAdminRuns_(ss, limit) {
         detail: trimString_(row[indexes.detail]), deliveryDetail: trimString_(row[indexes.alert_delivery_detail])
       };
     });
+}
+
+function readMarketsAdminDeliveries_(ss) {
+  const sheet = ss.getSheetByName(MARKETS_CONFIG.sheets.alerts);
+  const indexes = indexHeaders_(MARKETS_CONFIG.headers.alerts);
+  const last = sheet.getLastRow();
+  if (last < 2) return {};
+  const properties = PropertiesService.getScriptProperties();
+  const range = sheet.getRange(2, indexes.source + 1, last - 1, 1);
+  return Object.fromEntries([['newsletter', 'MONTHLY_NEWSLETTER'], ['reviewAlerts', 'REVIEW_ALERTS']].map(([id, source]) => {
+    const timing = safeJsonParse_(properties.getProperty('MARKETS_JOB_TIMING:' + id));
+    const delivery = safeJsonParse_(properties.getProperty('MARKETS_JOB_DELIVERY:' + id));
+    const latestOutcome = id === 'reviewAlerts' ? timing : delivery;
+    const result = { ...timing, sent: latestOutcome?.sent, total: latestOutcome?.total, lastDeliveryAt: '' };
+    if (id === 'reviewAlerts') {
+      const latestAudit = range.createTextFinder(MARKETS_REVIEW_ALERTS_RUN).matchEntireCell(true).findAll().at(-1);
+      if (latestAudit) {
+        const [row] = sheet.getRange(latestAudit.getRow(), 1, 1, MARKETS_CONFIG.headers.alerts.length).getValues();
+        const audit = parseMarketsReviewAlertRun_(row, indexes);
+        if (audit) return [id, audit];
+      }
+    }
+    let cells = range.createTextFinder(source).matchEntireCell(true).findAll();
+    if (!cells.length && id === 'reviewAlerts') {
+      cells = sheet.getRange(2, indexes.type + 1, last - 1, 1)
+        .createTextFinder('REVIEW_LOW_SHARE').matchEntireCell(true).findAll();
+    }
+    if (!cells.length) return [id, result];
+    const recent = cells.slice(-100).map(cell => cell.getRow()).sort((a, b) => a - b);
+    const from = recent[0], to = recent.at(-1);
+    const rows = sheet.getRange(from, 1, to - from + 1, MARKETS_CONFIG.headers.alerts.length).getValues();
+    const earliest = delivery ? new Date(delivery.startedAt).getTime() - 60000 : 0;
+    const deliveryRows = recent.map(row => rows[row - from]);
+    if (id === 'reviewAlerts') {
+      const latest = deliveryRows.at(-1);
+      result.startedAt = timing?.startedAt || adminDateTime_(latest[indexes.timestamp]);
+      result.recorded = new Set(deliveryRows.filter(row => row[indexes.run_id] === latest[indexes.run_id])
+        .map(row => normalizeEmailForComparison_(row[indexes.user_email] || row[indexes.recipients])).filter(Boolean)).size;
+      // Historic event rows also existed with delivery disabled. They prove
+      // generation and time, but only the outcome telemetry proves acceptance.
+      result.sent = timing?.sent;
+      result.total = timing?.total;
+      if (!delivery) return [id, result];
+    }
+    if (id === 'newsletter') {
+      result.recipients = Object.fromEntries(deliveryRows.map(row => [
+        normalizeEmailForComparison_(row[indexes.user_email] || row[indexes.recipients]), adminDateTime_(row[indexes.timestamp])
+      ]).filter(([email, date]) => email && date));
+    }
+    let accepted = deliveryRows.filter(row => new Date(row[indexes.timestamp]).getTime() >= earliest);
+    if (delivery && id === 'reviewAlerts') {
+      const day = Utilities.formatDate(new Date(delivery.startedAt), MARKETS_CONFIG.timeZone, 'yyyy-MM-dd');
+      accepted = accepted.filter(row => row[indexes.run_id] === 'review-' + day);
+    }
+    const latest = accepted.at(-1);
+    if (!latest) return [id, result];
+    result.lastDeliveryAt = adminDateTime_(latest[indexes.timestamp]);
+    result.confirmed = new Set(accepted.filter(row => row[indexes.run_id] === latest[indexes.run_id])
+      .map(row => row[indexes.user_email] || row[indexes.recipients]).filter(Boolean)).size;
+    return [id, result];
+  }));
+}
+
+function parseMarketsReviewAlertRun_(row, indexes) {
+  const startedAt = adminDateTime_(row[indexes.timestamp]);
+  const sent = adminNumber_(row[indexes.metric_value]), total = adminNumber_(row[indexes.threshold]);
+  const outcome = safeJsonParse_(row[indexes.detail]);
+  if (!outcome || !startedAt || !Number.isInteger(sent) || !Number.isInteger(total) || sent < 0 || sent > total) return null;
+  return { startedAt, sent, total, status: outcome.status, lastDeliveryAt: outcome.deliveredAt || '' };
 }
 
 function readRecentMarketsAdminFetchIssues_(ss, limit) {
@@ -257,7 +337,7 @@ function readRecentMarketsAdminAlertEvents_(ss, limit) {
   const indexes = indexHeaders_(headers);
   const count = Math.min(limit, sheet.getLastRow() - 1);
   return sheet.getRange(sheet.getLastRow() - count + 1, 1, count, headers.length).getValues().reverse()
-    .filter(function (row) { return trimString_(row[indexes.event_key]); })
+    .filter(function (row) { return trimString_(row[indexes.event_key]) && row[indexes.source] !== MARKETS_REVIEW_ALERTS_RUN; })
     .map(function (row) {
       return {
         timestamp: adminDateTime_(row[indexes.timestamp]), type: trimString_(row[indexes.type]),
@@ -280,4 +360,132 @@ function adminNumber_(value) {
 function getMarketsAdminUsage() {
   const { ss, control } = requireMarketsAdministrator_();
   return readMarketsUsageAnalytics_(ss, trimString_(control.TIME_ZONE) || MARKETS_CONFIG.timeZone);
+}
+
+const MARKETS_BUSINESS_CONTROL = ['RATING_LOOKBACK_DAYS', 'MONITOR_HEALTH_ENABLED'];
+
+function getMarketsBusinessCatalog(section, language) {
+  const { ss, control } = requireMarketsAdministrator_();
+  const config = MARKETS_CONFIG;
+  const table = (columns, rows, edit = '') => ({ columns, rows, edit });
+  switch (section) {
+    case 'operation':
+      return table(['Parámetro', 'Valor', 'Descripción'], config.controlDefaults
+        .filter(([key]) => MARKETS_BUSINESS_CONTROL.includes(key))
+        .map(([key, value, description]) => [key, control[key] ?? value, description]), 'operation');
+    case 'functional': {
+      const names = marketsFunctionalTranslations_(ss, ['en', 'tr'].includes(language) ? language : 'es');
+      const sheet = ss.getSheetByName('FUNCTIONAL_CATALOG');
+      return table(['ID', 'Bloque', 'Funcionalidad', 'Descripción'], sheet?.getLastRow() > 1
+        ? requireCurrentSheetContract_(ss, 'FUNCTIONAL_CATALOG', MARKETS_FUNCTIONAL_HEADERS)
+          .getRange(2, 1, sheet.getLastRow() - 1, 4).getDisplayValues()
+          .map(([id, block, feature, description]) => [id, names.get(block) || block, names.get(feature) || feature, description]) : []);
+    }
+    case 'aliases': {
+      const overrides = marketsBusinessAliases_(ss);
+      return table(['ID funcional', 'Equivalencias adicionales (una por línea)', 'Equivalencias de base'],
+        [...new Set([...Object.keys(MARKETS_REVIEW_RULES), ...Object.keys(overrides)])].sort()
+          .map(id => [id, (overrides[id] || []).join('\n'), (MARKETS_REVIEW_RULES[id]?.[0] || []).join(' · ')]), 'aliases');
+    }
+    case 'markets':
+      return table(['Clave', 'Orden', 'Geografía', 'Tienda', 'Aplicación', 'Activa'], readAppCatalog_(ss, true)
+        .map(app => [app.appKey, app.displayOrder, app.countryCode, app.store, app.appName, app.enabled]), 'markets');
+    case 'geography':
+      return table(['Código', 'Geografía'], [...new Map(readAppCatalog_(ss, true).map(app => [app.countryCode, app.country])).entries()].sort());
+    case 'relevance':
+      return table(['Criterio', 'Regla'], [
+        ['Todos', 'Audiencia inicial de Comentarios'],
+        ['Solo BEI', 'Evidencia empresarial directa en el original'],
+        ['BEI extendido', 'Evidencia directa, contextual u operativa compartida sin señal retail explícita'],
+        ['Operativa compartida', 'Transferencias, pagos, cuentas o tarjetas con contexto operativo y sin uso particular explícito'],
+        ['NPS de reseñas', MARKETS_DEFAULT_REVIEW_SEGMENTS.map(group => group.label + ': ' + group.stars.join(', ')).join(' · ')]
+      ]);
+    case 'storage':
+      return table(['Conjunto', 'Hoja'], [...Object.entries(config.sheets),
+        ['Reseñas', 'MARKET_REVIEWS'], ['Catálogo funcional', 'FUNCTIONAL_CATALOG'],
+        ['Equivalencias', MARKETS_FUNCTIONAL_ALIASES], ['Traducciones del catálogo', MARKETS_FUNCTIONAL_TRANSLATIONS],
+        ['Interacciones newsletter', MARKETS_NEWSLETTER_INTERACTIONS]]);
+    case 'schedule': {
+      const clock = (hour, minute) => [hour, minute].map(value => String(value).padStart(2, '0')).join(':');
+      return table(['Proceso', 'Programación', 'Zona horaria'], [
+        ['Ratings', clock(config.runHour, config.runMinute), config.timeZone],
+        ['Salud', clock(config.healthCheckHour, config.healthCheckMinute), config.timeZone],
+        ['Newsletter', 'Día 1 · ' + clock(config.newsletterHour, config.newsletterMinute), config.timeZone]
+      ]);
+    }
+    case 'retention':
+      return table(['Parámetro', 'Valor', 'Descripción'], [
+        [MARKETS_LOG_RETENTION, marketsLogRetentionDays_(PropertiesService.getScriptProperties()), 'Días antes de archivar registros operativos']
+      ], 'retention');
+    case 'languages':
+      return table(['Idioma', 'Uso'], ['es', 'en', 'tr'].map(lang => [lang, 'Interfaz, traducciones de reseñas y newsletter']));
+    default: throw new Error('Catálogo desconocido.');
+  }
+}
+
+function saveMarketsBusinessCatalogEntry(input) {
+  const { ss } = requireMarketsAdministrator_();
+  const { section, key, value, expected } = input || {};
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(5000)) throw new Error('Configuración ocupada. Inténtalo de nuevo.');
+  try {
+    if (section === 'retention' && key === MARKETS_LOG_RETENTION) {
+      const days = Number(value);
+      if (!Number.isInteger(days) || days < 1 || days > 3650) throw new Error('Introduce un número de días entre 1 y 3650.');
+      const properties = PropertiesService.getScriptProperties();
+      if (String(marketsLogRetentionDays_(properties)) !== String(expected)) throw new Error('El parámetro cambió. Actualiza el catálogo.');
+      properties.setProperty(MARKETS_LOG_RETENTION, String(days));
+      return { saved: true };
+    }
+    if (section === 'operation' && MARKETS_BUSINESS_CONTROL.includes(key)) {
+      const raw = String(value).trim();
+      const valid = key === 'RATING_LOOKBACK_DAYS' ? /^\d{1,3}$/.test(raw) && Number(raw) >= 1 && Number(raw) <= 365
+        : /^(true|false)$/i.test(raw);
+      if (!valid) throw new Error(key === 'RATING_LOOKBACK_DAYS' ? 'Introduce un número de 1 a 365.' : 'Introduce true o false.');
+      const sheet = requireCurrentSheetContract_(ss, MARKETS_CONFIG.sheets.control, MARKETS_CONFIG.headers.control);
+      const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 2).getValues();
+      const index = rows.findIndex(row => row[0] === key);
+      if (index < 0 || String(rows[index][1]) !== String(expected) || rows.filter(row => row[0] === key).length !== 1) {
+        throw new Error('El parámetro cambió o no está configurado. Actualiza el catálogo.');
+      }
+      sheet.getRange(index + 2, 2).setValue(key === 'RATING_LOOKBACK_DAYS' ? Number(raw) : raw.toLowerCase() === 'true');
+      SpreadsheetApp.flush();
+    } else if (section === 'markets' && typeof key === 'string' && /^\d{1,4}$/.test(String(value).trim())) {
+      const {catalog} = MARKETS_CONFIG.sheets, headers = MARKETS_CONFIG.headers.catalog;
+      const sheet = requireCurrentSheetContract_(ss, catalog, headers);
+      const column = headers.indexOf('DISPLAY_ORDER') + 1;
+      const found = sheet.getLastRow() > 1
+        ? sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).createTextFinder(key).matchEntireCell(true).findNext() : null;
+      const cell = found && sheet.getRange(found.getRow(), column);
+      if (!cell || String(toNonNegativeInteger_(cell.getValue())) !== String(expected)) throw new Error('La aplicación cambió. Actualiza el catálogo.');
+      cell.setValue(Number(value));
+      SpreadsheetApp.flush();
+    } else if (section === 'aliases' && /^\d{2}\.\d{2}$/.test(key) && typeof value === 'string' && value.length <= 1500) {
+      const sheet = requireCurrentSheetContract_(ss, 'FUNCTIONAL_CATALOG', MARKETS_FUNCTIONAL_HEADERS);
+      if (sheet.getLastRow() < 2 || !sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).createTextFinder(key).matchEntireCell(true).findNext()) {
+        throw new Error('La funcionalidad no existe en el catálogo global.');
+      }
+      const aliases = marketsBusinessAliases_(ss);
+      if ((aliases[key] || []).join('\n') !== expected) throw new Error('Las equivalencias cambiaron. Actualiza el catálogo.');
+      const terms = [...new Set(value.split('\n').map(normalizeReviewEvidence_).filter(Boolean))];
+      if (terms.length > 20 || terms.some(term => !term.includes(' ') || term.length > 100)) throw new Error('Introduce hasta 20 expresiones de varias palabras, una por línea.');
+      const existing = ss.getSheetByName(MARKETS_FUNCTIONAL_ALIASES);
+      const target = existing || ss.insertSheet(MARKETS_FUNCTIONAL_ALIASES);
+      if (!existing) target.getRange(1, 1, 1, 2).setValues([MARKETS_FUNCTIONAL_ALIAS_HEADERS]);
+      const last = target.getLastRow();
+      const found = last > 1 ? target.getRange(2, 1, last - 1, 1).createTextFinder(key).matchEntireCell(true).findNext() : null;
+      const row = found ? found.getRow() : last + 1;
+      ensureSheetCapacity_(target, row, 2);
+      target.getRange(row, 1, 1, 2).setNumberFormat('@').setValues([[key, terms.join('\n')]]);
+      SpreadsheetApp.flush();
+      PropertiesService.getScriptProperties().setProperty('MARKETS_FUNCTIONAL_ALIASES_REVISION', Utilities.getUuid());
+    } else throw new Error('Este catálogo no admite la edición solicitada.');
+    return { saved: true };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function refreshMarketsAdminFunctionalCatalog() {
+  return setupMarketsReviewInsights();
 }

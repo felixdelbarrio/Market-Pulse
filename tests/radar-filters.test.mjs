@@ -24,7 +24,7 @@ function filterBindings({ crypto, sessionStorage, browserCountry = "ES" } = {}) 
       MarketsUI: { option() { return ''; } },
       MarketsDomain: { browserMarket: () => browserCountry, config: { countries: { ES: 'España', MX: 'México' }, platforms: ['iOS', 'Android'] } },
       MarketRadarFilters: {
-        searchable() { return {}; },
+        searchable() { return { refresh() {} }; },
         create(root, binding) {
           bindings[root.id] = binding;
           return { render() {} };
@@ -34,6 +34,7 @@ function filterBindings({ crypto, sessionStorage, browserCountry = "ES" } = {}) 
     calls
   });
   const script = clientScript(read('App')).replace(/\}\)\(\);\s*$/, `
+    renderEvolution = () => calls.push({...monthlyFilters});
     loadReviews = () => calls.push({ page: 0, ...reviewScope() });
     loadAnalytics = (localOnly=false) => calls.push({ ...annualScope(), entity: analyticsEntity, localOnly });
     renderAdminSubscribers = rows => calls.push(adminSubscriberFilterRows(rows).map(row => row.email));
@@ -42,6 +43,7 @@ function filterBindings({ crypto, sessionStorage, browserCountry = "ES" } = {}) 
       if (cohort) reviewDrilldown={scope:cohort,label:"Detalle"};
       if (rows) state.adminCenter={subscribers:rows};
       bindRadarFilters();
+      bindEvolutionFilters();
     };
     activateView = view => { if (view === "reviews") loadReviews(); };
     globalThis.openCohort = openReviewCohort;
@@ -97,7 +99,7 @@ test('annual filters use the browser country and reset the KPI app on year chang
   const analytics = bindings['analytics-filters'], initial = analytics.initial();
   assert.equal(initial.country,'ES');
   assert.match(initial.year,/^\d{4}$/);
-  assert.deepEqual(copy(analytics.alwaysChips),['country','year']);
+  assert.deepEqual(copy(analytics.alwaysChips),['country','year','audience','inferGeography']);
   handlers.get('analytics-entity:change')({target:{value:'Banco Central'}});
   const year=String(Number(initial.year)-1);
   analytics.commit({...analytics.applied(),year});
@@ -156,4 +158,72 @@ test('monthly balance does not bridge missing months and the legend matches the 
   const legend = reviewBalanceLegend([{entity:'Banco Central',total:19}],String);
   assert.ok(legend.includes('background:' + color));
   assert.doesNotMatch(legend,/<button/);
+});
+
+test('comments keep filters editable and ignore out-of-order results and errors after navigation', async () => {
+  const nodes = new Map(), pending = [];
+  const getNode = id => {
+    if (!nodes.has(id)) nodes.set(id, {
+      options:[{}], innerHTML:'', busy:'false', replaceChildren(){ this.innerHTML=''; },
+      setAttribute(name,value){ if (name==='aria-busy') this.busy=value; }
+    });
+    return nodes.get(id);
+  };
+  const context = vm.createContext({
+    navigator:{language:'es'}, performance, pending,
+    document:{addEventListener(){},getElementById:getNode},
+    window:{matchMedia(){}, MarketsDomain:{}, MarketsUI:{loading:()=> 'loading',empty:()=> 'empty'}}
+  });
+  const script = clientScript(read('App')).replace(/\}\)\(\);\s*$/, `
+    renderReviewMarkets=()=>{};
+    renderReviewCard=row=>row.key;
+    trackReady=()=>{};
+    radarFilters.reviews={render(){}};
+    fetchReviewData=(_method,scope)=>new Promise((resolve,reject)=>pending.push({scope,resolve,reject}));
+    globalThis.select=(country,audience="")=>{
+      state.view="reviews";
+      reviewSelection={country,audience};
+      return loadReviews();
+    };
+    globalThis.navigate=()=>{state.view="analytics"};
+  })();`);
+  vm.runInContext(script, context);
+  const a=context.select('ES'), b=context.select('MX','BEI_ONLY'), c=context.select('TR','BEI_EXTENDED');
+  await Promise.resolve();
+  assert.equal(pending.length,1);
+  assert.equal(pending[0].scope.country,'TR');
+  assert.equal(pending[0].scope.audience,'BEI_EXTENDED');
+  const d=context.select('CO');
+  await Promise.resolve();
+  assert.equal(getNode('review-results').busy,'true');
+  pending[1].resolve({topics:{},counts:{CO:1},rows:[{key:'new'}],total:1,size:25});
+  await d;
+  pending[0].resolve({topics:{},counts:{TR:1},rows:[{key:'old'}],total:1,size:25});
+  await Promise.all([a,b,c]);
+  assert.equal(getNode('review-results').innerHTML,'new');
+  assert.equal(getNode('review-results').busy,'false');
+  const e=context.select('ES');
+  await Promise.resolve();
+  context.navigate();
+  pending[2].reject(new Error('late'));
+  await e;
+  assert.equal(getNode('review-results').innerHTML,'loading');
+  assert.equal(getNode('review-results').busy,'false');
+});
+
+test('monthly audience and inference are applied and reset independently of annual and comments', () => {
+  const {bindings, calls, setup} = filterBindings();
+  setup({scope:{evolutionApp:'BBVA Empresas',periodYear:'2026',periodMonth:'11'}});
+  const monthly = bindings['evolution-filters'], annual = bindings['analytics-filters'], comments = bindings['review-filters'];
+  for (const view of [monthly, annual, comments]) {
+    assert.ok(view.alwaysChips.includes('audience'));
+    assert.ok(view.alwaysChips.includes('inferGeography'));
+  }
+  monthly.commit({...monthly.applied(), audience:'BEI_ONLY', inferGeography:'NO'});
+  assert.deepEqual(copy(calls.at(-1)), {audience:'BEI_ONLY',inferGeography:'NO'});
+  assert.equal(annual.applied().inferGeography, undefined);
+  assert.equal(comments.applied().inferGeography, undefined);
+  monthly.commit(monthly.all());
+  assert.equal(monthly.applied().inferGeography,'YES');
+  assert.equal(monthly.applied().audience,'');
 });

@@ -165,6 +165,8 @@ function collectMarketsPlayReviews_(limit = Infinity) {
 function storePlayReviews_(sheet, properties, known, listing, reviews, summary, width = 15) {
   const changes = new Map();
   const captured = new Date().toISOString();
+  let firstEdit = Infinity;
+  let geographyChanged = false;
   let nextIndex = sheet.getLastRow() + 1;
   for (const review of reviews) {
     const key = JSON.stringify(['Android', listing.packageName, review.id]);
@@ -179,15 +181,23 @@ function storePlayReviews_(sheet, properties, known, listing, reviews, summary, 
     const row = newer ? [key, listing.appKey, '', 'Android', listing.packageName, review.id, review.date,
       review.rating, review.version, '', review.text, '', '', '', captured] : previous.row.slice();
     const index = previous ? previous.index : nextIndex++;
+    if (previous && newer && previous.row[10] !== row[10]) firstEdit = Math.min(firstEdit, index);
     if (previous && newer && previous.row[10] === review.text) {
       row.splice(11, 3, ...previous.row.slice(11, 14));
     }
     row[2] = [...markets].sort().join(',');
     row[14] = captured;
     if (width === MARKETS_REVIEW_METADATA_COLUMN) row[15] = metadata;
+    if (previous && (row[2] !== previous.row[2] || row[10] !== previous.row[10] ||
+        (width === MARKETS_REVIEW_METADATA_COLUMN && marketsReviewMetadata_(row).reply !== marketsReviewMetadata_(previous.row).reply))) {
+      geographyChanged = true;
+    }
     changes.set(key, { row, index });
   }
   if (!changes.size) return;
+  if (Number.isFinite(firstEdit) && typeof invalidateMarketsReviewIndexFrom_ === 'function') {
+    invalidateMarketsReviewIndexFrom_(properties, firstEdit);
+  }
   ensureSheetCapacity_(sheet, nextIndex - 1, width);
   const ordered = [...changes.values()].sort((a, b) => a.index - b.index);
   for (let start = 0; start < ordered.length;) {
@@ -198,7 +208,8 @@ function storePlayReviews_(sheet, properties, known, listing, reviews, summary, 
     start = end;
   }
   SpreadsheetApp.flush();
-  advanceMarketsReviewGeneration_(properties);
+  if (geographyChanged) properties.setProperty('MARKETS_ANDROID_GEO_SOURCE_REVISION', captured);
+  advanceMarketsReviewGeneration_(properties, true);
   changes.forEach((item, key) => {
     if (known.has(key)) summary.updated++;
     else summary.added++;

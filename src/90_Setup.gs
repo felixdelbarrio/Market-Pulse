@@ -93,6 +93,10 @@ function rebuildAllMetrics() {
 
 function installDailyTrigger_() {
   removeManagedTriggers_();
+  if (typeof MARKETS_UNIFIED_OPERATIONS === 'string' && PropertiesService.getScriptProperties().getProperty(MARKETS_UNIFIED_OPERATIONS)) {
+    installMarketsReviewSupervisor_();
+    return;
+  }
   ScriptApp.newTrigger('runDailyRatingMonitor')
     .timeBased()
     .atHour(MARKETS_CONFIG.runHour)

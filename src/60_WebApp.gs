@@ -1,6 +1,6 @@
 /** Web app de lectura para el dashboard de ratings. */
 var MARKETS_WEB = Object.freeze({
-  version: '2026.11.12.59',
+  version: '2026.11.15.77',
   // Solo debe cambiar si cambia el formato serializado. Un cambio visual no
   // puede obligar al primer usuario a reconstruir la cache desde Sheets.
   cacheSchemaVersion: '2026.10.21.41',
@@ -16,8 +16,11 @@ var MARKETS_WEB = Object.freeze({
 
 /** Publica el dashboard bajo el control de acceso del despliegue de Apps Script. */
 function doGet(event) {
+  if (event?.parameter?.newsletterInteraction) return renderMarketsNewsletterInteractionPage_(event.parameter.newsletterInteraction);
   if (event?.parameter?.alertFeedback) return renderMarketsAlertFeedbackPage_(event.parameter.alertFeedback);
-  const page = HtmlService.createTemplateFromFile('Index').evaluate()
+  const template = HtmlService.createTemplateFromFile('Index');
+  template.initialView = event?.parameter?.view === 'alerts' ? 'alerts' : '';
+  const page = template.evaluate()
     .setTitle('Market Pulse · BBVA Banca de Empresas e Instituciones')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover')
     .setFaviconUrl('https://raw.githubusercontent.com/felixdelbarrio/Market-Pulse/3a4ebca6387785f387441aabd591b3e1ba429e49/assets/favicon.png');
@@ -775,16 +778,18 @@ const MARKETS_MEASURED_JOBS = Object.freeze({ health: 'Comprobación de salud', 
 
 function measureMarketsScheduledJob_(name, run) {
   const started = new Date();
-  let status = 'ERROR';
+  let status = 'ERROR', result;
   try {
-    const result = run();
+    result = run();
     status = result?.status || 'OK';
     return result;
   } finally {
     try {
-      PropertiesService.getScriptProperties().setProperty('MARKETS_JOB_TIMING:' + name, JSON.stringify({
-        startedAt: started.toISOString(), durationMs: Date.now() - started.getTime(), status
-      }));
+      const properties = PropertiesService.getScriptProperties();
+      const state = { startedAt: started.toISOString(), durationMs: Date.now() - started.getTime(), status, sent: result?.sent,
+        total: result?.total ?? (Number.isInteger(result?.sent) && Array.isArray(result.failures) ? result.sent + result.failures.length : undefined) };
+      properties.setProperty('MARKETS_JOB_TIMING:' + name, JSON.stringify(state));
+      if (state.sent > 0) properties.setProperty('MARKETS_JOB_DELIVERY:' + name, JSON.stringify(state));
     } catch (error) {
       console.warn('No se pudo registrar la duración de ' + name + ': ' + errorToString_(error));
     }

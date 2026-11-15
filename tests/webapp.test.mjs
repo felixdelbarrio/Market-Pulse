@@ -355,7 +355,7 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(index, /class="nav-button hidden" id="admin-nav"/);
   assert.match(index, /id="view-admin"/);
   assert.match(index, /id="admin-tabs"[^>]*role="tablist"/);
-  assert.match(index, /data-admin-tab="performance"/);
+  assert.match(index, /data-admin-log="performance"/);
   assert.match(index, /data-admin-tab="usage"/);
   assert.match(index, /id="admin-country-pills"[^>]*role="group"/);
   assert.match(index, /id="admin-platform-pills"[^>]*role="group"/);
@@ -372,7 +372,10 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   const evolutionMarkup = index.slice(index.indexOf('id="view-evolution"'), index.indexOf('id="view-alerts"'));
   const analyticsMarkup = index.slice(index.indexOf('id="view-analytics"'), index.indexOf('id="view-reviews"'));
   assert.doesNotMatch(evolutionMarkup + app, /evolution-kpis/);
-  assert.match(evolutionMarkup, /id="monthly-matrix"[\s\S]*id="new-review-impact"[\s\S]*id="review-balance"[\s\S]*id="monthly-review-segment"[\s\S]*id="review-deltas"[\s\S]*id="review-examples"/);
+  assert.match(evolutionMarkup, /class="panel-body radar-filters review-gap-controls"[\s\S]*id="monthly-review-segment"/);
+  assert.match(app, /searchable\(\$\("monthly-review-segment"\)\)\.refresh\(\)/);
+  assert.match(evolutionMarkup, /id="evolution-filters"[\s\S]*name="audience"[\s\S]*name="inferGeography"[\s\S]*<\/form>/);
+  assert.match(evolutionMarkup, /id="monthly-matrix"[\s\S]*id="new-review-impact"[\s\S]*id="review-balance"[\s\S]*id="review-deltas"[\s\S]*id="review-examples"/);
   assert.match(analyticsMarkup, /class="annual-chart-layout">\s*<div id="annual-chart"[^>]*><\/div>\s*<aside id="annual-series"[^>]*><\/aside>/);
   assert.match(analyticsMarkup, /id="review-heatmap"[\s\S]*id="analytics-entity"[\s\S]*id="annual-chart"[\s\S]*id="review-annual"/);
   const charts = fs.readFileSync(new URL("../src/Charts.html", import.meta.url), "utf8");
@@ -410,7 +413,7 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(index, /id="loader-retry"/);
   assert.doesNotMatch(app, /sendMarketsNewsletterTestEmail/);
   assert.match(app, /admin:newsletter:test"\?120000/);
-  assert.match(app, /newsletterRequestId/);
+  assert.match(app, /form\.dataset\.requestId/);
   assert.match(app, /state\.userContext=data\.userContext/);
   assert.match(app, /Market Pulse no ha respondido a tiempo/);
   assert.doesNotMatch(app, /Promise\.all\\(\\[callServer\\("bootstrap"\\),callServer\\("user:context"\\)\\]\\)/);
@@ -663,6 +666,15 @@ test("new-review impact never blends Android, iOS or Huawei and deduplicates a s
     trends, snapshot, { country: "ES", platform: "ALL" }, "2026-07");
   assert.equal(spain.rows.find(row => row.platform === "Android").available, false);
   assert.deepEqual(Array.from(spain.rows.find(row => row.platform === "Android").reasons), ["SHARED_LISTING"]);
+  const estimate = (inferGeography) => browser.MarketsDomain.monthlyNewReviewImpact(
+    trends, snapshot, {country:"ES",platform:"ALL",inferGeography}, "2026-07", {"ANDROID|shared":3}).rows.find(row=>row.platform==="Android");
+  assert.equal(estimate("YES").newReviews,3);
+  assert.equal(estimate("YES").volumeInferred,true);
+  assert.equal(estimate("NO").newReviews,null);
+  assert.equal(estimate("").newReviews,null);
+  assert.equal(spain.summary.platforms.find(item=>item.platform==="Android").rating, estimate("NO").rating);
+  assert.equal(estimate("NO").rating,estimate("YES").rating);
+  assert.equal(estimate("NO").impact,estimate("YES").impact);
 });
 
 test("evolution includes all apps by default and supports filtering by app", () => {
@@ -792,4 +804,17 @@ test("performance separates page latency, real calls, reuse and timeouts by rele
   assert.equal(previous.hits, 1);
   assert.equal(previous.shared, 1);
   assert.equal(result.find(row => row.operation === "READY").uiP95, 900);
+});
+
+test("Spanish review labels use reseñas in the UI, charts, exports and communications", () => {
+  for (const name of [
+    "Index.html", "App.html", "Charts.html", "Workbook.html", "AlertFeedback.html",
+    "50_Alerts.gs", "56_Newsletter.gs", "58_Admin.gs"
+  ]) {
+    const source = fs.readFileSync(new URL("../src/" + name, import.meta.url), "utf8");
+    assert.doesNotMatch(source, /\b(?:opniones|opiniones|opini[oó]n)\b/iu, name);
+  }
+  const app = fs.readFileSync(new URL("../src/App.html", import.meta.url), "utf8");
+  assert.match(app, /"Reseñas del año seleccionado":\["Reviews from the selected year"/);
+  assert.match(app, /setExportSheet\("evolution","NPS de reseñas"/);
 });
