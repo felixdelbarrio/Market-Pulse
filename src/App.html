@@ -1565,6 +1565,38 @@
       $(target).prepend(controls);
     }
 
+    let newsletterAccessCohort="dau", newsletterAccessPage=0;
+    function renderNewsletterAccessUsers(access,total){
+      const users=access?.users||[], asOf=Date.parse(access?.asOf);
+      const within=(row,days)=>Date.parse(row.lastSeenAt)>=asOf-days*86400000;
+      const cohorts=[
+        ["dau","DAU","24 horas",users.filter(row=>within(row,1))],
+        ["wau","WAU","7 días",users.filter(row=>within(row,7))],
+        ["mau","MAU","30 días",users.filter(row=>within(row,30))],
+        ["total","Total usuarios","Selección",users]
+      ];
+      const selected=cohorts.find(row=>row[0]===newsletterAccessCohort), matched=selected[3];
+      const metrics=$("admin-newsletter-access-cohorts");
+      metrics.innerHTML=cohorts.map(([key,label,hint,rows])=>`<button type="button" class="metric" data-cohort="${key}" aria-pressed="${key===selected[0]}"><span>${label}</span><strong>${integer(rows.length)}</strong><small>${hint}</small></button>`).join("");
+      metrics.onclick=event=>{
+        const key=event.target.closest("[data-cohort]")?.dataset.cohort;
+        if(!key||key===newsletterAccessCohort)return;
+        newsletterAccessCohort=key;
+        newsletterAccessPage=0;
+        renderNewsletterAccessUsers(access,total);
+        metrics.querySelector(`[data-cohort="${key}"]`)?.focus();
+      };
+      $("admin-newsletter-access-coverage").textContent=`${integer(access?.identified||0)} de ${integer(total)} accesos vinculados a un envío. Los enlaces registran un acceso por destinatario y edición.`;
+      newsletterAccessPage=renderAdminPagination("admin-newsletter-access-users-pagination",matched.length,newsletterAccessPage,page=>{
+        newsletterAccessPage=page;
+        renderNewsletterAccessUsers(access,total);
+      });
+      const visible=matched.slice(newsletterAccessPage*adminPageSize,(newsletterAccessPage+1)*adminPageSize);
+      $("admin-newsletter-access-users").innerHTML=visible.length?adminDataTable(["Usuario","Último acceso","Accesos","Primer acceso"],
+        visible.map(row=>[row.email,dateTimeLabel(row.lastSeenAt),selected[0]==="total"?row.events:row.recentEvents,dateTimeLabel(row.firstSeenAt)])):
+        U.empty("Sin usuarios verificados","Los accesos sin vínculo con un envío están incluidos en el total de aperturas.");
+    }
+
     function renderAdminAdoption(usage){
       if(!usage)return;
       radarFilters.adoption.render();
@@ -1608,11 +1640,18 @@
       const download=$("admin-"+tab+"-export");
       download.disabled=true;
       $("admin-"+tab+"-pagination").replaceChildren();
+      if(!feedback){
+        for(const section of ["chart","cohorts","coverage","users","users-pagination"]){
+          $("admin-newsletter-access-"+section).replaceChildren();
+        }
+      }
       target.innerHTML=U.loading(translate(feedback?"Cargando valoraciones":"Cargando accesos desde newsletters"));
       try{
         const data=await callServer("admin:newsletter:interactions",{kind:feedback?"feedback":"access",...filters});
         if(newsletterRequests[tab]!==token)return;
         if(!feedback){
+          newsletterAccessPage=0;
+          renderNewsletterAccessUsers(data.access,data.total);
           const chart=$("admin-newsletter-access-chart");
           activityWindows.delete(chart.id);
           renderActivityWindow(chart.id,data.daily||[],daily=>{
@@ -1804,7 +1843,8 @@
             [job.id==="ios"||job.id==="android"?`${job.added||0} nuevas · ${job.updated||0} actualizadas · ${job.failures||0} errores`:"",
              job.replyPending==null?"":job.replyPending+" respuestas pendientes"].filter(Boolean).join(" · "),
           ...(job.id==="alerts"?delivery("reviewAlerts",job.lastAttemptAt):{})})),
-        {id:"index",priority:3,group:"Clasificación de reseñas",name:"Clasificación de comentarios",...index,status:waiting(index)},
+        {id:"index",priority:3,group:"Clasificación de reseñas",name:"Clasificación de comentarios",...index,status:waiting(index),
+          detail:index?.complete?"Recorrido completado. El supervisor revisa las nuevas reseñas.":""},
         {id:"geography",priority:3,group:"Inferencia geográfica",name:"Inferencia geográfica Android",...geo,status:waiting(geo),
           done:geo?.processed,total:geo?.last?geo.total:undefined,
           detail:geo?`${integer(geo.processed)} Android sin geografía revisadas · ${integer(geo.counts?.INFERIDO||0)} inferidas · ${integer(geo.counts?.NO_ATRIBUIBLE||0)} no atribuibles`:""},
@@ -1843,7 +1883,7 @@
           ${job.waitingFor?`<p class="small muted">Trabajo activo · ${U.esc(job.waitingFor)}</p>`:""}${statusLine("Último avance",job.lastProgressAt)}${statusLine("Último éxito",job.lastSuccessAt)}
           ${statusLine("Reintento",job.retryAt?new Date(job.retryAt).toISOString():"")}
           ${job.detail?`<p class="small muted">${U.esc(job.detail)}</p>`:""}${job.error?`<p>${U.esc(job.error)}</p>`:""}
-          ${job.id==="ratings"?'<button id="admin-recovery" class="button" type="button" data-run-job="ratings">Recuperar ratings ahora</button>':operations?.owner&&actions[job.id]?`<button class="button" type="button" data-run-job="${job.id}" ${!job.enabled||status==="En curso"||status.startsWith("Esperando ")||(["index","geography","taxonomyTranslation"].includes(job.id)&&status==="Completado")?"disabled":""}>${actions[job.id]}</button>`:""}</article>`;
+          ${job.id==="ratings"?'<button id="admin-recovery" class="button" type="button" data-run-job="ratings">Recuperar ratings ahora</button>':operations?.owner&&actions[job.id]?`<button class="button" type="button" data-run-job="${job.id}" ${!job.enabled||status==="En curso"||status.startsWith("Esperando ")||status.startsWith("En pausa")||job.retryAt>Date.now()||(["index","geography","taxonomyTranslation"].includes(job.id)&&status==="Completado")?"disabled":""}>${actions[job.id]}</button>`:""}</article>`;
       };
       const root=$("admin-jobs");
       root.innerHTML=[...groups.values()].sort((a,b)=>a.priority-b.priority).map(group=>`<section class="process-group">

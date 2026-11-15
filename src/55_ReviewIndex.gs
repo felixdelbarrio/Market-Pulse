@@ -184,8 +184,18 @@ const MARKETS_GEO_AUDIT_PROPERTY = 'MARKETS_ANDROID_GEO_AUDIT';
 function advanceMarketsAndroidGeography_(now = new Date()) {
   const lock = LockService.getUserLock();
   if (!lock.tryLock(1000)) return false;
-  try { return scanMarketsAndroidGeographyBatch_(now); }
-  finally { lock.releaseLock(); }
+  try {
+    return scanMarketsAndroidGeographyBatch_(now);
+  } catch (error) {
+    const properties = PropertiesService.getScriptProperties();
+    const state = safeJsonParse_(properties.getProperty(MARKETS_GEO_AUDIT_PROPERTY)) || {};
+    delete state.runningUntil;
+    properties.setProperty(MARKETS_GEO_AUDIT_PROPERTY, JSON.stringify({ ...state,
+      updatedAt: new Date().toISOString(), error: errorToString_(error).slice(0, 180) }));
+    throw error;
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 const MARKETS_CO_SUPPORT_TEMPLATES = [
@@ -275,7 +285,7 @@ function scanMarketsAndroidGeographyBatch_(now) {
   const previous = safeJsonParse_(properties.getProperty(MARKETS_GEO_AUDIT_PROPERTY));
   const state = previous?.schema === 2 && previous.version === version && previous.revision === revision && previous.last <= last
     ? previous : { schema: 2, version, revision, next: 2, counts: {}, processed: 0, scannedRows: 0, total: 0, last: 1 };
-  if (state.complete && state.last === last) return false;
+  if (state.complete && state.last === last && !state.error) return false;
   if (previous?.version !== version) properties.setProperty('MARKETS_REVIEW_GEOGRAPHY_REVISION', Utilities.getUuid());
   if (state.last !== last && (state.complete || state.next === 2)) {
     const added = last - state.last;
@@ -285,6 +295,7 @@ function scanMarketsAndroidGeographyBatch_(now) {
   }
   const width = marketsReviewWidth_(source);
   const count = state.processed < state.total ? Math.max(0, Math.min(3000, state.last - state.next + 1)) : 0;
+  delete state.error;
   state.runningUntil = Date.now() + 6 * 60 * 1000;
   state.complete = false;
   properties.setProperty(MARKETS_GEO_AUDIT_PROPERTY, JSON.stringify(state));

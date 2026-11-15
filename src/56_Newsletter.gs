@@ -1097,13 +1097,13 @@ function marketsNewsletterInteractionId_(period, kind, email, secret) {
   return 'n_' + signMarketsAlertFeedback_(['newsletter', period, kind].join('.'), email, secret);
 }
 
-/** Match the same recipient-bound identifier used when a newsletter vote is saved. */
-function marketsNewsletterFeedbackEditions_(ss, interactions) {
-  const newsletterVotes = interactions.filter(row => row[1]);
-  const votes = new Map(newsletterVotes.map(row => [row[0], new Date(row[3]).getTime()]));
-  const periods = new Set(newsletterVotes.map(row => row[1]));
+/** Match the recipient-bound interaction identifier against accepted newsletter deliveries. */
+function marketsNewsletterInteractionEditions_(ss, interactions, kind) {
+  const newsletterRows = interactions.filter(row => row[1]);
+  const recordedAt = new Map(newsletterRows.map(row => [row[0], new Date(row[3]).getTime()]));
+  const periods = new Set(newsletterRows.map(row => row[1]));
   const matched = new Map();
-  if (!votes.size) return matched;
+  if (!recordedAt.size) return matched;
   const secret = PropertiesService.getScriptProperties().getProperty(MARKETS_NEWSLETTER_SECRET);
   const sheet = ss.getSheetByName(MARKETS_CONFIG.sheets.alerts);
   if (!secret || !sheet || sheet.getLastRow() < 2) return matched;
@@ -1126,12 +1126,37 @@ function marketsNewsletterFeedbackEditions_(ss, interactions) {
       const sentAt = adminDateTime_(row[indexes.timestamp]);
       const time = Date.parse(sentAt);
       if (!periods.has(period) || !email || !Number.isFinite(time)) continue;
-      const id = marketsNewsletterInteractionId_(period, 'vote', email, secret);
-      if (!votes.has(id) || time > votes.get(id) || (matched.has(id) && time <= Date.parse(matched.get(id).sentAt))) continue;
-      matched.set(id, { email, sentAt, countries: trimString_(row[indexes.country_code]), summary: trimString_(row[indexes.detail]) });
+      const id = marketsNewsletterInteractionId_(period, kind, email, secret);
+      if (!recordedAt.has(id) || time > recordedAt.get(id) || (matched.has(id) && time <= Date.parse(matched.get(id).sentAt))) continue;
+      matched.set(id, kind === 'open' ? { email, sentAt } : {
+        email, sentAt, countries: trimString_(row[indexes.country_code]), summary: trimString_(row[indexes.detail])
+      });
     }
   }
   return matched;
+}
+
+function marketsNewsletterAccessUsers_(rows, editions, asOf) {
+  const users = new Map(), seen = new Set();
+  const recentStart = asOf.getTime() - 30 * 86400000;
+  let identified = 0;
+  for (const [id, , , date] of rows) {
+    const email = editions.get(id)?.email;
+    if (!email || seen.has(id)) continue;
+    const time = new Date(date).getTime();
+    if (!Number.isFinite(time) || time > asOf.getTime()) continue;
+    seen.add(id);
+    const iso = new Date(time).toISOString();
+    if (!users.has(email)) users.set(email, { email, events: 0, recentEvents: 0, firstSeenAt: iso, lastSeenAt: iso });
+    const user = users.get(email);
+    user.events++;
+    if (time >= recentStart) user.recentEvents++;
+    if (iso < user.firstSeenAt) user.firstSeenAt = iso;
+    if (iso > user.lastSeenAt) user.lastSeenAt = iso;
+    identified++;
+  }
+  return { identified, asOf: asOf.toISOString(), users: [...users.values()].sort((a, b) =>
+    b.lastSeenAt.localeCompare(a.lastSeenAt) || a.email.localeCompare(b.email)) };
 }
 
 function getMarketsNewsletterInteractions(kind, period, vote, status, start = '', end = '') {
@@ -1166,17 +1191,19 @@ function getMarketsNewsletterInteractions(kind, period, vote, status, start = ''
     dates.set(day, (dates.get(day) || 0) + 1);
     return true;
   });
-  const today = Utilities.formatDate(new Date(), zone, 'yyyy-MM-dd'), through = end || today;
+  const now = new Date();
+  const today = Utilities.formatDate(now, zone, 'yyyy-MM-dd'), through = end || today;
   const daily = kind === 'access' ? Array.from({ length: 30 }, (_, offset) => {
     const date = usageOffsetDateKey_(through, offset - 29);
     return { date, count: dates.get(date) || 0 };
   }).filter(row => !start || row.date >= start) : [];
-  const editions = kind === 'feedback' ? marketsNewsletterFeedbackEditions_(ss, selected) : new Map();
-  return { total: selected.length, daily, editions: new Set(selected.map(row => row[1])).size, positive: selected.filter(row => row[2] === 'positive').length,
+  const editions = marketsNewsletterInteractionEditions_(ss, selected, kind === 'access' ? 'open' : 'vote');
+  const access = kind === 'access' ? marketsNewsletterAccessUsers_(selected, editions, now) : undefined;
+  return { total: selected.length, daily, access, editions: new Set(selected.map(row => row[1])).size, positive: selected.filter(row => row[2] === 'positive').length,
     negative: selected.filter(row => row[2] === 'negative').length,
     pending: selected.filter(row => row[4] === 'pendiente').length,
     resolved: selected.filter(row => row[4] === 'atendido').length,
-    rows: selected.sort((a, b) => new Date(b[3]) - new Date(a[3])).map(([id, edition, action, date, state, comment]) => [edition, action, adminDateTime_(date), state, kind === 'feedback' ? id : '', comment || '', editions.get(id) || null]) };
+    rows: selected.sort((a, b) => new Date(b[3]) - new Date(a[3])).map(([id, edition, action, date, state, comment]) => [edition, action, adminDateTime_(date), state, kind === 'feedback' ? id : '', comment || '', kind === 'feedback' ? editions.get(id) || null : null]) };
 }
 
 function setMarketsNewsletterFeedbackState(id, state) {
