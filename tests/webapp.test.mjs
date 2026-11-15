@@ -818,3 +818,33 @@ test("Spanish review labels use reseñas in the UI, charts, exports and communic
   assert.match(app, /"Reseñas del año seleccionado":\["Reviews from the selected year"/);
   assert.match(app, /setExportSheet\("evolution","NPS de reseñas"/);
 });
+
+test("doGet overlays only a verified vote and keeps open and unsubscribe on their existing routes", () => {
+  const runtime = vm.createContext({
+    currentMarketsUserEmail_: () => "recipient@bbva.com",
+    parseMarketsNewsletterInteraction_: token => ({ action: token }),
+    parseMarketsAlertFeedback_: token => ({ vote: token }),
+    requireMarketsNewsletterInteractionLink_: (_token, email) => assert.equal(email, "recipient@bbva.com"),
+    requireMarketsAlertFeedbackLink_: () => { throw new Error("wrong account"); },
+    renderMarketsAlertFeedbackPage_: token => ({ route: "alert", token }),
+    renderMarketsNewsletterInteractionPage_: token => ({ route: "newsletter", token })
+  });
+  runtime.HtmlService = {
+    createHtmlOutput: html => ({ html }),
+    createTemplateFromFile: name => ({
+      evaluate() { return {
+        name, feedback: this.feedback, initialView: this.initialView,
+        setTitle() { return this; }, addMetaTag() { return this; }, setFaviconUrl() { return this; }
+      }; }
+    })
+  };
+  vm.runInContext(sources, runtime);
+  const verified = runtime.doGet({ parameter: { newsletterInteraction: "negative", view: "alerts" } });
+  assert.equal(verified.name, "Index");
+  assert.equal(verified.feedback.vote, "negative");
+  assert.equal(verified.feedback.newsletter, true);
+  assert.equal(verified.initialView, "alerts");
+  assert.match(runtime.doGet({ parameter: { alertFeedback: "positive" } }).html, /cuenta conectada/);
+  assert.equal(runtime.doGet({ parameter: { newsletterInteraction: "open" } }).route, "newsletter");
+  assert.equal(runtime.doGet({ parameter: { alertFeedback: "unsubscribe" } }).route, "alert");
+});

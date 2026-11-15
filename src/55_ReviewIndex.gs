@@ -40,21 +40,22 @@ function advanceMarketsReviewIndex_() {
   if (!lock.tryLock(1000)) return { deferred: true };
   const properties = PropertiesService.getScriptProperties();
   const status = safeJsonParse_(properties.getProperty(MARKETS_REVIEW_INDEX_STATUS)) || {};
+  let checkpoint = status;
   const save = result => {
     const updatedAt = new Date().toISOString();
-    properties.setProperty(MARKETS_REVIEW_INDEX_STATUS, JSON.stringify({ ...result, updatedAt,
-      lastProgressAt: result.done !== status.done ? updatedAt : status.lastProgressAt }));
-    return result;
+    checkpoint = { ...result, updatedAt, lastProgressAt: result.done > (checkpoint.done || 0) ? updatedAt : checkpoint.lastProgressAt || null };
+    properties.setProperty(MARKETS_REVIEW_INDEX_STATUS, JSON.stringify(checkpoint));
+    return checkpoint;
   };
   try {
     const source = marketsReviewSheet_(ss);
     const { rules, version } = marketsReviewClassification_(ss);
     const previous = safeJsonParse_(properties.getProperty(MARKETS_REVIEW_INDEX_CURSOR));
     const last = source.getLastRow(), total = Math.max(0, last - 1);
-    const start = previous?.version === version && previous.next <= last + 1 ? previous.next : 2;
-    if (start > last) return status.complete && status.total === total ? status : save({ complete: true, done: total, total });
-    properties.setProperty(MARKETS_REVIEW_INDEX_STATUS, JSON.stringify({ ...status, done: start - 2, total,
-      complete: false, runningUntil: Date.now() + 6 * 60 * 1000, updatedAt: new Date().toISOString() }));
+    const start = previous?.version === version && Number.isInteger(previous.next) && previous.next >= 2 && previous.next <= last + 1 ? previous.next : 2;
+    if (start > last) return status.complete && status.done === total && status.total === total && !status.error ? status :
+      save({ complete: true, done: total, total, updated: 0 });
+    save({ done: start - 2, total, updated: 0, complete: false, runningUntil: Date.now() + 6 * 60 * 1000 });
     const count = Math.min(MARKETS_REVIEW_INDEX_BATCH, last - start + 1);
     const width = MARKETS_REVIEW_INDEX_HEADERS.length;
     ensureSheetCapacity_(index, start + count - 1, width);
@@ -81,7 +82,7 @@ function advanceMarketsReviewIndex_() {
   } catch (error) {
     const current = safeJsonParse_(properties.getProperty(MARKETS_REVIEW_INDEX_STATUS)) || status;
     delete current.runningUntil;
-    properties.setProperty(MARKETS_REVIEW_INDEX_STATUS, JSON.stringify({ ...current, error: errorToString_(error).slice(0, 180) }));
+    save({ ...current, error: errorToString_(error).slice(0, 180) });
     throw error;
   } finally {
     lock.releaseLock();
@@ -93,6 +94,9 @@ function invalidateMarketsReviewIndexFrom_(properties, rowNumber) {
   const cursor = safeJsonParse_(properties.getProperty(MARKETS_REVIEW_INDEX_CURSOR));
   if (cursor && rowNumber < cursor.next) {
     properties.setProperty(MARKETS_REVIEW_INDEX_CURSOR, JSON.stringify({ ...cursor, next: rowNumber }));
+    const status = safeJsonParse_(properties.getProperty(MARKETS_REVIEW_INDEX_STATUS));
+    if (status) properties.setProperty(MARKETS_REVIEW_INDEX_STATUS,
+      JSON.stringify({ ...status, complete: false, done: rowNumber - 2, updatedAt: new Date().toISOString() }));
   }
 }
 
@@ -180,8 +184,18 @@ const MARKETS_GEO_AUDIT_PROPERTY = 'MARKETS_ANDROID_GEO_AUDIT';
 function advanceMarketsAndroidGeography_(now = new Date()) {
   const lock = LockService.getUserLock();
   if (!lock.tryLock(1000)) return false;
-  try { return scanMarketsAndroidGeographyBatch_(now); }
-  finally { lock.releaseLock(); }
+  try {
+    return scanMarketsAndroidGeographyBatch_(now);
+  } catch (error) {
+    const properties = PropertiesService.getScriptProperties();
+    const state = safeJsonParse_(properties.getProperty(MARKETS_GEO_AUDIT_PROPERTY)) || {};
+    delete state.runningUntil;
+    properties.setProperty(MARKETS_GEO_AUDIT_PROPERTY, JSON.stringify({ ...state,
+      updatedAt: new Date().toISOString(), error: errorToString_(error).slice(0, 180) }));
+    throw error;
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 const MARKETS_CO_SUPPORT_TEMPLATES = [
@@ -267,25 +281,27 @@ function scanMarketsAndroidGeographyBatch_(now) {
   }
   const version = marketsReviewDigest_(['storefront-reply-v4', [...packages].map(([id, countries]) => [id, [...countries].sort()])]);
   const revision = properties.getProperty('MARKETS_ANDROID_GEO_SOURCE_REVISION') || '';
-  const last = source.getLastRow(), previous = safeJsonParse_(properties.getProperty(MARKETS_GEO_AUDIT_PROPERTY));
-  const state = previous?.version === version && previous.revision === revision && previous.last <= last ? previous
-    : { version, revision, next: 2, counts: {}, processed: 0 };
-  if (state.complete && state.last === last) return false;
+  const last = Math.max(1, source.getLastRow());
+  const previous = safeJsonParse_(properties.getProperty(MARKETS_GEO_AUDIT_PROPERTY));
+  const state = previous?.schema === 2 && previous.version === version && previous.revision === revision && previous.last <= last
+    ? previous : { schema: 2, version, revision, next: 2, counts: {}, processed: 0, scannedRows: 0, total: 0, last: 1 };
+  if (state.complete && state.last === last && !state.error) return false;
   if (previous?.version !== version) properties.setProperty('MARKETS_REVIEW_GEOGRAPHY_REVISION', Utilities.getUuid());
-  if (state.last !== last) {
-    // Only the identity/storefront columns are needed for the denominator.
-    const inventory = last > 1 ? source.getRange(2, 1, last - 1, 5).getValues() : [];
-    state.total = inventory.filter(row => marketsAndroidGeographyEligible_(row, packages)).length;
-    state.last = last;
+  if (state.last !== last && (state.complete || state.next === 2)) {
+    const added = last - state.last;
+    const inventory = added > 0 ? source.getRange(state.last + 1, 1, added, 5).getValues() : [];
+    state.total += inventory.filter(row => marketsAndroidGeographyEligible_(row, packages)).length;
+    state.last = Math.max(1, last);
   }
   const width = marketsReviewWidth_(source);
-  const count = Math.min(3000, last - state.next + 1);
+  const count = state.processed < state.total ? Math.max(0, Math.min(3000, state.last - state.next + 1)) : 0;
+  delete state.error;
   state.runningUntil = Date.now() + 6 * 60 * 1000;
   state.complete = false;
   properties.setProperty(MARKETS_GEO_AUDIT_PROPERTY, JSON.stringify(state));
 
   const rows = count > 0 ? source.getRange(state.next, 1, count, width).getValues() : [];
-  const existing = readMarketsAndroidGeography_(ss);
+  const existing = rows.length ? readMarketsAndroidGeography_(ss) : new Map();
   const output = [], replacements = [];
   for (const row of rows) {
     if (!marketsAndroidGeographyEligible_(row, packages)) continue;
@@ -319,8 +335,10 @@ function scanMarketsAndroidGeographyBatch_(now) {
     SpreadsheetApp.flush();
     properties.setProperty('MARKETS_REVIEW_GEOGRAPHY_REVISION', Utilities.getUuid());
   }
-  state.next = state.processed >= state.total ? last + 1 : state.next + Math.max(0, count);
-  state.complete = state.next > last;
+  if (count) state.lastProgressAt = now.toISOString();
+  state.scannedRows += count;
+  state.next = state.processed >= state.total ? state.last + 1 : state.next + count;
+  state.complete = state.next > state.last;
   state.updatedAt = now.toISOString();
   delete state.runningUntil;
   properties.setProperty(MARKETS_GEO_AUDIT_PROPERTY, JSON.stringify(state));

@@ -199,12 +199,13 @@ function requestMarketsAdminRatingRecovery() {
 
 function marketsAdminReviewPipeline_(email) {
   const owner = email === normalizeEmailForComparison_(Session.getEffectiveUser().getEmail());
-  let installed = null, newsletterInstalled = null;
+  let installed = null, newsletterInstalled = null, workerInstalled = null;
   if (owner) {
     try {
       const handlers = ScriptApp.getProjectTriggers().map(trigger => trigger.getHandlerFunction());
       installed = handlers.includes(MARKETS_REVIEW_SUPERVISOR);
       newsletterInstalled = handlers.includes('runMarketsMonthlyNewsletter');
+      workerInstalled = handlers.includes(MARKETS_REVIEW_WORKER);
     } catch (error) {
       console.warn('No se pudo consultar la programación de reseñas. ' + error.message);
     }
@@ -215,7 +216,7 @@ function marketsAdminReviewPipeline_(email) {
     const current = state?.jobs.find(job => job.id === definition.id);
     return { ...definition, ...current, label: definition.label, priority: definition.priority };
   });
-  return { day: state?.day || '', installed, newsletterInstalled, canRestart: owner && installed === true,
+  return { day: state?.day || '', installed, newsletterInstalled, workerInstalled, canRestart: owner && installed === true,
     jobs: [{ id: 'supervisor', label: 'Supervisor', priority: 0,
       status: installed === null ? 'Activador sin verificar' : installed ? 'Activo' : 'Sin activador instalado' }, ...jobs] };
 }
@@ -245,61 +246,52 @@ function readMarketsAdminDeliveries_(ss) {
   const sheet = ss.getSheetByName(MARKETS_CONFIG.sheets.alerts);
   const indexes = indexHeaders_(MARKETS_CONFIG.headers.alerts);
   const last = sheet.getLastRow();
-  if (last < 2) return {};
   const properties = PropertiesService.getScriptProperties();
-  const range = sheet.getRange(2, indexes.source + 1, last - 1, 1);
-  return Object.fromEntries([['newsletter', 'MONTHLY_NEWSLETTER'], ['reviewAlerts', 'REVIEW_ALERTS']].map(([id, source]) => {
-    const timing = safeJsonParse_(properties.getProperty('MARKETS_JOB_TIMING:' + id));
-    const delivery = safeJsonParse_(properties.getProperty('MARKETS_JOB_DELIVERY:' + id));
-    const latestOutcome = id === 'reviewAlerts' ? timing : delivery;
-    const result = { ...timing, sent: latestOutcome?.sent, total: latestOutcome?.total, lastDeliveryAt: '' };
-    if (id === 'reviewAlerts') {
-      const latestAudit = range.createTextFinder(MARKETS_REVIEW_ALERTS_RUN).matchEntireCell(true).findAll().at(-1);
-      if (latestAudit) {
-        const [row] = sheet.getRange(latestAudit.getRow(), 1, 1, MARKETS_CONFIG.headers.alerts.length).getValues();
-        const audit = parseMarketsReviewAlertRun_(row, indexes);
-        if (audit) return [id, audit];
+  const range = last > 1 ? sheet.getRange(2, indexes.source + 1, last - 1, 1) : null;
+  const matchingRows = source => {
+    const cells = range ? range.createTextFinder(source).matchEntireCell(true).findAll() : [];
+    return cells.map(cell => cell.getRow());
+  };
+  const width = MARKETS_CONFIG.headers.alerts.length;
+  const newsletterTiming = safeJsonParse_(properties.getProperty('MARKETS_JOB_TIMING:newsletter'));
+  const newsletterDelivery = safeJsonParse_(properties.getProperty('MARKETS_JOB_DELIVERY:newsletter'));
+  const newsletter = { ...newsletterTiming, recipients: {}, lastDeliveryAt: newsletterDelivery?.lastDeliveryAt || '' };
+  const recent = matchingRows('MONTHLY_NEWSLETTER').slice(-100);
+  const acceptedByEdition = new Map();
+  let lastAcceptedEdition = '', lastAcceptedAt = '';
+  if (recent.length) {
+    const from = recent[0], to = recent.at(-1);
+    const values = sheet.getRange(from, 1, to - from + 1, width).getValues();
+    for (const rowNumber of recent) {
+      const row = values[rowNumber - from];
+      const email = normalizeEmailForComparison_(row[indexes.user_email] || row[indexes.recipients]);
+      const date = adminDateTime_(row[indexes.timestamp]);
+      const edition = /^NEWS-(\d{4}-(?:0[1-9]|1[0-2]))$/.exec(row[indexes.run_id])?.[1];
+      if (email && Number.isFinite(Date.parse(date)) && row[indexes.type] === 'NEWSLETTER_MONTHLY' && edition) {
+        if (!acceptedByEdition.has(edition)) acceptedByEdition.set(edition, new Set());
+        acceptedByEdition.get(edition).add(email);
+        if (date > lastAcceptedAt) {
+          lastAcceptedAt = date;
+          lastAcceptedEdition = edition;
+        }
+        if (!newsletter.recipients[email] || date > newsletter.recipients[email]) newsletter.recipients[email] = date;
+        if (date > newsletter.lastDeliveryAt) newsletter.lastDeliveryAt = date;
       }
     }
-    let cells = range.createTextFinder(source).matchEntireCell(true).findAll();
-    if (!cells.length && id === 'reviewAlerts') {
-      cells = sheet.getRange(2, indexes.type + 1, last - 1, 1)
-        .createTextFinder('REVIEW_LOW_SHARE').matchEntireCell(true).findAll();
-    }
-    if (!cells.length) return [id, result];
-    const recent = cells.slice(-100).map(cell => cell.getRow()).sort((a, b) => a - b);
-    const from = recent[0], to = recent.at(-1);
-    const rows = sheet.getRange(from, 1, to - from + 1, MARKETS_CONFIG.headers.alerts.length).getValues();
-    const earliest = delivery ? new Date(delivery.startedAt).getTime() - 60000 : 0;
-    const deliveryRows = recent.map(row => rows[row - from]);
-    if (id === 'reviewAlerts') {
-      const latest = deliveryRows.at(-1);
-      result.startedAt = timing?.startedAt || adminDateTime_(latest[indexes.timestamp]);
-      result.recorded = new Set(deliveryRows.filter(row => row[indexes.run_id] === latest[indexes.run_id])
-        .map(row => normalizeEmailForComparison_(row[indexes.user_email] || row[indexes.recipients])).filter(Boolean)).size;
-      // Historic event rows also existed with delivery disabled. They prove
-      // generation and time, but only the outcome telemetry proves acceptance.
-      result.sent = timing?.sent;
-      result.total = timing?.total;
-      if (!delivery) return [id, result];
-    }
-    if (id === 'newsletter') {
-      result.recipients = Object.fromEntries(deliveryRows.map(row => [
-        normalizeEmailForComparison_(row[indexes.user_email] || row[indexes.recipients]), adminDateTime_(row[indexes.timestamp])
-      ]).filter(([email, date]) => email && date));
-    }
-    let accepted = deliveryRows.filter(row => new Date(row[indexes.timestamp]).getTime() >= earliest);
-    if (delivery && id === 'reviewAlerts') {
-      const day = Utilities.formatDate(new Date(delivery.startedAt), MARKETS_CONFIG.timeZone, 'yyyy-MM-dd');
-      accepted = accepted.filter(row => row[indexes.run_id] === 'review-' + day);
-    }
-    const latest = accepted.at(-1);
-    if (!latest) return [id, result];
-    result.lastDeliveryAt = adminDateTime_(latest[indexes.timestamp]);
-    result.confirmed = new Set(accepted.filter(row => row[indexes.run_id] === latest[indexes.run_id])
-      .map(row => row[indexes.user_email] || row[indexes.recipients]).filter(Boolean)).size;
-    return [id, result];
-  }));
+  }
+
+  if (lastAcceptedEdition) newsletter.lastAuditedEdition = {
+    period: lastAcceptedEdition, minimumConfirmed: acceptedByEdition.get(lastAcceptedEdition).size
+  };
+
+  const latestAudit = matchingRows(MARKETS_REVIEW_ALERTS_RUN).at(-1);
+  const audit = latestAudit && parseMarketsReviewAlertRun_(sheet.getRange(latestAudit, 1, 1, width).getValues()[0], indexes);
+  const timing = safeJsonParse_(properties.getProperty('MARKETS_JOB_TIMING:reviewAlerts'));
+  const lastReviewDelivery = safeJsonParse_(properties.getProperty('MARKETS_JOB_DELIVERY:reviewAlerts'));
+  const latestReview = !audit || Date.parse(timing?.startedAt) > Date.parse(audit.startedAt) ? timing : audit;
+  const lastReviewAt = [audit?.lastDeliveryAt, lastReviewDelivery?.lastDeliveryAt].filter(Boolean).sort().at(-1) || '';
+  const reviewAlerts = { ...latestReview, lastDeliveryAt: lastReviewAt };
+  return { newsletter, reviewAlerts };
 }
 
 function parseMarketsReviewAlertRun_(row, indexes) {
@@ -307,7 +299,8 @@ function parseMarketsReviewAlertRun_(row, indexes) {
   const sent = adminNumber_(row[indexes.metric_value]), total = adminNumber_(row[indexes.threshold]);
   const outcome = safeJsonParse_(row[indexes.detail]);
   if (!outcome || !startedAt || !Number.isInteger(sent) || !Number.isInteger(total) || sent < 0 || sent > total) return null;
-  return { startedAt, sent, total, status: outcome.status, lastDeliveryAt: outcome.deliveredAt || '' };
+  return { startedAt, sent, total, status: outcome.status, lastDeliveryAt: outcome.deliveredAt || '',
+    attempted: outcome.attempted, failed: outcome.failed };
 }
 
 function readRecentMarketsAdminFetchIssues_(ss, limit) {

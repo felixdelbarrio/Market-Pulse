@@ -762,14 +762,20 @@ test("student banking is personal but a separate company operation remains in BE
 });
 
 test("index invalidation rewinds only for edits within the completed range", () => {
-  const runtime = vm.createContext({safeJsonParse_:JSON.parse});
+  const runtime = vm.createContext({safeJsonParse_:value=>value ? JSON.parse(value) : null});
   vm.runInContext(fs.readFileSync(new URL("../src/55_ReviewIndex.gs", import.meta.url), "utf8"), runtime);
-  const props = new Map([["MARKETS_REVIEW_INDEX_CURSOR",'{"version":"a","next":8100}']]);
+  const props = new Map([
+    ["MARKETS_REVIEW_INDEX_CURSOR",'{"version":"a","next":8100}'],
+    ["MARKETS_REVIEW_INDEX_STATUS",'{"done":8098,"total":8098,"complete":true}']
+  ]);
   const store = {getProperty:key=>props.get(key),setProperty:(key,value)=>props.set(key,value)};
   runtime.invalidateMarketsReviewIndexFrom_(store, 9000);
   assert.equal(JSON.parse(props.get("MARKETS_REVIEW_INDEX_CURSOR")).next,8100);
   runtime.invalidateMarketsReviewIndexFrom_(store, 8090);
   assert.deepEqual(JSON.parse(props.get("MARKETS_REVIEW_INDEX_CURSOR")),{version:"a",next:8090});
+  const status = JSON.parse(props.get("MARKETS_REVIEW_INDEX_STATUS"));
+  assert.equal(status.done,8088);
+  assert.equal(status.complete,false);
 });
 
 
@@ -823,4 +829,57 @@ test("Android inference uses a localized support contact and rejects contradicto
   assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["ES","PE"]),null);
   row[10] = "Yape no funciona en Colombia.";
   assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["CO","PE"]),null);
+});
+
+test("Android geography checkpoints physical and eligible rows independently across appends and revisions", () => {
+  const rows = Array.from({ length: 3002 }, (_, i) => [String(i), "", "ES", "iOS", "shared"]);
+  const android = key => [key, "", "ES,MX", "Android", "shared"];
+  rows[1] = android("a");
+  rows[3001] = android("b");
+  const properties = new Map();
+  const inventoryReads = [];
+  const source = {
+    getLastRow: () => rows.length + 1,
+    getRange: (start, _column, count, width) => ({
+      getValues() {
+        if (width === 5) inventoryReads.push([start, count]);
+        return rows.slice(start - 2, start - 2 + count);
+      }
+    })
+  };
+  const ss = { getSheetByName: () => ({}) };
+  const runtime = vm.createContext({
+    PropertiesService: { getScriptProperties: () => ({
+      getProperty: key => properties.get(key), setProperty: (key, value) => properties.set(key, value)
+    }) },
+    Utilities: { getUuid: () => "revision" },
+    safeJsonParse_: value => value ? JSON.parse(value) : null,
+    openMarketsSpreadsheet_: () => ss,
+    marketsReviewSheet_: () => source,
+    marketsReviewWidth_: () => 16,
+    MARKETS_WEB: { countryCodes: ["ES", "MX"] },
+    readAppCatalog_: () => ["ES", "MX"].map(countryCode => ({ platform: "Android", packageName: "shared", countryCode })),
+    marketsReviewDigest_: JSON.stringify
+  });
+  vm.runInContext(fs.readFileSync(new URL("../src/55_ReviewIndex.gs", import.meta.url), "utf8"), runtime);
+  runtime.readMarketsAndroidGeography_ = () => new Map();
+  runtime.marketsAndroidGeographyEvidence_ = () => null;
+  const now = new Date("2026-11-15T09:00:00Z");
+  const scan = () => runtime.scanMarketsAndroidGeographyBatch_(now);
+  const status = () => JSON.parse(properties.get("MARKETS_ANDROID_GEO_AUDIT"));
+
+  assert.equal(scan(), true);
+  assert.deepEqual([status().processed, status().total, status().scannedRows, status().complete], [1, 2, 3000, false]);
+  rows.push(android("c"));
+  assert.equal(scan(), true);
+  assert.deepEqual([status().processed, status().total, status().scannedRows, status().complete], [2, 2, 3002, true]);
+  assert.equal(scan(), true);
+  assert.deepEqual([status().processed, status().total, status().scannedRows, status().complete], [3, 3, 3003, true]);
+  assert.deepEqual(inventoryReads, [[2, 3002], [3004, 1]]);
+  assert.equal(scan(), false);
+
+  rows.forEach(row => { row[3] = "iOS"; });
+  properties.set("MARKETS_ANDROID_GEO_SOURCE_REVISION", "edit");
+  assert.equal(scan(), true);
+  assert.deepEqual([status().processed, status().total, status().scannedRows, status().complete], [0, 0, 0, true]);
 });

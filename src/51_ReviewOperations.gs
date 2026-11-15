@@ -526,12 +526,14 @@ function marketsAdminReviewOperations_(email) {
   const properties = PropertiesService.getScriptProperties();
   const owner = email === normalizeEmailForComparison_(Session.getEffectiveUser().getEmail());
   const config = marketsReviewJobSettings_(properties);
+  const now = Date.now();
+  const pipeline = readMarketsReviewPipeline_(properties);
+  const activeReviewStage = pipeline?.leaseUntil > now ? pipeline.jobs[pipeline.stage]?.label || '' : '';
+  const workerScheduledAt = Number(properties.getProperty('MARKETS_REVIEW_WORKER_AT')) || 0;
+  const nextWorkerAt = workerScheduledAt + 60000;
   return {
-    owner, config,
-    activeReviewStage: (() => {
-      const pipeline = readMarketsReviewPipeline_(properties);
-      return pipeline?.leaseUntil > Date.now() ? pipeline.jobs[pipeline.stage]?.label || '' : '';
-    })(),
+    owner, config, activeReviewStage,
+    nextWorkerAt: nextWorkerAt > now && !activeReviewStage ? nextWorkerAt : null,
     translationRetryAt: Number(properties.getProperty(MARKETS_TRANSLATION_QUOTA_RETRY_KEY)) || 0,
     unifiedAfter: properties.getProperty(MARKETS_UNIFIED_OPERATIONS) || '',
     newsletter: safeJsonParse_(properties.getProperty('MARKETS_JOB_TIMING:newsletter')),

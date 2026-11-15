@@ -74,8 +74,11 @@ function deliverMarketsReviewAlertBatch_(day) {
       const result = deliverMarketsAlertEvents_(ss, events, control, subscribers.length);
       summary = { events: result.length, sent: result.deliveryCount, status: result.deliveryStatus,
         total: new Set(events.map(event => normalizeEmailForComparison_(event.recipients)).filter(Boolean)).size,
+        attempted: result.deliveryFailures ? result.deliveryCount + result.deliveryFailures.length : undefined,
+        failed: result.deliveryFailures?.length,
         detail: result.deliveryDetail };
     }
+    if (summary.sent) summary.lastDeliveryAt = new Date().toISOString();
     // An audit error must not invalidate deliveries that Gmail already accepted.
     try {
       appendAlertEvents_(ss, [marketsReviewAlertRunEvent_(day, now, summary)]);
@@ -93,7 +96,8 @@ function marketsReviewAlertRunEvent_(day, startedAt, summary) {
     timestamp: startedAt, eventKey: [MARKETS_REVIEW_ALERTS_RUN, startedAt.toISOString()].join('|'),
     referenceDate: dateFromKey_(day), platform: '', countryCode: '', type: MARKETS_REVIEW_ALERTS_RUN,
     severity: summary.status === 'ERROR' ? 'CRITICAL' : summary.status === 'PARTIAL' ? 'WARNING' : '',
-    detail: JSON.stringify({ status: summary.status, deliveredAt: summary.sent ? new Date().toISOString() : '' }),
+    detail: JSON.stringify({ status: summary.status, deliveredAt: summary.lastDeliveryAt || '',
+      attempted: summary.attempted, failed: summary.failed }),
     recipients: '', runId: 'review-' + day, source: MARKETS_REVIEW_ALERTS_RUN, userEmail: '', ruleId: '',
     metricValue: summary.sent, threshold: summary.total, appKey: '', direction: ''
   };
@@ -1094,8 +1098,7 @@ function parseMarketsAlertFeedback_(token) {
   return { id: match[1], expiry: Number(match[2]), vote: match[3], signature: match[4] };
 }
 
-function saveMarketsAlertFeedback(token) {
-  const recipient = currentMarketsUserEmail_();
+function requireMarketsAlertFeedbackLink_(token, recipient) {
   const request = parseMarketsAlertFeedback_(token);
   const secret = PropertiesService.getScriptProperties().getProperty('MARKETS_ALERT_FEEDBACK_SECRET');
   if (!request || !secret || secret.length < 32) throw new Error('Valoración no válida o caducada.');
@@ -1104,20 +1107,62 @@ function saveMarketsAlertFeedback(token) {
   let different = 0;
   for (let i = 0; i < expected.length; i++) different |= expected.charCodeAt(i) ^ request.signature.charCodeAt(i);
   if (different) throw new Error('La valoración no corresponde a la cuenta conectada.');
+  return request;
+}
+
+const MARKETS_ALERT_FEEDBACK_BASE = ['message_id', 'vote', 'recorded_at'];
+const MARKETS_ALERT_FEEDBACK_HEADERS = [...MARKETS_ALERT_FEEDBACK_BASE, 'observation', 'status'];
+
+function marketsAlertFeedbackSheet_(ss, extend = false) {
+  const name = 'ALERT_FEEDBACK';
+  const existing = ss.getSheetByName(name);
+  if (!existing && !extend) return null;
+  const sheet = existing || ss.insertSheet(name);
+  if (sheet.getLastRow() === 0) {
+    if (!extend) return null;
+    ensureSheetCapacity_(sheet, 1, MARKETS_ALERT_FEEDBACK_HEADERS.length);
+    sheet.getRange(1, 1, 1, MARKETS_ALERT_FEEDBACK_HEADERS.length).setValues([MARKETS_ALERT_FEEDBACK_HEADERS]);
+    return { sheet, headers: MARKETS_ALERT_FEEDBACK_HEADERS };
+  }
+  const current = readSheetHeader_(sheet);
+  if (current.length > MARKETS_ALERT_FEEDBACK_BASE.length) {
+    assertCurrentSheetContract_(sheet, MARKETS_ALERT_FEEDBACK_HEADERS, current);
+    return { sheet, headers: MARKETS_ALERT_FEEDBACK_HEADERS };
+  }
+  assertCurrentSheetContract_(sheet, MARKETS_ALERT_FEEDBACK_BASE, current);
+  if (!extend) return { sheet, headers: MARKETS_ALERT_FEEDBACK_BASE };
+  const extra = MARKETS_ALERT_FEEDBACK_HEADERS.slice(MARKETS_ALERT_FEEDBACK_BASE.length);
+  ensureSheetCapacity_(sheet, 1, MARKETS_ALERT_FEEDBACK_HEADERS.length);
+  sheet.getRange(1, MARKETS_ALERT_FEEDBACK_BASE.length + 1, 1, extra.length).setValues([extra]);
+  return { sheet, headers: MARKETS_ALERT_FEEDBACK_HEADERS };
+}
+
+function findMarketsAlertFeedback_(sheet, id) {
+  const last = sheet.getLastRow();
+  return last > 1 ? sheet.getRange(2, 1, last - 1, 1).createTextFinder(id).matchEntireCell(true).findNext() : null;
+}
+
+function saveMarketsAlertFeedback(token, vote, observation) {
+  const recipient = currentMarketsUserEmail_();
+  const request = requireMarketsAlertFeedbackLink_(token, recipient);
+  const comment = trimString_(observation);
+  if ((vote !== undefined && !['positive', 'negative'].includes(vote)) || comment.length > 1000 ||
+      (request.vote === 'unsubscribe' && (vote !== undefined || comment))) throw new Error('Valoración no válida.');
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(5000)) throw new Error('La valoración está ocupada. Inténtalo de nuevo.');
   try {
     const ss = openMarketsSpreadsheet_();
     if (request.vote === 'unsubscribe') return unsubscribeMarketsEmail_(ss, recipient, false);
-    const headers = ['message_id', 'vote', 'recorded_at'];
-    let sheet = ss.getSheetByName('ALERT_FEEDBACK');
-    if (!sheet) sheet = ss.insertSheet('ALERT_FEEDBACK');
-    if (sheet.getLastRow() === 0) sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
-    const last = sheet.getLastRow();
-    if (last > 1 && sheet.getRange(2, 1, last - 1, 1).createTextFinder(request.id).matchEntireCell(true).findNext()) {
-      return { recorded: true };
-    }
-    sheet.getRange(last + 1, 1, 1, headers.length).setValues([[request.id, request.vote, new Date()]]);
+    const current = marketsAlertFeedbackSheet_(ss);
+    const found = current && findMarketsAlertFeedback_(current.sheet, request.id);
+    const previous = found && current.sheet.getRange(found.getRow(), 1, 1, current.headers.length).getValues()[0];
+    const choice = vote || request.vote;
+    const note = observation === undefined ? previous?.[3] || '' : comment;
+    if (previous && previous[1] === choice && (previous[3] || '') === note) return { recorded: true };
+    const { sheet, headers } = marketsAlertFeedbackSheet_(ss, true);
+    const row = found ? found.getRow() : sheet.getLastRow() + 1;
+    ensureSheetCapacity_(sheet, row, headers.length);
+    sheet.getRange(row, 1, 1, headers.length).setValues([[request.id, choice, new Date(), marketsReviewLiteral_(note), 'pendiente']]);
     SpreadsheetApp.flush();
     return { recorded: true };
   } finally {

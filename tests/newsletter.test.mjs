@@ -479,3 +479,23 @@ test("newsletter links are edition-bound, expire, and use the same footer in all
   const preview = isolated.marketsNewsletterInteractionLinks_("reader@bbva.com", "2026-10", "secret", true);
   assert.equal(isolated.parseMarketsNewsletterInteraction_(new URL(preview.positive).searchParams.get("newsletterInteraction")).preview, true);
 });
+
+test("newsletter access cohorts use verified accounts and count each recorded edition once", () => {
+  const asOf = new Date("2026-11-15T09:00:00Z");
+  const one = ["one", "2026-08", "open", "2026-09-25T08:00:00Z"];
+  const two = ["two", "2026-10", "open", "2026-11-14T12:00:00Z"];
+  const unknown = ["anonymous", "2026-10", "open", "2026-11-14T12:00:00Z"];
+  const editions = new Map([
+    ["one", { email: "subscriber@bbva.com" }],
+    ["two", { email: "subscriber@bbva.com" }]
+  ]);
+  const result = plain(context.marketsNewsletterAccessUsers_([two, one, two, unknown], editions, asOf));
+  assert.deepEqual(result, {
+    identified: 2,
+    asOf: "2026-11-15T09:00:00.000Z",
+    users: [{
+      email: "subscriber@bbva.com", events: 2, recentEvents: 1,
+      firstSeenAt: "2026-09-25T08:00:00.000Z", lastSeenAt: "2026-11-14T12:00:00.000Z"
+    }]
+  });
+});

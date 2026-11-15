@@ -4,7 +4,7 @@ import { createHmac } from "node:crypto";
 import test from "node:test";
 import vm from "node:vm";
 
-const source = ["../src/99_Core.gs", "../src/00_Config.gs", "../src/55_AlertPreferences.gs", "../src/50_Alerts.gs", "../src/56_Newsletter.gs", "../src/58_Admin.gs"]
+const source = ["../src/99_Core.gs", "../src/00_Config.gs", "../src/55_AlertPreferences.gs", "../src/40_Sheets.gs", "../src/50_Alerts.gs", "../src/56_Newsletter.gs", "../src/58_Admin.gs"]
   .map(file => fs.readFileSync(new URL(file, import.meta.url), "utf8"))
   .join("\n");
 const context = {
@@ -640,13 +640,24 @@ test("alert feedback tokens bind the vote to the recipient and deduplicate acros
   const writes = [];
   const sheet = {
     getLastRow: () => writes.length,
-    getRange: (row) => ({
-      setValues(values) { writes[row - 1] = values[0]; },
-      createTextFinder(id) { return { matchEntireCell: () => ({ findNext: () => writes.find(item => item[0] === id) }) }; }
+    getLastColumn: () => writes[0]?.length || 0,
+    getMaxRows: () => 100,
+    getMaxColumns: () => 10,
+    getRange: (row, col, _count, width) => ({
+      getValues: () => [writes[row - 1].slice(col - 1, col - 1 + width)],
+      setValues(values) {
+        writes[row - 1] ||= [];
+        writes[row - 1].splice(col - 1, values[0].length, ...values[0]);
+      },
+      createTextFinder(id) {
+        const index = writes.findIndex(item => item[0] === id);
+        return { matchEntireCell: () => ({ findNext: () => index >= 1 ? { getRow: () => index + 1 } : null }) };
+      }
     })
   };
   Object.assign(context, {
     currentMarketsUserEmail_: () => active,
+    marketsReviewLiteral_: value => /^[=+@-]/.test(value) ? "'" + value : value,
     PropertiesService: { getScriptProperties: () => ({ getProperty: () => "a".repeat(32) }) },
     LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock() {} }) },
     openMarketsSpreadsheet_: () => ({ getSheetByName: () => sheet }),
@@ -666,9 +677,17 @@ test("alert feedback tokens bind the vote to the recipient and deduplicate acros
   active = "another@bbva.com";
   assert.throws(() => context.saveMarketsAlertFeedback(token("positive")), /no corresponde/);
   active = "recipient@bbva.com";
-  assert.equal(context.saveMarketsAlertFeedback(token("positive")).recorded, true);
-  assert.equal(context.saveMarketsAlertFeedback(token("negative")).recorded, true);
+  assert.throws(() => context.saveMarketsAlertFeedback(token("unsubscribe"), "negative"), /no válida/);
+  assert.throws(() => context.saveMarketsAlertFeedback(token("positive"), "negative", "a".repeat(1001)), /no válida/);
+  writes.push(["message_id", "vote", "recorded_at"], [id, "positive", new Date("2026-01-01")]);
+  assert.equal(context.saveMarketsAlertFeedback(token("positive"), "negative", "=Comentario").recorded, true);
   assert.equal(writes.length, 2);
-  assert.deepEqual(Array.from(writes[1].slice(0, 2)), [id, "positive"]);
+  assert.deepEqual(writes[0], ["message_id", "vote", "recorded_at", "observation", "status"]);
+  assert.deepEqual(Array.from(writes[1].slice(0, 2)), [id, "negative"]);
+  assert.deepEqual(writes[1].slice(3), ["'=Comentario", "pendiente"]);
+  const updated = writes[1][2];
+  writes[1][3] = "=Comentario"; // getValues returns the literal without the escape prefix
+  assert.equal(context.saveMarketsAlertFeedback(token("positive"), "negative", "=Comentario").recorded, true);
+  assert.equal(writes[1][2], updated);
   assert.equal(context.parseMarketsAlertFeedback_(token("positive").replace(/\.\d{10}\./, ".1000000000.")), null);
 });
