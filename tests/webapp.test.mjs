@@ -805,3 +805,16 @@ test("performance separates page latency, real calls, reuse and timeouts by rele
   assert.equal(previous.shared, 1);
   assert.equal(result.find(row => row.operation === "READY").uiP95, 900);
 });
+
+test("Spanish review labels use reseñas in the UI, charts, exports and communications", () => {
+  for (const name of [
+    "Index.html", "App.html", "Charts.html", "Workbook.html", "AlertFeedback.html",
+    "50_Alerts.gs", "56_Newsletter.gs", "58_Admin.gs"
+  ]) {
+    const source = fs.readFileSync(new URL("../src/" + name, import.meta.url), "utf8");
+    assert.doesNotMatch(source, /\b(?:opniones|opiniones|opini[oó]n)\b/iu, name);
+  }
+  const app = fs.readFileSync(new URL("../src/App.html", import.meta.url), "utf8");
+  assert.match(app, /"Reseñas del año seleccionado":\["Reviews from the selected year"/);
+  assert.match(app, /setExportSheet\("evolution","NPS de reseñas"/);
+});

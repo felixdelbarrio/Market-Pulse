@@ -78,7 +78,7 @@ function normalizeRating_(value) {
   const parsed = toFiniteNumber_(value);
   // Conserva la precision publicada por la fuente. La interfaz decide cuantos
   // decimales mostrar; redondear aqui destruye informacion necesaria para
-  // inferir la nota de las opiniones nuevas a partir de acumulados grandes.
+  // inferir la nota de las reseñas nuevas a partir de acumulados grandes.
   return parsed !== null && parsed >= 1 && parsed <= 5 ? Math.round(parsed * 1000000) / 1000000 : null;
 }
 

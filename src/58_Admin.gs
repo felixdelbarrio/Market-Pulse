@@ -398,7 +398,7 @@ function getMarketsBusinessCatalog(section, language) {
         ['Solo BEI', 'Evidencia empresarial directa en el original'],
         ['BEI extendido', 'Evidencia directa, contextual u operativa compartida sin señal retail explícita'],
         ['Operativa compartida', 'Transferencias, pagos, cuentas o tarjetas con contexto operativo y sin uso particular explícito'],
-        ['NPS de opiniones', MARKETS_DEFAULT_REVIEW_SEGMENTS.map(group => group.label + ': ' + group.stars.join(', ')).join(' · ')]
+        ['NPS de reseñas', MARKETS_DEFAULT_REVIEW_SEGMENTS.map(group => group.label + ': ' + group.stars.join(', ')).join(' · ')]
       ]);
     case 'storage':
       return table(['Conjunto', 'Hoja'], [...Object.entries(config.sheets),
