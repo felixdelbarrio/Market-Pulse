@@ -1097,3 +1097,28 @@ test("BEI index migrates additively, restarts at the new classifier version and 
   assert.equal(indexWrites, 4);
   assert.ok(stored.slice(1).every(row => row[2] === "new-rules"));
 });
+
+test("Turkish employees receiving salary are excluded from BEI while employer payroll remains eligible", () => {
+  for (const review of [
+    "Maaş aldığım banka. Uygulamaya giriş yapamıyorum.",
+    "Bu bankadan maaş alıyorum ama EFT yapamıyorum.",
+    "Maaş kartım açılmıyor.",
+    "Maaşlı çalışanım, para transferi yapamıyorum.",
+    "Bordrolu çalışıyorum. Kart işlemleri hata veriyor.",
+    "Hesabıma her ay maaş yatıyor. Giriş yapamıyorum.",
+    "Personel maaşları\nMaaş aldığım banka, uygulamaya giremiyorum."
+  ]) {
+    const decision = api.classifyMarketsReviewAudience_(review);
+    assert.equal(decision.audience, "RETAIL", review);
+    assert.equal(api.matchesMarketsReviewAudience_("BEI", decision), false, review);
+  }
+  for (const review of [
+    "Personel maaşları ödenmiyor.",
+    "Çalışanlarımın maaş ödemesi başarısız.",
+    "Maaş aldığım banka. Çalışanlarımın maaş ödemesi başarısız.",
+    "Maaş aldığım banka. Ticari hesabım açılmıyor.",
+    "Uygulamaya giriş yapamıyorum."
+  ]) {
+    assert.equal(api.matchesMarketsReviewAudience_("BEI", api.classifyMarketsReviewAudience_(review)), true, review);
+  }
+});
