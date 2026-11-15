@@ -700,8 +700,9 @@ test("alert envelopes materialize the light palette for operational and preview 
     const html = context.renderMarketsAlertEmail_([sample], "reader@bbva.com", {
       positive: "https://example.test/positive", negative: "https://example.test/negative"
     });
-    assert.match(html, /name="color-scheme" content="light"/);
-    assert.match(html, /background-image:linear-gradient\(#001391,#001391\)/);
+    assert.match(html, /<head>[^]*?<meta name="color-scheme" content="light only">[^]*?<\/head>/);
+    assert.match(html, /<img src="cid:bbvaLogo"[^>]*background-image:linear-gradient\(#001391,#001391\)/);
+    assert.doesNotMatch(html, /<(?!img\b)[a-z][^>]*background-image:linear-gradient/);
     for (const node of html.match(/<(?:table|tr|td|th)\b[^>]*>/g)) {
       assert.match(node, /bgcolor="#[0-9a-f]{3,6}"/i);
       assert.match(node, /background-color:#[0-9a-f]{3,6}/i);

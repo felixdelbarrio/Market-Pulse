@@ -789,14 +789,14 @@ function renderMarketsAlertPlainText_(events, recipient) {
 /** Common light canvas for clients that honor email color-scheme hints. */
 function marketsLightEmailDocument_(language = 'es') {
   return '<!doctype html><html lang="' + language + '" style="color-scheme:light only;background-color:#F7F8F8;">' +
-    '<head><meta charset="UTF-8"><meta name="color-scheme" content="light">' +
+    '<head><meta charset="UTF-8"><meta name="color-scheme" content="light only">' +
     '<meta name="supported-color-schemes" content="light">' +
     '<style>:root{color-scheme:light only;supported-color-schemes:light}</style></head>' +
     '<body bgcolor="#F7F8F8" style="margin:0;background-color:#F7F8F8;color:#000519;color-scheme:light only;' +
     "font-family:'BBVABentonSans','Benton Sans BBVA',Arial,Helvetica,sans-serif;\">";
 }
 
-/** Materialize the existing palette in generated email markup for clients that drop inheritance. */
+/** Materialize the palette for clients that drop inheritance, without blocking paired recoloring. */
 function protectMarketsEmailColors_(html) {
   const stack = [];
   const voidTags = new Set(['area', 'base', 'br', 'col', 'hr', 'img', 'input', 'link', 'meta', 'wbr']);
@@ -808,9 +808,15 @@ function protectMarketsEmailColors_(html) {
       if (stack.at(-1)?.name === name) stack.pop();
       return tag;
     }
-    if (voidTags.has(name)) return tag;
     const parent = stack.at(-1) || { background: '#F7F8F8', color: '#000519' };
     const style = /\sstyle="([^"]*)"/i.exec(attributes);
+    if (voidTags.has(name)) {
+      // Inline brand assets keep their pixels in dark mode, so keep their own backdrop too.
+      if (name !== 'img' || !/\ssrc="cid:/i.test(attributes)) return tag;
+      const backdrop = 'background-image:linear-gradient(' + parent.background + ',' + parent.background + ');';
+      return style ? tag.replace(style[0], () => ' style="' + style[1].replace(/;?$/, ';') + backdrop + '"')
+        : '<img' + attributes + ' style="' + backdrop + '">';
+    }
     const bgcolor = /\sbgcolor="(#[0-9a-f]{3,6})"/i.exec(attributes);
     const backgroundValue = /(?:^|;)\s*background(?:-color)?\s*:\s*(#[0-9a-f]{3,6})(?=\s*(?:;|$))/i.exec(style?.[1] || '')?.[1];
     const explicitColor = /(?:^|;)\s*color\s*:\s*(#[0-9a-f]{3,6})(?=\s*(?:;|$))/i.exec(style?.[1] || '')?.[1];
@@ -821,7 +827,7 @@ function protectMarketsEmailColors_(html) {
     const solid = paint.has(name) || backgroundValue || bgcolor;
     let additions = explicitColor ? '' : 'color:' + color + ';';
     if (solid) {
-      additions += 'background-color:' + background + ';background-image:linear-gradient(' + background + ',' + background + ');';
+      additions += 'background-color:' + background + ';';
       if (!bgcolor) attributes += ' bgcolor="' + background + '"';
     }
     if (!additions) return tag;
