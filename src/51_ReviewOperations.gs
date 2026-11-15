@@ -227,10 +227,10 @@ function advanceMarketsReviewPipeline_() {
     const tasks = [
       { id: 'index', priority: 3, run: () => {
         if (typeof advanceMarketsReviewIndex_ !== 'function') return false;
-        const index = recordMarketsReviewIndexBatch_();
-        return !index.complete;
+        const index = runMarketsIndexWindow_();
+        return !index.deferred && !index.complete;
       }},
-      { id: 'geography', priority: 3, run: () => typeof advanceMarketsAndroidGeography_ === 'function' && advanceMarketsAndroidGeography_(now) },
+      { id: 'geography', priority: 3, run: () => runMarketsGeographyWindow_(now) },
       { id: 'taxonomy', priority: 6, run: () => advanceMarketsFunctionalCatalog_({ sync: true, translate: false }) },
       { id: 'taxonomyTranslation', priority: 6, run: () => advanceMarketsFunctionalCatalog_({ sync: false, translate: true }) },
       { id: 'maintenance', priority: 6, run: () => typeof advanceMarketsReviewMaintenance_ === 'function' && advanceMarketsReviewMaintenance_(now) },
@@ -241,7 +241,12 @@ function advanceMarketsReviewPipeline_() {
     if (Utilities.formatDate(now, MARKETS_CONFIG.timeZone, 'mm') < '05') {
       tasks.sort((a, b) => Number(a.priority < 6) - Number(b.priority < 6));
     }
-    for (const task of tasks) if (task.run()) break;
+    for (const task of tasks) {
+      if (!task.run()) continue;
+      // Neither review backfill should hold the other behind its entire history.
+      if (task.id === 'index') tasks.find(item => item.id === 'geography')?.run();
+      break;
+    }
     return;
   }
   const previousProgress = JSON.stringify([job.done, job.added, job.updated, job.pending]);
@@ -523,6 +528,11 @@ function marketsAdminReviewOperations_(email) {
   const config = marketsReviewJobSettings_(properties);
   return {
     owner, config,
+    activeReviewStage: (() => {
+      const pipeline = readMarketsReviewPipeline_(properties);
+      return pipeline?.leaseUntil > Date.now() ? pipeline.jobs[pipeline.stage]?.label || '' : '';
+    })(),
+    translationRetryAt: Number(properties.getProperty(MARKETS_TRANSLATION_QUOTA_RETRY_KEY)) || 0,
     unifiedAfter: properties.getProperty(MARKETS_UNIFIED_OPERATIONS) || '',
     newsletter: safeJsonParse_(properties.getProperty('MARKETS_JOB_TIMING:newsletter')),
     health: safeJsonParse_(properties.getProperty('MARKETS_JOB_TIMING:health')),
@@ -537,22 +547,29 @@ function marketsAdminReviewOperations_(email) {
 }
 
 /** Manual runs share the owner scope and the same worker locks and checkpoints. */
-function recordMarketsReviewIndexBatch_() {
-  const index = advanceMarketsReviewIndex_();
-  PropertiesService.getScriptProperties().setProperty('MARKETS_REVIEW_INDEX_STATUS',
-    JSON.stringify({ ...index, updatedAt: new Date().toISOString() }));
-  return index;
+function runMarketsIndexWindow_() {
+  const stop = Date.now() + 12000;
+  let result;
+  do { result = advanceMarketsReviewIndex_(); }
+  while (!result.complete && !result.deferred && Date.now() < stop);
+  return result;
+}
+
+function runMarketsGeographyWindow_(now = new Date()) {
+  const stop = Date.now() + 12000;
+  let advanced = false;
+  while (Date.now() < stop && advanceMarketsAndroidGeography_(now)) advanced = true;
+  return advanced;
 }
 
 function runMarketsPanelJob(id) {
   requireMarketsReviewOwner_();
   switch (id) {
     case 'geography': {
-      const stop = Date.now() + 15000;
-      while (Date.now() < stop && advanceMarketsAndroidGeography_()) {}
+      const advanced = runMarketsGeographyWindow_();
       const properties = PropertiesService.getScriptProperties();
       const state = safeJsonParse_(properties.getProperty(MARKETS_GEO_AUDIT_PROPERTY));
-      return { message: state?.complete ? 'Inferencia completada.' : 'Lote de inferencia procesado. El supervisor continuará.' };
+      return { message: state?.complete ? 'Inferencia completada.' : advanced ? 'Lote de inferencia procesado. El supervisor continuará.' : 'Esperando el turno de reseñas.' };
     }
     case 'backup': {
       const previous = safeJsonParse_(PropertiesService.getScriptProperties().getProperty(MARKETS_BACKUP_PROPERTY));
@@ -573,8 +590,9 @@ function runMarketsPanelJob(id) {
       advanceMarketsFunctionalCatalog_({ sync: false, translate: true });
       return { message: 'Traducción comprobada.' };
     case 'index':
-      const index = recordMarketsReviewIndexBatch_();
-      return { message: index.complete ? 'Clasificación completada.' : 'Lote de clasificación procesado.' };
+      const index = runMarketsIndexWindow_();
+      return { message: index.complete ? 'Clasificación completada.' : index.deferred ?
+        'Esperando el turno de reseñas. Se conserva el avance.' : 'Lote de clasificación procesado.' };
     case 'publish':
       publishMarketsReviewSnapshot_();
       return { message: 'Vistas comprobadas.' };

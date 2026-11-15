@@ -459,7 +459,7 @@ function marketsNewsletterRawCountDelta_(startCount, endCount) {
 
 function marketsNewsletterEmailMessage_(recipient, model, inlineImages, sender) {
   const localized = model.language && model.language !== "es" ? localizedMarketsNewsletter_(model) : null;
-  const subject = localized?.subject || (model.isTest ? '[PRUEBA] ' : '') + 'Market Pulse · Cierre ' +
+  const subject = localized?.subject || (model.isTest ? '[PRUEBA] ' : '') + '[bIA] [Market Pulse] 📆📆📆 · Cierre ' +
     model.periodLabel + ' · ' + marketsNewsletterScopeTitle_(model);
   const plain = localized?.plain || renderMarketsNewsletterPlainText_(model);
   const html = localized?.html || renderMarketsNewsletterHtml_(model);
@@ -971,7 +971,7 @@ function localizedMarketsNewsletter_(model) {
     number(item.monthDelta, 2), number(item.yearDelta, 2), number(item.newReviews),
     item.position?.rank ? item.position.rank + ' / ' + (item.position.apps || item.position.total || '—') : '—'
   ]);
-  const subject = (model.isTest ? '[' + copy.preview + '] ' : '') + 'Market Pulse · ' + copy.title + ' · ' + period;
+  const subject = (model.isTest ? '[' + copy.preview + '] ' : '') + '[bIA] [Market Pulse] 📆📆📆 · ' + copy.title + ' · ' + period;
   const coverage = model.coverage ? copy.coverage + ' ' + model.coverage.observed + '/' + model.coverage.expected : '';
   const url = model.interactions?.open || marketsWebAppUrl_(), esc = escapeMarketsAlertHtml_;
   const plain = [subject, coverage, headers.join(' | '), ...rows.map(row => row.join(' | ')), marketsNewsletterInteractionText_(model)].filter(Boolean).join('\n');
@@ -986,6 +986,7 @@ function localizedMarketsNewsletter_(model) {
 
 const MARKETS_NEWSLETTER_INTERACTIONS = 'NEWSLETTER_INTERACTIONS';
 const MARKETS_NEWSLETTER_INTERACTION_HEADERS = ['id', 'period', 'action', 'recorded_at', 'state'];
+const MARKETS_NEWSLETTER_NOTE_HEADER = 'observation';
 const MARKETS_NEWSLETTER_SECRET = 'MARKETS_NEWSLETTER_INTERACTION_SECRET';
 
 function marketsNewsletterInteractionLinks_(recipient, period, secret, preview = false) {
@@ -1012,12 +1013,32 @@ function renderMarketsNewsletterInteractionPage_(token) {
   page.token = token;
   page.newsletter = true;
   page.unsubscribe = interaction.action === 'unsubscribe';
+  page.rating = ['positive', 'negative'].includes(interaction.action) ? interaction.action : '';
   page.destination = marketsWebAppUrl_();
   page.choice = { open: 'Continuar a Market Pulse', positive: '👍 Útil', negative: '👎 Mejorable', unsubscribe: 'Dar de baja la newsletter' }[interaction.action];
   return page.evaluate().setTitle('Newsletter de Market Pulse').addMetaTag('viewport', 'width=device-width, initial-scale=1');
 }
 
-function saveMarketsNewsletterInteraction(token) {
+function marketsNewsletterInteractionSheet_(ss, extend = false) {
+  const name = MARKETS_NEWSLETTER_INTERACTIONS, base = MARKETS_NEWSLETTER_INTERACTION_HEADERS;
+  const existing = ss.getSheetByName(name);
+  if (existing && existing.getLastColumn() !== base.length) {
+    const headers = [...base, MARKETS_NEWSLETTER_NOTE_HEADER];
+    return { sheet: requireCurrentSheetContract_(ss, name, headers), headers };
+  }
+  const sheet = existing ? requireCurrentSheetContract_(ss, name, base) : ss.insertSheet(name);
+  const headers = extend ? [...base, MARKETS_NEWSLETTER_NOTE_HEADER] : base;
+  if (!existing) sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+  if (existing && extend) {
+    ensureSheetCapacity_(sheet, 1, headers.length);
+    sheet.getRange(1, headers.length).setValue(MARKETS_NEWSLETTER_NOTE_HEADER);
+    SpreadsheetApp.flush();
+    requireCurrentSheetContract_(ss, name, headers);
+  }
+  return { sheet, headers };
+}
+
+function saveMarketsNewsletterInteraction(token, vote, observation) {
   const email = currentMarketsUserEmail_();
   const interaction = parseMarketsNewsletterInteraction_(token);
   const secret = PropertiesService.getScriptProperties().getProperty(MARKETS_NEWSLETTER_SECRET);
@@ -1026,7 +1047,12 @@ function saveMarketsNewsletterInteraction(token) {
   let diff = 0;
   for (let i = 0; i < expected.length; i++) diff |= expected.charCodeAt(i) ^ interaction.signature.charCodeAt(i);
   if (diff) throw new Error('El enlace no corresponde a la cuenta conectada.');
-  const { period, action } = interaction;
+  const period = interaction.period;
+  const rating = ['positive', 'negative'].includes(interaction.action);
+  if (vote && (!rating || !['positive', 'negative'].includes(vote))) throw new Error('Valoración no válida.');
+  const comment = trimString_(observation);
+  if (comment && (!rating || comment.length > 1000)) throw new Error('Observaciones no válidas.');
+  const action = vote || interaction.action;
   if (interaction.preview) return { open: action === 'open', preview: true };
   const id = 'n_' + signMarketsAlertFeedback_(['newsletter', period, action === 'open' ? 'open' : 'vote'].join('.'), email, secret);
   const lock = LockService.getScriptLock();
@@ -1034,16 +1060,17 @@ function saveMarketsNewsletterInteraction(token) {
   try {
     const ss = openMarketsSpreadsheet_();
     if (action === 'unsubscribe') return unsubscribeMarketsEmail_(ss, email, true);
-    const name = MARKETS_NEWSLETTER_INTERACTIONS, headers = MARKETS_NEWSLETTER_INTERACTION_HEADERS;
-    const existing = ss.getSheetByName(name);
-    const sheet = existing ? requireCurrentSheetContract_(ss, name, headers) : ss.insertSheet(name);
-    if (!existing) sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    const { sheet, headers } = marketsNewsletterInteractionSheet_(ss, Boolean(comment));
     const last = sheet.getLastRow();
     const found = last > 1 ? sheet.getRange(2, 1, last - 1, 1).createTextFinder(id).matchEntireCell(true).findNext() : null;
-    if (!found || (action !== 'open' && sheet.getRange(found.getRow(), 3).getValue() !== action)) {
+    const before = found && rating ? sheet.getRange(found.getRow(), 1, 1, headers.length).getValues()[0] : null;
+    const withNotes = headers.length > MARKETS_NEWSLETTER_INTERACTION_HEADERS.length;
+    if (!found || (rating && (before[2] !== action || (observation !== undefined && (before[5] || '') !== comment)))) {
       const row = found ? found.getRow() : last + 1;
+      const values = [id, period, action, new Date(), action === 'open' ? '' : 'pendiente'];
+      if (withNotes) values.push(marketsReviewLiteral_(observation === undefined ? before?.[5] || '' : comment));
       ensureSheetCapacity_(sheet, row, headers.length);
-      sheet.getRange(row, 1, 1, headers.length).setValues([[id, period, action, new Date(), action === 'open' ? '' : 'pendiente']]);
+      sheet.getRange(row, 1, 1, headers.length).setValues([values]);
       SpreadsheetApp.flush();
     }
     return { open: action === 'open' };
@@ -1052,21 +1079,41 @@ function saveMarketsNewsletterInteraction(token) {
   }
 }
 
-function getMarketsNewsletterInteractions(kind, period, vote, status) {
+function getMarketsNewsletterInteractions(kind, period, vote, status, start = '', end = '') {
   const { ss } = requireMarketsAdministrator_();
   if (!['access', 'feedback'].includes(kind) || (period && !/^\d{4}-(?:0[1-9]|1[0-2])$/.test(period))) throw new Error('Filtro no válido.');
   if ((vote && !['positive', 'negative'].includes(vote)) || (status && !['pendiente', 'atendido'].includes(status))) throw new Error('Filtro no válido.');
+  if ([start, end].some(value => value && (!/^\d{4}-\d{2}-\d{2}$/.test(value) || !Number.isFinite(Date.parse(value)) ||
+      new Date(value).toISOString().slice(0, 10) !== value)) || (start && end && start > end)) throw new Error('Intervalo no válido.');
   const name = MARKETS_NEWSLETTER_INTERACTIONS;
   const sheet = ss.getSheetByName(name);
   if (!sheet) return { total: 0, positive: 0, negative: 0, rows: [] };
-  requireCurrentSheetContract_(ss, name, MARKETS_NEWSLETTER_INTERACTION_HEADERS);
+  const { headers } = marketsNewsletterInteractionSheet_(ss);
   const last = sheet.getLastRow();
-  const rows = last > 1 ? sheet.getRange(2, 1, last - 1, 5).getValues() : [];
-  const selected = rows.filter(row => (kind === 'access') === (row[2] === 'open') && (!period || row[1] === period) && (!vote || row[2] === vote) && (!status || row[4] === status));
-  return { total: selected.length, positive: selected.filter(row => row[2] === 'positive').length,
+  const rows = last > 1 ? sheet.getRange(2, 1, last - 1, headers.length).getValues() : [];
+  const dates = new Map();
+  const zone = MARKETS_CONFIG.timeZone;
+  const selected = rows.filter(row => {
+    if ((kind === 'access') !== (row[2] === 'open') || (period && row[1] !== period) ||
+        (vote && row[2] !== vote) || (status && row[4] !== status)) return false;
+    const date = new Date(row[3]);
+    if (!Number.isFinite(date.getTime())) return false;
+    const day = Utilities.formatDate(date, zone, 'yyyy-MM-dd');
+    if ((start && day < start) || (end && day > end)) return false;
+    dates.set(day, (dates.get(day) || 0) + 1);
+    return true;
+  });
+  const today = Utilities.formatDate(new Date(), zone, 'yyyy-MM-dd'), through = end || today;
+  const daily = kind === 'access' ? Array.from({ length: 30 }, (_, offset) => {
+    const date = usageOffsetDateKey_(through, offset - 29);
+    return { date, count: dates.get(date) || 0 };
+  }).filter(row => !start || row.date >= start) : [];
+  return { total: selected.length, daily, editions: new Set(selected.map(row => row[1])).size, positive: selected.filter(row => row[2] === 'positive').length,
     negative: selected.filter(row => row[2] === 'negative').length,
+    pending: selected.filter(row => row[4] === 'pendiente').length,
+    resolved: selected.filter(row => row[4] === 'atendido').length,
     rows: selected.sort((a, b) => new Date(b[3]) - new Date(a[3])).slice(0, 100)
-      .map(([id, edition, action, date, state]) => [edition, action, adminDateTime_(date), state, kind === 'feedback' ? id : '']) };
+      .map(([id, edition, action, date, state, comment]) => [edition, action, adminDateTime_(date), state, kind === 'feedback' ? id : '', comment || '']) };
 }
 
 function setMarketsNewsletterFeedbackState(id, state) {
@@ -1075,7 +1122,8 @@ function setMarketsNewsletterFeedbackState(id, state) {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(5000)) throw new Error('Feedback ocupado. Inténtalo de nuevo.');
   try {
-    const sheet = requireCurrentSheetContract_(ss, MARKETS_NEWSLETTER_INTERACTIONS, MARKETS_NEWSLETTER_INTERACTION_HEADERS);
+    if (!ss.getSheetByName(MARKETS_NEWSLETTER_INTERACTIONS)) throw new Error('Valoración no disponible.');
+    const { sheet } = marketsNewsletterInteractionSheet_(ss);
     const last = sheet.getLastRow();
     const found = last > 1 ? sheet.getRange(2, 1, last - 1, 1).createTextFinder(id).matchEntireCell(true).findNext() : null;
     if (!found || !['positive', 'negative'].includes(sheet.getRange(found.getRow(), 3).getValue())) throw new Error('Valoración no disponible.');

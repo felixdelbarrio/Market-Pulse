@@ -163,6 +163,12 @@
   @media(max-width:480px){.run-card{width:100%}.section-head h2{font-size:var(--text-xl)}.panel-head{align-items:flex-start}.panel-meta{font-size:10px!important}.rating-board li{grid-template-columns:minmax(88px,34%) minmax(110px,1fr)}.country-title{align-items:flex-start;flex-direction:column}.monthly-rating{gap:4px}.monthly-rating strong{font-size:var(--text-m)}.monthly-rating em{padding-right:3px;padding-left:3px}.monthly-review{gap:3px;font-size:9px}}
   @media(max-width:780px){.admin-scope-grid{grid-template-columns:1fr}.admin-scope-card header{display:block}.admin-scope-card header b{display:inline-block;max-width:100%;margin-top:8px;text-align:left}}
   .mp-next .panel + .panel{margin-top:var(--space-3)}
+  .admin-cohorts .kpi-card{background:var(--color-primary-bg-alternative);color:var(--color-primary-text-main);text-align:start;font:inherit;cursor:pointer;border:var(--stroke) solid var(--color-primary-border)}
+  .admin-cohorts .kpi-card[aria-pressed=true]{border-color:var(--color-primary-bg-action)}
+  .admin-cohorts .kpi-card>*{display:block}
+  .admin-cohorts .kpi-card strong{font-size:var(--text-xl)}
+  .admin-access-bars{overflow:auto;grid-template-columns:repeat(auto-fit,minmax(var(--space-2),1fr))}
+  .record-toolbar{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--space-2);flex-wrap:wrap;padding:var(--space-2) var(--space-3)}
   .admin-job-progress{width:100%;margin-top:var(--space-2);accent-color:var(--color-primary-bg-action)}
   .admin-process-meta{color:var(--color-primary-text-secondary);font-size:var(--text-s)}
   .admin-process-state{display:inline-flex;align-items:center;gap:var(--space-1);font-size:var(--text-s)}

@@ -74,7 +74,7 @@
             <div class="filter-field"><label for="month-filter">Mes</label><select id="month-filter" name="month"></select></div>
             <div class="filter-field"><label for="monthly-review-audience">Comentarios</label><select id="monthly-review-audience" name="audience" aria-describedby="monthly-review-audience-help"><option value="">Todos</option><option value="BEI_ONLY">Solo BEI</option><option value="BEI_EXTENDED">BEI extendido</option></select>
             <small id="monthly-review-audience-help">BEI extendido incluye señales empresariales y operaciones bancarias compartidas sin evidencia de uso personal.</small></div>
-          <div class="filter-field"><label for="monthly-review-infer">Inferir datos</label><select id="monthly-review-infer" name="inferGeography"><option value="">Sí</option><option value="NO">No</option></select><small>Incluye geografías inferidas de Android.</small></div>
+          <div class="filter-field"><label for="monthly-review-infer">Inferir datos</label><select id="monthly-review-infer" name="inferGeography"><option value="YES">Sí</option><option value="NO">No</option></select><small>Incluye geografías inferidas de Android.</small></div>
 
           </form>
         </div>
@@ -88,12 +88,15 @@
           <div id="review-balance"></div>
         </section>
           <section id="review-gap-panel" class="panel" aria-busy="false">
-            <div class="panel-head"><h3>Brecha de NPS por bloque</h3>          <div class="filter-field"><label for="monthly-review-segment">Sentimiento</label>
-          <select id="monthly-review-segment">
-            <option value="DETRACTOR">Detractores</option>
-            <option value="PROMOTER">Promotores</option>
-            <option value="NEUTRAL">Neutros</option>
-          </select></div></div>
+            <div class="panel-head"><h3>Brecha de NPS por bloque</h3></div>
+            <div class="panel-body radar-filters review-gap-controls">
+              <label for="monthly-review-segment">Sentimiento</label>
+              <select id="monthly-review-segment">
+                <option value="DETRACTOR">Detractores</option>
+                <option value="PROMOTER">Promotores</option>
+                <option value="NEUTRAL">Neutros</option>
+              </select>
+            </div>
             <div id="review-deltas" class="panel-body" aria-live="polite"></div>
           </section>
           <section class="panel hidden" id="review-examples-panel"><div class="panel-head"><h3 id="review-examples-title">Ejemplos del mes en curso</h3></div><div id="review-examples" class="panel-body"></div></section>
@@ -227,20 +230,26 @@
           <div id="admin-tabs" class="admin-tabs" role="tablist" aria-label="Secciones de Administración" aria-orientation="horizontal"><button id="admin-tab-health" class="admin-tab active" data-admin-tab="health" type="button" role="tab" aria-selected="true" aria-controls="admin-panel-health" tabindex="0">Panel de control</button><button id="admin-tab-usage" class="admin-tab" data-admin-tab="usage" type="button" role="tab" aria-selected="false" aria-controls="admin-panel-usage" tabindex="-1">Adopción</button><button id="admin-tab-usage-analysis" class="admin-tab" data-admin-tab="usage-analysis" type="button" role="tab" aria-selected="false" aria-controls="admin-panel-usage-analysis" tabindex="-1">Analítica</button><button id="admin-tab-newsletter-access" class="admin-tab" data-admin-tab="newsletter-access" type="button" role="tab" aria-selected="false" aria-controls="admin-panel-newsletter-access" tabindex="-1">Accesos desde newsletters</button><button id="admin-tab-feedback" class="admin-tab" data-admin-tab="feedback" type="button" role="tab" aria-selected="false" aria-controls="admin-panel-feedback" tabindex="-1">Feedback</button><button id="admin-tab-subscribers" class="admin-tab" data-admin-tab="subscribers" type="button" role="tab" aria-selected="false" aria-controls="admin-panel-subscribers" tabindex="-1">Suscripciones</button><button id="admin-tab-language" class="admin-tab" data-admin-tab="language" type="button" role="tab" aria-selected="false" aria-controls="admin-panel-language" tabindex="-1">Idioma</button><button id="admin-tab-business" class="admin-tab" data-admin-tab="business" type="button" role="tab" aria-selected="false" aria-controls="admin-panel-business" tabindex="-1">Configuración de negocio</button><button id="admin-tab-logs" class="admin-tab" data-admin-tab="logs" type="button" role="tab" aria-selected="false" aria-controls="admin-panel-logs" tabindex="-1">Logs</button></div>
           <section id="admin-panel-newsletter-access" data-admin-panel="newsletter-access" class="admin-tab-panel panel hidden" role="tabpanel" aria-labelledby="admin-tab-newsletter-access">
             <div class="panel-head"><div><p class="eyebrow">Newsletters</p><h3>Accesos desde newsletters</h3></div></div><div class="record-toolbar"><div class="radar-filters" id="admin-newsletter-access-filters"><form class="record-filters" hidden>
-              <label>Edición <input type="month" name="period"></label></form></div><button class="alert-button secondary" id="admin-newsletter-access-export" type="button" disabled>Exportar selección</button></div>
-            <div class="panel-body" id="admin-newsletter-access-results" aria-live="polite"></div>
+              <label>Edición <input type="month" name="period"></label>
+              <label>Desde <input type="date" name="start"></label><label>Hasta <input type="date" name="end"></label></form></div><button class="alert-button secondary" id="admin-newsletter-access-export" type="button" disabled>Exportar selección</button></div>
+            <div class="panel-body" id="admin-newsletter-access-chart"></div><div class="panel-body" id="admin-newsletter-access-results" aria-live="polite"></div>
           </section>
           <section id="admin-panel-feedback" data-admin-panel="feedback" class="admin-tab-panel panel hidden" role="tabpanel" aria-labelledby="admin-tab-feedback">
             <div class="panel-head"><div><p class="eyebrow">Newsletters</p><h3>Feedback</h3></div></div><div class="record-toolbar"><div class="radar-filters" id="admin-feedback-filters"><form class="record-filters" hidden>
-              <label>Edición <input type="month" name="period"></label><div class="filter-field"><label for="admin-record-vote">Valoración</label><select id="admin-record-vote" name="vote"><option value="">Todas</option><option value="positive">Útil</option><option value="negative">Mejorable</option></select></div>
+              <label>Edición <input type="month" name="period"></label>
+              <label>Desde <input type="date" name="start"></label><label>Hasta <input type="date" name="end"></label><div class="filter-field"><label for="admin-record-vote">Valoración</label><select id="admin-record-vote" name="vote"><option value="">Todas</option><option value="positive">Útil</option><option value="negative">Mejorable</option></select></div>
               <div class="filter-field"><label for="admin-record-status">Estado</label><select id="admin-record-status" name="status"><option value="">Todos</option><option value="pendiente">Pendiente</option><option value="atendido">Atendido</option></select></div></form></div><button class="alert-button secondary" id="admin-feedback-export" type="button" disabled>Exportar selección</button></div>
             <div class="panel-body" id="admin-feedback-results" aria-live="polite"></div>
           </section>
           <section id="admin-panel-business" data-admin-panel="business" class="admin-tab-panel panel hidden" role="tabpanel" aria-labelledby="admin-tab-business">
             <div class="panel-head"><div><p class="eyebrow">Catálogos y operación</p><h3>Configuración de negocio</h3></div>
-              <label>Catálogo <select id="admin-business-section">
+              <button id="admin-business-reload" class="alert-button secondary" type="button">Descartar y recargar</button></div>
+            <div class="panel-body"><label class="select-field">Catálogo <select class="select-control" id="admin-business-section">
 <option value="functional">Catálogo global de funcionalidades</option><option value="operation">Operación y selección inicial</option><option value="geography">Geografías</option><option value="relevance">Criterios de relevancia</option><option value="aliases">Equivalencias funcionales</option><option value="storage">Almacenamiento y archivo</option><option value="system">Estado y configuración de la aplicación</option><option value="schedule">Programación de procesos</option><option value="retention">Conservación</option><option value="markets">Markets consultados</option><option value="languages">Reglas de idioma</option></select></label></div>
-            <section id="admin-business-system" class="panel-body hidden"><p id="admin-generated-at">—</p><div id="admin-system" class="admin-system-grid"></div></section><div class="panel-body" id="admin-business-results" aria-live="polite"></div>
+            <section id="admin-business-system" class="panel-body hidden"><p id="admin-generated-at">—</p><div id="admin-system" class="admin-system-grid"></div></section><div class="radar-filters record-toolbar" id="admin-business-filters"><form class="record-filters" hidden>
+              <label>Buscar en el catálogo <input type="search" name="query"></label>
+            </form><button id="admin-business-export" class="alert-button secondary" type="button" disabled>Exportar selección</button></div>
+            <div class="panel-body" id="admin-business-results" aria-live="polite"></div>
           <section id="admin-job-settings" class="panel hidden"><div class="panel-head"><h3>Programación operativa</h3></div>
           <div id="admin-job-settings-body" class="panel-body"></div><p id="admin-job-settings-result" role="status"></p></section>
             <dialog id="admin-business-dialog"><form id="admin-business-form" class="panel">
@@ -253,10 +262,15 @@
             </form></dialog>
           </section>
           <section id="admin-panel-logs" data-admin-panel="logs" class="admin-tab-panel panel hidden" role="tabpanel" aria-labelledby="admin-tab-logs">
-            <div class="panel-head"><div><p class="eyebrow">Auditoría operativa</p><h3>Logs</h3></div>
-              <label>Registro <select id="admin-log-section"><option value="performance">Rendimiento</option><option value="runs">Ejecuciones</option><option value="issues">Captura</option><option value="experience">Incidencias de experiencia</option><option value="alerts">Alertas</option></select></label></div>
+            <div class="panel-head"><div><h3>Logs</h3></div></div>
+            <div class="panel-body"><label class="select-field">Registro <select class="select-control" id="admin-log-section"><option value="runs">Ejecuciones</option><option value="performance">Rendimiento</option><option value="issues">Captura</option><option value="experience">Incidencias de experiencia</option><option value="alerts">Alertas</option></select></label></div>
+            <div class="radar-filters record-toolbar" id="admin-log-filters"><form class="record-filters" hidden>
+              <label>Buscar <input type="search" name="query"></label>
+              <label>Desde <input type="date" name="start"></label><label>Hasta <input type="date" name="end"></label>
+            </form><button id="admin-log-export" class="alert-button secondary" type="button" disabled>Exportar selección</button></div>
+            <div id="admin-log-metrics" class="kpi-grid panel-body"></div>
           </section>
-          <div id="admin-panel-health" class="admin-tab-panel" data-admin-panel="health" role="tabpanel" aria-labelledby="admin-tab-health"><div id="admin-loading" class="panel alert-loading">Cargando el panel de control…</div><section class="panel"><div class="panel-head"><div><h3>Panel de control</h3><span>Procesos ordenados por prioridad. El supervisor reanuda las tareas pendientes.</span></div><div class="admin-toolbar-actions"></div></div><div class="panel-body">
+          <div id="admin-panel-health" class="admin-tab-panel" data-admin-panel="health" role="tabpanel" aria-labelledby="admin-tab-health"><div id="admin-loading" class="panel-body" role="status">Cargando contenido…</div><section class="panel"><div class="panel-head"><div><h3>Panel de control</h3><span>Procesos ordenados por prioridad. El supervisor reanuda las tareas pendientes.</span></div><div class="admin-toolbar-actions"></div></div><div class="panel-body">
             <details id="admin-review-recovery" class="panel-body radar-filters hidden">
               <summary>Recuperación selectiva de reseñas</summary>
               <p>Consulta la cobertura por escaparate y mes. La recuperación recorre las páginas disponibles de la tienda.</p>
@@ -284,12 +298,11 @@
           </div>
           <div id="admin-panel-usage" class="admin-tab-panel hidden" data-admin-panel="usage" role="tabpanel" aria-labelledby="admin-tab-usage">
             <section class="panel"><div class="panel-head"><div><p class="eyebrow">Uso de Market Pulse</p><h3>Adopción</h3></div></div>
-              <div id="admin-adoption-filters" class="radar-filters"><form class="record-filters" hidden>
+              <div id="admin-adoption-filters" class="radar-filters record-toolbar"><form class="record-filters" hidden>
                 <label>Usuario <input name="query" type="search" autocomplete="off"></label>
-                <div class="filter-field"><label for="admin-record-days">Actividad</label><select id="admin-record-days" name="days"><option value="1">Hoy</option><option value="7">Últimos 7 días</option><option value="14">Últimos 14 días</option><option value="30">Últimos 30 días</option></select></div>
               </form></div>
-              <div class="panel-body" id="admin-adoption-chart"></div><div class="kpi-grid panel-body" id="admin-adoption-metrics"></div>
-              <div class="panel-body" id="admin-adoption-rows"></div><div id="admin-adoption-pagination" class="panel-body"></div>
+              <div class="panel-body" id="admin-adoption-chart"></div><div class="kpi-grid panel-body admin-cohorts" id="admin-adoption-metrics"></div>
+              <p class="panel-body" id="admin-adoption-summary"></p><div class="panel-body" id="admin-adoption-rows"></div><div id="admin-adoption-pagination" class="panel-body"></div>
             </section>
           </div>
           <div id="admin-panel-usage-analysis" class="admin-tab-panel hidden" data-admin-panel="usage-analysis" role="tabpanel" aria-labelledby="admin-tab-usage-analysis">
@@ -316,10 +329,11 @@
           <div id="admin-panel-subscribers" class="admin-tab-panel hidden" data-admin-panel="subscribers" role="tabpanel" aria-labelledby="admin-tab-subscribers">
             <section class="panel">
               <div class="panel-head"><div><h3>Newsletter y alertas</h3><span>Altas, actividad y reglas de cada cuenta</span></div><button id="admin-add-subscriber" class="alert-button primary" type="button">Dar de alta usuario</button></div>
-              <div id="subscriber-filters" class="radar-filters">
+              <div id="subscriber-filters" class="radar-filters record-toolbar">
                 <form class="record-filters" hidden>
                   <label>Usuario<input id="admin-subscriber-search" name="query" type="search" placeholder="Buscar por correo…" autocomplete="off"></label>
                   <div class="filter-field"><label for="admin-subscriber-status">Estado de alertas</label><select id="admin-subscriber-status" name="status"><option value="ALL">Todos los estados</option><option value="ACTIVE">Alertas activas</option><option value="PAUSED">Alertas pausadas</option></select></div>
+                  <div class="filter-field"><label for="admin-subscriber-newsletter">Newsletter</label><select id="admin-subscriber-newsletter" name="newsletter"><option value="">Todas</option><option value="YES">Activa</option><option value="NO">Desactivada</option></select></div>
                   <div class="filter-field"><label for="admin-filter-countries">Mercados</label><select id="admin-filter-countries" name="countries" multiple aria-describedby="admin-filter-countries-help"></select></div>
                   <small id="admin-filter-countries-help">“Todos” es exacto; varios mercados coinciden con cualquiera.</small>
                   <div class="filter-field"><label for="admin-filter-platforms">Plataformas</label><select id="admin-filter-platforms" name="platforms" multiple aria-describedby="admin-filter-platforms-help"></select></div>

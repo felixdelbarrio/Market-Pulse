@@ -3,6 +3,7 @@ const MARKETS_REVIEW_INDEX = 'MARKET_REVIEW_INDEX';
 const MARKETS_REVIEW_INDEX_HEADERS = ['review_key', 'text_digest', 'classifier_version', 'topic_ids', 'audience', 'shared', 'reason'];
 const MARKETS_REVIEW_INDEX_CURSOR = 'MARKETS_REVIEW_INDEX_CURSOR';
 const MARKETS_REVIEW_INDEX_BATCH = 1000;
+const MARKETS_REVIEW_INDEX_STATUS = 'MARKETS_REVIEW_INDEX_STATUS';
 
 function marketsReviewIndexSheet_(ss) {
   const sheet = ss.getSheetByName(MARKETS_REVIEW_INDEX);
@@ -36,15 +37,24 @@ function advanceMarketsReviewIndex_() {
   const index = marketsReviewIndexSheet_(ss);
   if (!index) return { complete: true, done: 0, total: 0, updated: 0 };
   const lock = LockService.getUserLock();
-  if (!lock.tryLock(1000)) return { complete: false };
+  if (!lock.tryLock(1000)) return { deferred: true };
+  const properties = PropertiesService.getScriptProperties();
+  const status = safeJsonParse_(properties.getProperty(MARKETS_REVIEW_INDEX_STATUS)) || {};
+  const save = result => {
+    const updatedAt = new Date().toISOString();
+    properties.setProperty(MARKETS_REVIEW_INDEX_STATUS, JSON.stringify({ ...result, updatedAt,
+      lastProgressAt: result.done !== status.done ? updatedAt : status.lastProgressAt }));
+    return result;
+  };
   try {
     const source = marketsReviewSheet_(ss);
-    const properties = PropertiesService.getScriptProperties();
     const { rules, version } = marketsReviewClassification_(ss);
     const previous = safeJsonParse_(properties.getProperty(MARKETS_REVIEW_INDEX_CURSOR));
     const last = source.getLastRow(), total = Math.max(0, last - 1);
     const start = previous?.version === version && previous.next <= last + 1 ? previous.next : 2;
-    if (start > last) return { complete: true, done: total, total, updated: 0 };
+    if (start > last) return status.complete && status.total === total ? status : save({ complete: true, done: total, total });
+    properties.setProperty(MARKETS_REVIEW_INDEX_STATUS, JSON.stringify({ ...status, done: start - 2, total,
+      complete: false, runningUntil: Date.now() + 6 * 60 * 1000, updatedAt: new Date().toISOString() }));
     const count = Math.min(MARKETS_REVIEW_INDEX_BATCH, last - start + 1);
     const width = MARKETS_REVIEW_INDEX_HEADERS.length;
     ensureSheetCapacity_(index, start + count - 1, width);
@@ -67,7 +77,12 @@ function advanceMarketsReviewIndex_() {
     }
     const next = start + count;
     properties.setProperty(MARKETS_REVIEW_INDEX_CURSOR, JSON.stringify({ version, next }));
-    return { complete: next > last, done: next - 2, total, updated };
+    return save({ complete: next > last, done: next - 2, total, updated });
+  } catch (error) {
+    const current = safeJsonParse_(properties.getProperty(MARKETS_REVIEW_INDEX_STATUS)) || status;
+    delete current.runningUntil;
+    properties.setProperty(MARKETS_REVIEW_INDEX_STATUS, JSON.stringify({ ...current, error: errorToString_(error).slice(0, 180) }));
+    throw error;
   } finally {
     lock.releaseLock();
   }
@@ -123,12 +138,13 @@ function readMarketsAndroidGeography_(ss) {
   assertCurrentSheetContract_(sheet, MARKETS_ANDROID_GEO_HEADERS,
     sheet.getRange(1, 1, 1, Math.max(width, sheet.getLastColumn())).getValues()[0]);
   if (sheet.getLastRow() < 2) return approved;
-  for (const row of sheet.getRange(2, 1, sheet.getLastRow() - 1, width).getValues()) {
+  const records = sheet.getRange(2, 1, sheet.getLastRow() - 1, width).getValues();
+  for (const [index, row] of records.entries()) {
     const [key, packageName, digest, country, version, reviewedAt, reviewer, reason] = row;
     if (!key) continue;
     // A duplicate is ambiguous, even if both approval rows agree.
     approved.set(key, !approved.has(key) && version === MARKETS_ANDROID_GEO_VERSION &&
-      reviewedAt && reviewer && reason ? { packageName, digest, country, automatic: reviewer === 'automatic' } : null);
+      reviewedAt && reviewer && reason ? { packageName, digest, country, reason, rowNumber: index + 2, automatic: reviewer === 'automatic' } : null);
   }
   return approved;
 }
@@ -168,9 +184,60 @@ function advanceMarketsAndroidGeography_(now = new Date()) {
   finally { lock.releaseLock(); }
 }
 
+function marketsAndroidReplyEvidence_(reply) {
+  const value = String(reply || '').normalize('NFKC').toLowerCase().replace(/(?<=\d)[\s().-]+(?=\d)/g, '');
+  const matches = [];
+  if (/\bbbvaempresasresponde@bbva\.com\b/i.test(reply) || /(?:^|[^\d])(?:\+34)?912249802(?!\d)/.test(value)) matches.push(['ES', 'support-es']);
+  if (/\+57601\d{7}(?!\d)/.test(value)) matches.push(['CO', 'support-co']);
+  return matches;
+}
+
+function marketsAndroidGeographyEvidence_(row, eligible) {
+  const original = row[10];
+  const text = normalizeReviewEvidence_(original);
+  const personal = /\b(?:vivo|resido|estoy viviendo|mi empresa opera) en (espana|colombia|peru|venezuela|argentina|mexico)\b/u.exec(text);
+  const countries = { espana: 'ES', colombia: 'CO', peru: 'PE', venezuela: 'VE', argentina: 'AR', mexico: 'MX' };
+  const local = personal && eligible.includes(countries[personal[1]]) &&
+    !/\b(?:no (?:vivo|resido)|de viaje|si viviera|otro pais)\b/u.test(text)
+    ? { status: 'VALIDAR', candidate: countries[personal[1]], evidence: 'personal-location' } : null;
+  const rail = inferMarketsAndroidCountry_(original, eligible);
+  if (rail && local && rail.candidate !== local.candidate) return null;
+  const direct = rail || local;
+  const reply = marketsReviewMetadata_(row).reply;
+  const contacts = marketsAndroidReplyEvidence_(reply);
+  if (!contacts.length) {
+    const railHint = marketsAndroidGeographyCandidate_(original, eligible);
+    return railHint.status === 'CONFLICTO' || (direct && railHint.candidate && railHint.candidate !== direct.candidate) ? null : direct;
+  }
+  if (contacts.length !== 1 || /\b(?:vivo en otro pais|desde el extranjero|de viaje)\b/u.test(text)) return null;
+  const [country, evidence] = contacts[0];
+  const mentions = [
+    ['ES', /\b(?:espana|bizum)\b/u], ['MX', /\b(?:mexico|spei|curp)\b/u],
+    ['PE', /\b(?:peru|plin|yape)\b/u], ['CO', /\b(?:colombia|bogota|pse)\b/u],
+    ['AR', /\b(?:argentina|banco galicia)\b/u], ['VE', /\bvenezuela\b/u]
+  ];
+  if (mentions.some(([code, pattern]) => code !== country && pattern.test(text))) return null;
+  return direct || (eligible.includes(country) ? { status: 'VALIDAR', candidate: country, evidence } : null);
+}
+
+function marketsAndroidGeographyDigest_(row, evidence) {
+  return String(evidence).startsWith('support-')
+    ? marketsReviewDigest_([row[9], row[10], marketsReviewMetadata_(row).reply])
+    : marketsReviewTextDigest_(row);
+}
+
+function marketsAndroidGeographyEligible_(row, packages) {
+  const [key, , markets, platform, packageName] = row;
+  if (!key || platform !== 'Android' || !(packages.get(packageName)?.size > 1)) return false;
+  const storefronts = [...new Set(String(markets).split(',').map(code => code.trim()).filter(code => /^[A-Z]{2}$/.test(code)))];
+  return !(storefronts.length === 1 && MARKETS_WEB.countryCodes.includes(storefronts[0]));
+}
+
 function scanMarketsAndroidGeographyBatch_(now) {
   const ss = openMarketsSpreadsheet_();
   const source = marketsReviewSheet_(ss);
+  const target = ss.getSheetByName(MARKETS_ANDROID_GEO_SHEET);
+  if (!target) return false;
   const properties = PropertiesService.getScriptProperties();
   const packages = new Map();
   for (const app of readAppCatalog_(ss)) {
@@ -178,43 +245,63 @@ function scanMarketsAndroidGeographyBatch_(now) {
     if (!packages.has(app.packageName)) packages.set(app.packageName, new Set());
     packages.get(app.packageName).add(app.countryCode);
   }
-  const version = marketsReviewDigest_(['strict-rail-v1', MARKETS_ANDROID_GEO_VERSION, [...packages].map(([id, countries]) => [id, [...countries].sort()])]);
-  const generation = properties.getProperty('MARKETS_REVIEW_SOURCE_GENERATION') || '';
+  const version = marketsReviewDigest_(['storefront-reply-v2', [...packages].map(([id, countries]) => [id, [...countries].sort()])]);
+  const revision = properties.getProperty('MARKETS_ANDROID_GEO_SOURCE_REVISION') || '';
   const last = source.getLastRow(), previous = safeJsonParse_(properties.getProperty(MARKETS_GEO_AUDIT_PROPERTY));
-  const state = previous?.version === version && (previous.next <= last || previous.generation === generation) ? previous
-    : { version, generation, next: 2, counts: {}, processed: 0 };
-  if (state.next > last) return false;
-  const count = Math.min(1500, last - state.next + 1);
-  const rows = source.getRange(state.next, 1, count, 11).getValues();
-  const target = ss.getSheetByName(MARKETS_ANDROID_GEO_SHEET);
-  const existing = readMarketsAndroidGeography_(ss);
-  const output = [], seen = new Set();
-  for (const row of rows) {
-    const [key, , markets, platform, packageName, , , , , , original] = row;
-    const eligible = packages.get(packageName);
-    const storefronts = [...new Set(String(markets).split(',').map(code => code.trim()).filter(code => /^[A-Z]{2}$/.test(code)))];
-    if (!key || seen.has(key) || platform !== 'Android' || !eligible || eligible.size < 2 ||
-        (storefronts.length === 1 && MARKETS_WEB.countryCodes.includes(storefronts[0])) || existing.has(key)) continue;
-    seen.add(key);
-    const result = inferMarketsAndroidCountry_(original, [...eligible]);
-    state.processed++;
-    const outcome = result && target ? 'INFERIDO' : 'NO_ATRIBUIBLE';
-    state.counts[outcome] = (state.counts[outcome] || 0) + 1;
-    if (result && target) output.push([marketsReviewLiteral_(key), packageName, marketsReviewTextDigest_(row),
-      result.candidate, MARKETS_ANDROID_GEO_VERSION, now, 'automatic', result.evidence]);
+  const state = previous?.version === version && previous.revision === revision && previous.last <= last ? previous
+    : { version, revision, next: 2, counts: {}, processed: 0 };
+  if (state.complete && state.last === last) return false;
+  if (state.last !== last) {
+    // Only the identity/storefront columns are needed for the denominator.
+    const inventory = last > 1 ? source.getRange(2, 1, last - 1, 5).getValues() : [];
+    state.total = inventory.filter(row => marketsAndroidGeographyEligible_(row, packages)).length;
+    state.last = last;
   }
-  if (output.length) {
+  const width = marketsReviewWidth_(source);
+  const count = Math.min(1500, last - state.next + 1);
+  state.runningUntil = Date.now() + 6 * 60 * 1000;
+  state.complete = false;
+  properties.setProperty(MARKETS_GEO_AUDIT_PROPERTY, JSON.stringify(state));
+
+  const rows = count > 0 ? source.getRange(state.next, 1, count, width).getValues() : [];
+  const existing = readMarketsAndroidGeography_(ss);
+  const output = [], replacements = [];
+  for (const row of rows) {
+    if (!marketsAndroidGeographyEligible_(row, packages)) continue;
+    const [key, , , , packageName] = row;
+    const approval = existing.get(key);
+    const eligible = [...packages.get(packageName)];
+    const result = approval && !approval.automatic ? marketsAndroidGeographyCandidate_(row[10], eligible) : marketsAndroidGeographyEvidence_(row, eligible);
+    const valid = result?.status === 'VALIDAR';
+    const digest = valid && marketsAndroidGeographyDigest_(row, result.evidence);
+    const verified = valid && approval?.packageName === packageName && approval.country === result?.candidate && approval.digest === digest;
+    const canWrite = valid && (!existing.has(key) || approval?.automatic);
+    const outcome = verified || canWrite ? 'INFERIDO' : 'NO_ATRIBUIBLE';
+    state.processed++;
+    state.counts[outcome] = (state.counts[outcome] || 0) + 1;
+    if (!canWrite || verified) continue;
+    const record = [marketsReviewLiteral_(key), packageName, digest,
+      result.candidate, MARKETS_ANDROID_GEO_VERSION, now, 'automatic', result.evidence];
+    if (approval) replacements.push([approval.rowNumber, record]);
+    else output.push(record);
+    existing.set(key, { packageName, digest, country: result.candidate });
+  }
+  if (output.length || replacements.length) {
     const next = target.getLastRow() + 1;
-    ensureSheetCapacity_(target, next + output.length - 1, MARKETS_ANDROID_GEO_HEADERS.length);
+    const size = MARKETS_ANDROID_GEO_HEADERS.length;
     properties.setProperty('MARKETS_REVIEW_GEOGRAPHY_REVISION', Utilities.getUuid());
-    target.getRange(next, 1, output.length, MARKETS_ANDROID_GEO_HEADERS.length).setValues(output);
+    if (output.length) {
+      ensureSheetCapacity_(target, next + output.length - 1, size);
+      target.getRange(next, 1, output.length, size).setValues(output);
+    }
+    for (const [rowNumber, record] of replacements) target.getRange(rowNumber, 1, 1, size).setValues([record]);
     SpreadsheetApp.flush();
     properties.setProperty('MARKETS_REVIEW_GEOGRAPHY_REVISION', Utilities.getUuid());
   }
-  state.next += count;
-  state.total = Math.max(0, last - 1);
+  state.next = state.processed >= state.total ? last + 1 : state.next + Math.max(0, count);
   state.complete = state.next > last;
   state.updatedAt = now.toISOString();
+  delete state.runningUntil;
   properties.setProperty(MARKETS_GEO_AUDIT_PROPERTY, JSON.stringify(state));
   return true;
 }

@@ -666,11 +666,13 @@ test("new-review impact never blends Android, iOS or Huawei and deduplicates a s
   assert.deepEqual(Array.from(spain.rows.find(row => row.platform === "Android").reasons), ["SHARED_LISTING"]);
   const estimate = (inferGeography) => browser.MarketsDomain.monthlyNewReviewImpact(
     trends, snapshot, {country:"ES",platform:"ALL",inferGeography}, "2026-07", {"ANDROID|shared":3}).rows.find(row=>row.platform==="Android");
-  assert.equal(estimate("").newReviews,3);
-  assert.equal(estimate("").volumeInferred,true);
+  assert.equal(estimate("YES").newReviews,3);
+  assert.equal(estimate("YES").volumeInferred,true);
   assert.equal(estimate("NO").newReviews,null);
-  assert.equal(estimate("NO").rating,estimate("").rating);
-  assert.equal(estimate("NO").impact,estimate("").impact);
+  assert.equal(estimate("").newReviews,null);
+  assert.equal(spain.summary.platforms.find(item=>item.platform==="Android").rating, estimate("NO").rating);
+  assert.equal(estimate("NO").rating,estimate("YES").rating);
+  assert.equal(estimate("NO").impact,estimate("YES").impact);
 });
 
 test("evolution includes all apps by default and supports filtering by app", () => {

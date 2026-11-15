@@ -111,6 +111,7 @@ function advanceMarketsReviewMaintenance_(now = new Date(), manual = false) {
         if (key && seen.has(key)) state.duplicates++;
         if (key) seen.add(key);
       }
+      state.converted = convertMarketsLogArchives_(ss, properties);
       state.archived = archiveMarketsOperationalLogs_(ss, properties, now);
     } catch (error) {
       state.status = 'Reintento pendiente';
@@ -132,7 +133,7 @@ function archiveMarketsOperationalLogs_(ss, properties, now) {
     const cutoff = now.getTime() - marketsLogRetentionDays_(properties) * 86400000;
     const folders = marketsStorageFolders_(properties);
     let archived = 0;
-    for (const [table, folderKind] of [['runs', 'executions'], ['usage', 'telemetry']]) {
+    for (const [table, folderKind] of [['runs', 'executions'], ['usage', 'telemetry'], ['fetchLog', 'captures']]) {
       const name = MARKETS_CONFIG.sheets[table], headers = MARKETS_CONFIG.headers[table];
       if (!ss.getSheetByName(name)) continue;
       const sheet = requireCurrentSheetContract_(ss, name, headers);
@@ -147,10 +148,9 @@ function archiveMarketsLogPrefix_(ss, sheet, headers, folderId, cutoff, properti
   const previous = safeJsonParse_(properties.getProperty(key));
   const total = sheet.getLastRow() - 1;
   const read = count => sheet.getRange(2, 1, count, width).getValues();
-  let checkpoint = previous, material, file;
+  let checkpoint = previous, material;
   if (checkpoint) {
-    file = DriveApp.getFileById(checkpoint.fileId);
-    material = file.getBlob().getDataAsString();
+    material = readMarketsLogArchive_(DriveApp.getFileById(checkpoint.fileId));
     if (marketsReviewDigest_(material) !== checkpoint.digest) throw new Error('El archivo previo cambió: ' + name);
     const before = JSON.stringify(JSON.parse(material).rows[0]);
     const current = total > 0 ? JSON.stringify(read(1)[0]) : 'null';
@@ -171,12 +171,9 @@ function archiveMarketsLogPrefix_(ss, sheet, headers, folderId, cutoff, properti
     material = JSON.stringify({ origin: ss.getId(), table: name, headers, rows: eligible });
     const digest = marketsReviewDigest_(material);
     const date = Utilities.formatDate(now, MARKETS_CONFIG.timeZone, 'yyyy-MM-dd');
-    const filename = date + '-' + name + '-' + digest.slice(0, 18) + '.json';
-    const folder = DriveApp.getFolderById(folderId);
-    const matches = folder.getFilesByName(filename);
-    file = matches.hasNext() ? matches.next() : folder.createFile(filename, material, MimeType.PLAIN_TEXT);
-    if (matches.hasNext() || file.getBlob().getDataAsString() !== material) throw new Error('Archivo no verificable: ' + name);
-    checkpoint = { fileId: file.getId(), digest, count: eligible.length, total, nextRow };
+    const filename = date + '-' + name + '-' + digest.slice(0, 18);
+    const fileId = writeMarketsLogArchive_(DriveApp.getFolderById(folderId), filename, material, properties);
+    checkpoint = { fileId, digest, count: eligible.length, total, nextRow };
     properties.setProperty(key, JSON.stringify(checkpoint));
   }
   const payload = JSON.parse(material);
@@ -194,4 +191,78 @@ function archiveMarketsLogPrefix_(ss, sheet, headers, folderId, cutoff, properti
   }
   properties.deleteProperty(key);
   return checkpoint.count;
+}
+
+
+function readMarketsLogArchive_(file) {
+  if (file.getMimeType() !== MimeType.GOOGLE_SHEETS) return file.getBlob().getDataAsString();
+  const book = SpreadsheetApp.openById(file.getId());
+  const [origin, table, count] = book.getSheetByName('Archivo').getRange(2, 1, 1, 3).getValues()[0];
+  const data = book.getSheetByName('Datos');
+  if (!Number.isInteger(count) || count < 1 || data.getLastRow() !== count + 1) throw new Error('Filas de archivo no verificables.');
+  const [headers, ...rows] = data.getDataRange().getValues();
+  return JSON.stringify({ origin, table, headers, rows });
+}
+
+function writeMarketsLogArchive_(folder, name, material, properties) {
+  const digest = marketsReviewDigest_(material);
+  const staging = 'MARKETS_LOG_ARCHIVE_STAGE:' + digest;
+  const matches = folder.getFilesByName(name);
+  if (matches.hasNext()) {
+    const existing = matches.next();
+    if (matches.hasNext() || existing.getMimeType() !== MimeType.GOOGLE_SHEETS ||
+        readMarketsLogArchive_(existing) !== material) throw new Error('Archivo no verificable: ' + name);
+    properties.deleteProperty(staging);
+    return existing.getId();
+  }
+  const pending = properties.getProperty(staging);
+  const book = pending ? SpreadsheetApp.openById(pending) : SpreadsheetApp.create(name);
+  const id = book.getId();
+  properties.setProperty(staging, id);
+  const { origin, table, headers, rows } = JSON.parse(material);
+  const info = book.getSheets()[0].setName('Archivo');
+  info.getRange(1, 1, 2, 3).setValues([['Origen', 'Tabla', 'Filas'], [origin, table, rows.length]]);
+  const data = book.getSheetByName('Datos') || book.insertSheet('Datos');
+  ensureSheetCapacity_(data, rows.length + 1, headers.length);
+  data.getRange(1, 1, rows.length + 1, headers.length).setNumberFormat('@')
+    .setValues([headers, ...rows].map(row => row.map(marketsReviewLiteral_)));
+  data.setFrozenRows(1);
+  SpreadsheetApp.flush();
+  const file = DriveApp.getFileById(id);
+  if (readMarketsLogArchive_(file) !== material) throw new Error('Contenido de archivo no verificable: ' + name);
+  file.moveTo(folder);
+  const parents = file.getParents();
+  if (!parents.hasNext() || parents.next().getId() !== folder.getId() || parents.hasNext()) {
+    throw new Error('Carpeta de archivo no verificable: ' + name);
+  }
+  properties.deleteProperty(staging);
+  return id;
+}
+
+/** Keep the JSON originals available for recovery after validating the native copies. */
+function convertMarketsLogArchives_(ss, properties) {
+  const folders = marketsStorageFolders_(properties);
+  let count = 0;
+  for (const [table, kind] of [['runs', 'executions'], ['usage', 'telemetry'], ['fetchLog', 'captures']]) {
+    const folder = DriveApp.getFolderById(folders[kind]);
+    const files = folder.getFilesByType(MimeType.PLAIN_TEXT);
+    const name = MARKETS_CONFIG.sheets[table], headers = MARKETS_CONFIG.headers[table];
+    while (files.hasNext() && count < 6) {
+      const original = files.next();
+      const filename = original.getName();
+      if (!filename.endsWith('.json') || !filename.includes('-' + name + '-')) continue;
+      const digestKey = 'MARKETS_CONVERTED_LOG:' + original.getId();
+      if (properties.getProperty(digestKey)) continue;
+      const payload = JSON.parse(original.getBlob().getDataAsString());
+      if (payload.origin !== ss.getId() || payload.table !== name ||
+          JSON.stringify(payload.headers) !== JSON.stringify(headers) || !Array.isArray(payload.rows) ||
+          !payload.rows.length || payload.rows.some(row => !Array.isArray(row) || row.length !== headers.length)) {
+        throw new Error('Archivo anterior fuera del contrato: ' + filename);
+      }
+      const id = writeMarketsLogArchive_(folder, filename.slice(0, -5), JSON.stringify(payload), properties);
+      properties.setProperty(digestKey, id);
+      count++;
+    }
+  }
+  return count;
 }

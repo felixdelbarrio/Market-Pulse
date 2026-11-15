@@ -224,6 +224,6 @@ test('monthly audience and inference are applied and reset independently of annu
   assert.equal(annual.applied().inferGeography, undefined);
   assert.equal(comments.applied().inferGeography, undefined);
   monthly.commit(monthly.all());
-  assert.equal(monthly.applied().inferGeography,'');
+  assert.equal(monthly.applied().inferGeography,'YES');
   assert.equal(monthly.applied().audience,'');
 });

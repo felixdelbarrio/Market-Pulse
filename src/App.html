@@ -336,7 +336,7 @@
         const timer=window.setTimeout(()=>finish("TIMEOUT")("Market Pulse no ha respondido a tiempo. Reintenta la carga."),serverTimeoutMs(method));
         try{
           const runner=google.script.run.withSuccessHandler(finish("OK")).withFailureHandler(finish("ERROR"));
-          if(method==="bootstrap")runner.getMarketsDashboardBootstrap();else if(method==="user:context")runner.getMarketsUserContext();else if(method==="admin:get")runner.getMarketsAdminDashboard(false);else if(method==="admin:business:refresh")runner.refreshMarketsAdminFunctionalCatalog();else if(method==="admin:business")runner.getMarketsBusinessCatalog(argument,appLanguage);else if(method==="admin:business:save")runner.saveMarketsBusinessCatalogEntry(argument);else if(method==="admin:newsletter:feedback-state")runner.setMarketsNewsletterFeedbackState(argument.id,argument.state);else if(method==="admin:newsletter:interactions")runner.getMarketsNewsletterInteractions(argument.kind,argument.period,argument.vote,argument.status);else if(method==="admin:subscriber:save")runner.saveMarketsAdminSubscriber(argument.email,argument.preferences);else if(method==="admin:newsletter:test")runner.sendMarketsAdminNewsletterTestEmail(argument);else if(method==="admin:jobs:run")runner.runMarketsPanelJob(argument);else if(method==="admin:jobs:interval")runner.configureMarketsReviewSupervisor(argument);else if(method==="admin:jobs:settings")runner.saveMarketsReviewJobSettings(argument.id,argument.config);else if(method==="admin:jobs:folder")runner.saveMarketsStorageFolder(argument.kind,argument.id);else if(method==="admin:reviews:restart")runner.requestMarketsReviewPipeline();else if(method==="admin:reviews:options")runner.getMarketsReviewRecoveryOptions();else if(method==="admin:reviews:coverage")runner.getMarketsReviewCoverage(argument);else if(method==="admin:reviews:recover")runner.runMarketsReviewRecovery(argument);else if(method==="admin:reviews:close")runner.closeMarketsReviewRecovery();else if(method==="admin:ratings:recover")runner.requestMarketsAdminRatingRecovery();else if(method==="reviews:segments")runner.getMarketsReviewSegments();else if(method==="reviews")runner.getMarketsReviews(argument);else if(method==="review:page")runner.getMarketsReviewPage(argument);else if(method==="review:export")runner.getMarketsReviewExport(argument);else if(method==="review:analytics")runner.getMarketsReviewAnalytics(argument);else if(method==="admin:usage")runner.getMarketsAdminUsage();else if(method==="performance")runner.getMarketsPerformance();else if(method==="trends")runner.getMarketsDashboardTrends(argument);else if(method==="alerts:get")runner.getMarketsAlertPreferences();else if(method==="alerts:save")runner.saveMarketsAlertPreferences(argument);else if(method==="alerts:reset")runner.resetMarketsAlertPreferences();else if(method==="alerts:test")runner.sendMarketsAlertTestEmail();else finish("ERROR")(new Error("Operación no soportada: "+method));
+          if(method==="bootstrap")runner.getMarketsDashboardBootstrap();else if(method==="user:context")runner.getMarketsUserContext();else if(method==="admin:get")runner.getMarketsAdminDashboard(false);else if(method==="admin:business:refresh")runner.refreshMarketsAdminFunctionalCatalog();else if(method==="admin:business")runner.getMarketsBusinessCatalog(argument,appLanguage);else if(method==="admin:business:save")runner.saveMarketsBusinessCatalogEntry(argument);else if(method==="admin:newsletter:feedback-state")runner.setMarketsNewsletterFeedbackState(argument.id,argument.state);else if(method==="admin:newsletter:interactions")runner.getMarketsNewsletterInteractions(argument.kind,argument.period,argument.vote,argument.status,argument.start,argument.end);else if(method==="admin:subscriber:save")runner.saveMarketsAdminSubscriber(argument.email,argument.preferences);else if(method==="admin:newsletter:test")runner.sendMarketsAdminNewsletterTestEmail(argument);else if(method==="admin:jobs:run")runner.runMarketsPanelJob(argument);else if(method==="admin:jobs:interval")runner.configureMarketsReviewSupervisor(argument);else if(method==="admin:jobs:settings")runner.saveMarketsReviewJobSettings(argument.id,argument.config);else if(method==="admin:jobs:folder")runner.saveMarketsStorageFolder(argument.kind,argument.id);else if(method==="admin:reviews:restart")runner.requestMarketsReviewPipeline();else if(method==="admin:reviews:options")runner.getMarketsReviewRecoveryOptions();else if(method==="admin:reviews:coverage")runner.getMarketsReviewCoverage(argument);else if(method==="admin:reviews:recover")runner.runMarketsReviewRecovery(argument);else if(method==="admin:reviews:close")runner.closeMarketsReviewRecovery();else if(method==="admin:ratings:recover")runner.requestMarketsAdminRatingRecovery();else if(method==="reviews:segments")runner.getMarketsReviewSegments();else if(method==="reviews")runner.getMarketsReviews(argument);else if(method==="review:page")runner.getMarketsReviewPage(argument);else if(method==="review:export")runner.getMarketsReviewExport(argument);else if(method==="review:analytics")runner.getMarketsReviewAnalytics(argument);else if(method==="admin:usage")runner.getMarketsAdminUsage();else if(method==="performance")runner.getMarketsPerformance();else if(method==="trends")runner.getMarketsDashboardTrends(argument);else if(method==="alerts:get")runner.getMarketsAlertPreferences();else if(method==="alerts:save")runner.saveMarketsAlertPreferences(argument);else if(method==="alerts:reset")runner.resetMarketsAlertPreferences();else if(method==="alerts:test")runner.sendMarketsAlertTestEmail();else finish("ERROR")(new Error("Operación no soportada: "+method));
         }catch(error){finish("ERROR")(error)}
       });
     }
@@ -438,6 +438,7 @@
       bindOptional("admin-performance-refresh","click",loadPerformance);
       bindOptional("admin-log-section","change",renderAdminLog);
       bindOptional("admin-business-section","change",loadAdminBusiness);
+      bindOptional("admin-business-reload","click",loadAdminBusiness);
       bindOptional("admin-business-form","submit",saveAdminBusiness);
       bindOptional("admin-business-cancel","click",()=>$("admin-business-dialog").close());
 
@@ -587,12 +588,12 @@
       return {country:defaultCommentCountry(),platform:"ALL",start:reviewDay(end,1-days),end,segment:"",audience:"",app:"BBVA Empresas"};
     }
     const allComments=()=>({country:reviewScope().country,platform:"ALL",...reviewDates(),segment:"",audience:"",app:""});
-    const initialSubscribers=()=>({query:"",countries:["ANY"],platforms:["ANY"],status:"ALL"});
+    const initialSubscribers=()=>({query:"",countries:["ANY"],platforms:["ANY"],status:"ALL",newsletter:""});
     let reviewDrilldown=null, analyticsRequest=0, reviewSegments, reviewSelection=null, reviewTopics={};
     const defaultAnalyticsEntity="BBVA Empresas";
     let analyticsSelection=null, analyticsEntity=defaultAnalyticsEntity, resizeReviewBalance;
     let annualTrends=[], annualYears=[], heatmapSegment="DETRACTOR", annualAppControl;
-    const monthlyFilterDefaults={audience:"",inferGeography:""};
+    const monthlyFilterDefaults={audience:"",inferGeography:"YES"};
     let monthlyFilters={...monthlyFilterDefaults};
     let monthlyRequest=0, monthlyReviewKey="", monthlyBalanceKey="";
     const analyticsInitial=()=>({country:browserMarket(),year:reviewDates().end.slice(0,4),audience:""});
@@ -665,14 +666,18 @@
         $(id).innerHTML=adminFilterScopeOptions(kind).map(item=>U.option(item.value,item.label,false)).join("");
       }
       for(const tab of ["newsletter-access","feedback"]){
-        const defaults=()=>tab==="feedback"?{period:"",vote:"",status:""}:{period:""};
+        const defaults=()=>tab==="feedback"?{period:"",vote:"",status:"",start:"",end:""}:{period:"",start:"",end:""};
         radarFilters[tab]=create($("admin-"+tab+"-filters"),{initial:defaults,all:defaults,
           applied:()=>newsletterFilters[tab]||defaults(),
           commit:filters=>{newsletterFilters[tab]=filters;loadAdminNewsletterInteractions(tab)}});
       }
-      const adoptionDefaults=()=>({days:"1",query:""});
+      for(const [name,defaults,applied,commit] of [
+        ["business",()=>({query:""}),()=>businessFilters,filters=>{businessFilters=filters;renderBusinessCatalog()}],
+        ["log",()=>({query:"",start:"",end:""}),()=>logFilters,filters=>{logFilters=filters;renderAdminLog(false)}]
+      ])radarFilters[name]=create($("admin-"+name+"-filters"),{initial:defaults,all:defaults,applied,commit});
+      const adoptionDefaults=()=>({query:""});
       radarFilters.adoption=create($("admin-adoption-filters"),{initial:adoptionDefaults,all:adoptionDefaults,
-        applied:()=>adoptionFilters,alwaysChips:["days"],commit:filters=>{
+        applied:()=>adoptionFilters,commit:filters=>{
           adoptionFilters=filters;adoptionPage=0;renderAdminAdoption(state.adminCenter?.usage);
         }});
       radarFilters.admin=create($("subscriber-filters"),{
@@ -1243,7 +1248,7 @@
       $("admin-usage-kpis").innerHTML=U.loading(translate("Cargando la adopción"));
       try{
         const usage=await callServer("admin:usage");
-        if(center===state.adminCenter){center.usage=usage;renderAdminUsage(usage)}
+        if(center===state.adminCenter){center.usage=usage;renderAdminUsage(usage);if(state.adminTab==="logs")renderAdminLog(false)}
       }catch(error){$("admin-usage-kpis").textContent=error.message}
       finally{
         adminUsagePending=false;
@@ -1357,13 +1362,56 @@
     function alertActivityLabel(type){return type==="REVIEW_LOW_SHARE"?"Reseñas de 1 y 2 estrellas":type==="RATING_DROP_DAILY"?"Caída diaria":type==="RATING_DROP_MTD"?"Caída del día 15 al día 15":type==="RATING_DROP_YTD"?"Caída desde inicio de año":type==="NEWSLETTER_MONTHLY"?"Newsletter mensual":type==="NEWSLETTER_TEST"?"Prueba de newsletter":type==="TEST"?"Prueba de entrega":"Cruce competitivo"}
     function renderAlertActivity(events){if(!events.length){$("alert-activity").innerHTML=U.empty("Todavía no hay alertas para ti","Cuando una regla se active, aparecerá aquí y recibirás el resumen por email.");return}$("alert-activity").innerHTML=events.map(event=>`<article class="alert-event"><i class="alert-event-dot ${event.severity==="CRITICAL"?"critical":event.severity==="POSITIVE"?"positive":""}"></i><div><strong>${U.esc(alertActivityLabel(event.type))}</strong><span>${U.esc(`${event.countryCode==="ALL"&&event.type==="REVIEW_LOW_SHARE"?"Ficha compartida":countryLabel(event.countryCode)} · ${event.platform} · ${event.detail}`)}</span></div><time>${U.esc(dateTimeLabel(event.timestamp))}</time></article>`).join("")}
 
-    function renderAdminLog(){
+    let logFilters={query:"",start:"",end:""};
+    function renderAdminLog(load=true){
       const selected=$("admin-log-section").value;
+      const center=state.adminCenter;
+      const control=$("admin-log-filters"), metrics=$("admin-log-metrics");
       document.querySelectorAll("[data-admin-log]").forEach(panel=>panel.classList.toggle("hidden",state.adminTab!=="logs"||panel.dataset.adminLog!==selected));
-      if(state.adminTab==="logs"&&selected==="performance")loadPerformance();
-      if(state.adminTab==="logs"&&selected==="experience")loadAdminUsage();
+      if(state.adminTab!=="logs"||!center)return;
+      const reports={
+        runs:["Ejecuciones",["Inicio","Estado","Apps correctas","Apps totales","Errores","Filas","Emails"],center.recentRuns||[],
+          row=>[row.startedAt,row.status,row.appsOk,row.appsTotal,row.appsError,row.rowsUpserted,row.emailsSent],renderAdminRuns],
+        issues:["Captura",["Fecha","Geografía","Aplicación","Plataforma","Estado","Detalle"],center.fetchIssues||[],
+          row=>[row.fetchedAt,row.countryCode,row.appKey,row.platform,row.status,row.detail],renderAdminIssues],
+        alerts:["Alertas",["Fecha","Tipo","Geografía","Plataforma","Detalle"],center.recentAlerts||[],
+          row=>[row.timestamp,row.type,row.countryCode,row.platform,row.detail],renderAdminAlerts],
+        experience:["Experiencia",["Fecha","Vista","Acción","Detalle"],center.usage?.recentIncidents||[],
+          row=>[row.timestamp,row.view,row.action,row.detail],renderUsageIncidents]
+      };
+      const report=reports[selected];
+      control.classList.toggle("hidden",!report);metrics.classList.toggle("hidden",!report);
+      if(selected==="performance"){if(load)loadPerformance();return}
+      if(selected==="experience"&&!center.usage&&load)loadAdminUsage();
+      if(!report)return;
+      const [name,header,source,fields,render]=report, query=logFilters.query.trim().toLocaleLowerCase();
+      const rows=source.filter(row=>{
+        const record=fields(row), day=String(record[0]).slice(0,10);
+        return (!logFilters.start||day>=logFilters.start)&&(!logFilters.end||day<=logFilters.end)&&
+          (!query||record.some(value=>String(value||"").toLocaleLowerCase().includes(query)));
+      });
+      radarFilters.log.render();
+      metrics.innerHTML=U.metrics([{label:"Registros",value:integer(rows.length)},{label:"Registros disponibles",value:integer(source.length)}]);
+      render(rows);
+      const button=$("admin-log-export");
+      button.disabled=!rows.length;
+      button.onclick=()=>exportAdminRows(name,header,rows.map(fields));
     }
-    let businessRequest=0,businessDraft;
+    let businessRequest=0,businessDraft,businessFilters={query:""},businessCatalog;
+    function renderBusinessCatalog(){
+      if(!businessCatalog)return;
+      const {section,data}=businessCatalog,target=$("admin-business-results");
+      const query=businessFilters.query.trim().toLocaleLowerCase();
+      const rows=data.rows.filter(row=>row.some(value=>String(value??"").toLocaleLowerCase().includes(query)));
+      radarFilters.business.render();
+      const download=$("admin-business-export");
+      download.disabled=!rows.length;
+      download.onclick=()=>exportAdminRows("Catálogo",data.columns,rows);
+      target.innerHTML=(section==="functional"?'<p><button class="alert-button secondary" type="button" data-sync>Sincronizar desde el catálogo maestro</button></p>':"")+
+        (data.edit==="aliases"?'<p><button type="button" class="alert-button primary" data-entry="-1">Añadir equivalencia</button></p>':'')+
+        (rows.length?adminDataTable(data.columns,rows,Boolean(data.edit)):U.empty("Sin entradas","No hay coincidencias para la selección."));
+      return rows;
+    }
     function adminDataTable(columns,rows,action){
       return '<div class="admin-table-wrap"><table class="admin-table"><thead><tr>'+columns.map(x=>'<th scope="col">'+U.esc(x)+'</th>').join("")+
         (action?'<th scope="col">Acciones</th>':'')+'</tr></thead><tbody>'+rows.map((row,i)=>'<tr>'+row.map(x=>'<td>'+U.esc(String(x??""))+'</td>').join("")+
@@ -1371,6 +1419,9 @@
     }
     async function loadAdminBusiness(){
       const token=++businessRequest, section=$("admin-business-section").value, target=$("admin-business-results");
+      businessCatalog=null;
+      $("admin-business-filters").classList.toggle("hidden",section==="system");
+      $("admin-business-export").disabled=true;
       $("admin-business-system").classList.toggle("hidden",section!=="system");
       $("admin-job-settings").classList.toggle("hidden",!state.adminCenter?.system?.operations?.owner||!["schedule","storage"].includes(section));
       renderAdminJobSettings(state.adminCenter?.system?.operations,state.adminCenter?.system?.reviewPipeline,state.adminCenter?.system||{});
@@ -1379,8 +1430,8 @@
       try{
         const data=await callServer("admin:business",section);
         if(token!==businessRequest||state.adminTab!=="business")return;
-        target.innerHTML=(section==="functional"?'<p><button class="alert-button secondary" type="button" data-sync>Sincronizar desde el catálogo maestro</button></p>':"")+(data.edit==="aliases"?'<p><button type="button" class="alert-button primary" data-entry="-1">Añadir equivalencia</button></p>':'')+
-          (data.rows.length?adminDataTable(data.columns,data.rows,Boolean(data.edit)):U.empty("Sin entradas","Este catálogo aún no tiene registros."));
+        businessCatalog={section,data};
+        renderBusinessCatalog();
         target.onclick=async event=>{
           const sync=event.target.closest("[data-sync]");
           if(sync){
@@ -1391,7 +1442,9 @@
           }
           const entry=event.target.closest("[data-entry]");
           if(!entry||!data.edit)return;
-          const row=data.rows[Number(entry.dataset.entry)]||["",""];
+          const query=businessFilters.query.trim().toLocaleLowerCase();
+          const rows=data.rows.filter(row=>row.some(value=>String(value??"").toLocaleLowerCase().includes(query)));
+          const row=rows[Number(entry.dataset.entry)]||["",""];
           businessDraft={section,expected:String(row[1])};
           $("admin-business-key").value=row[0];
           $("admin-business-key").readOnly=Boolean(row[0]);
@@ -1415,7 +1468,7 @@
       finally{if(button)button.disabled=false}
     }
     const newsletterRequests={}, newsletterFilters={};
-    let adoptionFilters={days:"1",query:""}, adoptionPage=0, subscriberPage=0;
+    let adoptionFilters={query:""}, adoptionCohort="dau", adoptionPage=0, subscriberPage=0;
     function exportAdminRows(name,header,rows){
       const file=window.MarketsWorkbook.build([{name,filters:[],header,rows}]);
       const url=URL.createObjectURL(file), link=document.createElement("a");
@@ -1425,15 +1478,25 @@
     function renderAdminAdoption(usage){
       if(!usage)return;
       radarFilters.adoption.render();
-      const days=Number(adoptionFilters.days)||1, last=usage.dailyTrend.at(-1)?.date;
-      const since=last?reviewDay(last,1-days):"";
-      const cohort=(usage.adoptionUsers||[]).filter(row=>row.lastDay>=since);
-      const matched=cohort.filter(row=>row.email.includes(adoptionFilters.query.trim().toLowerCase()));
-      renderUsageTrend((usage.adoptionTrend||usage.dailyTrend).slice(-days),"admin-adoption-chart");
-      $("admin-adoption-metrics").innerHTML=U.metrics([
-        {label:"Usuarios activos",value:integer(cohort.length)},
-        {label:"Primer acceso registrado",value:integer(cohort.filter(row=>row.firstDay>=since).length)}
-      ]);
+      const trend=usage.adoptionTrend||usage.dailyTrend, last=trend.at(-1)?.date;
+      const query=adoptionFilters.query.trim().toLowerCase();
+      const candidates=(usage.adoptionUsers||[]).filter(row=>row.email.includes(query));
+      const cohorts=[
+        ["dau","DAU","Usuarios · hoy",row=>row.lastDay===last],
+        ["wau","WAU","Usuarios · 7 días",row=>last&&row.lastDay>=reviewDay(last,-6)],
+        ["mau","MAU","Usuarios · 30 días",()=>true],
+        ["returning","Recurrentes","Más de una sesión · 30 días",row=>row.sessions>1],
+        ["total","Total usuarios","Usuarios · registros retenidos",()=>true]
+      ].map(([key,label,hint,filter])=>({key,label,hint,rows:key==="total"?(usage.retainedUsers||candidates).filter(row=>row.email.includes(query)):candidates.filter(filter)}));
+      const selected=cohorts.find(item=>item.key===adoptionCohort), matched=selected.rows;
+      renderUsageTrend(trend,"admin-adoption-chart");
+      const metrics=$("admin-adoption-metrics");
+      metrics.innerHTML=cohorts.map(item=>`<button type="button" class="kpi-card" data-cohort="${item.key}" aria-pressed="${item===selected}"><span>${item.label}</span><strong>${integer(item.rows.length)}</strong><small>${item.hint}</small></button>`).join("");
+      metrics.onclick=event=>{
+        const key=event.target.closest("[data-cohort]")?.dataset.cohort;
+        if(key&&key!==adoptionCohort){adoptionCohort=key;adoptionPage=0;renderAdminAdoption(usage);metrics.querySelector(`[data-cohort="${key}"]`)?.focus()}
+      };
+      $("admin-adoption-summary").textContent=`${selected.label} · ${integer(matched.length)} usuarios`;
       const size=20,pages=Math.max(1,Math.ceil(matched.length/size));
       adoptionPage=Math.min(adoptionPage,pages-1);
       $("admin-adoption-rows").innerHTML=adminDataTable(["Usuario","Último acceso","Sesiones registradas","Eventos registrados","Primer acceso"],
@@ -1454,16 +1517,22 @@
       try{
         const data=await callServer("admin:newsletter:interactions",{kind:feedback?"feedback":"access",...filters});
         if(newsletterRequests[tab]!==token)return;
-        const labels={open:"Acceso confirmado",positive:"👍 Útil",negative:"👎 Mejorable"};
-        target.innerHTML=U.metrics(feedback?[{label:"Valoraciones",value:String(data.total)},{label:"Útil",value:String(data.positive)},{label:"Mejorable",value:String(data.negative)}]:
-          [{label:"Accesos únicos confirmados",value:String(data.total)}])+
-          (data.rows.length?adminDataTable(["Edición","Interacción","Fecha",...(feedback?["Estado"]:[])],
-            data.rows.map(([edition,action,date,status])=>[edition,labels[action],date,...(feedback?[status]:[])]),feedback):
+        if(!feedback){
+          const chart=$("admin-newsletter-access-chart"),daily=data.daily||[],maximum=Math.max(1,...daily.map(day=>day.count));
+          chart.innerHTML=daily.length?`<h4>Actividad · últimos 30 días de la selección</h4><div class="usage-trend-bars admin-access-bars">${daily.map(day=>`<article class="usage-trend-day" title="${U.esc(dateLabel(day.date))} · ${integer(day.count)}"><div><i class="sessions" style="height:${100*day.count/maximum}%"></i></div><span>${U.esc(day.date.slice(-2))}</span></article>`).join("")}</div>`:"";
+        }
+        const labels={open:"Acceso confirmado",positive:"Útil",negative:"Mejorable"};
+        const columns=["Fecha","Edición",feedback?"Valoración":"Interacción",...(feedback?["Observaciones","Estado"]:[])];
+        const rows=data.rows.map(([edition,action,date,status,,comment])=>[dateTimeLabel(date),edition,labels[action],...(feedback?[comment,status]:[])]);
+        target.innerHTML='<div class="kpi-grid">'+U.metrics(feedback?[
+          {label:"Total",value:integer(data.total)},{label:"Útil",value:integer(data.positive)},{label:"Mejorable",value:integer(data.negative)},
+          {label:"% útil",value:data.total?fmt(100*data.positive/data.total,0)+"%":"—"},
+          {label:"Pendientes",value:integer(data.pending||0)},{label:"Atendidos",value:integer(data.resolved||0)}]:
+          [{label:"Accesos confirmados",value:integer(data.total)},{label:"Ediciones",value:integer(data.editions||0)}])+'</div>'+
+          (data.rows.length?adminDataTable(columns,rows,feedback):
             U.empty("Sin registros","Las interacciones aparecerán después de los próximos envíos."));
         download.disabled=!data.rows.length;
-        download.onclick=()=>exportAdminRows(feedback?"Feedback":"Accesos desde newsletters",
-          ["Edición","Interacción","Fecha",...(feedback?["Estado"]:[])],
-          data.rows.map(([edition,action,date,status])=>[edition,labels[action],date,...(feedback?[status]:[])]));
+        download.onclick=()=>exportAdminRows(feedback?"Feedback":"Accesos desde newsletters",columns,rows);
         target.querySelectorAll("[data-entry]").forEach(button=>{
           const row=data.rows[Number(button.dataset.entry)], next=row[3]==="atendido"?"pendiente":"atendido";
           button.textContent=next==="atendido"?"Marcar atendido":"Reabrir";
@@ -1479,7 +1548,23 @@
     }
     function activateAdminTab(name,focus=false){const tabs=[...document.querySelectorAll(".admin-tab")],selected=tabs.find(tab=>tab.dataset.adminTab===name)||tabs[0];if(!selected||!state.userContext?.isAdmin)return;if(focus&&state.adminTab===name)return;state.adminTab=selected.dataset.adminTab;tabs.forEach(tab=>{const active=tab===selected;tab.classList.toggle("active",active);tab.setAttribute("aria-selected",String(active));tab.tabIndex=active?0:-1});document.querySelectorAll(".admin-tab-panel").forEach(panel=>panel.classList.toggle("hidden",panel.dataset.adminPanel!==state.adminTab));selected.scrollIntoView?.({block:"nearest",inline:"nearest"});renderAdminLog();if(state.adminTab==="business")loadAdminBusiness();if(["newsletter-access","feedback"].includes(state.adminTab))loadAdminNewsletterInteractions(state.adminTab);if(["usage","usage-analysis"].includes(state.adminTab))loadAdminUsage();if(focus){trackUsage("ACTION","admin","ADMIN_TAB",state.adminTab);selected.focus()}}
     function handleAdminTabKeydown(event){if(!["ArrowLeft","ArrowRight","ArrowUp","ArrowDown","Home","End"].includes(event.key))return;const tabs=[...document.querySelectorAll(".admin-tab")],current=Math.max(0,tabs.indexOf(document.activeElement));let next=event.key==="Home"?0:event.key==="End"?tabs.length-1:["ArrowRight","ArrowDown"].includes(event.key)?(current+1)%tabs.length:(current-1+tabs.length)%tabs.length;event.preventDefault();activateAdminTab(tabs[next].dataset.adminTab,true);tabs[next].focus()}
-    async function loadAdmin(force=false){const started=performance.now();if(!state.userContext?.isAdmin)return;if(state.adminLoading||state.adminLoaded&&!force){if(state.adminLoaded)trackReady("admin","Mostrar administración",started);return}state.adminLoading=true;$("admin-loading").classList.remove("hidden");try{state.adminCenter=await callServer("admin:get");state.adminLoaded=true;renderAdmin();trackReady("admin","Mostrar administración",started)}catch(error){$("admin-loading").textContent=error?.message||String(error);showError(error)}finally{state.adminLoading=false}}
+    async function loadAdmin(force=false){
+      if(!state.userContext?.isAdmin||state.adminLoading||state.adminLoaded&&!force)return;
+      const started=performance.now(), refresh=state.adminLoaded, loading=$("admin-loading");
+      state.adminLoading=true;
+      if(!refresh)loading.classList.remove("hidden");
+      try{
+        state.adminCenter=await callServer("admin:get");
+        if(refresh&&state.adminTab==="health") {
+          renderAdminJobs(state.adminCenter.system,state.adminCenter.recentRuns||[]);
+        }else renderAdmin();
+        state.adminLoaded=true;
+        if(!refresh)trackReady("admin","Mostrar administración",started);
+      }catch(error){
+        if(!refresh)loading.textContent=error?.message||String(error);
+        showError(error);
+      }finally{state.adminLoading=false}
+    }
     function statusBadge(value){const text=String(value||"—"),tone=/^(OK|ACTIVE|VERIFIED|SENT)$/i.test(text)?"ok":/PARTIAL|WARN|PENDING/i.test(text)?"warn":/ERROR|FAIL|DENIED|DISABLED/i.test(text)?"bad":"";return`<span class="admin-status ${tone}">${U.esc(text)}</span>`}
     function renderAdmin(){const center=state.adminCenter;if(!center)return;$("admin-loading").classList.add("hidden");$("admin-content").classList.remove("hidden");$("admin-generated-at").textContent=`Generado ${dateTimeLabel(center.generatedAt)} · ${center.administrator}`;renderAdminSystem(center.system);renderAdminJobs(center.system,center.recentRuns||[]);renderAdminRuns(center.recentRuns||[]);renderAdminIssues(center.fetchIssues||[]);radarFilters.admin.render();renderAdminSubscribers(center.subscribers||[]);renderAdminAlerts(center.recentAlerts||[])}
     let reviewRecoveryLoaded=false,reviewRecoveryBusy=false;
@@ -1551,7 +1636,7 @@
     }
     let runningPanelJob = false;
     window.setInterval?.(()=>{
-      if(state.view==="admin"&&state.adminTab==="health"&&!document.hidden&&!runningPanelJob) loadAdmin(true);
+      if(state.view==="admin"&&state.adminTab==="health"&&!document.hidden&&!runningPanelJob&&!$("admin-jobs").contains(document.activeElement)) loadAdmin(true);
     },30000);
     function renderAdminJobs(system,runs){
       const pipeline=system.reviewPipeline, operations=system.operations;
@@ -1559,23 +1644,34 @@
       $("admin-review-recovery").classList.toggle("hidden",!pipeline?.canRestart);
       const latest=runs[0], config=operations?.config||{};
       const index=operations?.index, geo=operations?.geography, maintenance=operations?.maintenance, backup=operations?.backup;
+      const waiting=job=>job?.complete?"Completado":job?.runningUntil>Date.now()?"En curso":
+        job?.error?"Reintento pendiente":operations?.activeReviewStage?"Esperando "+operations.activeReviewStage:"Pendiente del supervisor";
+      const delivery=(id,fallback)=>{
+        const data=system.deliveries?.[id]||{};
+        return {updatedAt:data.startedAt||fallback,deliveredAt:data.lastDeliveryAt,
+          done:data.sent||data.confirmed||0,total:data.total||data.confirmed,
+          status:data.status==="DELIVERED"?"Completado":data.status==="NOT_REQUIRED"?"Sin envíos pendientes":data.status||"Programado",
+          detail:data.total==null&&data.confirmed?integer(data.confirmed)+" entregas confirmadas en el log":""};
+      };
       const jobs=[
         {id:"ratings",priority:1,group:"Ratings",name:"Carga diaria de ratings",detail:latest?`${latest.appsError} con error · ${latest.appsNoRating} sin rating · ${latest.rowsUpserted} filas actualizadas`:"",schedule:system.dailySchedule,
-          status:latest?.status||"Sin ejecuciones",done:latest?latest.appsOk+latest.appsNoRating+latest.appsError:0,total:latest?.appsTotal},
-        {id:"newsletter",priority:2,group:"Envíos planificados",name:"Newsletter mensual",schedule:system.newsletterSchedule,enabled:system.newsletterDeliveryEnabled,status:operations?.newsletter?.status,updatedAt:operations?.newsletter?.startedAt,total:1,done:operations?.newsletter&&operations.newsletter.status!=="ERROR"?1:0},
+          status:latest?.status==="PARTIAL"&&!latest.appsError?"Activo":latest?.status||"Sin ejecuciones",updatedAt:latest?.startedAt,done:latest?latest.appsOk+latest.appsNoRating+latest.appsError:0,total:latest?.appsTotal},
+        {id:"newsletter",priority:2,group:"Envíos planificados",name:"Newsletter mensual",schedule:system.newsletterSchedule,enabled:system.newsletterDeliveryEnabled,...delivery("newsletter",operations?.newsletter?.startedAt)},
         ...(pipeline?.jobs||[]).map(job=>({...job,name:job.label,
           group:({supervisor:"Supervisor de colas",ios:"Recopilación de reseñas",android:"Recopilación de reseñas",
             alerts:"Envíos planificados",translate:"Traducción de reseñas y respuestas",publish:"Generación de snapshots"})[job.id],
           schedule:job.id==="supervisor"?`Cada ${operations?.interval||15} minutos`:pipeline.day,
           enabled:job.id==="supervisor"?pipeline.installed!==false:undefined,
           updatedAt:job.id==="supervisor"?operations?.supervisorLast:job.lastAttemptAt,
+          ...(job.id==="translate"&&operations?.translationRetryAt>Date.now()?{status:"Esperando cuota de traducción",retryAt:operations.translationRetryAt}:{}),
           detail:job.id==="supervisor"?([operations?.unifiedAfter?"Supervisión unificada":"Supervisión de reseñas",system.healthMonitorEnabled?"Monitor de salud · "+system.healthSchedule:"Monitor de salud desactivado",operations?.health?.startedAt?dateTimeLabel(operations.health.startedAt):""].filter(Boolean).join(" · ")):
             [job.id==="ios"||job.id==="android"?`${job.added||0} nuevas · ${job.updated||0} actualizadas · ${job.failures||0} errores`:"",
-             job.replyPending==null?"":job.replyPending+" respuestas pendientes"].filter(Boolean).join(" · ")})),
-        {id:"index",priority:3,group:"Clasificación de reseñas",name:"Clasificación de comentarios",...index,status:index?.complete?"Completado":"Pendiente"},
-        {id:"geography",priority:3,group:"Inferencia geográfica",name:"Inferencia geográfica Android",...geo,status:geo?.complete?"Completado":"Pendiente",
-          done:geo?.next?geo.next-2:undefined,total:geo?.total,
-          detail:geo?`${geo.processed} revisadas · ${geo.counts.INFERIDO||0} inferidas · ${geo.counts.NO_ATRIBUIBLE||0} no atribuibles`:""},
+             job.replyPending==null?"":job.replyPending+" respuestas pendientes"].filter(Boolean).join(" · "),
+          ...(job.id==="alerts"?delivery("reviewAlerts",job.lastAttemptAt):{})})),
+        {id:"index",priority:3,group:"Clasificación de reseñas",name:"Clasificación de comentarios",...index,status:waiting(index)},
+        {id:"geography",priority:3,group:"Inferencia geográfica",name:"Inferencia geográfica Android",...geo,status:waiting(geo),
+          done:geo?.processed,total:geo?.last?geo.total:undefined,
+          detail:geo?`${integer(geo.processed)} Android sin geografía revisadas · ${integer(geo.counts?.INFERIDO||0)} inferidas · ${integer(geo.counts?.NO_ATRIBUIBLE||0)} no atribuibles`:""},
         {id:"maintenance",priority:6,group:"Mantenimiento y backup",name:"Mantenimiento incremental",...maintenance,done:maintenance?.total,
           detail:maintenance?.total==null?"":`${maintenance.invalid} inválidas · ${maintenance.duplicates} duplicadas · ${maintenance.archived||0} archivadas`},
         {...backup,id:"backup",priority:6,group:"Mantenimiento y backup",name:"Backup mensual",done:backup?.id?1:0,total:1},
@@ -1606,10 +1702,10 @@
         return `<article class="admin-process-card"><div class="admin-process-heading"><h4>${U.esc(job.name)}</h4>
           <span class="admin-process-state" data-status="${tone}">${job.enabled?"Activo":"Inactivo"}${status==="Activo"||!job.enabled?"":" · "+U.esc(status)}</span></div>
           <p class="admin-process-meta">${[job.schedule,job.timeZone].filter(Boolean).map(U.esc).join(" · ")}</p>${progress}
-          ${statusLine("Última ejecución",job.updatedAt)}${statusLine("Último avance",job.lastProgressAt)}${statusLine("Último éxito",job.lastSuccessAt)}
+          ${statusLine("Última ejecución",job.updatedAt)}${statusLine("Último envío",job.deliveredAt)}${statusLine("Último avance",job.lastProgressAt)}${statusLine("Último éxito",job.lastSuccessAt)}
           ${statusLine("Reintento",job.retryAt?new Date(job.retryAt).toISOString():"")}
           ${job.detail?`<p class="admin-process-meta">${U.esc(job.detail)}</p>`:""}${job.error?`<p>${U.esc(job.error)}</p>`:""}
-          ${job.id==="ratings"?'<button id="admin-recovery" class="alert-button secondary" type="button" data-run-job="ratings">Recuperar ratings ahora</button>':operations?.owner&&actions[job.id]?`<button class="alert-button secondary" type="button" data-run-job="${job.id}" ${!job.enabled||status==="En curso"?"disabled":""}>${actions[job.id]}</button>`:""}</article>`;
+          ${job.id==="ratings"?'<button id="admin-recovery" class="alert-button secondary" type="button" data-run-job="ratings">Recuperar ratings ahora</button>':operations?.owner&&actions[job.id]?`<button class="alert-button secondary" type="button" data-run-job="${job.id}" ${!job.enabled||status==="En curso"||status.startsWith("Esperando ")?"disabled":""}>${actions[job.id]}</button>`:""}</article>`;
       };
       const root=$("admin-jobs");
       root.innerHTML=[...groups.values()].sort((a,b)=>a.priority-b.priority).map(group=>`<section class="admin-process-group">
@@ -1632,7 +1728,7 @@
         result.textContent="Ejecutando…";
         try{
           const response=await callServer("admin:jobs:run",button.dataset.runJob);
-          result.textContent=response.message.startsWith("Lote de clasificación")?"":response.message;
+          result.textContent=response.message;
           await loadAdmin(true);
         }catch(error){result.textContent=error.message}
         finally{button.disabled=false;runningPanelJob=false}
@@ -1694,15 +1790,15 @@
       return [{value:"ANY",label:"Sin filtrar"},...options];
     }
     function nextAdminScopeSelection(current,value){if(value==="ANY")return["ANY"];if(value==="ALL")return["ALL"];const selected=new Set((current||[]).filter(item=>item!=="ALL"&&item!=="ANY"));if(selected.has(value))selected.delete(value);else selected.add(value);return selected.size?[...selected]:["ALL"]}
-    function adminSubscriberFilterRows(rows){const filters=state.adminSubscriberFilters,query=filters.query.trim().toLowerCase(),scopeMatches=(values,selected)=>{const configured=values||[];if(selected.includes("ANY"))return true;if(selected.includes("ALL"))return configured.includes("ALL");if(configured.includes("ALL"))return false;return selected.some(value=>configured.includes(value))};return rows.filter(row=>(!query||String(row.email||"").toLowerCase().includes(query))&&(filters.status==="ALL"||(row.active?"ACTIVE":"PAUSED")===filters.status)&&scopeMatches(row.countries,filters.countries)&&scopeMatches(row.platforms,filters.platforms))}
+    function adminSubscriberFilterRows(rows){const filters=state.adminSubscriberFilters,query=filters.query.trim().toLowerCase(),scopeMatches=(values,selected)=>{const configured=values||[];if(selected.includes("ANY"))return true;if(selected.includes("ALL"))return configured.includes("ALL");if(configured.includes("ALL"))return false;return selected.some(value=>configured.includes(value))};return rows.filter(row=>(!query||String(row.email||"").toLowerCase().includes(query))&&(filters.status==="ALL"||(row.active?"ACTIVE":"PAUSED")===filters.status)&&(!filters.newsletter||(row.newsletterEnabled?"YES":"NO")===filters.newsletter)&&scopeMatches(row.countries,filters.countries)&&scopeMatches(row.platforms,filters.platforms))}
     function adminSubscriberScopeText(kind,values){if((values||[]).includes("ALL"))return kind==="country"?"Todos los mercados":"Todas las plataformas";return(values||[]).map(value=>kind==="country"?countryLabel(value):D.config.platformLabels[value]||value).join(", ")}
     function renderAdminSubscribers(rows){
       const filtered=adminSubscriberFilterRows(rows);
       $("admin-subscriber-results").textContent=`${filtered.length} de ${rows.length} suscripciones`;
-      const headings=["Usuario","Geografías","Plataformas","Alertas","Newsletter","Último acceso","Última entrega"];
+      const headings=["Usuario","Geografías","Plataformas","Alertas","Newsletter","Idioma","Último acceso","Última entrega"];
       const record=row=>[row.email,adminSubscriberScopeText("country",row.countries),
         adminSubscriberScopeText("platform",row.platforms),row.active?"Activas":"Pausadas",
-        row.newsletterEnabled?"Activa":"Desactivada",dateTimeLabel(row.lastSeenAt),dateTimeLabel(row.lastDeliveryAt)];
+        row.newsletterEnabled?"Activa":"Desactivada",({es:"Español",en:"Inglés",tr:"Turco"})[row.newsletterLanguage]||"—",dateTimeLabel(row.lastSeenAt),dateTimeLabel(row.lastDeliveryAt)];
       const size=20, pages=Math.max(1,Math.ceil(filtered.length/size));
       subscriberPage=Math.min(subscriberPage,pages-1);
       const selected=filtered.slice(subscriberPage*size,(subscriberPage+1)*size);

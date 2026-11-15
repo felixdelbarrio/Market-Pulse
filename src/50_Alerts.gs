@@ -45,23 +45,31 @@ function buildMarketsReviewAlertEvents_(groups, preferences, existing, now, day)
 }
 
 function processMarketsReviewAlerts_(day) {
+  const result = measureMarketsScheduledJob_('reviewAlerts', () => deliverMarketsReviewAlertBatch_(day));
+  if (['PARTIAL', 'ERROR'].includes(result.status)) throw new Error(result.detail || 'Fallo en el envío de las alertas de reseñas.');
+  return result.events;
+}
+
+function deliverMarketsReviewAlertBatch_(day) {
+  const empty = { events: 0, sent: 0, total: 0, status: 'NOT_REQUIRED' };
   const now = new Date();
-  if (Utilities.formatDate(now, MARKETS_CONFIG.timeZone, 'yyyy-MM-dd') !== day) return 0;
+  if (Utilities.formatDate(now, MARKETS_CONFIG.timeZone, 'yyyy-MM-dd') !== day) return empty;
   const ss = openMarketsSpreadsheet_(), control = readControl_(ss);
   const subscribers = readAllMarketsAlertPreferences_(ss).filter(item => item.active && item.reviewShareEnabled);
-  if (!subscribers.length) return 0;
+  if (!subscribers.length) return empty;
   const window = { start: shiftReviewDay_(day, -2), end: shiftReviewDay_(day, 1) };
   const rows = queryMarketsReviews_(ss, { country: 'ALL', platform: 'ALL', app: 'BBVA Empresas', deferBlocks: true }, window);
   const groups = summarizeMarketsReviewAlerts_(rows, now);
-  if (!groups.length) return 0;
+  if (!groups.length) return empty;
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(1000)) throw new Error('La auditoría de alertas está ocupada.');
   try {
     const existing = readExistingAlertKeys_(ss);
     const events = subscribers.flatMap(preferences => buildMarketsReviewAlertEvents_(groups, preferences, existing, now, day));
     const result = deliverMarketsAlertEvents_(ss, events, control, subscribers.length);
-    if (['PARTIAL', 'ERROR'].includes(result.deliveryStatus)) throw new Error(result.deliveryDetail || 'Fallo en el envío de las alertas de reseñas.');
-    return result.length;
+    return { events: result.length, sent: result.deliveryCount, status: result.deliveryStatus,
+      total: new Set(events.flatMap(event => trimString_(event.recipients).split(/[;,]/).map(normalizeEmailForComparison_).filter(Boolean))).size,
+      detail: result.deliveryDetail };
   } finally {
     lock.releaseLock();
   }
@@ -701,11 +709,11 @@ function marketsAlertEmailSubject_(events) {
   if (tests.length === (events || []).length && tests.length) {
     const result = marketsAlertPreviewHasNoSignals_(events) ? 'Sin alertas activas' :
       marketsAlertPreviewIsBelowThreshold_(events) ? 'Datos reales bajo umbral' : 'Datos reales';
-    return '[PRUEBA] Market Pulse · ' + result + ' · ' +
+    return '[PRUEBA] [bIA] [Market Pulse] ‼ ‼ ‼ · Alertas personalizadas · ' + result + ' · ' +
       trimString_(tests[0].testId || tests[0].ruleId || 'verificación');
   }
-  if (marketsAlertIsReviewShare_(events)) return '[Market Pulse] Alertas de reseñas';
-  return '[Market Pulse] Alertas personalizadas · ' + events.length + ' cambio' +
+  if (marketsAlertIsReviewShare_(events)) return '[bIA] [Market Pulse] ‼ ‼ ‼ · Alertas personalizadas · Alertas de reseñas';
+  return '[bIA] [Market Pulse] ‼ ‼ ‼ · Alertas personalizadas · ' + events.length + ' cambio' +
     (events.length === 1 ? '' : 's') + ' en ratings';
 }
 
@@ -1094,6 +1102,7 @@ function renderMarketsAlertFeedbackPage_(token) {
   const page = HtmlService.createTemplateFromFile('AlertFeedback');
   page.token = token;
   page.newsletter = false;
+  page.rating = '';
   page.unsubscribe = request.vote === 'unsubscribe';
   page.destination = '';
   page.choice = page.unsubscribe ? 'Dar de baja las alertas' : request.vote === 'positive' ? 'Sí, me resultó útil' : 'No me resultó útil';

@@ -74,6 +74,7 @@ function getMarketsAdminDashboard(includeUsage = true) {
     generatedAt: new Date().toISOString(),
     administrator: access.email,
     system: {
+      deliveries: readMarketsAdminDeliveries_(ss),
       codeVersion: MARKETS_CONFIG.codeVersion,
       webVersion: MARKETS_WEB.version,
       webAppUrl: marketsWebAppUrl_(),
@@ -211,7 +212,7 @@ function marketsAdminReviewPipeline_(email) {
     return { ...definition, ...current, label: definition.label, priority: definition.priority };
   });
   return { day: state?.day || '', installed, canRestart: owner && installed === true,
-    jobs: [{ id: 'supervisor', label: 'Supervisor de reseñas', priority: 0,
+    jobs: [{ id: 'supervisor', label: 'Supervisor', priority: 0,
       status: installed === null ? 'Activador sin verificar' : installed ? 'Activo' : 'Sin activador instalado' }, ...jobs] };
 }
 
@@ -234,6 +235,40 @@ function readRecentMarketsAdminRuns_(ss, limit) {
         detail: trimString_(row[indexes.detail]), deliveryDetail: trimString_(row[indexes.alert_delivery_detail])
       };
     });
+}
+
+function readMarketsAdminDeliveries_(ss) {
+  const sheet = ss.getSheetByName(MARKETS_CONFIG.sheets.alerts);
+  const indexes = indexHeaders_(MARKETS_CONFIG.headers.alerts);
+  const last = sheet.getLastRow();
+  if (last < 2) return {};
+  const properties = PropertiesService.getScriptProperties();
+  const range = sheet.getRange(2, indexes.source + 1, last - 1, 1);
+  return Object.fromEntries([['newsletter', 'MONTHLY_NEWSLETTER'], ['reviewAlerts', 'REVIEW_ALERTS']].map(([id, source]) => {
+    const timing = safeJsonParse_(properties.getProperty('MARKETS_JOB_TIMING:' + id));
+    const delivery = safeJsonParse_(properties.getProperty('MARKETS_JOB_DELIVERY:' + id));
+    // Newsletter log rows indicate Gmail acceptance. Legacy review alerts were
+    // also recorded with delivery disabled, so rely on confirmed delivery timings.
+    const result = { ...timing, sent: delivery?.sent, total: delivery?.total, lastDeliveryAt: '' };
+    if (id === 'reviewAlerts' && !delivery) return [id, result];
+    const cells = range.createTextFinder(source).matchEntireCell(true).findAll();
+    if (!cells.length) return [id, result];
+    const recent = cells.slice(-100).map(cell => cell.getRow()).sort((a, b) => a - b);
+    const from = recent[0], to = recent.at(-1);
+    const rows = sheet.getRange(from, 1, to - from + 1, MARKETS_CONFIG.headers.alerts.length).getValues();
+    const earliest = delivery ? new Date(delivery.startedAt).getTime() - 60000 : 0;
+    let accepted = recent.map(row => rows[row - from]).filter(row => new Date(row[indexes.timestamp]).getTime() >= earliest);
+    if (delivery && id === 'reviewAlerts') {
+      const day = Utilities.formatDate(new Date(delivery.startedAt), MARKETS_CONFIG.timeZone, 'yyyy-MM-dd');
+      accepted = accepted.filter(row => row[indexes.run_id] === 'review-' + day);
+    }
+    const latest = accepted.at(-1);
+    if (!latest) return [id, result];
+    result.lastDeliveryAt = adminDateTime_(latest[indexes.timestamp]);
+    result.confirmed = new Set(accepted.filter(row => row[indexes.run_id] === latest[indexes.run_id])
+      .map(row => row[indexes.user_email] || row[indexes.recipients]).filter(Boolean)).size;
+    return [id, result];
+  }));
 }
 
 function readRecentMarketsAdminFetchIssues_(ss, limit) {

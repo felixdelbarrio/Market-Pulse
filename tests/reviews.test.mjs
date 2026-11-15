@@ -771,3 +771,23 @@ test("index invalidation rewinds only for edits within the completed range", () 
   runtime.invalidateMarketsReviewIndexFrom_(store, 8090);
   assert.deepEqual(JSON.parse(props.get("MARKETS_REVIEW_INDEX_CURSOR")),{version:"a",next:8090});
 });
+
+
+test("Android inference uses a localized support contact and rejects contradictory evidence", () => {
+  const runtime = vm.createContext({console, normalizeReviewEvidence_: value => String(value).normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "").toLowerCase(), marketsReviewMetadata_: row => row[15] || {},
+    marketsReviewDigest_: values => JSON.stringify(values)});
+  vm.runInContext(fs.readFileSync(new URL("../src/55_ReviewIndex.gs", import.meta.url), "utf8"), runtime);
+  const row = [];
+  row[10] = "Gracias por vuestra ayuda.";
+  row[15] = {reply:"Llámanos al 912 249 802."};
+  assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["ES","CO"]).candidate,"ES");
+  const before = runtime.marketsAndroidGeographyDigest_(row, "support-es");
+  row[15].reply = "Gracias por tu calificación. Usa la app en tu celular.";
+  assert.notEqual(runtime.marketsAndroidGeographyDigest_(row, "support-es"),before);
+  assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["ES","CO"]),null);
+  row[15].reply = "Llámanos al +57 601 123 4567.";
+  assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["ES","CO"]).candidate,"CO");
+  row[10] = "Vivo en España y necesito ayuda.";
+  assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["ES","CO"]),null);
+});

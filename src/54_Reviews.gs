@@ -452,6 +452,12 @@ function queryMarketsReviews_(ss, filters, window, includeTranslations = false, 
   const readOriginal = filterText || approvedGeo.size > 0;
   const indexWidth = MARKETS_REVIEW_HEADERS.indexOf(readOriginal ? 'original' : 'rating') + 1;
   const stored = sheet.getRange(2, 1, lastRow - 1, indexOnly ? indexWidth : width).getValues();
+  if (indexOnly && width === MARKETS_REVIEW_METADATA_COLUMN && [...approvedGeo.values()].some(approval => approval?.automatic)) {
+    const rows = sheet.getRange(2, MARKETS_REVIEW_METADATA_COLUMN, lastRow - 1, 1).getValues();
+    for (const [offset, row] of stored.entries()) {
+      if (approvedGeo.get(row[0])?.automatic) row[MARKETS_REVIEW_METADATA_COLUMN - 1] = rows[offset][0];
+    }
+  }
   let readMs = Date.now() - readStarted;
   const byPackage = new Map();
   for (const app of androidListings.values()) {
@@ -504,8 +510,8 @@ function queryMarketsReviews_(ss, filters, window, includeTranslations = false, 
       const approval = country === 'UNKNOWN' && android && approvedGeo.get(row[0]);
       const eligible = approval && (byPackage.get(row[4]) || []).map(app => app.countryCode);
       if (approval && approval.packageName === row[4] && new Set(eligible).size > 1 &&
-          eligible.includes(approval.country) && approval.digest === marketsReviewTextDigest_(row)) {
-        const evidence = approval.automatic ? inferMarketsAndroidCountry_(row[10], eligible) :
+          eligible.includes(approval.country) && approval.digest === marketsAndroidGeographyDigest_(row, approval.reason)) {
+        const evidence = approval.automatic ? marketsAndroidGeographyEvidence_(row, eligible) :
           marketsAndroidGeographyCandidate_(row[10], eligible);
         if (evidence?.status === 'VALIDAR' && evidence.candidate === approval.country) {
           country = approval.country;
