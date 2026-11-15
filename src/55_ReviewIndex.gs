@@ -184,16 +184,27 @@ function advanceMarketsAndroidGeography_(now = new Date()) {
   finally { lock.releaseLock(); }
 }
 
+const MARKETS_CO_SUPPORT_TEMPLATES = [
+  ['gracias por las 5 estrellas y por compartir tu experiencia', 'nos alegra que disfrutes tu app bbva'],
+  ['gracias por tu calificacion', 'trabajamos continuamente para mejorar tu experiencia', 'lograr lo que quieres'],
+  ['gracias por compartir tu experiencia', 'nos alegra la calificacion que nos das', 'cada vez mas facil'],
+  ['gracias por la buena calificacion', 'tendremos en cuenta tu comentario para seguir mejorando'],
+  ['gracias por tu resena', 'trabajamos diariamente para hacerte la vida mas facil'],
+  ['nos alegra la calificacion que nos das', 'trabajando de tu mano', 'cosas mas sencillas']
+];
+
 function marketsAndroidReplyEvidence_(reply) {
   const value = String(reply || '').normalize('NFKC').toLowerCase().replace(/(?<=\d)[\s().-]+(?=\d)/g, '');
   const text = normalizeReviewEvidence_(reply || '');
   const matches = new Map();
   if (text.includes('necesidades de gestion de tu empresa') && text.includes('y tu operativa bancaria') &&
       text.includes('para nosotros tu opinion es muy importante')) matches.set('ES', 'support-es-template');
-  if (text.includes('gracias por las 5 estrellas y por compartir tu experiencia') &&
-      text.includes('nos alegra que disfrutes tu app bbva')) matches.set('CO', 'support-co-template');
+  if (MARKETS_CO_SUPPORT_TEMPLATES.some(parts => parts.every(part => text.includes(part)))) matches.set('CO', 'support-co-template');
   if (/\bbbvaempresasresponde@bbva\.com\b/i.test(reply) || /(?:^|[^\d])(?:\+34)?912249802(?!\d)/.test(value)) matches.set('ES', 'support-es');
-  if (/\+57601\d{7}(?!\d)/.test(value)) matches.set('CO', 'support-co');
+  if (/(?:^|[^\d])(?:\+57)?6013078071(?!\d)|\+57601\d{7}(?!\d)/.test(value) ||
+      /\b(?:linea (?:empresarial|especializada)|bogota)\b/u.test(text) && /(?:^|[^\d])3078071(?!\d)/.test(value)) {
+    matches.set('CO', 'support-co');
+  }
   return matches;
 }
 
@@ -209,7 +220,8 @@ function marketsAndroidGeographyEvidence_(row, eligible) {
   if (local) matches.set(countries[local[1]], 'personal-location');
   const appMarket = /\b(?:esta|la|mi) (?:app|aplicacion) para (espana|colombia|peru|venezuela|argentina|mexico)\b/u.exec(text);
   if (appMarket && /\b(?:me|nos|mi|mis|nuestra|no puedo|no podemos)\b/u.test(text)) matches.set(countries[appMarket[1]], 'local-app-use');
-  if (/\b(?:como (?:hago para|puedo) (?:tener|usar|activar)|permitan que .*? hagan|necesito (?:usar|activar)) (?:plin|yape)\b/u.test(text)) {
+  if (/\byape\b/u.test(text) && !/\byape (?:en )?bolivia\b/u.test(text)) matches.set('PE', 'yape-pe');
+  if (/\b(?:como (?:hago para|puedo) (?:tener|usar|activar)|permitan que .*? hagan|necesito (?:usar|activar)) plin\b/u.test(text)) {
     matches.set('PE', 'local-rail-request');
   }
   if (/\b(?:mi cuenta|tengo cuenta|uso) (?:en )?bcp (?:e|y) interbank\b/u.test(text)) matches.set('PE', 'local-bank-use');
@@ -249,12 +261,13 @@ function scanMarketsAndroidGeographyBatch_(now) {
     if (!packages.has(app.packageName)) packages.set(app.packageName, new Set());
     packages.get(app.packageName).add(app.countryCode);
   }
-  const version = marketsReviewDigest_(['storefront-reply-v3', [...packages].map(([id, countries]) => [id, [...countries].sort()])]);
+  const version = marketsReviewDigest_(['storefront-reply-v4', [...packages].map(([id, countries]) => [id, [...countries].sort()])]);
   const revision = properties.getProperty('MARKETS_ANDROID_GEO_SOURCE_REVISION') || '';
   const last = source.getLastRow(), previous = safeJsonParse_(properties.getProperty(MARKETS_GEO_AUDIT_PROPERTY));
   const state = previous?.version === version && previous.revision === revision && previous.last <= last ? previous
     : { version, revision, next: 2, counts: {}, processed: 0 };
   if (state.complete && state.last === last) return false;
+  if (previous?.version !== version) properties.setProperty('MARKETS_REVIEW_GEOGRAPHY_REVISION', Utilities.getUuid());
   if (state.last !== last) {
     // Only the identity/storefront columns are needed for the denominator.
     const inventory = last > 1 ? source.getRange(2, 1, last - 1, 5).getValues() : [];
