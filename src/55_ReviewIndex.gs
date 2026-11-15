@@ -204,23 +204,26 @@ const MARKETS_CO_SUPPORT_TEMPLATES = [
   ['gracias por compartir tu experiencia', 'nos alegra la calificacion que nos das', 'cada vez mas facil'],
   ['gracias por la buena calificacion', 'tendremos en cuenta tu comentario para seguir mejorando'],
   ['gracias por tu resena', 'trabajamos diariamente para hacerte la vida mas facil'],
-  ['nos alegra la calificacion que nos das', 'trabajando de tu mano', 'cosas mas sencillas']
+  ['nos alegra la calificacion que nos das', 'trabajando de tu mano', 'cosas mas sencillas'],
+  ['nos alegra la calificacion que nos das', 'hacerte la vida mas facil', 'tu banco en tu celular', 'trabajando de tu mano']
 ];
 
 function marketsAndroidReplyEvidence_(reply) {
   const value = String(reply || '').normalize('NFKC').toLowerCase().replace(/(?<=\d)[\s().-]+(?=\d)/g, '');
-  const text = normalizeReviewEvidence_(reply || '');
+  const text = normalizeReviewEvidence_(reply);
   const matches = new Map();
-  if (text.includes('necesidades de gestion de tu empresa') && text.includes('y tu operativa bancaria') &&
-      text.includes('para nosotros tu opinion es muy importante')) matches.set('ES', 'support-es-template');
+  if (/\b(?:no (?:llames|uses|escribas)|no (?:es|corresponde a) (?:nuestra linea|nuestro telefono)|linea (?:anterior|de otro banco))\b/u.test(text)) return matches;
+  if (['necesidades de gestion de tu empresa', 'operativa bancaria', 'para nosotros tu opinion es muy importante']
+      .every(part => text.includes(part))) matches.set('ES', 'support-es-template');
   if (MARKETS_CO_SUPPORT_TEMPLATES.some(parts => parts.every(part => text.includes(part)))) matches.set('CO', 'support-co-template');
-  if (/\bbbvaempresasresponde@bbva\.com\b/i.test(reply) || /(?:^|[^\d])(?:\+34)?912249802(?!\d)/.test(value)) matches.set('ES', 'support-es');
-  const coLocalPhone = /(?:^|[^\d])601\d{7}(?!\d)/.test(value) &&
-    /\b(?:linea|llamanos|llamar|telefono|comunicate|contactanos|atencion)\b/u.test(text);
-  const coAreaCode = /\b(?:prefijo|indicativo)(?: telefonico)?(?: es| de)? 601\b/u.test(text) ||
-    /\b(?:llamanos al|llamar al|contactanos al|telefono|linea especializada) 601\b/u.test(text);
-  if (/(?:^|[^\d])(?:\+57)?6013078071(?!\d)|\+57601\d{7}(?!\d)/.test(value) || coLocalPhone || coAreaCode ||
-      /\b(?:linea (?:empresarial|especializada)|bogota)\b/u.test(text) && /(?:^|[^\d])3078071(?!\d)/.test(value)) {
+  if (/\bbbvaempresasresponde@bbva\.com(?![\w.-])/i.test(value.replace(/\.(?=\s|$)/g, '')) ||
+      /(?:^|[^\d+])(?:(?:\+34|0034))?912249802(?!\d)/.test(value)) matches.set('ES', 'support-es');
+  const localContact = /\b(?:atencion|llamanos|llamar|telefono|comunicate|contactanos|linea (?:empresarial|especializada))\b/u.test(text);
+  if ((localContact && /(?:^|[^\d+])601\d{7}(?!\d)/.test(value)) || /(?:^|[^\d+])(?:\+57|0057)601\d{7}(?!\d)/.test(value)) {
+    matches.set('CO', 'support-co-local-format');
+  }
+  if (/(?:^|[^\d+])(?:\+57|0057)?6013078071(?!\d)/.test(value) ||
+      /\b(?:linea (?:empresarial|especializada)|bogota)\b/u.test(text) && /(?:^|[^\d+])3078071(?!\d)/.test(value)) {
     matches.set('CO', 'support-co');
   }
   return matches;
@@ -229,34 +232,55 @@ function marketsAndroidReplyEvidence_(reply) {
 function marketsAndroidGeographyEvidence_(row, eligible) {
   const original = row[10];
   const text = normalizeReviewEvidence_(original);
-  if (/\b(?:no (?:vivo|resido|uso)|solo de viaje|si viviera|desde el extranjero|vivo en otro pais)\b/u.test(text)) return null;
-  const countries = { espana: 'ES', colombia: 'CO', peru: 'PE', venezuela: 'VE', argentina: 'AR', mexico: 'MX' };
-  const matches = marketsAndroidReplyEvidence_(marketsReviewMetadata_(row).reply);
-  const rail = inferMarketsAndroidCountry_(original, eligible);
+  // A local reference inside a comparison, a trip or a third person's story
+  // cannot establish the author's market, even alongside a support response.
+  if (/\b(?:no (?:vivo|resido|uso|utilizo)|nunca (?:he usado|uso|vivi)|de viaje|de vacaciones|si (?:viviera|pudiera)|desde (?:el extranjero|otro pais)|(?:vivo|resido) en otro pais|como (?:en|yape|plin|pse|paygold|bizum|banco galicia)|a diferencia de|comparad[oa] con|mi (?:amigo|amiga|familiar|hermano|hermana|padre|madre)|segun me (?:dicen|cuentan))\b/u.test(text)) return null;
+
+  const places = { espana: 'ES', madrid: 'ES', colombia: 'CO', bogota: 'CO', peru: 'PE',
+    venezuela: 'VE', argentina: 'AR', mexico: 'MX' };
+  const matches = new Map();
+  const rail = inferMarketsAndroidCountry_(original, Object.values(places));
   if (rail) matches.set(rail.candidate, rail.evidence);
-  const local = /\b(?:vivo|resido|estoy viviendo|mi empresa opera) en (espana|colombia|peru|venezuela|argentina|mexico)\b/u.exec(text);
-  if (local) matches.set(countries[local[1]], 'personal-location');
-  const appMarket = /\b(?:esta|la|mi) (?:app|aplicacion) para (espana|colombia|peru|venezuela|argentina|mexico)\b/u.exec(text);
-  if (appMarket && /\b(?:me|nos|mi|mis|nuestra|no puedo|no podemos)\b/u.test(text)) matches.set(countries[appMarket[1]], 'local-app-use');
-  if (/\byape\b/u.test(text) && !/\byape (?:en )?bolivia\b/u.test(text)) matches.set('PE', 'yape-pe');
-  if (/\b(?:como (?:hago para|puedo) (?:tener|usar|activar)|permitan que .*? hagan|necesito (?:usar|activar)) plin\b/u.test(text)) {
+  for (const location of text.matchAll(/\b(?:vivo|resido|estoy viviendo|mi empresa opera) en (espana|madrid|colombia|bogota|peru|venezuela|argentina|mexico)\b/gu)) {
+    matches.set(places[location[1]], 'personal-location');
+  }
+  for (const market of text.matchAll(/\b(?:esta|la|mi) (?:app|aplicacion) para (espana|colombia|peru|venezuela|argentina|mexico)\b/gu)) {
+    if (/\b(?:me|nos|mi|mis|nuestra|no puedo|no podemos)\b/u.test(text)) matches.set(places[market[1]], 'local-app-use');
+  }
+  if (/\b(?:mis|nuestros|no puedo (?:gestionar|cargar|domiciliar)) adeudos sepa\b/u.test(text)) matches.set('ES', 'own-sepa-use');
+  if (/\b(?:mi paygold|(?:pague|cobre|no puedo (?:pagar|cobrar)) (?:por|con) paygold)\b/u.test(text)) matches.set('CO', 'own-paygold-use');
+  if (!/\byape (?:en )?bolivia\b/u.test(text) &&
+      /\b(?:como (?:hago para|puedo) (?:tener|usar|activar)|necesito (?:usar|activar)|no puedo (?:usar|activar)) (?:plin|yape)\b/u.test(text)) {
     matches.set('PE', 'local-rail-request');
   }
   if (/\b(?:mi cuenta|tengo cuenta|uso) (?:en )?bcp (?:e|y) interbank\b/u.test(text)) matches.set('PE', 'local-bank-use');
+  if (/\b(?:mi cuenta (?:de|en)|tengo cuenta en) banco galicia\b/u.test(text)) matches.set('AR', 'own-galicia-account');
+
+  const support = marketsAndroidReplyEvidence_(marketsReviewMetadata_(row).reply);
+  const strongMarkets = new Set([...matches.keys(), ...support.keys()]);
+  if (strongMarkets.size > 1) return null;
+  // Language is corroboration only; it cannot rebut direct evidence.
+  if (!strongMarkets.size) {
+    const colloquialisms = text.match(/\b(?:peta|chapuza|no sois nadie|todo facilidades|teniais|teneis|volvais|vuestra promo|habeis)\b/gu);
+    if (new Set(colloquialisms).size >= 2 && /\b(?:mi cuenta|mi empresa|no puedo|me falla)\b/u.test(text) &&
+        /\b(?:espana|madrid|adeudos sepa)\b/u.test(text)) matches.set('ES', 'contextual-es');
+    if (/\bhasta las patas\b/u.test(text) && /\b(?:mi cuenta|mi empresa|no puedo|me falla)\b/u.test(text) &&
+        /\b(?:plin|yape|bcp)\b/u.test(text) && !/\bbolivia\b/u.test(text)) matches.set('PE', 'contextual-pe');
+  }
+  for (const [country, rule] of support) matches.set(country, rule);
   if (matches.size !== 1) return null;
   const [country, evidence] = matches.entries().next().value;
   const mentions = [
-    ['ES', /\b(?:espana|bizum)\b/u], ['MX', /\b(?:mexico|spei|curp)\b/u],
-    ['PE', /\b(?:peru|plin|yape)\b/u], ['CO', /\b(?:colombia|bogota|pse)\b/u],
+    ['ES', /\b(?:espana|madrid|bizum|adeudos sepa)\b/u], ['MX', /\b(?:mexico|spei|curp)\b/u],
+    ['PE', /\b(?:peru|plin|yape|bcp)\b/u], ['CO', /\b(?:colombia|bogota|pse|paygold)\b/u],
     ['AR', /\b(?:argentina|banco galicia)\b/u], ['VE', /\bvenezuela\b/u]
   ];
   if (!eligible.includes(country) || mentions.some(([code, pattern]) => code !== country && pattern.test(text))) return null;
   return { status: 'VALIDAR', candidate: country, evidence };
 }
 
-function marketsAndroidGeographyDigest_(row, evidence) {
-  return String(evidence).startsWith('support-')
-    ? marketsReviewDigest_([row[9], row[10], marketsReviewMetadata_(row).reply])
+function marketsAndroidGeographyDigest_(row, automatic) {
+  return automatic ? marketsReviewDigest_([row[9], row[10], marketsReviewMetadata_(row).reply])
     : marketsReviewTextDigest_(row);
 }
 
@@ -279,7 +303,7 @@ function scanMarketsAndroidGeographyBatch_(now) {
     if (!packages.has(app.packageName)) packages.set(app.packageName, new Set());
     packages.get(app.packageName).add(app.countryCode);
   }
-  const version = marketsReviewDigest_(['storefront-reply-v4', [...packages].map(([id, countries]) => [id, [...countries].sort()])]);
+  const version = marketsReviewDigest_(['storefront-reply-v5', [...packages].map(([id, countries]) => [id, [...countries].sort()])]);
   const revision = properties.getProperty('MARKETS_ANDROID_GEO_SOURCE_REVISION') || '';
   const last = Math.max(1, source.getLastRow());
   const previous = safeJsonParse_(properties.getProperty(MARKETS_GEO_AUDIT_PROPERTY));
@@ -310,8 +334,9 @@ function scanMarketsAndroidGeographyBatch_(now) {
     const eligible = [...packages.get(packageName)];
     const result = approval && !approval.automatic ? marketsAndroidGeographyCandidate_(row[10], eligible) : marketsAndroidGeographyEvidence_(row, eligible);
     const valid = result?.status === 'VALIDAR';
-    const digest = valid && marketsAndroidGeographyDigest_(row, result.evidence);
-    const verified = valid && approval?.packageName === packageName && approval.country === result?.candidate && approval.digest === digest;
+    const digest = valid && marketsAndroidGeographyDigest_(row, !approval || approval.automatic);
+    const verified = valid && approval?.packageName === packageName && approval.country === result?.candidate && approval.digest === digest &&
+      (!approval.automatic || approval.reason === result.evidence);
     const canWrite = valid && (!existing.has(key) || approval?.automatic);
     const outcome = verified || canWrite ? 'INFERIDO' : 'NO_ATRIBUIBLE';
     state.processed++;

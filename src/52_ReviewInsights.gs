@@ -606,7 +606,7 @@ function getMarketsReviewHeatmap(filters) {
 }
 
 const MARKETS_REVIEW_ENTITY = 'BBVA Empresas';
-const MARKETS_REVIEW_SNAPSHOT_SCHEMA = 11;
+const MARKETS_REVIEW_SNAPSHOT_SCHEMA = 12;
 const MARKETS_REVIEW_HELPFUL_MIN = 5;
 const MARKETS_REVIEW_PAGE_SIZE = 25;
 
@@ -896,13 +896,15 @@ function marketsReviewAnalyticsWindow_(filters, today) {
 function buildMarketsReviewAnalytics_(rows, topics, filters, window) {
   const annual = filters.year ? { start: window.start, end: window.end } : marketsAnnualReviewWindow_(window);
   const result = summarizeMarketsReviewAnalytics_(rows, topics, filters, window, annual);
-  if (filters.analysisMonth && filters.inferGeography !== 'NO' && filters.country !== 'ALL' && filters.country !== 'UNKNOWN') {
-    result.inferredAndroidVolumes = {};
+  if (filters.analysisMonth && filters.country !== 'ALL' && filters.country !== 'UNKNOWN') {
+    // Captured comments after query filters, never a denominator for total store ratings.
+    result.observedReviewCountByVolumeKey = {};
     for (const row of rows) {
-      if (row.date.slice(0, 7) !== filters.analysisMonth || !row.volumeKey ||
-          !row.attributionMethod?.startsWith('review_evidence_') ||
+      if (row.platform !== 'Android' || row.countries?.[0] !== filters.country ||
+          row.date.slice(0, 7) !== filters.analysisMonth || !row.volumeKey ||
           (filters.entity !== 'ALL' && !row.entities.includes(filters.entity))) continue;
-      result.inferredAndroidVolumes[row.volumeKey] = (result.inferredAndroidVolumes[row.volumeKey] || 0) + 1;
+      const counts = result.observedReviewCountByVolumeKey;
+      counts[row.volumeKey] = (counts[row.volumeKey] || 0) + 1;
     }
   }
   if (filters.year) {
@@ -935,7 +937,7 @@ function compactMarketsReviewAnalyticsRows_(rows, end) {
     if (authorSamples.has(row) || row.date >= examplesStart || (Number.isInteger(row.helpful) && row.helpful >= MARKETS_REVIEW_HELPFUL_MIN)) return row;
     return { date: row.date, rating: row.rating, entities: row.entities, blocks: row.blocks,
       author: row.author, reply: row.reply?.trim() ? '1' : '',
-      ...(row.attributionMethod?.startsWith('review_evidence_') ? { volumeKey: row.volumeKey, attributionMethod: row.attributionMethod } : {}) };
+      ...(row.platform === 'Android' && row.volumeKey ? { volumeKey: row.volumeKey, platform: row.platform, countries: row.countries } : {}) };
   });
 }
 

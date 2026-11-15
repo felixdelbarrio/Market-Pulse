@@ -507,7 +507,7 @@ test("the persistent snapshot requires the matching schema and generations", () 
   api.readMarketsWebCache_ = (_key,build)=>build();
   api.readMarketsPersistentCache_ = () => ({ schema, end: window.end, versions: ["1", "", catalogVersion], values: { "page:ES:es": staticPage } });
   assert.equal(api.readMarketsReviewCache_(ss, "page", filters, window, () => null), null);
-  schema = 11;
+  schema = 12;
   assert.equal(api.readMarketsReviewCache_(ss, "page", filters, window, () => null), staticPage);
   generation = "2";
   assert.equal(api.readMarketsReviewCache_(ss, "page", filters, window, () => null), null);
@@ -583,6 +583,27 @@ test("compact review source keeps counts, repeat authors and full records eligib
   assert.equal(compact[2], rows[2]);
   const summarize = data => api.summarizeMarketsReviewAnalytics_(data, { "01": "Transferencias" }, filters, window);
   assert.deepEqual(summarize(compact), summarize(rows));
+});
+
+test("monthly observed Android comments keep country, app, month and listing scope", () => {
+  const row = (date, country, volumeKey, entity="BBVA Empresas", platform="Android") =>
+    ({date,countries:[country],volumeKey,entities:[entity],platform,rating:3,blocks:[]});
+  const rows = [
+    row("2026-10-01","ES","ANDROID|shared"),
+    row("2026-10-02","ES","ANDROID|shared"),
+    row("2026-10-02","CO","ANDROID|shared"),
+    row("2026-10-03","ES","ANDROID|shared","Otro banco"),
+    row("2026-09-30","ES","ANDROID|shared"),
+    row("2026-10-04","ES","ANDROID|other"),
+    row("2026-10-05","ES","IOS|1","BBVA Empresas","iOS")
+  ];
+  const window = {start:"2026-09-01",recent:"2026-10-01",end:"2026-10-31"};
+  const compact = api.compactMarketsReviewAnalyticsRows_(rows, window.end);
+  const count = country => api.buildMarketsReviewAnalytics_(compact, {},
+    {analysisMonth:"2026-10",entity:"BBVA Empresas",country},window).observedReviewCountByVolumeKey;
+  assert.deepEqual({...count("ES")},{"ANDROID|shared":2,"ANDROID|other":1});
+  assert.deepEqual({...count("CO")},{"ANDROID|shared":1});
+  assert.equal(count("ALL"),undefined);
 });
 
 test("country-wide annual analytics counts each review once and retains the leading authors' latest cards", () => {
@@ -780,17 +801,20 @@ test("index invalidation rewinds only for edits within the completed range", () 
 
 
 test("Android inference uses a localized support contact and rejects contradictory evidence", () => {
-  const runtime = vm.createContext({console, normalizeReviewEvidence_: value => String(value).normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "").toLowerCase(), marketsReviewMetadata_: row => row[15] || {},
-    marketsReviewDigest_: values => JSON.stringify(values)});
+  const runtime = vm.createContext({console, marketsReviewMetadata_: row => row[15] || {},
+    marketsReviewTextDigest_: row => JSON.stringify(row.slice(9, 11)), marketsReviewDigest_: values => JSON.stringify(values)});
+  vm.runInContext(fs.readFileSync(new URL("../src/52_ReviewInsights.gs", import.meta.url), "utf8"), runtime);
   vm.runInContext(fs.readFileSync(new URL("../src/55_ReviewIndex.gs", import.meta.url), "utf8"), runtime);
+  runtime.marketsReviewDigest_ = JSON.stringify;
   const row = [];
   row[10] = "Gracias por vuestra ayuda.";
   row[15] = {reply:"Llámanos al 912 249 802."};
   assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["ES","CO"]).candidate,"ES");
-  const before = runtime.marketsAndroidGeographyDigest_(row, "support-es");
+  const before = runtime.marketsAndroidGeographyDigest_(row, true);
+  const manual = runtime.marketsAndroidGeographyDigest_(row, false);
   row[15].reply = "Gracias por tu calificación. Usa la app en tu celular.";
-  assert.notEqual(runtime.marketsAndroidGeographyDigest_(row, "support-es"),before);
+  assert.notEqual(runtime.marketsAndroidGeographyDigest_(row, true),before);
+  assert.equal(runtime.marketsAndroidGeographyDigest_(row, false),manual);
   assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["ES","CO"]),null);
   row[15].reply = "Llámanos al +57 601 123 4567.";
   assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["ES","CO"]).candidate,"CO");
@@ -814,7 +838,7 @@ test("Android inference uses a localized support contact and rejects contradicto
   row[15] = {reply:"Contáctanos por la línea de atención 601 555 1234."};
   assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["ES","CO"]).candidate,"CO");
   row[15] = {reply:"El indicativo telefónico es 601."};
-  assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["ES","CO"]).candidate,"CO");
+  assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["ES","CO"]),null);
   row[15] = {reply:"Hemos corregido el error 601."};
   assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["ES","CO"]),null);
   row[15] = {reply:"Contacta a la línea empresarial de Bogotá 3078071."};
@@ -822,13 +846,46 @@ test("Android inference uses a localized support contact and rejects contradicto
   row[15] = {reply:"Gracias por tu reseña. Trabajamos diariamente para hacerte la vida más fácil."};
   assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["ES","CO"]).evidence,"support-co-template");
   row[15] = {};
-  row[10] = "Falta habilitar Yape.";
+  row[10] = "Necesito activar Yape.";
   assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["ES","PE"]).candidate,"PE");
   assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["ES","CO"]),null);
   row[10] = "Debería funcionar como Yape Bolivia.";
   assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["ES","PE"]),null);
   row[10] = "Yape no funciona en Colombia.";
   assert.equal(runtime.marketsAndroidGeographyEvidence_(row, ["CO","PE"]),null);
+  const cases = [
+    ["Funciona bien", "Llámanos al +34 (912) 249-802", "ES", "support-es"],
+    ["Gracias por la ayuda", "Puedes escribir a bbvaempresasresponde@bbva.com.", "ES", "support-es"],
+    ["Esto peta", "Comunícate al +57 (601) 307.80.71", "CO", "support-co"],
+    ["Funciona bien", "Nos alegra la calificación que nos das; tu banco en tu celular. Seguimos trabajando de tu mano para hacerte la vida más fácil.", "CO", "support-co-template"],
+    ["No puedo gestionar mis adeudos SEPA", "", "ES", "own-sepa-use"],
+    ["Resido en Madrid", "", "ES", "personal-location"],
+    ["Mi empresa opera en Bogotá", "", "CO", "personal-location"],
+    ["Vivo en Venezuela", "", "VE", "personal-location"],
+    ["Pagué con PayGold", "", "CO", "own-paygold-use"],
+    ["Tengo cuenta en Banco Galicia", "", "AR", "own-galicia-account"],
+    ["Mi cuenta está hasta las patas y no puedo usar BCP", "", "PE", "contextual-pe"],
+    ["Esto peta", "", null],
+    ["Yape es mejor", "", null],
+    ["Madrid", "", null],
+    ["Uso BBVA, como en Colombia", "☎ +34 912 249 802", null],
+    ["No resido en Colombia", "Comunícate al +57 601 307 8071", null],
+    ["Estoy de vacaciones aquí", "Comunícate al +57 601 307 8071", null],
+    ["Mi hermana vive en Bogotá", "Comunícate al +57 601 307 8071", null],
+    ["Vivo en Madrid y mi empresa opera en Bogotá", "", null],
+    ["Mi empresa opera en Bogotá", "Llámanos al +34 912249802", null],
+    ["Funciona bien", "No llames a nuestra línea anterior 912 249 802", null],
+    ["Funciona bien", "Llámanos al 91", null],
+    ["Funciona bien", "Llámanos al 601", null],
+    ["Funciona bien", "Gracias por tu calificación. Nos alegra tu comentario.", null]
+  ];
+  for (const [text, reply, country, rule] of cases) {
+    row[10] = text;
+    row[15] = { reply };
+    const result = runtime.marketsAndroidGeographyEvidence_(row, ["ES", "CO", "PE", "AR", "VE"]);
+    assert.equal(result?.candidate ?? null, country, text + " / " + reply);
+    if (rule) assert.equal(result.evidence, rule);
+  }
 });
 
 test("Android geography checkpoints physical and eligible rows independently across appends and revisions", () => {
@@ -862,14 +919,19 @@ test("Android geography checkpoints physical and eligible rows independently acr
     marketsReviewDigest_: JSON.stringify
   });
   vm.runInContext(fs.readFileSync(new URL("../src/55_ReviewIndex.gs", import.meta.url), "utf8"), runtime);
-  runtime.readMarketsAndroidGeography_ = () => new Map();
-  runtime.marketsAndroidGeographyEvidence_ = () => null;
+  runtime.readMarketsAndroidGeography_ = () => new Map([["a", {
+    automatic:false, packageName:"shared", country:"ES", digest:"manual"
+  }]]);
+  runtime.marketsAndroidGeographyCandidate_ = () => ({ status:"VALIDAR", candidate:"ES", evidence:"bizum" });
+  runtime.marketsReviewTextDigest_ = () => "manual";
+  runtime.marketsAndroidGeographyEvidence_ = row => row[0] === "a" ? {status:"VALIDAR",candidate:"MX"} : null;
   const now = new Date("2026-11-15T09:00:00Z");
   const scan = () => runtime.scanMarketsAndroidGeographyBatch_(now);
   const status = () => JSON.parse(properties.get("MARKETS_ANDROID_GEO_AUDIT"));
 
   assert.equal(scan(), true);
   assert.deepEqual([status().processed, status().total, status().scannedRows, status().complete], [1, 2, 3000, false]);
+  assert.equal(status().counts.INFERIDO,1);
   rows.push(android("c"));
   assert.equal(scan(), true);
   assert.deepEqual([status().processed, status().total, status().scannedRows, status().complete], [2, 2, 3002, true]);

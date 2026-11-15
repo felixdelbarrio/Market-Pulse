@@ -662,19 +662,54 @@ test("new-review impact never blends Android, iOS or Huawei and deduplicates a s
   assert.equal(global.summary.platforms.find(item => item.platform === "iOS").newReviews, 20);
   assert.notEqual(global.summary.platforms.find(item => item.platform === "Android").rating,
     global.summary.platforms.find(item => item.platform === "iOS").rating);
-  const spain = browser.MarketsDomain.monthlyNewReviewImpact(
-    trends, snapshot, { country: "ES", platform: "ALL" }, "2026-07");
-  assert.equal(spain.rows.find(row => row.platform === "Android").available, false);
-  assert.deepEqual(Array.from(spain.rows.find(row => row.platform === "Android").reasons), ["SHARED_LISTING"]);
-  const estimate = (inferGeography) => browser.MarketsDomain.monthlyNewReviewImpact(
-    trends, snapshot, {country:"ES",platform:"ALL",inferGeography}, "2026-07", {"ANDROID|shared":3}).rows.find(row=>row.platform==="Android");
-  assert.equal(estimate("YES").newReviews,3);
-  assert.equal(estimate("YES").volumeInferred,true);
-  assert.equal(estimate("NO").newReviews,null);
-  assert.equal(estimate("").newReviews,null);
-  assert.equal(spain.summary.platforms.find(item=>item.platform==="Android").rating, estimate("NO").rating);
-  assert.equal(estimate("NO").rating,estimate("YES").rating);
-  assert.equal(estimate("NO").impact,estimate("YES").impact);
+  const voice = (country, inferGeography, period="2026-07", app) => browser.MarketsDomain.monthlyNewReviewImpact(
+    trends, snapshot, {country,platform:"ALL",app,inferGeography}, period);
+  const android = model => model.rows.find(row=>row.platform==="Android");
+  for (const country of ["ES","CO"]) {
+    const yes = voice(country,"YES"), no = voice(country,"NO");
+    assert.equal(android(yes).countryCode,country);
+    assert.equal(android(yes).available,true);
+    assert.equal(android(yes).volumeScope,"SHARED_LISTING");
+    assert.equal(android(yes).newReviews,null);
+    assert.equal(android(no).newReviews,null);
+    assert.equal(android(yes).estimatedCountryRatingVolume,null);
+    assert.equal(android(yes).volumeReason,"NO_REPRESENTATIVE_SAMPLE");
+    assert.equal(android(no).volumeReason,"INFERENCE_DISABLED");
+    assert.equal(android(yes).rating,android(no).rating);
+    assert.equal(android(yes).impact,android(no).impact);
+    assert.equal(yes.summary.platforms.find(item=>item.platform==="Android").rating,android(yes).rating);
+  }
+  assert.equal(android(voice("CO","YES","2026-06")).rating,null);
+  assert.equal(android(voice("CO","YES","2026-06")).impact,null);
+  assert.equal(voice("CO","YES","2026-07","Otra aplicación").rows.length,0);
+
+  const app = fs.readFileSync(new URL("../src/App.html", import.meta.url), "utf8");
+  const render = app.slice(app.indexOf("    function renderNewReviewImpact"),app.indexOf("    const benchmarkModels"));
+  const elements = {"new-review-meta":{},"new-review-impact":{}};
+  let sheet;
+  Object.assign(browser,{
+    state:{country:"ES",snapshot}, monthlyFilters:{inferGeography:"YES"},
+    D:browser.MarketsDomain, $:id=>elements[id], selection:()=>({country:browser.state.country,platform:"ALL"}),
+    fmt:value=>String(value), integer:value=>String(value), signed:value=>String(value),
+    translate:String, countryLabel:String, monthLabel:String, reviewFilterLabel:(_key,value)=>value,
+    MarketsUI:{esc:String}, setExportSheet:(_view,_title,country,filters,header,rows)=>{sheet={country,filters,header,rows};}
+  });
+  vm.runInContext(clientScript(fs.readFileSync(new URL("../src/Charts.html", import.meta.url), "utf8")), browser);
+  browser.C=browser.MarketsCharts;
+  vm.runInContext(render,browser);
+  for (const [country, setting, month] of [["ES","YES","2026-07"],["CO","NO","2026-07"],["CO","YES","2026-06"]]) {
+    browser.state.country=country;
+    browser.monthlyFilters.inferGeography=setting;
+    browser.renderNewReviewImpact(month,trends);
+    const row=sheet.rows.find(row=>row[1]==="Android");
+    assert.equal(sheet.country,country);
+    assert.equal(sheet.filters[0][1],month);
+    assert.equal(row[2],"Ficha Android multipaís");
+    assert.equal(row[6],"N/D");
+    assert.equal(row[5],month==="2026-06"?"N/D":android(voice(country,setting)).rating);
+    assert.ok(elements["new-review-impact"].innerHTML.includes(row[2]));
+    assert.ok(elements["new-review-impact"].innerHTML.includes(row[8]));
+  }
 });
 
 test("evolution includes all apps by default and supports filtering by app", () => {

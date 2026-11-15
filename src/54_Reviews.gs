@@ -510,7 +510,7 @@ function queryMarketsReviews_(ss, filters, window, includeTranslations = false, 
       const approval = country === 'UNKNOWN' && android && approvedGeo.get(row[0]);
       const eligible = approval && (byPackage.get(row[4]) || []).map(app => app.countryCode);
       if (approval && approval.packageName === row[4] && new Set(eligible).size > 1 &&
-          eligible.includes(approval.country) && approval.digest === marketsAndroidGeographyDigest_(row, approval.reason)) {
+          eligible.includes(approval.country) && approval.digest === marketsAndroidGeographyDigest_(row, approval.automatic)) {
         const evidence = approval.automatic ? marketsAndroidGeographyEvidence_(row, eligible) :
           marketsAndroidGeographyCandidate_(row[10], eligible);
         if (evidence?.status === 'VALIDAR' && evidence.candidate === approval.country) {
