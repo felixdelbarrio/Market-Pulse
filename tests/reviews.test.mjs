@@ -1328,3 +1328,33 @@ test("annual NPS summary preserves neutral denominators and does not invent miss
   assert.equal(summary.find(row => row.month === "2026-03").balance, -100);
   assert.equal(summary.some(row => row.month === "2026-02"), false);
 });
+
+test("review prefetch never rebuilds a stale snapshot or caches its absence", () => {
+  const props = { MARKETS_REVIEW_SOURCE_GENERATION: "present", MARKETS_REVIEW_GEOGRAPHY_REVISION: "ready" };
+  const cache = new Map();
+  const local = vm.createContext({
+    console: { log() {} },
+    MARKETS_CONFIG: { timeZone: "Europe/Madrid" },
+    Utilities: { formatDate: () => "2026-11-16" },
+    safeJsonParse_: JSON.parse,
+    PropertiesService: { getScriptProperties: () => ({ getProperties: () => props }) },
+    CacheService: { getScriptCache: () => ({ get: key => cache.get(key), put: (key, value) => cache.set(key, value) }) },
+    readAppCatalog_: () => []
+  });
+  for (const file of ["52_ReviewInsights.gs", "60_WebApp.gs"]) {
+    vm.runInContext(fs.readFileSync(new URL("../src/" + file, import.meta.url), "utf8"), local);
+  }
+  local.marketsReviewDigest_ = JSON.stringify;
+  const db = { getId: () => "test" }, filters = { country: "ES", platform: "ALL", year: "2026" };
+  const window = { start: "2026-01-01", end: "2026-11-16" };
+  let reads = 0;
+  const rebuild = () => { reads++; return { monthly: [] }; };
+  const lookup = snapshotOnly => local.readMarketsReviewCache_(db, "nps", filters, window, rebuild, {}, snapshotOnly);
+  assert.equal(lookup(true), null);
+  assert.equal(cache.size, 0);
+  assert.equal(reads, 0);
+  assert.ok(lookup(false));
+  assert.equal(reads, 1);
+  assert.ok(lookup(true));
+  assert.equal(reads, 1);
+});

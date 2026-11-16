@@ -823,7 +823,7 @@ function publishMarketsReviewSnapshot_() {
   return { complete, published: complete ? count : 0 };
 }
 
-function getMarketsReviewPage(filters) {
+function getMarketsReviewPage(filters, snapshotOnly = false) {
   const requestStarted = Date.now();
   currentMarketsUserEmail_();
   filters = normalizeMarketsReviewFilters_(filters);
@@ -852,7 +852,8 @@ function getMarketsReviewPage(filters) {
       timing.classified = (timing.classified || 0) + page.rows.length;
     }
     return page;
-  }, timing);
+  }, timing, snapshotOnly === true);
+  if (!page) return null;
   return { ...localizeMarketsReviewTopics_(ss, page, filters.language), timing: { ...timing, durationMs: Date.now() - requestStarted } };
 }
 
@@ -922,7 +923,7 @@ function paginateMarketsReviews_(rows, filters, window) {
 }
 
 /** The annual plot needs counts by month and entity without review text or other panels. */
-function getMarketsReviewNps(filters) {
+function getMarketsReviewNps(filters, snapshotOnly = false) {
   const started = Date.now();
   currentMarketsUserEmail_();
   const { country, audience, inferGeography, year } = normalizeMarketsReviewFilters_(filters);
@@ -939,7 +940,8 @@ function getMarketsReviewNps(filters) {
     timing.aggregateMs = Date.now() - aggregateStarted;
     timing.input = rows.length;
     return { monthly };
-  }, timing);
+  }, timing, snapshotOnly === true);
+  if (!data) return null;
   return { monthly: data.monthly.filter(point => point.month.startsWith(year + '-')),
     timing: { ...timing, durationMs: Date.now() - started } };
 }
@@ -960,7 +962,7 @@ function summarizeMarketsReviewNps_(rows) {
   return [...monthly.values()].map(point => ({ ...point, balance: reviewBalancePoints_(point) }));
 }
 
-function getMarketsReviewAnalytics(filters) {
+function getMarketsReviewAnalytics(filters, snapshotOnly = false) {
   const requestStarted = Date.now();
   currentMarketsUserEmail_();
   const ss = openMarketsSpreadsheet_();
@@ -992,7 +994,8 @@ function getMarketsReviewAnalytics(filters) {
     timing.aggregateMs = Date.now() - aggregateStarted;
     timing.input = rows.length;
     return result;
-  }, timing);
+  }, timing, snapshotOnly === true);
+  if (!data) return null;
   function localizeReview({ translations, replyTranslations, ...review }) {
     const translated = translations?.[language];
     return { ...review, reply: replyTranslations?.[language] || review.reply, text: translated || review.original, translated: Boolean(translated && translated !== review.original) };
@@ -1082,7 +1085,7 @@ function marketsReviewCacheKey_(ss, operation, filters, window, versions) {
     ss.getId(), window.start, window.end, versions, scope]);
 }
 
-function readMarketsReviewCache_(ss, operation, filters, window, builder, timing = {}) {
+function readMarketsReviewCache_(ss, operation, filters, window, builder, timing = {}, snapshotOnly = false) {
   const started = Date.now();
   const properties = PropertiesService.getScriptProperties().getProperties();
   const catalog = readAppCatalog_(ss);
@@ -1106,8 +1109,9 @@ function readMarketsReviewCache_(ss, operation, filters, window, builder, timing
         }
       }
     }
-    return builder(catalog, versions);
+    return snapshotOnly ? undefined : builder(catalog, versions);
   }, operation === 'analytics' || operation === 'page' ? 6 : operation === 'nps' ? 2 : 1, timing);
+  if (value === undefined) return null;
   timing.source = timing.source || source;
   timing.durationMs = Date.now() - started;
   console.log(JSON.stringify({ operation: 'review-' + operation, source: timing.source, key, durationMs: timing.durationMs }));
