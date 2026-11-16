@@ -102,23 +102,23 @@ function evaluateMarketsMonitorHealth_(run, expectedDateKey) {
 function sendMarketsMonitorHealthEmail_(recipient, health, sentAt) {
   const executor = normalizeEmailForComparison_(Session.getEffectiveUser().getEmail());
   if (!executor) throw new Error('No se puede identificar la cuenta propietaria del trigger de vigilancia.');
-  const subject = '[ACCIÓN REQUERIDA] Market Pulse · Proceso diario · ' + health.dateKey;
+  const subject = '[ACCIÓN REQUERIDA] EDC Market Pulse · Proceso diario · ' + health.dateKey;
   const reason = trimString_(health.reason || 'La ejecucion diaria necesita revision.');
   const detail = trimString_(health.detail);
   const runId = trimString_(health.runId) || 'sin ejecucion';
   const appUrl = marketsWebAppUrl_();
   const loginUrl = marketsWebAppLoginUrl_(recipient);
-  const plain = 'MARKET PULSE\nBBVA Banca de Empresas e Instituciones\nMONITOR TÉCNICO\n\n' + reason + '\n\nFecha esperada: ' +
+  const plain = 'EDC MARKET PULSE\nBBVA Banca de Empresas e Instituciones\nMONITOR TÉCNICO\n\n' + reason + '\n\nFecha esperada: ' +
     health.dateKey + '\nRun: ' + runId + (detail ? '\nDetalle: ' + detail : '') +
     '\n\nEjecuta runNow() manualmente y revisa RUN_LOG.\n' + loginUrl + '\nURL directa: ' + appUrl;
   const html = protectMarketsEmailColors_(marketsLightEmailDocument_() +
     '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" bgcolor="#F7F8F8"><tr><td align="center">' +
     '<div style="max-width:620px;margin:24px auto;text-align:left;background:#FFFFFF;border-radius:12px;overflow:hidden;">' +
-    '<div style="padding:22px 26px;background:#001391;color:#FFFFFF;"><img src="cid:bbvaLogo" width="156" alt="BBVA Banca de Empresas e Instituciones" style="display:block;width:156px;height:auto;"><div style="margin-top:20px;color:#8BE1E9;font-size:11px;font-weight:700;letter-spacing:.8px;">MARKET PULSE · MONITOR TÉCNICO</div><h1 style="margin:8px 0 0;font-size:24px;line-height:30px;">El proceso diario necesita revisión</h1></div>' +
+    '<div style="padding:22px 26px;background:#001391;color:#FFFFFF;"><img src="cid:bbvaLogo" width="156" alt="BBVA Banca de Empresas e Instituciones" style="display:block;width:156px;height:auto;"><div style="margin-top:20px;color:#8BE1E9;font-size:11px;font-weight:700;letter-spacing:.8px;">EDC MARKET PULSE · MONITOR TÉCNICO</div><h1 style="margin:8px 0 0;font-size:24px;line-height:30px;">El proceso diario necesita revisión</h1></div>' +
     '<div style="padding:24px 26px;"><p style="margin:0 0 18px;line-height:22px;">' + escapeMarketsAlertHtml_(reason) + '</p>' +
     '<div style="padding:14px 16px;border-left:4px solid #B92A45;background:#F9E9ED;font-size:13px;line-height:20px;"><strong>Fecha esperada:</strong> ' + escapeMarketsAlertHtml_(health.dateKey) + '<br><strong>Run:</strong> ' + escapeMarketsAlertHtml_(runId) + (detail ? '<br><strong>Detalle:</strong> ' + escapeMarketsAlertHtml_(detail) : '') + '</div>' +
     '<p style="margin:20px 0 0;font-size:14px;line-height:21px;">Ejecuta <strong>runNow()</strong> manualmente y revisa <strong>RUN_LOG</strong>.</p>' +
-    '<p style="margin:18px 0 0;"><a href="' + escapeMarketsAlertHtml_(loginUrl) + '" style="color:#001391;font-weight:700;">Ir a Market Pulse</a></p>' +
+    '<p style="margin:18px 0 0;"><a href="' + escapeMarketsAlertHtml_(loginUrl) + '" style="color:#001391;font-weight:700;">Ir a EDC Market Pulse</a></p>' +
     '<p style="margin:18px 0 0;color:#ADB8C2;font-size:10px;line-height:15px;">Comprobación automática ' + escapeMarketsAlertHtml_(marketsAlertDateLabel_(sentAt)) + ' · aviso único por día.</p></div></div></td></tr></table></body></html>');
   const token = Utilities.getUuid().replace(/-/g, '');
   const relatedBoundary = 'bbva_health_related_' + token;
@@ -126,7 +126,7 @@ function sendMarketsMonitorHealthEmail_(recipient, health, sentAt) {
   const image = buildMarketsAlertInlineImages_().bbvaLogo;
   const crlf = '\r\n';
   const mime = [
-    'From: ' + marketsAlertEncodedHeader_('BBVA Market Pulse · Monitor técnico') + ' <' + executor + '>',
+    'From: ' + marketsAlertEncodedHeader_('BBVA EDC Market Pulse · Monitor técnico') + ' <' + executor + '>',
     'To: ' + recipient,
     'Reply-To: ' + recipient,
     'Subject: ' + marketsAlertEncodedHeader_(subject),

@@ -446,7 +446,7 @@ function queryMarketsReviews_(ss, filters, window, includeTranslations = false, 
   }
   const readStarted = Date.now();
   const width = marketsReviewWidth_(sheet);
-  const indexOnly = Boolean(paging && !paging.fullRead);
+  const indexOnly = Boolean((paging && !paging.fullRead) || (filters.npsOnly && !filters.fullRead));
   const search = normalizeReviewEvidence_(String(filters.search || "").slice(0, 200));
   const approvedGeo = filters.inferGeography !== 'NO' && typeof readMarketsAndroidGeography_ === 'function'
     ? readMarketsAndroidGeography_(ss) : new Map();
@@ -457,7 +457,7 @@ function queryMarketsReviews_(ss, filters, window, includeTranslations = false, 
     const geographicRows = stored.flatMap((row, offset) => approvedGeo.get(row[0])?.country
       ? [{ row, rowNumber: offset + 2 }] : []);
     if (geographicRows.length && !hydrateMarketsReviewPage_(sheet, width, geographicRows)) {
-      return queryMarketsReviews_(ss, filters, window, includeTranslations, apps, { ...paging, fullRead: true });
+      return queryMarketsReviews_(ss, { ...filters, fullRead: true }, window, includeTranslations, apps, paging && { ...paging, fullRead: true });
     }
     for (const { row, rowNumber } of geographicRows) stored[rowNumber - 2] = row;
   }
@@ -555,6 +555,10 @@ function queryMarketsReviews_(ss, filters, window, includeTranslations = false, 
       if (classifyStarted) classificationMs += Date.now() - classifyStarted;
       return false;
     }
+    if (filters.npsOnly) {
+      if (classifyStarted) classificationMs += Date.now() - classifyStarted;
+      return true;
+    }
     const ids = indexed ? JSON.parse(saved[3]) : rules ? classifyReviewEvidence_(original, rules) : [];
     if (classifyStarted) classificationMs += Date.now() - classifyStarted;
     if (window && filters.topic === 'general' && marketsReviewBlocks_(ids, knownBlocks).length) return false;
@@ -576,7 +580,9 @@ function queryMarketsReviews_(ss, filters, window, includeTranslations = false, 
       readMs += Date.now() - startedTextRead;
     }
   }
-  const results = (page?.rows || matching).map(candidate => {
+  const results = filters.npsOnly
+    ? matching.map(({ row, date, apps }) => ({ date, rating: row[7], entities: marketsReviewEntities_(apps, row[4]) }))
+    : (page?.rows || matching).map(candidate => {
       if (!filterText) matchingEvidence(candidate);
       const { row, key, date, countries, android, storefronts, attributionMethod, sharedListing, apps, ids } = candidate;
       const [country] = countries;
@@ -585,7 +591,7 @@ function queryMarketsReviews_(ss, filters, window, includeTranslations = false, 
           ? 'https://apps.apple.com/' + storefronts[0].toLowerCase() + '/app/' + row[4] + '?see-all=reviews&platform=iphone' : '';
       const { author, helpful, reply, replyDate, replyAuthor, replyTranslations } = marketsReviewMetadata_(row);
       return { key, listings: apps.map(app => ({ country: app.countryCode, app: app.appName, entity: app.isBbva ? 'BBVA Empresas' : app.appName })),
-        entities: apps.length ? [...new Set(apps.map(app => app.isBbva ? 'BBVA Empresas' : app.appName))] : [String(row[4])],
+        entities: marketsReviewEntities_(apps, row[4]),
         blocks: marketsReviewBlocks_(ids, knownBlocks), app: apps[0]?.appName || String(row[4]), countries: [country], storefronts,
         attributionMethod, confidence: country === 'UNKNOWN' ? 'unknown' : 'inferred',
         platform: row[3], ...(android ? { volumeKey: 'ANDROID|' + String(row[4]).toLowerCase() } : {}), date, rating: row[7], version: String(row[8]),
@@ -605,6 +611,10 @@ function queryMarketsReviews_(ss, filters, window, includeTranslations = false, 
   if (filters.timing) Object.assign(filters.timing, stats);
   console.log(JSON.stringify({ operation: 'review-query', ...stats }));
   return page ? { ...page, rows: results } : results;
+}
+
+function marketsReviewEntities_(apps, storeId) {
+  return apps.length ? [...new Set(apps.map(app => app.isBbva ? 'BBVA Empresas' : app.appName))] : [String(storeId)];
 }
 
 function compareMarketsReviewRows_(a, b) {

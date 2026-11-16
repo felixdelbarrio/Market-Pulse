@@ -390,7 +390,8 @@
     #admin-panel-business .record-filters,#admin-panel-logs .record-filters{grid-template-columns:minmax(0,1fr)}
     #admin-panel-business select,#admin-panel-logs select,#admin-panel-logs input{max-width:100%;min-width:0}
   }
-  .monthly-nps{display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--space-1);margin-top:var(--space-1);font-size:var(--text-s)}
+  .monthly-nps{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:center;gap:calc(var(--space-1)/2) var(--space-1);margin-top:var(--space-1);padding-block-start:var(--space-1);border-block-start:var(--stroke) solid var(--color-primary-border);font-size:var(--text-s);font-variant-numeric:tabular-nums}
+  .monthly-nps strong{color:var(--color-primary-bg-action-pressed)}
   .monthly-nps em{font-style:normal}
   @media(max-width:780px){
     .monthly-pulse-panel .monthly-matrix{min-width:0;table-layout:fixed;width:100%}

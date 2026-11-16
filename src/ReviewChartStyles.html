@@ -10,7 +10,7 @@
   .annual-chart-layout .series-card{grid-template-columns:var(--space-1) minmax(0,1fr)}
   .annual-chart-layout .series-card>b{grid-column:2}
 }
-/* News Radar chart styles scoped to the monthly balance card. */
+/* News Radar chart styles scoped to the annual review balance card. */
 #review-balance-panel .trend-chart svg{width:100%;display:block;overflow:visible}
 #review-balance-panel .trend-chart svg text{fill:var(--color-primary-text-secondary);font-size:var(--text-s);font-family:var(--font-body)}
 #review-balance-panel .chart-grid{stroke:var(--color-primary-border);stroke-dasharray:4 6;stroke-width:var(--stroke)}
@@ -46,7 +46,7 @@
 .review-gap-table .admin-table th[scope=row] button:hover{text-decoration:underline}
 #review-annual .review-card + .review-card,#review-examples .review-card + .review-card{margin-top:var(--space-1)}
 @media(max-width:767px){#review-balance-panel{padding:var(--space-2)}#review-balance-panel .panel-header{flex-wrap:wrap}}
-#review-balance-panel .map-layout{display:grid;grid-template-columns:minmax(0,1fr) var(--map-aside-min-width);gap:var(--space-3);align-items:start}
+#review-balance-panel .map-layout{display:grid;grid-template-columns:minmax(0,1fr) min(var(--map-aside-min-width),30%);gap:var(--space-3);align-items:start}
 #review-balance-panel .geo-list{display:flex;flex-direction:column;max-height:260px;min-height:0}
 #review-balance-panel .geo-list .geo-entities{overflow-y:auto;min-height:0}
 #review-balance-panel .geo-list .eyebrow{font-size:var(--text-s);color:var(--color-primary-text-secondary);margin-bottom:var(--space-2)}
@@ -56,7 +56,12 @@
 #review-balance-panel .geo-track>span{display:block;height:100%;background:var(--color-primary-bg-action);border-radius:inherit}
 #review-balance-panel .identity-label{display:inline-flex;align-items:center;gap:var(--space-1);overflow-wrap:anywhere}
 #review-balance-panel .identity-label i{width:var(--space-1);height:var(--space-1);border-radius:50%;flex:none}
-@media(max-width:767px){#review-balance-panel .map-layout{grid-template-columns:1fr}#review-balance-panel .geo-entities{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 var(--space-2)}}
+@media(max-width:767px){
+  #review-balance-panel .map-layout{grid-template-columns:minmax(0,1fr) minmax(5rem,31%);gap:var(--space-1)}
+  #review-balance-panel .geo-row,#review-balance-panel .geo-list .eyebrow{font-size:var(--text-s);line-height:var(--line-s);overflow-wrap:anywhere}
+  #review-balance-panel .geo-row{grid-template-columns:minmax(0,1fr) auto;column-gap:calc(var(--space-1)/2)}
+}
+#review-balance-panel .trend-chart,#review-balance-panel .geo-list{min-width:0}
 .monthly-sentiment{width:min(100%,var(--sidebar-width));margin-bottom:var(--space-2)}
 
 .annual-kpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--grid-gutter)}

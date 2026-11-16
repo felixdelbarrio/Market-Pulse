@@ -1,6 +1,6 @@
 /** Evalua alertas personalizadas y envia un unico resumen BBVA por usuario. */
 var MARKETS_ALERT_EMAIL = Object.freeze({
-  senderName: 'BBVA Market Pulse',
+  senderName: 'BBVA EDC Market Pulse',
   senderAddress: 'voc-commercial.group@bbva.com',
   senderMode: 'GROUP_ALIAS'
 });
@@ -740,7 +740,7 @@ function validateMarketsAlertSender() {
 }
 
 function marketsAlertEmailSubject_(events) {
-  const prefix = '[bIA] 🚀[Market Pulse]  ·Alertas personalizadas · ';
+  const prefix = '[bIA] 🚀[EDC Market Pulse]  ·Alertas personalizadas · ';
   const tests = (events || []).filter(function (event) { return event.type === 'TEST' || event.isTest; });
   if (tests.length === (events || []).length && tests.length) {
     const result = marketsAlertPreviewHasNoSignals_(events) ? 'Sin alertas activas' :
@@ -782,14 +782,14 @@ function renderMarketsAlertPlainText_(events, recipient, destination) {
       trimString_(event.detail) + '\nUmbral configurado: ' + marketsAlertNumberLabel_(event.threshold) + ' puntos\n' +
       'Recomendación: ' + marketsAlertRecommendation_(event);
   });
-  return 'MARKET PULSE\nBBVA Banca de Empresas e Instituciones\n\n' +
+  return 'EDC MARKET PULSE\nBBVA Banca de Empresas e Instituciones\n\n' +
     (noSignals ? 'Sin alertas activas en el ámbito seleccionado\n' :
       marketsAlertPreviewIsBelowThreshold_(events) ? 'Prueba con movimientos reales bajo umbral\n' :
         (marketsAlertIsReviewShare_(events) ? 'Alerta de reseñas\n' : 'Alerta por cambios en ratings\n')) +
     (isTest ? 'Vista previa construida exclusivamente con el último cierre real y la configuración vigente. No genera una alerta operativa.\n\n' : '\n') +
     lines.join('\n\n') + '\n\nDatos obtenidos: ' + marketsAlertDataDateLabel_(events) +
     '\nVersión: backend ' + MARKETS_CONFIG.codeVersion + ' / web ' + marketsAlertWebVersion_() +
-    '\nGestiona tus alertas desde Market Pulse.\nAbrir con la cuenta corporativa: ' + loginUrl + '\nURL directa: ' + (destination || appUrl);
+    '\nGestiona tus alertas desde EDC Market Pulse.\nAbrir con la cuenta corporativa: ' + loginUrl + '\nURL directa: ' + (destination || appUrl);
 }
 
 /** Common light canvas for clients that honor email color-scheme hints. */
@@ -853,7 +853,7 @@ function renderMarketsAlertEmail_(events, recipient, feedback) {
   const cards = (events || []).map(renderMarketsAlertEmailCard_).join('');
   const loginUrl = marketsWebAppLoginUrl_(feedback?.open ? '' : recipient, feedback?.open);
   const safeLoginUrl = escapeMarketsAlertHtml_(loginUrl);
-  const cta = '<table role="presentation" align="center" cellspacing="0" cellpadding="0"><tr><td bgcolor="#001391" style="border-radius:8px;"><a href="' + safeLoginUrl + '" target="_blank" style="display:block;padding:13px 22px;border-radius:8px;color:#FFFFFF;text-decoration:none;font-weight:700;">Ir a Market Pulse</a></td></tr></table>';
+  const cta = '<table role="presentation" align="center" cellspacing="0" cellpadding="0"><tr><td bgcolor="#001391" style="border-radius:8px;"><a href="' + safeLoginUrl + '" target="_blank" style="display:block;padding:13px 22px;border-radius:8px;color:#FFFFFF;text-decoration:none;font-weight:700;">Ir a EDC Market Pulse</a></td></tr></table>';
   const subtitle = noSignals ? 'El último cierre real del ámbito seleccionado no ha superado ninguna de las condiciones configuradas.' :
     marketsAlertPreviewIsBelowThreshold_(events) ?
       'Prueba construida con movimientos reales del ámbito guardado. En producción no se enviaría: ninguno alcanza el límite configurado.' :
@@ -867,7 +867,7 @@ function renderMarketsAlertEmail_(events, recipient, feedback) {
   return protectMarketsEmailColors_(marketsLightEmailDocument_() +
     '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" bgcolor="#F7F8F8" style="background:#F7F8F8;"><tr><td align="center" style="padding:28px 12px;">' +
     '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" bgcolor="#FFFFFF" style="width:100%;max-width:640px;background:#FFFFFF;color:#000519;border-radius:16px;overflow:hidden;">' +
-    '<tr><td width="100%" bgcolor="#001391" style="padding:24px 28px;background:#001391;color:#FFFFFF;"><img src="cid:bbvaLogo" width="156" alt="BBVA Banca de Empresas e Instituciones" style="display:block;width:156px;height:auto;"><div style="margin-top:22px;color:#8BE1E9;font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">MARKET PULSE · ' + (isTest ? 'PRUEBA DE CANAL' : reviewShare ? 'ALERTAS DE RESEÑAS' : 'ALERTAS DE RATINGS') + '</div><h1 style="margin:8px 0 0;color:#FFFFFF;font-size:28px;line-height:34px;">' + (noSignals ? 'Sin alertas activas' : marketsAlertPreviewIsBelowThreshold_(events) ? 'Prueba con datos reales' : reviewShare ? 'Alerta de reseñas' : 'Alerta por cambios en ratings') + '</h1><p style="margin:10px 0 0;color:#85C8FF;font-size:15px;line-height:22px;">' + escapeMarketsAlertHtml_(subtitle) + '</p></td></tr>' +
+    '<tr><td width="100%" bgcolor="#001391" style="padding:24px 28px;background:#001391;color:#FFFFFF;"><img src="cid:bbvaLogo" width="156" alt="BBVA Banca de Empresas e Instituciones" style="display:block;width:156px;height:auto;"><div style="margin-top:22px;color:#8BE1E9;font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">EDC MARKET PULSE · ' + (isTest ? 'PRUEBA DE CANAL' : reviewShare ? 'ALERTAS DE RESEÑAS' : 'ALERTAS DE RATINGS') + '</div><h1 style="margin:8px 0 0;color:#FFFFFF;font-size:28px;line-height:34px;">' + (noSignals ? 'Sin alertas activas' : marketsAlertPreviewIsBelowThreshold_(events) ? 'Prueba con datos reales' : reviewShare ? 'Alerta de reseñas' : 'Alerta por cambios en ratings') + '</h1><p style="margin:10px 0 0;color:#85C8FF;font-size:15px;line-height:22px;">' + escapeMarketsAlertHtml_(subtitle) + '</p></td></tr>' +
     '<tr><td width="100%" style="padding:22px 28px 8px;">' + summary + '</td></tr>' +
     '<tr><td width="100%" style="padding:14px 28px 8px;">' + cards + '</td></tr>' +
     '<tr><td width="100%" style="padding:18px 28px 30px;">' + cta + '<p align="center" style="margin:18px 0 0;color:#46536D;font-size:12px;line-height:18px;">Este correo es privado y contiene únicamente señales configuradas para tu cuenta. Las preferencias de otros usuarios nunca son visibles.</p><p align="center" style="margin:7px 0 0;color:#ADB8C2;font-size:10px;line-height:15px;">Datos obtenidos el ' + escapeMarketsAlertHtml_(marketsAlertDataDateLabel_(events)) + ' · backend ' + escapeMarketsAlertHtml_(MARKETS_CONFIG.codeVersion) + ' / web ' + escapeMarketsAlertHtml_(marketsAlertWebVersion_()) + '.</p></td></tr>' +
@@ -1018,9 +1018,9 @@ function marketsAlertReason_(event) {
 }
 
 function marketsAlertRecommendation_(event) {
-  if (event.type === 'REVIEW_LOW_SHARE') return 'Consulta las reseñas recientes de BBVA Empresas en Market Pulse.';
-  if (event.type === 'COMPETITIVE_CROSSOVER') return 'Abre Market Pulse y compara la evolución de BBVA con el competidor en ese mercado.';
-  return 'Abre Market Pulse, revisa la evolución de la aplicación y contrasta el movimiento con las valoraciones recientes.';
+  if (event.type === 'REVIEW_LOW_SHARE') return 'Consulta las reseñas recientes de BBVA Empresas en EDC Market Pulse.';
+  if (event.type === 'COMPETITIVE_CROSSOVER') return 'Abre EDC Market Pulse y compara la evolución de BBVA con el competidor en ese mercado.';
+  return 'Abre EDC Market Pulse, revisa la evolución de la aplicación y contrasta el movimiento con las valoraciones recientes.';
 }
 
 function marketsAlertNumberLabel_(value) {
@@ -1223,7 +1223,7 @@ function renderMarketsAlertFeedbackPage_(token) {
   page.unsubscribe = request.vote === 'unsubscribe';
   page.destination = '';
   page.choice = page.unsubscribe ? 'Dar de baja las alertas' : request.vote === 'positive' ? 'Sí, me resultó útil' : 'No me resultó útil';
-  return page.evaluate().setTitle('Valorar alerta de Market Pulse')
+  return page.evaluate().setTitle('Valorar alerta de EDC Market Pulse')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
 }
 

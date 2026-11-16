@@ -1,6 +1,6 @@
 /** Web app de lectura para el dashboard de ratings. */
 var MARKETS_WEB = Object.freeze({
-  version: '2026.11.16.80',
+  version: '2026.11.16.81',
   // Solo debe cambiar si cambia el formato serializado. Un cambio visual no
   // puede obligar al primer usuario a reconstruir la cache desde Sheets.
   cacheSchemaVersion: '2026.10.21.41',
@@ -42,7 +42,7 @@ function doGet(event) {
   template.newsletterOpen = newsletterOpen;
   template.initialView = params.view === 'alerts' ? 'alerts' : '';
   const page = template.evaluate()
-    .setTitle('Market Pulse · BBVA Banca de Empresas e Instituciones')
+    .setTitle('EDC Market Pulse · BBVA Banca de Empresas e Instituciones')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover')
     .setFaviconUrl('https://raw.githubusercontent.com/felixdelbarrio/Market-Pulse/3a4ebca6387785f387441aabd591b3e1ba429e49/assets/favicon.png');
   return page;
