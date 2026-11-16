@@ -868,6 +868,12 @@ test("Android inference uses a localized support contact and rejects contradicto
     ["Mi empresa opera en Bogotá", "", "CO", "personal-location"],
     ["Vivo en Venezuela", "", "VE", "personal-location"],
     ["Pagué con PayGold", "", "CO", "own-paygold-use"],
+    ["No se pueden realizar pagos con PayGold que antes se podían hacer", "", "CO", "paygold-payment-operation"],
+    ["Quiero crear un enlace de PayGold", "", "CO", "paygold-payment-operation"],
+    ["Vivo en Madrid y pagué con PayGold", "", null],
+    ["Necesito realizar mis pagos por PSE", "", "CO", "own-pse-payment"],
+    ["Quiero que las cuentas jurídicas puedan hacer Plin", "", "PE", "own-plin-operation"],
+    ["Recibí un Plin desde Bolivia", "", null],
     ["Tengo cuenta en Banco Galicia", "", "AR", "own-galicia-account"],
     ["Mi cuenta está hasta las patas y no puedo usar BCP", "", "PE", "contextual-pe"],
     ["Esto peta", "", null],
@@ -894,18 +900,20 @@ test("Android inference uses a localized support contact and rejects contradicto
 });
 
 test("Android geography checkpoints physical and eligible rows independently across appends and revisions", () => {
-  const rows = Array.from({ length: 3002 }, (_, i) => [String(i), "", "ES", "iOS", "shared"]);
+  const rows = Array.from({ length: 12002 }, (_, i) => [String(i), "", "ES", "iOS", "shared"]);
   const android = key => [key, "", "ES,MX", "Android", "shared"];
   rows[1] = android("a");
-  rows[3001] = android("b");
+  rows[12001] = android("b");
   const properties = new Map();
   const inventoryReads = [];
+  const detailReads = [];
   const source = {
     getLastRow: () => rows.length + 1,
     getRange: (start, _column, count, width) => ({
       getValues() {
         if (width === 5) inventoryReads.push([start, count]);
-        return rows.slice(start - 2, start - 2 + count);
+        else detailReads.push([start, count]);
+        return rows.slice(start - 2, start - 2 + count).map(row => row.slice(0, width));
       }
     })
   };
@@ -926,6 +934,9 @@ test("Android geography checkpoints physical and eligible rows independently acr
   vm.runInContext(fs.readFileSync(new URL("../src/55_ReviewIndex.gs", import.meta.url), "utf8"), runtime);
   vm.runInContext(fs.readFileSync(new URL("../src/52_ReviewInsights.gs", import.meta.url), "utf8"), runtime);
   runtime.marketsReviewDigest_ = JSON.stringify;
+  vm.runInContext(fs.readFileSync(new URL("../src/54_Reviews.gs", import.meta.url), "utf8"), runtime);
+  runtime.marketsReviewSheet_ = () => source;
+  runtime.marketsReviewWidth_ = () => 16;
   runtime.readMarketsAndroidGeography_ = () => new Map([["a", {
     automatic:false, packageName:"shared", country:"ES", digest:"manual"
   }]]);
@@ -937,14 +948,15 @@ test("Android geography checkpoints physical and eligible rows independently acr
   const status = () => JSON.parse(properties.get("MARKETS_ANDROID_GEO_AUDIT"));
 
   assert.equal(scan(), true);
-  assert.deepEqual([status().processed, status().total, status().scannedRows, status().complete], [1, 2, 3000, false]);
+  assert.deepEqual([status().processed, status().total, status().scannedRows, status().complete], [1, 2, 12000, false]);
   assert.equal(status().counts.INFERIDO,1);
   rows.push(android("c"));
   assert.equal(scan(), true);
-  assert.deepEqual([status().processed, status().total, status().scannedRows, status().complete], [2, 2, 3002, true]);
+  assert.deepEqual([status().processed, status().total, status().scannedRows, status().complete], [2, 2, 12002, true]);
   assert.equal(scan(), true);
-  assert.deepEqual([status().processed, status().total, status().scannedRows, status().complete], [3, 3, 3003, true]);
-  assert.deepEqual(inventoryReads, [[2, 3002], [3004, 1]]);
+  assert.deepEqual([status().processed, status().total, status().scannedRows, status().complete], [3, 3, 12003, true]);
+  assert.deepEqual(inventoryReads, [[2, 12002], [2, 12000], [12002, 2], [12004, 1], [12004, 1]]);
+  assert.deepEqual(detailReads, [[3, 1], [12003, 1], [12004, 1]]);
   assert.equal(scan(), false);
 
   rows.forEach(row => { row[3] = "iOS"; });
@@ -1014,10 +1026,12 @@ test("geography reprocessing revokes an invalid automatic row once and retains m
     marketsReviewWidth_: () => 16, safeJsonParse_: value => value ? JSON.parse(value) : null,
     MARKETS_WEB: { countryCodes: ["ES", "CO"] }
   });
-  for (const file of ["52_ReviewInsights.gs", "55_ReviewIndex.gs"]) {
+  for (const file of ["52_ReviewInsights.gs", "54_Reviews.gs", "55_ReviewIndex.gs"]) {
     vm.runInContext(fs.readFileSync(new URL("../src/" + file, import.meta.url), "utf8"), runtime);
   }
   runtime.marketsReviewDigest_ = JSON.stringify;
+  runtime.marketsReviewSheet_ = () => source;
+  runtime.marketsReviewWidth_ = () => 16;
   runtime.marketsReviewLiteral_ = value => value;
   runtime.marketsReviewMetadata_ = () => ({ reply: "Gracias por tu calificación" });
   runtime.readMarketsAndroidGeography_ = () => persisted;
@@ -1248,4 +1262,48 @@ test("Spanish market evidence and manual confirmations have distinct validation"
   const approval = { country: "ES", reason: "spain-owner-confirmed", automatic: false };
   assert.equal(local.marketsAndroidGeographyApprovalEvidence_([], ["ES","PE"], approval).candidate, "ES");
   assert.equal(local.marketsAndroidGeographyApprovalEvidence_([], ["CO","PE"], approval), null);
+});
+
+test("annual NPS materialization reuses valid counts after a translation and rejects stale geography or year", () => {
+  const local = vm.createContext({
+    safeJsonParse_: value => JSON.parse(value || "null"),
+    MARKETS_CONFIG: { timeZone: "Europe/Madrid" },
+    Utilities: { formatDate: () => "2026-11-16" },
+    readAppCatalog_: () => [],
+    readMarketsWebCache_: (_key, builder) => builder()
+  });
+  vm.runInContext(fs.readFileSync(new URL("../src/54_Reviews.gs", import.meta.url), "utf8"), local);
+  vm.runInContext(fs.readFileSync(new URL("../src/52_ReviewInsights.gs", import.meta.url), "utf8"), local);
+  local.marketsReviewDigest_ = JSON.stringify;
+  const props = { MARKETS_REVIEW_SOURCE_GENERATION: "a", MARKETS_REVIEW_GEOGRAPHY_REVISION: "b", MARKETS_REVIEWS_GENERATION: "translated" };
+  const version = local.marketsReviewCatalogVersion_([]);
+  props.MARKETS_REVIEW_SNAPSHOT_POINTER = JSON.stringify({
+    schema: 15, end: "2026-11-16", versions: ["prior"], npsVersions: ["a", "b", version]
+  });
+  local.PropertiesService = { getScriptProperties: () => ({ getProperties: () => props }) };
+  local.readMarketsReviewSnapshotShard_ = () => ({
+    "nps:ES": { start: "2025-01-01", end: "2026-11-16", monthly: [
+      { month: "2025-06", balance: 0 }, { month: "2026-01", balance: -100 }
+    ] }
+  });
+  const query = year => local.readMarketsReviewCache_({ getId: () => "ss" }, "nps",
+    { country: "ES", year, platform: "ALL" }, local.marketsReviewAnalyticsWindow_({ year }, "2026-11-16"), () => null);
+  assert.equal(query("2025").monthly[0].balance, 0);
+  assert.equal(query("2026").monthly.length, 1);
+  assert.equal(query("2024"), null);
+  props.MARKETS_REVIEW_GEOGRAPHY_REVISION = "changed";
+  assert.equal(query("2025"), null);
+});
+
+test("annual NPS summary preserves neutral denominators and does not invent missing months", () => {
+  const rows = [
+    { date: "2026-01-02", rating: 5, entities: ["BBVA Empresas", "Otra"] },
+    { date: "2026-01-27", rating: 4, entities: ["BBVA Empresas"] },
+    { date: "2026-03-01", rating: 2, entities: ["BBVA Empresas"] }
+  ];
+  const summary = api.summarizeMarketsReviewNps_(rows);
+  assert.equal(summary.find(row => row.entity === "BBVA Empresas" && row.month === "2026-01").balance, 50);
+  assert.equal(summary.find(row => row.entity === "Otra").balance, 100);
+  assert.equal(summary.find(row => row.month === "2026-03").balance, -100);
+  assert.equal(summary.some(row => row.month === "2026-02"), false);
 });

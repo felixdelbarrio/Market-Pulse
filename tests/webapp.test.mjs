@@ -375,7 +375,7 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(evolutionMarkup, /class="panel-body radar-filters review-gap-controls"[\s\S]*id="monthly-review-segment"/);
   assert.match(app, /searchable\(\$\("monthly-review-segment"\)\)\.refresh\(\)/);
   assert.match(evolutionMarkup, /id="evolution-filters"[\s\S]*name="audience"[\s\S]*name="inferGeography"[\s\S]*<\/form>/);
-  assert.match(evolutionMarkup, /id="monthly-matrix"[\s\S]*id="review-balance"[\s\S]*id="review-deltas"[\s\S]*id="review-examples"[\s\S]*id="new-review-impact"/);
+  assert.match(evolutionMarkup, /id="monthly-matrix"[\s\S]*id="review-deltas"[\s\S]*id="review-examples"[\s\S]*id="new-review-impact"/);
   assert.match(analyticsMarkup, /class="annual-chart-layout">\s*<div id="annual-chart"[^>]*><\/div>\s*<aside id="annual-series"[^>]*><\/aside>/);
   assert.match(analyticsMarkup, /id="review-heatmap"[\s\S]*id="analytics-entity"[\s\S]*id="annual-chart"[\s\S]*id="annual-nps-chart"[\s\S]*id="review-annual"/);
   const charts = fs.readFileSync(new URL("../src/Charts.html", import.meta.url), "utf8");
