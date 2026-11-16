@@ -31,7 +31,7 @@
       const nps=cell=>{
         if(!options.npsReady)return '<div class="monthly-nps"><span>NPS</span><span aria-label="Cargando NPS">…</span></div>';
         const delta=finite(cell.npsDelta)&&Math.abs(cell.npsDelta)>=.05;
-        return `<div class="monthly-nps"><span>NPS</span><strong>${finite(cell.nps)?options.format(cell.nps,1):"N/D"}</strong>${delta?`<em class="${cell.npsDelta>0?"delta-up":"delta-down"}">${ui.esc(options.signed(cell.npsDelta,1))} pp</em>`:""}</div>`;
+        return `<div class="monthly-nps"${cell.npsSample?` title="${ui.esc(cell.npsSample)}"`:""}><span>NPS</span><strong>${finite(cell.nps)?options.format(cell.nps,1):"N/D"}</strong>${delta?`<em class="${cell.npsDelta>0?"delta-up":"delta-down"}">${ui.esc(options.signed(cell.npsDelta,1))} pp</em>`:""}</div>`;
       };
       const body=model.rows.map(row=>`${options.showScopes?`<tr class="monthly-scope"><th scope="rowgroup" colspan="${model.periods.length}">${ui.esc(row.country)}</th></tr>`:""}<tr>${row.cells.map((cell,index)=>{const hasDelta=finite(cell.delta)&&Math.abs(cell.delta)>=.005,tone=cell.delta>0?"delta-up":"delta-down";const reviews=cell.platforms.map(item=>{const detail=item.unavailable?"N/D: Google Play no permite desagregar esta ficha por geografía.":`${options.integer(item.value)} reseñas`;return`<span class="monthly-review${item.unavailable?" unavailable":""}" title="${ui.esc(detail)}"><span>${ui.esc(item.platform)}</span><b>${item.unavailable?"N/D":options.compactInteger(item.value)}</b></span>`}).join("");return`<td class="${index===row.cells.length-1?"latest":""}"><div class="monthly-rating"><strong>${options.format(cell.rating,2)}</strong>${hasDelta?`<em class="${tone}">${ui.esc(options.signed(cell.delta))}</em>`:""}</div><div class="monthly-reviews">${reviews}</div>${nps(cell)}</td>`}).join("")}</tr>`).join("");
       return`<div class="monthly-matrix-scroll"><table class="monthly-matrix"><caption>Evolución mensual del rating, volumen de valoraciones y NPS de reseñas</caption><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table></div>`;
@@ -77,7 +77,10 @@
       }).join("");
       const bands=months.map((month,i)=>{
         const start=i?(x(i-1)+x(i))/2:left, end=i<months.length-1?(x(i)+x(i+1))/2:width-right;
-        const observations=series.filter(row=>row.values[i]!==null).map(row=>`${row.entity}: ${fmt(row.values[i],1)} pp`);
+        const observations=series.filter(row=>row.values[i]!==null).map(row=>{
+          const sample=row.samples?.[i], detail=sample&&options.sampleLabel? ` (${options.sampleLabel(sample)})`:"";
+          return `${row.entity}: ${fmt(row.values[i],1)} pp${detail}`;
+        });
         const label=`${monthLabel(month)} · ${observations.join(" · ")||"Sin datos"}`;
         return `<rect class="chart-band" data-bucket="${i}" tabindex="0" aria-label="${esc(label)}" x="${start}" y="${top}" width="${end-start}" height="${height-top-bottom}"/>`;
       }).join("");

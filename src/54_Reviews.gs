@@ -581,7 +581,9 @@ function queryMarketsReviews_(ss, filters, window, includeTranslations = false, 
     }
   }
   const results = filters.npsOnly
-    ? matching.map(({ row, date, apps }) => ({ date, rating: row[7], entities: marketsReviewEntities_(apps, row[4]) }))
+    ? matching.map(({ row, date, apps, attributionMethod }) => ({
+      date, rating: row[7], entities: marketsReviewEntities_(apps, row[4]), attributionMethod
+    }))
     : (page?.rows || matching).map(candidate => {
       if (!filterText) matchingEvidence(candidate);
       const { row, key, date, countries, android, storefronts, attributionMethod, sharedListing, apps, ids } = candidate;
