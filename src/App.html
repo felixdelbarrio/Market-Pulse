@@ -330,6 +330,7 @@
       "Ver reseñas del mes anterior":["View previous month’s reviews","Önceki ayın yorumlarını görüntüle"],
       "Bloque":["Block","Grup"],
       "Reseñas del bloque":["Reviews in the block","Gruptaki yorumlar"],
+      "{total} reseñas ({assigned} con geografía inferida o validada)":["{total} reviews ({assigned} with inferred or verified geography)","{total} yorum ({assigned} yorumun coğrafyası çıkarıldı veya doğrulandı)"],
       "Geografía inferida o validada":["Inferred or verified geography","Çıkarılan veya doğrulanan coğrafya"],
       "Periodo reciente: {dates}. Los recuentos usan el sentimiento seleccionado. Una reseña puede pertenecer a varios bloques; sus pesos pueden sumar más del 100 %.":["Recent period: {dates}. Counts use the selected sentiment. A review can belong to more than one block, so the shares may add up to over 100%.","Yakın dönem: {dates}. Sayımlar seçilen duyguya göredir. Bir yorum birden fazla gruba ait olabilir, bu yüzden oranların toplamı %100’ü aşabilir."],
       "Peso en la muestra":["Share of sample","Örneklem payı"],
@@ -835,10 +836,13 @@
       const selected={...selection(),app:state.evolutionApp};
       const model=D.monthlyRatingMatrix(trends,state.snapshot,selected,period,mobileViewport.matches?2:6,mobileViewport.matches);
       const npsReady=monthlyPulse?.key===JSON.stringify(monthlyReviewScope(period));
-      const points=new Map((npsReady?monthlyPulse.points:[]).map(row=>[row.country+"|"+row.month,row.balance]));
+
+      const points=new Map((npsReady?monthlyPulse.points:[]).map(row=>[row.country+"|"+row.month,row]));
       for(const row of model.rows)for(const cell of row.cells){
-        cell.nps=points.get(row.countryCode+"|"+cell.month)??null;
-        const previous=points.get(row.countryCode+"|"+D.previousCalendarMonth(cell.month));
+        const point=points.get(row.countryCode+"|"+cell.month);
+        cell.nps=point?.balance??null;
+        if(point)cell.npsSample=reviewNpsSample(point);
+        const previous=points.get(row.countryCode+"|"+D.previousCalendarMonth(cell.month))?.balance;
         cell.npsDelta=D.finite(cell.nps)&&D.finite(previous)?cell.nps-previous:null;
       }
       $("monthly-shared-note").classList.toggle("hidden",!model.hasSharedAndroid);
@@ -1444,8 +1448,8 @@
             ["Desde","Hasta","NPS de reseñas","Desde (mes anterior)","Hasta (mes anterior)","NPS anterior","Variación (pp)"],
             [[nps.start,nps.end,nps.current,nps.previousStart,nps.previousEnd,nps.previous,nps.delta]]);
           setExportSheet("evolution","NPS de reseñas",scope.country,filters,
-            ["Mes","Entidad","NPS (pp)","Promotoras","Detractoras","Reseñas"],
-            data.monthly.map(row=>[row.month,row.entity,row.balance,row.promoters,row.detractors,row.total]));
+            ["Mes","Entidad","NPS (pp)","Promotoras","Detractoras","Reseñas","Geografía inferida o validada"],
+            data.monthly.map(row=>[row.month,row.entity,row.balance,row.promoters,row.detractors,row.total,row.assignedGeography]));
           monthlyBalanceKey=balanceKey;
         }
         if(data.deltas.length)renderReviewGaps(gaps,data,{...applied,app:scope.entity,segment:scope.segment});
@@ -1557,6 +1561,9 @@
       });
       target.append(table);
     }
+
+    const reviewNpsSample=point=>translate("{total} reseñas ({assigned} con geografía inferida o validada)",
+      {total:integer(point.total),assigned:integer(point.assignedGeography)});
     function renderReviewBalance(target,data,scope,compare){
       target.innerHTML='<p class="review-chart-note">NPS en puntos sobre todas las reseñas válidas del mes. Una línea interrumpida indica un mes sin datos.</p>';
       if(!data.monthly.length){target.append("Sin observaciones para este intervalo.");return null}
@@ -1591,15 +1598,19 @@
       }
       const points=new Map(), totals=new Map();
       for(const point of data.monthly){
-        points.set(JSON.stringify([point.entity,point.month]),point.balance);
+        points.set(JSON.stringify([point.entity,point.month]),point);
         totals.set(point.entity,(totals.get(point.entity)||0)+point.total);
       }
       const entities=data.monthlyEntityOptions;
       target.append(layout,tooltip);
-      const series=entities.map(entity=>({entity,values:months.map(month=>points.get(JSON.stringify([entity,month]))??null)}));
+
+      const series=entities.map(entity=>{
+        const samples=months.map(month=>points.get(JSON.stringify([entity,month])));
+        return {entity,values:samples.map(point=>point?.balance??null),samples};
+      });
       const render=()=>{
         tooltip.hidden=true;
-        plot.innerHTML=C.reviewBalance(months,series,{fmt,monthLabel,width:plot.clientWidth,shade:!compare});
+        plot.innerHTML=C.reviewBalance(months,series,{fmt,monthLabel,width:plot.clientWidth,shade:!compare,sampleLabel:reviewNpsSample});
       };
       render();
       legend.innerHTML=C.reviewBalanceLegend(entities.map(entity=>({entity,total:totals.get(entity)||0})),integer);

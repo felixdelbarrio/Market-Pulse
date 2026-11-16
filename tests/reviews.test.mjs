@@ -1299,18 +1299,22 @@ test("annual NPS materialization reuses valid counts after a translation and rej
   const props = { MARKETS_REVIEW_SOURCE_GENERATION: "a", MARKETS_REVIEW_GEOGRAPHY_REVISION: "b", MARKETS_REVIEWS_GENERATION: "translated" };
   const version = local.marketsReviewCatalogVersion_([]);
   props.MARKETS_REVIEW_SNAPSHOT_POINTER = JSON.stringify({
-    schema: 15, end: "2026-11-16", versions: ["prior"], npsVersions: ["a", "b", version]
+    schema: 15, end: "2026-11-16", hasNpsAttribution: true, versions: ["prior"], npsVersions: ["a", "b", version]
   });
   local.PropertiesService = { getScriptProperties: () => ({ getProperties: () => props }) };
   local.readMarketsReviewSnapshotShard_ = () => ({
     "nps:ES": { start: "2025-01-01", end: "2026-11-16", monthly: [
       { month: "2025-06", balance: 0 }, { month: "2026-01", balance: -100 }
+    ] },
+    "nps:ES:NO": { start: "2025-01-01", end: "2026-11-16", monthly: [
+      { month: "2026-01", balance: 100, assignedGeography: 0 }
     ] }
   });
-  const query = year => local.readMarketsReviewCache_({ getId: () => "ss" }, "nps",
-    { country: "ES", year, platform: "ALL" }, local.marketsReviewAnalyticsWindow_({ year }, "2026-11-16"), () => null);
+  const query = (year, inferGeography) => local.readMarketsReviewCache_({ getId: () => "ss" }, "nps",
+    { country: "ES", year, platform: "ALL", inferGeography }, local.marketsReviewAnalyticsWindow_({ year }, "2026-11-16"), () => null);
   assert.equal(query("2025").monthly[0].balance, 0);
   assert.equal(query("2026").monthly.length, 1);
+  assert.equal(query("2026", "NO").monthly[0].balance, 100);
   assert.equal(query("2024"), null);
   props.MARKETS_REVIEW_GEOGRAPHY_REVISION = "changed";
   assert.equal(query("2025"), null);
@@ -1381,10 +1385,17 @@ test("monthly gap counts include the selected inferred and validated reviews and
   assert.equal(yes.baseline.total, 2);
   assert.equal(yes.baseline.balance, 0);
   assert.equal(yes.nps.current, 50);
+  const annualPoint = api.summarizeMarketsReviewNps_(rows).find(point => point.month === "2026-11");
+  const monthlyPoint = yes.monthly.find(point => point.month === "2026-11");
+  assert.deepEqual([annualPoint.balance, annualPoint.total, annualPoint.assignedGeography], [50,4,3]);
+  assert.deepEqual(JSON.parse(JSON.stringify(monthlyPoint)), JSON.parse(JSON.stringify(annualPoint)));
 
   const no = build(direct.filter(item => item.countries[0] === "ES"));
   assert.deepEqual([no.deltas[0].total, no.deltas[0].assignedGeography], [1,0]);
   assert.equal(no.baseline.balance, -100);
+  const annualNo = api.summarizeMarketsReviewNps_(direct.filter(item => item.countries[0] === "ES"))
+    .find(point => point.month === "2026-11");
+  assert.deepEqual([annualNo.balance, annualNo.total, annualNo.assignedGeography], [100,1,0]);
   assert.equal(direct.length, rows.length);
   assert.equal(direct[1].countries[0], "UNKNOWN");
   assert.equal(direct[1].attributionMethod, "multi_storefront_ambiguous");

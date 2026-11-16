@@ -676,7 +676,8 @@ function marketsReviewNpsVersions_(properties, catalogVersion) {
 
 function marketsReviewSnapshotScope_(operation, filters, window) {
   const withoutInference = filters.inferGeography === 'NO';
-  if ((withoutInference && !(operation === 'analytics' && filters.analysisMonth)) ||
+  const comparesGeography = operation === 'nps' || (operation === 'analytics' && (filters.year || filters.analysisMonth));
+  if ((withoutInference && !comparesGeography) ||
       filters.audience || filters.platform !== 'ALL' || filters.topic || filters.rating || filters.search || filters.reviewKey ||
       filters.period || Number(filters.page || 0) !== 0) return '';
   const language = ['es', 'en', 'tr'].includes(filters.language) ? filters.language : 'es';
@@ -684,7 +685,7 @@ function marketsReviewSnapshotScope_(operation, filters, window) {
     return !filters.year && !filters.analysisMonth && filters.app === 'BBVA Empresas' && !filters.segment && window.start === marketsDefaultCommentStart_(window.end)
       ? ['page', filters.country, language].join(':') : '';
   }
-  if (operation === 'nps') return 'nps:' + filters.country;
+  if (operation === 'nps') return 'nps:' + filters.country + (withoutInference ? ':NO' : '');
   if (operation !== 'analytics') return '';
   if (filters.year || filters.analysisMonth) {
     if ((filters.year && filters.analysisMonth) || filters.start || filters.end || filters.app ||
@@ -746,7 +747,7 @@ function publishMarketsReviewSnapshot_() {
   const npsVersions = marketsReviewNpsVersions_(current, catalogVersion);
   const { end } = marketsReviewWindow_();
   const previous = safeJsonParse_(properties.getProperty(MARKETS_REVIEW_SNAPSHOT_POINTER) || 'null');
-  if (previous?.schema === MARKETS_REVIEW_SNAPSHOT_SCHEMA && previous.hasAnnualNps && previous.monthlyGapAttribution && previous.end === end && JSON.stringify(previous.versions) === JSON.stringify(versions)) {
+  if (previous?.schema === MARKETS_REVIEW_SNAPSHOT_SCHEMA && previous.hasAnnualNps && previous.hasNpsAttribution && previous.end === end && JSON.stringify(previous.versions) === JSON.stringify(versions)) {
     return { complete: true, published: previous.count };
   }
   const analyticsWindow = marketsReviewWindow_();
@@ -778,7 +779,6 @@ function publishMarketsReviewSnapshot_() {
   for (const country of ['ALL', ...MARKETS_WEB.countryCodes, 'UNKNOWN']) {
     const history = country === 'ALL' ? allRows : byCountry.get(country) || [];
     const scoped = country === 'ALL' ? rows : history.filter(row => row.date >= analyticsWindow.start);
-    values['nps:' + country] = { start: earliest, end, monthly: summarizeMarketsReviewNps_(history) };
     const analytics = summarizeMarketsReviewAnalytics_(scoped, topics, { segment: 'DETRACTOR', entity: MARKETS_REVIEW_ENTITY }, analyticsWindow, annualWindow);
     values['analytics:' + country] = analytics;
     if (country === 'ALL') continue;
@@ -805,6 +805,11 @@ function publishMarketsReviewSnapshot_() {
     const direct = !hasAssigned ? scoped : country === 'ALL' ? scoped.map(marketsReviewWithoutAssignedGeography_)
       : country === 'UNKNOWN' ? scoped.concat(reassigned).sort(compareMarketsReviewRows_)
       : scoped.filter(row => !marketsReviewHasAssignedGeography_(row));
+    const inferredNps = { start: earliest, end, monthly: summarizeMarketsReviewNps_(scoped) };
+    values['nps:' + country] = inferredNps;
+    values['nps:' + country + ':NO'] = hasAssigned
+      ? { start: earliest, end, monthly: summarizeMarketsReviewNps_(direct) }
+      : inferredNps;
     const sourceRange = { start: (Number(year) - 1) + '-01-01', end };
     const query = { country, platform: 'ALL', start: sourceRange.start };
     const source = rows => ({ rows: compactMarketsReviewAnalyticsRows_(
@@ -826,7 +831,6 @@ function publishMarketsReviewSnapshot_() {
       const data = buildMarketsReviewAnalytics_(rowsForView, topics, filters, window);
       values[marketsReviewSnapshotScope_('analytics', filters, window)] = data;
       writeMarketsWebCache_(cache, marketsReviewCacheKey_(ss, 'analytics', filters, window, versions), data);
-      if (!filters.analysisMonth) continue;
       const directFilters = { ...filters, inferGeography: 'NO' };
       const directData = hasAssigned
         ? buildMarketsReviewAnalytics_(compact(direct.filter(inRange)), topics, directFilters, window)
@@ -839,7 +843,7 @@ function publishMarketsReviewSnapshot_() {
     return { complete: false, published: 0 };
   }
   const count = Object.keys(values).length;
-  const complete = writeMarketsReviewSnapshot_(properties, { end, versions, npsVersions, count, hasAnnualNps: true, monthlyGapAttribution: true, schema: MARKETS_REVIEW_SNAPSHOT_SCHEMA }, values,
+  const complete = writeMarketsReviewSnapshot_(properties, { end, versions, npsVersions, count, hasAnnualNps: true, hasNpsAttribution: true, schema: MARKETS_REVIEW_SNAPSHOT_SCHEMA }, values,
     () => JSON.stringify(marketsReviewVersions_(properties.getProperties(), catalogVersion)) === JSON.stringify(versions));
   return { complete, published: complete ? count : 0 };
 }
@@ -970,13 +974,11 @@ function getMarketsReviewNps(filters, snapshotOnly = false) {
 function summarizeMarketsReviewNps_(rows) {
   const monthly = new Map();
   for (const row of rows) {
-    const month = row.date.slice(0, 7), score = marketsReviewNet_(row.rating);
+    const month = row.date.slice(0, 7);
     for (const entity of row.entities) {
       const key = JSON.stringify([entity, month]);
-      const point = monthly.get(key) || { entity, month, total: 0, promoters: 0, detractors: 0 };
-      point.total++;
-      point.promoters += Number(score === 1);
-      point.detractors += Number(score === -1);
+      const point = monthly.get(key) || { entity, month, total: 0, promoters: 0, detractors: 0, assignedGeography: 0 };
+      countMarketsReviewNps_(point, row);
       monthly.set(key, point);
     }
   }
@@ -1103,10 +1105,10 @@ function marketsReviewAnalyticsSourceKey_(ss, query, range, versions) {
 
 function marketsReviewCacheKey_(ss, operation, filters, window, versions) {
   const scope = Object.keys(filters).sort().map(key => [key, filters[key]]);
-  const hasAttribution = operation === 'analytics-source-compact' || (operation === 'analytics' && filters.analysisMonth);
+  const hasAttribution = operation === 'nps' || operation === 'analytics-source-compact' || (operation === 'analytics' && filters.analysisMonth);
   const parts = ['review', MARKETS_REVIEW_SNAPSHOT_SCHEMA, MARKETS_REVIEW_AUDIENCE_VERSION, operation,
     ss.getId(), window.start, window.end, versions, scope];
-  if (hasAttribution) parts.push('monthly-gap-attribution-v1');
+  if (hasAttribution) parts.push('nps-attribution-v1');
   return 'market-review:' + marketsReviewDigest_(parts);
 }
 
@@ -1125,7 +1127,7 @@ function readMarketsReviewCache_(ss, operation, filters, window, builder, timing
     if (snapshotScope) {
       const snapshot = safeJsonParse_(properties[MARKETS_REVIEW_SNAPSHOT_POINTER] || 'null');
       if (snapshot?.schema === MARKETS_REVIEW_SNAPSHOT_SCHEMA && snapshot.end === marketsReviewWindow_().end &&
-          (!filters.analysisMonth || snapshot.monthlyGapAttribution) &&
+          (!(isNps || filters.analysisMonth || filters.inferGeography === 'NO') || snapshot.hasNpsAttribution) &&
           (isNps || filters.analysisMonth || snapshot.end === window.end) &&
           JSON.stringify(isNps ? snapshot.npsVersions : snapshot.versions) === JSON.stringify(versions)) {
         const value = readMarketsReviewSnapshotShard_(snapshot, filters.country)?.[snapshotScope];
@@ -1173,6 +1175,16 @@ function reviewBalancePoints_(stats) {
   return 100 * (stats.promoters - stats.detractors) / stats.total;
 }
 
+function countMarketsReviewNps_(point, row) {
+  const score = marketsReviewNet_(row.rating);
+  point.total++;
+  point.promoters += Number(score === 1);
+  point.detractors += Number(score === -1);
+  if (point.assignedGeography !== undefined) {
+    point.assignedGeography += Number(marketsReviewHasAssignedGeography_(row));
+  }
+}
+
 function marketsReviewHasAssignedGeography_(row) {
   return row.attributionMethod === 'review_evidence_inferred' || row.attributionMethod === 'review_evidence_validated';
 }
@@ -1213,8 +1225,9 @@ function summarizeMarketsReviewAnalytics_(rows, topics, filters, window, annual 
   const geographyMonths = new Map();
   function countMonthly(points, dimensions, row) {
     const key = JSON.stringify(dimensions);
-    const point = points.get(key) || { total: 0, promoters: 0, detractors: 0 };
-    count(point, row);
+    const point = points.get(key) || { total: 0, promoters: 0, detractors: 0,
+      ...(filters.analysisMonth ? { assignedGeography: 0 } : {}) };
+    countMarketsReviewNps_(point, row);
     points.set(key, point);
   }
   for (const row of monthlyRows) {
@@ -1236,25 +1249,18 @@ function summarizeMarketsReviewAnalytics_(rows, topics, filters, window, annual 
   const baseStart = filters.analysisMonth ? previousEnd.slice(0, 7) + '-01' : window.start;
   const current = { total: 0, promoters: 0, detractors: 0 };
   const recent = [], recentBlocks = new Map();
-  function count(target, row) {
-    const score = net(row.rating);
-    target.total++;
-    target.promoters += Number(score === 1);
-    target.detractors += Number(score === -1);
-  }
   for (const row of filters.year ? [] : local) {
     if (row.date < window.recent) {
-      if (row.date >= baseStart) count(base, row);
+      if (row.date >= baseStart) countMarketsReviewNps_(base, row);
       continue;
     }
-    if (filters.analysisMonth) count(current, row);
+    if (filters.analysisMonth) countMarketsReviewNps_(current, row);
     if (filters.analysisMonth && segment && !segment.stars.includes(row.rating)) continue;
     recent.push(row);
     for (const id of blocksOf(row)) {
-      if (!recentBlocks.has(id)) recentBlocks.set(id, { total: 0, promoters: 0, detractors: 0 });
-      const block = recentBlocks.get(id);
-      count(block, row);
-      if (filters.analysisMonth) block.assignedGeography = (block.assignedGeography || 0) + Number(marketsReviewHasAssignedGeography_(row));
+      if (!recentBlocks.has(id)) recentBlocks.set(id, { total: 0, promoters: 0, detractors: 0,
+        ...(filters.analysisMonth ? { assignedGeography: 0 } : {}) });
+      countMarketsReviewNps_(recentBlocks.get(id), row);
     }
   }
   const baseline = base.total ? { ...base, balance: reviewBalancePoints_(base), start: baseStart,
