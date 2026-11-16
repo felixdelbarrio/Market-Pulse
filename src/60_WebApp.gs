@@ -1,6 +1,6 @@
 /** Web app de lectura para el dashboard de ratings. */
 var MARKETS_WEB = Object.freeze({
-  version: '2026.11.16.81',
+  version: '2026.11.16.82',
   // Solo debe cambiar si cambia el formato serializado. Un cambio visual no
   // puede obligar al primer usuario a reconstruir la cache desde Sheets.
   cacheSchemaVersion: '2026.10.21.41',
@@ -97,18 +97,19 @@ function buildMarketsDashboardBootstrap_(ss, allTrends, catalog) {
 }
 
 /** RPC para series mensuales filtradas. */
-function getMarketsDashboardTrends(request) {
+function getMarketsDashboardTrends(request, snapshotOnly = false) {
   const normalized = normalizeDashboardTrendRequest_(request);
   const cacheKey = marketsTrendCacheKey_(normalized);
   return readMarketsWebCache_(cacheKey, function () {
     let allTrends = readMarketsPersistentCache_('trends');
     if (!allTrends) {
+      if (snapshotOnly === true) return undefined;
       const ss = openMarketsSpreadsheet_();
       allTrends = buildAllDashboardTrendsForWeb_(ss, MARKETS_WEB.maxTrendMonths);
       tryWriteMarketsPersistentCache_('trends', allTrends, readLatestCompetitionDateForWeb_(ss));
     }
     return filterDashboardTrendsForWeb_(allTrends, normalized);
-  });
+  }) ?? null;
 }
 
 function normalizeDashboardTrendRequest_(request) {
@@ -523,7 +524,7 @@ function readMarketsWebCache_(key, builder, maxParts = 1, timing) {
     if (timing) timing.cacheMs = Date.now() - cacheStarted;
   }
   const value = builder();
-  writeMarketsWebCache_(cache, key, value, maxParts, timing);
+  if (value !== undefined) writeMarketsWebCache_(cache, key, value, maxParts, timing);
   return value;
 }
 

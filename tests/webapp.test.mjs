@@ -734,7 +734,7 @@ test("evolution includes all apps by default and supports filtering by app", () 
   assert.deepEqual(labels, ["BBVA Empresas Colombia", "BBVA Empresas México", "Banco Uno México", "Fintech Uno México"]);
   assert.deepEqual(Array.from(browser.MarketsDomain.selectionRows(snapshot, { country: "MX", platform: "ALL" }, "FINTECH", true), row => row.appKey), ["BBVA", "MP"]);
   const app = fs.readFileSync(new URL("../src/App.html", import.meta.url), "utf8");
-  assert.match(app, /function trendRequest\(\)\{return\{[^}]*segment:"ALL"/);
+  assert.match(app, /const annualTrendRequest=[^\n]*segment:"ALL"/);
   assert.match(app, /function activeTrendRows\(trends\)\{return D\.trendRows\(trends,\{\.\.\.selection\(\),app:state\.evolutionApp\}\)\}/);
   assert.doesNotMatch(app, /activeTrendRows\(\).*benchmarkSegment/);
 });
@@ -951,4 +951,48 @@ test("review audience keeps its value and localizes the visible BEI filter acros
     assert.equal(copy[label].length, 2);
     assert.ok(copy[label].every(translation => translation && translation !== label), label);
   }
+});
+
+test("review prefetch uses the same scope key and retries only after a snapshot miss", async () => {
+  const script = clientScript(fs.readFileSync(new URL("../src/App.html", import.meta.url), "utf8"));
+  const helper = script.slice(script.indexOf("    const reviewRequests="), script.indexOf("    function trackReady("));
+  const calls = [];
+  const runtime = vm.createContext({
+    state: { view: "benchmark" }, trackUsage() {},
+    callServer(method, scope, prefetch) {
+      return new Promise(resolve => calls.push({ method, scope, prefetch, resolve }));
+    }
+  });
+  vm.runInContext(helper, runtime);
+  const request = { country: "ES", page: 0, language: "es" };
+  const background = runtime.fetchReviewData("review:page", request, true);
+  const visible = runtime.fetchReviewData("review:page", { language: "es", page: 0, country: "ES" });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].prefetch, true);
+  const page = { total: 12 };
+  calls[0].resolve(page);
+  assert.equal(await background, page);
+  assert.equal(await visible, page);
+  assert.equal(await runtime.fetchReviewData("review:page", request), page);
+  assert.equal(calls.length, 1);
+
+  const otherScope = { ...request, country: "PE" };
+  const miss = runtime.fetchReviewData("review:page", otherScope, true);
+  const one = runtime.fetchReviewData("review:page", otherScope);
+  const two = runtime.fetchReviewData("review:page", otherScope);
+  calls[1].resolve(null);
+  assert.equal(await miss, null);
+  await Promise.resolve();
+  assert.equal(calls.length, 3);
+  assert.equal(calls[2].prefetch, false);
+  calls[2].resolve(page);
+  assert.equal(await one, page);
+  assert.equal(await two, page);
+});
+
+test("adoption uses one activity series while usage analytics retains both series", () => {
+  const app = fs.readFileSync(new URL("../src/App.html", import.meta.url), "utf8");
+  assert.match(app, /renderAdminActivity\("admin-adoption-chart",trend,"Usuarios",day=>day.users\|\|0,"Usuarios por día"\)/);
+  assert.match(app, /function renderUsageTrend\(rows,target="admin-usage-trend"\)[^\n]+class="sessions"/);
+  assert.doesNotMatch(app, /activity-secondary/);
 });

@@ -24,6 +24,7 @@
       "Activar caída entre cierres del día 15":["Enable mid-month decline alerts","Ayın 15'indeki kapanışlar arası düşüş uyarılarını etkinleştir"],
       "Activar cruces":["Enable ranking alerts","Sıralama uyarılarını etkinleştir"],
       "Activar cruces competitivos":["Enable ranking alerts","Sıralama uyarılarını etkinleştir"],
+      "Usuarios por día":["Users by day","Günlük kullanıcılar"],
       "Actividad reciente":["Recent activity","Son etkinlikler"],
       "Actualizar tiempos":["Refresh timings","Süreleri yenile"],
       "Advertencia desde":["Warning threshold","Uyarı eşiği"],
@@ -579,8 +580,8 @@
 
     function serverTimeoutMs(method){return method==="admin:newsletter:test"?120000:method==="bootstrap"?60000:(method.startsWith("review:")||method==="trends")?60000:method==="admin:get"?30000:20000}
     let activeRpc=0;
-    function callServer(method,argument){
-      const started=performance.now(), view=state.view;
+    function callServer(method,argument,snapshotOnly=false){
+      const started=performance.now(), view=state.view, operation=snapshotOnly?method+":prefetch":method;
       return new Promise((resolve,reject)=>{
         if(!window.google?.script?.run)return reject(new Error("El dashboard debe abrirse desde el despliegue de Apps Script."));
         activeRpc++;
@@ -590,14 +591,14 @@
           settled=true;
           activeRpc--;
           window.clearTimeout(timer);
-          trackUsage("PERFORMANCE",view,method,`RPC ${Math.round(performance.now()-started)} ${outcome}`);
+          trackUsage("PERFORMANCE",view,operation,`RPC ${Math.round(performance.now()-started)} ${outcome}`);
           if(outcome==="OK"){
             const timing=value?.timing;
             if(["cache","snapshot","sheet"].includes(timing?.source)&&Number.isFinite(timing.durationMs)){
-              trackUsage("PERFORMANCE",view,method,`SERVER_${timing.source.toUpperCase()} ${Math.round(timing.durationMs)} OK`);
+              trackUsage("PERFORMANCE",view,operation,`SERVER_${timing.source.toUpperCase()} ${Math.round(timing.durationMs)} OK`);
               const phases=["readMs","classificationMs","aggregateMs","cacheMs","serializationMs","read","classified","returned","input","payloadCharacters"];
               const metrics=phases.filter(key=>Number.isFinite(timing[key])).map(key=>key+"="+Math.round(timing[key]));
-              if(metrics.length)trackUsage("PERFORMANCE",view,method,"PHASES "+metrics.join(" "));
+              if(metrics.length)trackUsage("PERFORMANCE",view,operation,"PHASES "+metrics.join(" "));
             }
             resolve(value);
           }
@@ -606,7 +607,7 @@
         const timer=window.setTimeout(()=>finish("TIMEOUT")(translate("EDC Market Pulse no ha respondido a tiempo. Reintenta la carga.")),serverTimeoutMs(method));
         try{
           const runner=google.script.run.withSuccessHandler(finish("OK")).withFailureHandler(finish("ERROR"));
-          if(method==="bootstrap")runner.getMarketsDashboardBootstrap();else if(method==="user:context")runner.getMarketsUserContext();else if(method==="admin:get")runner.getMarketsAdminDashboard(false);else if(method==="admin:jobs:status")runner.getMarketsAdminPanelJobs();else if(method==="admin:business:refresh")runner.refreshMarketsAdminFunctionalCatalog();else if(method==="admin:business")runner.getMarketsBusinessCatalog(argument,appLanguage);else if(method==="admin:business:save")runner.saveMarketsBusinessCatalogEntry(argument);else if(method==="admin:newsletter:feedback-state")runner.setMarketsNewsletterFeedbackState(argument.id,argument.state);else if(method==="admin:newsletter:interactions")runner.getMarketsNewsletterInteractions(argument.kind,argument.period,argument.vote,argument.status,argument.start,argument.end);else if(method==="admin:subscriber:save")runner.saveMarketsAdminSubscriber(argument.email,argument.preferences);else if(method==="admin:newsletter:test")runner.sendMarketsAdminNewsletterTestEmail(argument);else if(method==="admin:jobs:run")runner.runMarketsPanelJob(argument);else if(method==="admin:jobs:interval")runner.configureMarketsReviewSupervisor(argument);else if(method==="admin:jobs:settings")runner.saveMarketsReviewJobSettings(argument.id,argument.config);else if(method==="admin:jobs:folder")runner.saveMarketsStorageFolder(argument.kind,argument.id);else if(method==="admin:reviews:restart")runner.requestMarketsReviewPipeline();else if(method==="admin:ratings:recover")runner.requestMarketsAdminRatingRecovery();else if(method==="reviews:segments")runner.getMarketsReviewSegments();else if(method==="reviews")runner.getMarketsReviews(argument);else if(method==="review:page")runner.getMarketsReviewPage(argument);else if(method==="review:export")runner.getMarketsReviewExport(argument);else if(method==="review:analytics")runner.getMarketsReviewAnalytics(argument);else if(method==="review:nps")runner.getMarketsReviewNps(argument);else if(method==="admin:usage")runner.getMarketsAdminUsage();else if(method==="performance")runner.getMarketsPerformance();else if(method==="trends")runner.getMarketsDashboardTrends(argument);else if(method==="alerts:get")runner.getMarketsAlertPreferences();else if(method==="alerts:save")runner.saveMarketsAlertPreferences(argument);else if(method==="alerts:reset")runner.resetMarketsAlertPreferences(argument);else finish("ERROR")(new Error("Operación no soportada: "+method));
+          if(method==="bootstrap")runner.getMarketsDashboardBootstrap();else if(method==="user:context")runner.getMarketsUserContext();else if(method==="admin:get")runner.getMarketsAdminDashboard(false);else if(method==="admin:jobs:status")runner.getMarketsAdminPanelJobs();else if(method==="admin:business:refresh")runner.refreshMarketsAdminFunctionalCatalog();else if(method==="admin:business")runner.getMarketsBusinessCatalog(argument,appLanguage);else if(method==="admin:business:save")runner.saveMarketsBusinessCatalogEntry(argument);else if(method==="admin:newsletter:feedback-state")runner.setMarketsNewsletterFeedbackState(argument.id,argument.state);else if(method==="admin:newsletter:interactions")runner.getMarketsNewsletterInteractions(argument.kind,argument.period,argument.vote,argument.status,argument.start,argument.end);else if(method==="admin:subscriber:save")runner.saveMarketsAdminSubscriber(argument.email,argument.preferences);else if(method==="admin:newsletter:test")runner.sendMarketsAdminNewsletterTestEmail(argument);else if(method==="admin:jobs:run")runner.runMarketsPanelJob(argument);else if(method==="admin:jobs:interval")runner.configureMarketsReviewSupervisor(argument);else if(method==="admin:jobs:settings")runner.saveMarketsReviewJobSettings(argument.id,argument.config);else if(method==="admin:jobs:folder")runner.saveMarketsStorageFolder(argument.kind,argument.id);else if(method==="admin:reviews:restart")runner.requestMarketsReviewPipeline();else if(method==="admin:ratings:recover")runner.requestMarketsAdminRatingRecovery();else if(method==="reviews:segments")runner.getMarketsReviewSegments();else if(method==="reviews")runner.getMarketsReviews(argument);else if(method==="review:page")runner.getMarketsReviewPage(argument,snapshotOnly);else if(method==="review:export")runner.getMarketsReviewExport(argument);else if(method==="review:analytics")runner.getMarketsReviewAnalytics(argument,snapshotOnly);else if(method==="review:nps")runner.getMarketsReviewNps(argument,snapshotOnly);else if(method==="admin:usage")runner.getMarketsAdminUsage();else if(method==="performance")runner.getMarketsPerformance();else if(method==="trends")runner.getMarketsDashboardTrends(argument,snapshotOnly);else if(method==="alerts:get")runner.getMarketsAlertPreferences();else if(method==="alerts:save")runner.saveMarketsAlertPreferences(argument);else if(method==="alerts:reset")runner.resetMarketsAlertPreferences(argument);else finish("ERROR")(new Error("Operación no soportada: "+method));
         }catch(error){finish("ERROR")(error)}
       });
     }
@@ -614,8 +615,10 @@
     const reviewRequests=new Map(), reviewResponses=new Map();
     const reviewResponseTtl=120000;
     let monthlyReviewLoadedAt=0;
-    function fetchReviewData(method,scope){
-      const key=JSON.stringify([method,Object.keys(scope).sort().map(field=>[field,scope[field]])]);
+    const reviewResponseKey=(method,scope)=>JSON.stringify([method,Object.keys(scope).sort().map(field=>[field,scope[field]])]);
+    const hasReviewResponse=(method,scope)=>reviewResponses.get(reviewResponseKey(method,scope))?.expires>Date.now();
+    function fetchReviewData(method,scope,snapshotOnly=false){
+      const key=reviewResponseKey(method,scope);
       const hit=reviewResponses.get(key);
       if(hit&&hit.expires>Date.now()){
         reviewResponses.delete(key);
@@ -626,14 +629,16 @@
       reviewResponses.delete(key);
       if(reviewRequests.has(key)){
         trackUsage("PERFORMANCE",state.view,method,"SHARED 0 OK");
-        return reviewRequests.get(key);
+        const {promise,prefetch}=reviewRequests.get(key);
+        return snapshotOnly||!prefetch?promise:promise.then(value=>value??fetchReviewData(method,scope),()=>fetchReviewData(method,scope));
       }
-      const request=callServer(method,scope).then(value=>{
+      const request=callServer(method,scope,snapshotOnly).then(value=>{
+        if(value==null)return null;
         reviewResponses.set(key,{value,expires:Date.now()+reviewResponseTtl});
         if(reviewResponses.size>32)reviewResponses.delete(reviewResponses.keys().next().value);
         return value;
       }).finally(()=>reviewRequests.delete(key));
-      reviewRequests.set(key,request);
+      reviewRequests.set(key,{promise:request,prefetch:snapshotOnly});
       return request;
     }
     function trackReady(view,operation,started){
@@ -644,7 +649,7 @@
       }));
     }
     function validateBootstrap(data){if(!data||!data.meta||!Array.isArray(data.snapshot)||!Array.isArray(data.trends))throw new Error(translate("El servidor ha devuelto una respuesta incompleta. Actualiza el despliegue de EDC Market Pulse."));return data}
-    async function loadBootstrap(){if(state.bootstrapLoading)return;state.bootstrapLoading=true;const loader=$("loader");loader.classList.remove("done","failed");$("loader-title").textContent="Preparando EDC Market Pulse…";$("loader-detail").classList.add("hidden");$("loader-retry").classList.add("hidden");try{const data=validateBootstrap(await callServer("bootstrap"));state.meta=data.meta;state.userContext=data.userContext||{email:"",isAdmin:false};if(Array.isArray(data.reviewSegments)){state.reviewSegments=data.reviewSegments;reviewSegments=Promise.resolve(data.reviewSegments)}state.snapshot=data.snapshot;benchmarkModels.clear();state.trends=data.trends;state.consolidated=data.consolidated||null;state.trendsLoading=false;state.trendCache.clear();state.trendCache.set("ALL|ALL|ALL|BBVA|18",state.trends);state.country=browserMarket();if(state.country==="ALL")state.country=data.meta.countries.find(item=>item.code==="ES")?.code||data.meta.countries[0]?.code;configureAdminNavigation();renderRunStatus();renderDashboard();startUsageTracking();$("footer-version").textContent=`Contrato ${data.meta.codeVersion} · Web ${data.meta.webVersion||"1"}`;loader.classList.add("done")}catch(error){showStartupFailure(error)}finally{state.bootstrapLoading=false}}
+    async function loadBootstrap(){if(state.bootstrapLoading)return;state.bootstrapLoading=true;const loader=$("loader");loader.classList.remove("done","failed");$("loader-title").textContent="Preparando EDC Market Pulse…";$("loader-detail").classList.add("hidden");$("loader-retry").classList.add("hidden");try{const data=validateBootstrap(await callServer("bootstrap"));state.meta=data.meta;state.userContext=data.userContext||{email:"",isAdmin:false};if(Array.isArray(data.reviewSegments)){state.reviewSegments=data.reviewSegments;reviewSegments=Promise.resolve(data.reviewSegments)}state.snapshot=data.snapshot;benchmarkModels.clear();state.trends=data.trends;state.consolidated=data.consolidated||null;state.trendsLoading=false;state.trendCache.clear();state.trendCache.set("ALL|ALL|ALL|BBVA|18",state.trends);state.country=browserMarket();if(state.country==="ALL")state.country=data.meta.countries.find(item=>item.code==="ES")?.code||data.meta.countries[0]?.code;configureAdminNavigation();renderRunStatus();renderDashboard();startUsageTracking();$("footer-version").textContent=`Contrato ${data.meta.codeVersion} · Web ${data.meta.webVersion||"1"}`;loader.classList.add("done");warmViewsAfterBootstrap()}catch(error){showStartupFailure(error)}finally{state.bootstrapLoading=false}}
     function showStartupFailure(error){const loader=$("loader");if(!loader)return;loader.classList.remove("done");loader.classList.add("failed");$("loader-title").textContent="No hemos podido iniciar EDC Market Pulse";$("loader-detail").textContent=error?.message||String(error);$("loader-detail").classList.remove("hidden");$("loader-retry").classList.remove("hidden")}
 
     let usageSession="";
@@ -711,8 +716,7 @@
     }
     function activateView(view){if(view==="admin"&&!state.userContext?.isAdmin)return;const changed=state.view!==view;if(changed){
       radarFilters[state.view]?.close();
-      if(state.view==="evolution"&&monthlyReviewsLoading){evolutionRender=null;resetMonthlyReviews()}
-    }state.view=view;document.querySelectorAll(".nav-button").forEach(item=>{const active=item.dataset.view===view;item.classList.toggle("active",active);if(active)item.setAttribute("aria-current","page");else item.removeAttribute("aria-current")});document.querySelectorAll(".view").forEach(item=>item.classList.toggle("hidden",item.id!==`view-${view}`));syncViewControls();if(changed)trackUsage("VIEW",view,"OPEN_VIEW");if(view==="benchmark")renderBenchmark();if(view==="evolution")loadTrends();if(view==="alerts")loadAlerts();if(view==="admin")loadAdmin();if(view==="reviews")loadReviews();if(view==="analytics")loadAnalytics()}
+    }state.view=view;document.querySelectorAll(".nav-button").forEach(item=>{const active=item.dataset.view===view;item.classList.toggle("active",active);if(active)item.setAttribute("aria-current","page");else item.removeAttribute("aria-current")});document.querySelectorAll(".view").forEach(item=>item.classList.toggle("hidden",item.id!==`view-${view}`));syncViewControls();if(changed)trackUsage("VIEW",view,"OPEN_VIEW");if(view==="benchmark")renderBenchmark();if(view==="evolution")loadTrends();if(view==="alerts")loadAlerts();if(view==="admin")loadAdmin();if(view==="reviews")loadReviews(reviewPage);if(view==="analytics")loadAnalytics()}
     function syncViewControls(){
       const slot=mobileViewport.matches?null:$(`view-${state.view}`).querySelector(".report-slot");
       if(slot)slot.append($("report-button"));
@@ -754,7 +758,8 @@
         else renderDashboard();
       });
     }
-    function trendRequest(){return{countryCode:state.country==="ALL"?"":state.country,platform:"",segment:"ALL",months:36,bbvaOnly:false}}
+    const annualTrendRequest=({country})=>({countryCode:country==="ALL"?"":country,platform:"",segment:"ALL",months:36,bbvaOnly:false});
+    function trendRequest(){return annualTrendRequest(state)}
     function trendKey(request){return[request.countryCode||"ALL",request.platform||"ALL",request.segment,request.bbvaOnly?"BBVA":"ALL",request.months].join("|")}
     const trendRequests=new Map();
     function cachedTrendRows(request){
@@ -765,20 +770,23 @@
       const broad=state.trendCache.get(broadKey);
       return broad?.filter(row=>row.countryCode===request.countryCode);
     }
-    function fetchTrends(request){
+    function fetchTrends(request,snapshotOnly=false){
       const key=trendKey(request), cached=cachedTrendRows(request);
       if(cached)return Promise.resolve(cached);
-      const broadPending=request.countryCode&&trendRequests.get(trendKey({...request,countryCode:""}));
-      if(broadPending)return broadPending.then(rows=>rows.filter(row=>row.countryCode===request.countryCode),()=>fetchTrends(request));
-      if(!trendRequests.has(key)){
-        const pending=callServer("trends",request).then(rows=>{
-          state.trendCache.set(key,rows||[]);
-          if(state.trendCache.size>24)state.trendCache.delete(state.trendCache.keys().next().value);
-          return state.trendCache.get(key);
-        }).finally(()=>trendRequests.delete(key));
-        trendRequests.set(key,pending);
-      }
-      return trendRequests.get(key);
+      const broad=request.countryCode&&trendRequests.get(trendKey({...request,countryCode:""}));
+      if(broad)return broad.promise.then(rows=>rows?rows.filter(row=>row.countryCode===request.countryCode)
+        :snapshotOnly?null:fetchTrends(request),()=>snapshotOnly?null:fetchTrends(request));
+      const existing=trendRequests.get(key);
+      if(existing)return snapshotOnly||!existing.prefetch?existing.promise:
+        existing.promise.then(rows=>rows??fetchTrends(request),()=>fetchTrends(request));
+      const promise=callServer("trends",request,snapshotOnly).then(rows=>{
+        if(rows==null)return null;
+        state.trendCache.set(key,rows);
+        if(state.trendCache.size>24)state.trendCache.delete(state.trendCache.keys().next().value);
+        return rows;
+      }).finally(()=>trendRequests.delete(key));
+      trendRequests.set(key,{promise,prefetch:snapshotOnly});
+      return promise;
     }
     async function loadTrends(){
       const started=performance.now();
@@ -896,7 +904,7 @@
     function renderRankRow(row){const linked=Boolean(row.storeUrl),tag=linked?"a":"div";return`<li class="rank-item"><${tag} class="rank-row${row.isBbva?" bbva":""}${linked?" market-link":""}"${linked?marketLinkAttributes(row,row.countryCode):""}><span class="rank-number">${row.computedRank}</span>${appLogo(row)}<div class="app-info"><strong>${U.esc(D.appName(row))}</strong><span>${row.isBbva?"BBVA Empresas":row.segment==="BANK"?"Banca":"Fintech / Neobanco"}</span></div><div class="rank-metric"><strong>${fmt(row.rating,2)}</strong><span class="${row.delta30d>0?"delta-up":row.delta30d<0?"delta-down":""}">${signed(row.delta30d)}</span></div>${linked?`<span class="rank-open" aria-hidden="true"><span>Market</span>${U.icon("external")}</span>`:""}</${tag}></li>`}
     function appLogo(row){const url=state.meta.logos?.[row.appKey];return`<span class="app-logo">${url?`<img src="${U.esc(url)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">`:""}<b>${U.esc(initials(D.appName(row)))}</b></span>`}
 
-    let reviewsRequest=0, reviewTotals;
+    let reviewsRequest=0, reviewTotals, reviewPage=0, renderedReviewKey="", pendingReviewKey="";
     const radarFilters={};
     const reviewDay=(day,offset)=>new Date(Date.parse(day+"T00:00:00Z")+offset*86400000).toISOString().slice(0,10);
     function reviewDates(){
@@ -938,6 +946,43 @@
     }
     let heatmapMeasure="share";
     const reviewScope=()=>reviewDrilldown?.scope||reviewSelection||initialComments();
+
+    // Preload the default scopes one at a time, without falling back to a historical Sheet scan.
+    function warmViewsAfterBootstrap(){
+      if(navigator.connection?.saveData)return;
+      const steps=[
+        ()=>fetchTrends(trendRequest(),true),
+        ()=>fetchReviewData("review:page",{...reviewScope(),language:appLanguage,page:reviewPage},true),
+        ()=>fetchReviewData("review:nps",annualNpsScope(annualScope()),true),
+        ()=>{
+          const rows=cachedTrendRows(trendRequest());
+          if(!rows)return;
+          const app=state.evolutionApp;
+          if(!app)return;
+          const period=D.periodModel(D.trendRows(withPublishedRatings(rows,selection()),{...selection(),app}),state.periodYear,state.periodMonth);
+          const analysisMonth=period.period||reviewDates().end.slice(0,7);
+          return fetchReviewData("review:analytics",{...monthlyReviewScope(analysisMonth),segment:$("monthly-review-segment").value},true);
+        },
+        ()=>fetchReviewData("review:analytics",annualReviewRequest(annualScope()),true)
+      ];
+      function schedule(){
+        if(!steps.length)return;
+        window.setTimeout(()=>{
+          if(document.visibilityState!=="visible"){
+            document.addEventListener("visibilitychange",schedule,{once:true});
+            return;
+          }
+          if(activeRpc){schedule();return}
+          const run=()=>{
+            if(document.visibilityState!=="visible"||activeRpc){schedule();return}
+            Promise.resolve().then(steps.shift()).catch(()=>{}).finally(schedule);
+          };
+          if(window.requestIdleCallback)window.requestIdleCallback(run,{timeout:2000});
+          else run();
+        },1200);
+      }
+      schedule();
+    }
 
     function validateReviewDates({start,end}){
       $("review-end").setCustomValidity(start&&end&&start>end?"La fecha final debe ser posterior o igual a la inicial.":"");
@@ -1078,40 +1123,51 @@
         scope:{...scope,country:reviewScope().country,reviewKey:""},
         label:translate("Detalle por geografía")
       };
+      reviewPage=0;
       activateView("reviews");
     }
     async function loadReviews(page=0){
-      const started=performance.now(), token=++reviewsRequest, results=$("review-results");
-      reviewsReady=false;
-      const segment=$("review-segment"), pagination=$("review-pagination");
-      results.setAttribute("aria-busy","true");
-      const scope=reviewScope();
-      const {country,...countFilters}=scope;
-      const countKey=JSON.stringify(countFilters);
-      renderReviewMarkets({counts:reviewTotals?.key===countKey?reviewTotals.counts:null},scope);
-      radarFilters.reviews.render();
-      results.innerHTML=U.loading(translate("Cargando comentarios"));
-      pagination.replaceChildren();
+      const started=performance.now(), scope=reviewScope(), request={...scope,language:appLanguage,page};
+      const label=reviewDrilldown?.label||"", key=JSON.stringify([reviewResponseKey("review:page",request),label]);
+      if(pendingReviewKey===key)return;
+      const sameView=renderedReviewKey===key, cached=hasReviewResponse("review:page",request);
+      if(sameView&&cached){trackReady("reviews","Mostrar comentarios",started);return}
+      const token=++reviewsRequest, results=$("review-results"), pagination=$("review-pagination");
+      const countKey=JSON.stringify(Object.fromEntries(Object.entries(scope).filter(([field])=>field!=="country")));
+      reviewPage=page;
+      pendingReviewKey=key;
+      if(!sameView){
+        renderedReviewKey="";
+        reviewsReady=false;
+        renderReviewMarkets({counts:reviewTotals?.key===countKey?reviewTotals.counts:null},scope);
+        radarFilters.reviews.render();
+        if(!cached){
+          results.setAttribute("aria-busy","true");
+          results.innerHTML=U.loading(translate("Cargando comentarios"));
+          pagination.replaceChildren();
+        }
+      }
       try{
-        await prepareReviewSegments(segment);
-        if(token!==reviewsRequest||state.view!=="reviews")return;
-        $("review-filter-status").textContent=reviewDrilldown?.label||"";
-        const data=await fetchReviewData("review:page",{...scope,language:appLanguage,page});
-        if(token!==reviewsRequest||state.view!=="reviews")return;
+        await prepareReviewSegments($("review-segment"));
+        if(token!==reviewsRequest)return;
+        const data=await fetchReviewData("review:page",request);
+        if(token!==reviewsRequest)return;
+        $("review-filter-status").textContent=label;
         reviewTopics=data.topics||{};
         reviewTotals={key:countKey,counts:data.counts};
         renderReviewMarkets(data,scope);
         reviewsReady=data.total>0;
         radarFilters.reviews.render();
         results.innerHTML=data.rows.map(row=>renderReviewCard(row,reviewTopics)).join("")||U.empty("Sin comentarios","No hay reseñas para esta selección.");
+        renderedReviewKey=key;
         trackReady("reviews","Mostrar comentarios",started);
-        if(data.total<=data.size)return;
+        if(data.total<=data.size){pagination.replaceChildren();return}
         pagination.innerHTML=`${data.page>0?'<button class="alert-button secondary" type="button" data-step="-1">Anterior</button>':""}
           <span>${U.esc(translate("{count} reseñas · Página {page} de {pages}",{count:integer(data.total),page:data.page+1,pages:Math.ceil(data.total/data.size)}))}</span>
           ${(data.page+1)*data.size<data.total?'<button class="alert-button secondary" type="button" data-step="1">Siguiente</button>':""}`;
         pagination.onclick=event=>{const step=event.target.closest("[data-step]")?.dataset.step;if(step)loadReviews(data.page+Number(step))};
       }catch(error){
-        if(token!==reviewsRequest||state.view!=="reviews")return;
+        if(token!==reviewsRequest||sameView||state.view!=="reviews")return;
         const retry=document.createElement("button");
         retry.type="button";
         retry.className="alert-button secondary";
@@ -1119,7 +1175,7 @@
         retry.onclick=()=>loadReviews(page);
         results.replaceChildren(error.message,retry);
       }
-      finally{if(token===reviewsRequest)results.setAttribute("aria-busy","false")}
+      finally{if(token===reviewsRequest){pendingReviewKey="";results.setAttribute("aria-busy","false")}}
     }
     function renderReviewMarkets(data,scope){
       const android = state.snapshot.filter(row=>row.platform==="Android"&&(!scope.app||D.appName(row)===scope.app));
@@ -1181,45 +1237,63 @@
         <div class="review-blocks radar-filters">${row.attributionMethod?.startsWith("review_evidence_")?'<span class="filter-chip">Inferido</span>':""}${blocks.map(block=>`<span class="filter-chip">Bloque funcional · ${U.esc(block)}</span>`).join("")}</div>
         ${row.reply?`<blockquote><strong>${U.esc(row.replyAuthor||entity)}</strong> ${row.replyDate?`<time datetime="${U.esc(row.replyDate)}">${U.esc(dateLabel(row.replyDate.slice(0,10)))}</time>`:""}<p>${U.esc(row.reply)}</p></blockquote>`:""}</article>`;
     }
+    const annualReviewRequest=(scope,entity=analyticsEntity)=>({...scope,segment:heatmapSegment,entity,language:appLanguage});
+    const annualNpsScope=scope=>({country:scope.country,year:scope.year,audience:scope.audience,inferGeography:scope.inferGeography});
+    let pendingAnalyticsKey="",renderedAnalyticsKey="";
     async function loadAnalytics(localOnly=false, heatmapOnly=false){
-      const started=performance.now();
-      // A new request must replace all panels still waiting for the superseded request.
+      const started=performance.now(), scope=annualScope(), dates=annualDates(scope.year);
+      const key=JSON.stringify([annualReviewRequest(scope),dates.end]);
+      if(pendingAnalyticsKey===key)return;
+      const sameView=renderedAnalyticsKey===key;
+      if(!localOnly&&!heatmapOnly&&sameView&&hasReviewResponse("review:analytics",annualReviewRequest(scope))){
+        trackReady("analytics","Mostrar análisis anual",started);return;
+      }
+      // A changed scope must replace all panels still waiting for a superseded request.
       if(analyticsLoading){localOnly=false;heatmapOnly=false}
+      const request=annualReviewRequest(scope,heatmapOnly?defaultAnalyticsEntity:analyticsEntity);
+      const cached=hasReviewResponse("review:analytics",request);
+      const showLoading=!sameView&&!cached;
+      if(!sameView)renderedAnalyticsKey="";
+      pendingAnalyticsKey=key;
       analyticsLoading=true;
       const sheets=exportSheets.analytics;
-      if(!localOnly)sheets.delete("Mapa de calor");
-      if(!heatmapOnly){sheets.delete("Rating al cierre del mes");sheets.delete("Indicadores del periodo");sheets.delete("Reseñas más útiles");sheets.delete("Personas con más reseñas")}
+      if(!sameView&&!localOnly)sheets.delete("Mapa de calor");
+      if(!sameView&&!heatmapOnly){sheets.delete("Rating al cierre del mes");sheets.delete("Indicadores del periodo");sheets.delete("Reseñas más útiles");sheets.delete("Personas con más reseñas")}
       const token=++analyticsRequest, target=$("review-heatmap"), entityControl=$("analytics-entity");
-      const scope=annualScope(), dates=annualDates(scope.year);
       const period=annualPeriodLabel(scope.year);
       $("annual-rating-title").textContent=translate("Evolución del rating {period}",{period});
       $("annual-nps-title").textContent=translate("Evolución del NPS de reseñas {period}",{period});
       $("annual-indicators-title").textContent=scope.year===reviewDates().end.slice(0,4)
         ?translate("Indicadores del acumulado del año hasta la fecha"):translate("Indicadores de {year}",{year:scope.year});
       radarFilters.analytics.render();
-      if(!localOnly){
+      if(!localOnly&&showLoading){
         target.setAttribute("aria-busy","true");
         const matrix=target.querySelector("[data-matrix]");
         if(matrix){matrix.innerHTML=U.loading(translate("Cargando el mapa de calor"));target.querySelector("[data-pages]").replaceChildren()}
         else target.innerHTML=U.loading(translate("Cargando el mapa de calor"));
       }
-      if(!heatmapOnly){$("annual-chart").innerHTML=U.loading(translate("Cargando el histórico de ratings"));$("annual-series").replaceChildren();loadAnnualNps(scope,dates)}
-      if(!heatmapOnly)$("review-annual").innerHTML=U.loading(translate("Cargando indicadores de reseñas"));
+      if(!heatmapOnly){
+        const trends=annualTrendRequest(scope);
+        if(!sameView&&scope.country!=="UNKNOWN"&&!cachedTrendRows(trends)){
+          $("annual-chart").innerHTML=U.loading(translate("Cargando el histórico de ratings"));
+          $("annual-series").replaceChildren();
+        }
+        if(showLoading)$("review-annual").innerHTML=U.loading(translate("Cargando indicadores de reseñas"));
+        loadAnnualNps(scope,dates);
+      }
       try{
-        const countryCode=scope.country==="ALL"?"":scope.country;
-        const request={countryCode,platform:"",segment:"ALL",months:36,bbvaOnly:false};
-        const trends=heatmapOnly||scope.country==="UNKNOWN"?[]:fetchTrends(request);
+        const trends=heatmapOnly||scope.country==="UNKNOWN"?[]:fetchTrends(annualTrendRequest(scope));
         const chartReady=Promise.resolve(trends).then(rows=>{
-          if(token!==analyticsRequest||state.view!=="analytics"||heatmapOnly)return;
+          if(token!==analyticsRequest||heatmapOnly)return;
           annualTrends=scope.country==="UNKNOWN"?[]:withPublishedRatings(rows,{country:scope.country,platform:"ALL"});
           renderAnnualChart(scope,dates,analyticsEntity);
           trackReady("analytics","Mostrar histórico de ratings",started);
         });
         const [data]=await Promise.all([
-          fetchReviewData("review:analytics",{...scope,segment:heatmapSegment,entity:heatmapOnly?defaultAnalyticsEntity:analyticsEntity,language:appLanguage}),
+          fetchReviewData("review:analytics",request),
           chartReady
         ]);
-        if(token!==analyticsRequest||state.view!=="analytics")return;
+        if(token!==analyticsRequest)return;
         if(!localOnly)renderReviewMatrix(target,data,{...dates,country:scope.country,platform:"ALL",segment:heatmapSegment,audience:scope.audience,inferGeography:scope.inferGeography});
         if(!heatmapOnly){
           if(scope.country!=="UNKNOWN")annualYears=[...new Set(annualTrends.filter(row=>D.finite(row.ratingEom)).map(row=>row.month.slice(0,4)))].sort().reverse();
@@ -1231,16 +1305,17 @@
           if(!options.includes(analyticsEntity)){
             analyticsEntity=defaultAnalyticsEntity;
             analyticsLoading=false;
+            pendingAnalyticsKey="";
             return loadAnalytics(true);
           }
           entityControl.innerHTML=options.map(name=>U.option(name,name===defaultAnalyticsEntity?"BBVA":annualEntityLabel(name),name===analyticsEntity)).join("");
           annualAppControl.refresh();
-          renderAnnualChart(scope,dates,analyticsEntity);
           renderAnnualReviews($("review-annual"),data,scope);
         }
+        renderedAnalyticsKey=key;
         trackReady("analytics",heatmapOnly?"Mostrar mapa de calor":"Mostrar análisis anual",started);
       }catch(error){
-        if(token!==analyticsRequest||state.view!=="analytics")return;
+        if(token!==analyticsRequest||sameView)return;
         if(!localOnly)(target.querySelector("[data-matrix]")||target).textContent=error.message;
         if(!heatmapOnly&&$("annual-chart").querySelector(".loading-state"))$("annual-chart").textContent=error.message;
         if(!heatmapOnly)$("review-annual").textContent=error.message
@@ -1248,6 +1323,7 @@
         if(token===analyticsRequest){
           target.setAttribute("aria-busy","false");
           analyticsLoading=false;
+          pendingAnalyticsKey="";
           annualAppControl.enable(Boolean(entityControl.options.length));
         }
       }
@@ -1285,25 +1361,25 @@
       return year===reviewDates().end.slice(0,4)?translate("en el acumulado del año hasta la fecha"):translate("en {year}",{year});
     }
     async function loadAnnualNps(scope,dates){
-      const request={country:scope.country,year:scope.year,audience:scope.audience,inferGeography:scope.inferGeography};
+      const request=annualNpsScope(scope);
       const key=JSON.stringify(request), token=++annualNpsRequest, started=performance.now();
       const target=$("annual-nps-chart");
       $("review-balance-period").textContent=`${dateLabel(dates.start)} – ${dateLabel(dates.end)}`;
       if(key!==annualNpsKey||!annualNpsData){
         resizeReviewBalance=null;
         exportSheets.analytics.delete("Evolución del NPS de reseñas");
-        target.innerHTML=U.loading(translate("Cargando NPS de reseñas"));
+        if(!hasReviewResponse("review:nps",request))target.innerHTML=U.loading(translate("Cargando NPS de reseñas"));
         target.setAttribute("aria-busy","true");
       }else renderAnnualNps(scope,dates,annualNpsData,analyticsEntity);
       try{
         const data=await fetchReviewData("review:nps",request);
-        if(token!==annualNpsRequest||state.view!=="analytics")return;
+        if(token!==annualNpsRequest)return;
         if(key!==annualNpsKey||data!==annualNpsData)renderAnnualNps(scope,dates,data,analyticsEntity);
         annualNpsKey=key;
         annualNpsData=data;
         trackReady("analytics","Mostrar gráfico anual de NPS",started);
       }catch(error){
-        if(token!==annualNpsRequest||state.view!=="analytics")return;
+        if(token!==annualNpsRequest)return;
         if(key!==annualNpsKey||!annualNpsData)target.textContent=error.message;
       }finally{
         if(token===annualNpsRequest)target.setAttribute("aria-busy","false");
@@ -1347,12 +1423,14 @@
       }
       gapPanel.classList.remove("hidden");
       gapPanel.setAttribute("aria-busy","true");
-      gaps.innerHTML=U.loading(translate("Cargando brechas y ejemplos"),"");
-      examples.replaceChildren();
-      $("review-examples-panel").classList.add("hidden");
+      if(!hasReviewResponse("review:analytics",scope)){
+        gaps.innerHTML=U.loading(translate("Cargando brechas y ejemplos"),"");
+        examples.replaceChildren();
+        $("review-examples-panel").classList.add("hidden");
+      }
       try{
         const data=await fetchReviewData("review:analytics",scope);
-        if(token!==monthlyRequest||state.view!=="evolution")return;
+        if(token!==monthlyRequest)return;
         const applied={country:scope.country,platform:scope.platform,start:data.window.start,end:data.window.end,segment:"",audience:scope.audience,inferGeography:scope.inferGeography};
         if(balanceKey!==monthlyBalanceKey){
           const {nps}=data;
@@ -1382,7 +1460,7 @@
         monthlyReviewLoadedAt=Date.now();
         trackReady("evolution","Mostrar reseñas mensuales",started);
       }catch(error){
-        if(token!==monthlyRequest||state.view!=="evolution")return;
+        if(token!==monthlyRequest)return;
         monthlyReviewKey="";
         if(balanceKey!==monthlyBalanceKey){
           monthlyPulse={key:balanceKey,points:[]};
@@ -1392,7 +1470,6 @@
       }finally{
         if(token===monthlyRequest){
           monthlyReviewsLoading=false;
-          if(state.view!=="evolution")monthlyReviewKey="";
           gapPanel.setAttribute("aria-busy","false");
         }
       }
@@ -1897,22 +1974,21 @@
       window.setTimeout(()=>URL.revokeObjectURL(url),1000);
     }
     // Adapted from News Radar activity-chart.js (859e609).
-    function renderAdminActivity(target,days,label,primary,secondary){
+    function renderAdminActivity(target,days,label,primary,heading="Actividad diaria"){
       const root=$(target);
       if(!days.length){root.innerHTML=U.empty("Sin actividad diaria","");return}
-      const max=Math.max(1,...days.map(day=>Math.max(primary(day),secondary?.(day)||0)));
+      const max=Math.max(1,...days.map(primary));
       const months=new Map();
       for(const day of days){const key=day.date.slice(0,7);months.set(key,(months.get(key)||0)+1)}
       const monthFormat=new Intl.DateTimeFormat(locale(),{month:"long",year:"numeric",timeZone:"UTC"});
       const control=(step,caption)=>`<button type="button" class="button activity-control" data-step="${step}" aria-label="${caption}">${step<0?"‹":"›"}</button>`;
-      root.innerHTML=`<section class="activity-timeline"><div class="activity-heading"><div><strong>Actividad diaria</strong>
+      root.innerHTML=`<section class="activity-timeline"><div class="activity-heading"><div><strong>${U.esc(translate(heading))}</strong>
         <p class="activity-range small muted" aria-live="polite"></p></div><button type="button" class="button" data-step="end">Últimos días</button></div>
-        ${secondary?'<div class="usage-trend-legend"><span><i class="users"></i>Usuarios</span><span><i class="sessions"></i>Sesiones</span></div>':""}
         <div class="activity-navigation">${control(-1,"Ver días anteriores")}<ul class="activity-chart" tabindex="0" aria-label="${U.esc(label)}">${days.map((day,i)=>{
-          const month=day.date.slice(0,7), value=primary(day), other=secondary?.(day);
-          const description=`${dateLabel(day.date)} · ${integer(value)} ${secondary?"usuarios":label.toLowerCase()}${secondary?", "+integer(other)+" sesiones":""}`;
+          const month=day.date.slice(0,7), value=primary(day);
+          const description=`${dateLabel(day.date)} · ${integer(value)} ${translate(label).toLocaleLowerCase(locale())}`;
           return `<li class="activity-column" data-date="${day.date}" aria-label="${U.esc(description)}" title="${U.esc(description)}"><span>${integer(value)}</span>
-            <div class="activity-bars"><i style="height:${100*value/max}%"></i>${secondary?`<i class="activity-secondary" style="height:${100*other/max}%"></i>`:""}</div>
+            <div class="activity-bars"><i style="height:${100*value/max}%"></i></div>
             <time datetime="${day.date}">${day.date.slice(8)}</time>${days[i-1]?.date.slice(0,7)!==month?`<span class="activity-month" style="--days:${months.get(month)}">${U.esc(monthFormat.format(new Date(month+"-01T00:00:00Z")))}</span>`:""}</li>`;
         }).join("")}</ul>${control(1,"Ver días siguientes")}</div></section>`;
       const chart=root.querySelector(".activity-chart"), range=root.querySelector(".activity-range");
@@ -1989,7 +2065,7 @@
       ];
       const selected=cohorts.find(item=>item.key===adoptionCohort), matched=selected.rows;
       if(trend!==renderedAdoptionTrend){
-        renderAdminActivity("admin-adoption-chart",trend,"Usuarios y sesiones",day=>day.users||0,day=>day.sessions||0);
+        renderAdminActivity("admin-adoption-chart",trend,"Usuarios",day=>day.users||0,"Usuarios por día");
         renderedAdoptionTrend=trend;
       }
       const metrics=$("admin-adoption-metrics");
