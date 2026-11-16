@@ -132,9 +132,11 @@
       }).filter(group=>group.rows.length);
     }
     const monthlyAppMatches=(row,app)=>app==="ALL"||(app?appName(row)===app:row.isBbva);
-    function monthlyRatingMatrix(trends,snapshot,selection,endPeriod,limit=8){
+    function monthlyRatingMatrix(trends,snapshot,selection,endPeriod,limit=8,includePreviousMonth=false){
       const rows=(trends||[]).filter(row=>monthlyAppMatches(row,selection.app)&&finite(row.ratingEom)&&(!endPeriod||row.month<=endPeriod)&&(selection.country==="ALL"||row.countryCode===selection.country)&&(selection.platform==="ALL"||row.platform===selection.platform));
-      const periods=[...new Set(rows.map(row=>row.month))].sort().slice(-Math.max(1,limit));
+      const periods=includePreviousMonth&&/^\d{4}-\d{2}$/.test(endPeriod||"")
+        ? [previousCalendarMonth(endPeriod),endPeriod]
+        : [...new Set(rows.map(row=>row.month))].sort().slice(-Math.max(1,limit));
       const platforms=selection.platform==="ALL"?config.platforms.filter(platform=>isCriticalPlatform(platform)||rows.some(row=>row.platform===platform&&finite(row.ratingEom))):[selection.platform];
       const metadata=new Map((snapshot||[]).map(row=>[row.appKey,row]));
       const countryCodes=[...new Set(rows.map(row=>row.countryCode))].sort((a,b)=>(config.countries[a]||a).localeCompare(config.countries[b]||b,"es"));
@@ -235,6 +237,6 @@
       const specific=selected.filter(value=>value!=="ALL");
       return specific.length?specific:["ALL"];
     }
-    window.MarketsDomain=Object.freeze({config,browserMarket,benchmarkWeightedRows,finite,sum,sumOrNull,mean,weightedMean,groupBy,appName,isCriticalPlatform,selectionRows,coverageRows,trendRows,uniqueStoreRows,volumeSummary,rankRows,countBbvaLeaders,availablePeriods,periodModel,ratingAt,evolutionKpis,prepareSeries,latestValue,ratingComparison,monthlyRatingMatrix,ratingRoundingHalfStep,monthlyNewReviewImpact,monthlyVoiceScope,monthlyVoiceVolumeDetail,exclusiveScopeSelection});
+    window.MarketsDomain=Object.freeze({config,browserMarket,benchmarkWeightedRows,finite,sum,sumOrNull,mean,weightedMean,groupBy,appName,isCriticalPlatform,selectionRows,coverageRows,trendRows,uniqueStoreRows,volumeSummary,rankRows,countBbvaLeaders,availablePeriods,periodModel,ratingAt,evolutionKpis,prepareSeries,latestValue,ratingComparison,monthlyRatingMatrix,previousCalendarMonth,ratingRoundingHalfStep,monthlyNewReviewImpact,monthlyVoiceScope,monthlyVoiceVolumeDetail,exclusiveScopeSelection});
   })();
 </script>

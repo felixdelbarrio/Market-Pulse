@@ -398,9 +398,8 @@ test("BBVA alert email uses the official image slot, brand system and safe conte
   assert.match(html, /el límite configurado para el nivel rojo \(0,50 puntos\)/);
   assert.match(html, /Abre Market Pulse/);
   assert.match(html, />Ir a Market Pulse</);
-  assert.match(html, /acceso directo a Market Pulse/);
+  assert.doesNotMatch(html, /acceso directo a Market Pulse/);
   assert.match(html, /https:\/\/accounts\.google\.com\/AccountChooser\?/);
-  assert.ok(html.includes(`href="${context.MARKETS_CONFIG.webAppUrl}"`));
   assert.match(html, /Siguiente paso/);
   assert.match(html, /Datos obtenidos el 21\/07\/2026/);
   assert.doesNotMatch(html, /Markets Data Studio/i);

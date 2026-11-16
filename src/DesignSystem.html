@@ -373,6 +373,29 @@
   .edition-rating{display:flex;flex-wrap:wrap;gap:var(--space-2);border:0;padding:0;margin:0}
   .edition-rating label{display:flex;gap:var(--space-1);align-items:center;padding:var(--space-1);border:var(--stroke) solid var(--color-primary-border);border-radius:var(--radius-component)}
   .edition-rating legend{font-size:var(--text-s);margin-bottom:var(--space-1)}
+  .activity-timeline{padding:var(--space-2);border:var(--stroke) solid var(--color-primary-border);border-radius:var(--radius-container);background:var(--color-primary-bg-surface);min-width:0}
+  .activity-heading{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:var(--space-1);margin-bottom:var(--space-2)}
+  .activity-navigation{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:var(--space-1);align-items:center}
+  .activity-control{min-width:var(--space-4);padding-inline:var(--space-1)}
+  .activity-chart{--day-width:var(--space-6);display:grid;grid-auto-flow:column;grid-auto-columns:var(--day-width);gap:var(--space-1);overflow-x:auto;overscroll-behavior-inline:contain;scroll-snap-type:x proximity;list-style:none;margin:0;padding:var(--space-1) 0}
+  .activity-column{display:grid;grid-template-rows:var(--line-s) calc(4 * var(--space-5)) var(--line-s) var(--line-s);gap:var(--space-1);align-items:end;text-align:center;scroll-snap-align:start;font-size:var(--text-s);color:var(--color-primary-text-secondary)}
+  .activity-bars{height:100%;display:flex;align-items:end;gap:var(--stroke)}
+  .activity-bars i{background:var(--chart-series-1);width:100%;border-radius:var(--radius-component) var(--radius-component) 0 0}
+  .activity-bars .activity-secondary{background:var(--chart-series-2)}
+  .activity-month{display:block;width:calc(var(--days) * (var(--day-width) + var(--space-1)) - var(--space-1));text-align:left;border-top:var(--stroke) solid var(--color-primary-border);white-space:nowrap}
+  #admin-panel-business,#admin-panel-logs,#admin-business-results,#admin-log-metrics{min-width:0;max-width:100%}
+  #admin-panel-business .record-toolbar,#admin-panel-logs .record-toolbar{flex-wrap:wrap}
+  @media(max-width:600px){
+    .activity-chart{--day-width:var(--space-4)}
+    #admin-panel-business .record-filters,#admin-panel-logs .record-filters{grid-template-columns:minmax(0,1fr)}
+    #admin-panel-business select,#admin-panel-logs select,#admin-panel-logs input{max-width:100%;min-width:0}
+  }
+  .monthly-nps{display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--space-1);margin-top:var(--space-1);font-size:var(--text-s)}
+  .monthly-nps em{font-style:normal}
+  @media(max-width:780px){
+    .monthly-pulse-panel .monthly-matrix{min-width:0;table-layout:fixed;width:100%}
+    .monthly-pulse-panel .monthly-matrix :is(th,td){min-width:0;overflow-wrap:anywhere}
+  }
 </style>
 <script>
   window.MarketsTheme=Object.freeze({

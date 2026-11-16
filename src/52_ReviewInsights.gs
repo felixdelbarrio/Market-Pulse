@@ -625,7 +625,8 @@ function getMarketsReviewHeatmap(filters) {
 }
 
 const MARKETS_REVIEW_ENTITY = 'BBVA Empresas';
-const MARKETS_REVIEW_SNAPSHOT_SCHEMA = 13;
+const MARKETS_REVIEW_SNAPSHOT_SCHEMA = 15;
+const MARKETS_REVIEW_SNAPSHOT_POINTER = 'MARKETS_REVIEW_SNAPSHOT_POINTER';
 const MARKETS_REVIEW_HELPFUL_MIN = 5;
 const MARKETS_REVIEW_PAGE_SIZE = 25;
 
@@ -670,15 +671,60 @@ function marketsReviewVersions_(properties, catalogVersion) {
 }
 
 function marketsReviewSnapshotScope_(operation, filters, window) {
-  if (filters.inferGeography || filters.audience || filters.year || filters.analysisMonth || filters.platform !== 'ALL' || filters.topic || filters.rating || filters.search || filters.reviewKey ||
+  if (filters.inferGeography || filters.audience || filters.platform !== 'ALL' || filters.topic || filters.rating || filters.search || filters.reviewKey ||
       filters.period || Number(filters.page || 0) !== 0) return '';
   const language = ['es', 'en', 'tr'].includes(filters.language) ? filters.language : 'es';
   if (operation === 'page') {
-    return filters.app === 'BBVA Empresas' && !filters.segment && window.start === marketsDefaultCommentStart_(window.end)
+    return !filters.year && !filters.analysisMonth && filters.app === 'BBVA Empresas' && !filters.segment && window.start === marketsDefaultCommentStart_(window.end)
       ? ['page', filters.country, language].join(':') : '';
+  }
+  if (operation !== 'analytics') return '';
+  if (filters.year || filters.analysisMonth) {
+    if ((filters.year && filters.analysisMonth) || filters.start || filters.end || filters.app ||
+        (filters.entity && filters.entity !== MARKETS_REVIEW_ENTITY) || filters.segment !== 'DETRACTOR') return '';
+    return ['analytics', filters.country, filters.year || filters.analysisMonth, window.start, window.end].join(':');
   }
   return (!filters.entity || filters.entity === MARKETS_REVIEW_ENTITY) && !filters.app && filters.segment === 'DETRACTOR' && window.start === shiftReviewDay_(window.end, -365)
     ? ['analytics', filters.country].join(':') : '';
+}
+
+/** Keep large review payloads outside ScriptProperties. Only their manifest is published there. */
+function writeMarketsReviewSnapshot_(properties, manifest, values, isCurrent) {
+  const files = {};
+  const shards = new Map();
+  for (const [scope, value] of Object.entries(values)) {
+    const country = scope.split(':')[1];
+    if (!shards.has(country)) shards.set(country, {});
+    shards.get(country)[scope] = value;
+  }
+  const previous = safeJsonParse_(properties.getProperty(MARKETS_REVIEW_SNAPSHOT_POINTER) || 'null');
+  let published = false;
+  try {
+    for (const [country, shard] of shards) {
+      const blob = Utilities.newBlob(JSON.stringify(shard), 'application/json');
+      const filename = 'market-pulse-review-snapshot-' + manifest.end + '-' + country + '.json.gz';
+      files[country] = DriveApp.createFile(Utilities.gzip(blob, filename)).getId();
+    }
+    if (!isCurrent()) return false;
+    properties.setProperty(MARKETS_REVIEW_SNAPSHOT_POINTER, JSON.stringify({ ...manifest, files }));
+    published = true;
+    return true;
+  } finally {
+    for (const id of Object.values(published ? previous?.files || {} : files)) {
+      try { DriveApp.getFileById(id).setTrashed(true); }
+      catch (error) { console.warn('No se pudo retirar una vista anterior de reseñas: ' + errorToString_(error)); }
+    }
+  }
+}
+
+function readMarketsReviewSnapshotShard_(manifest, country) {
+  const id = manifest?.files?.[country];
+  if (!id) return null;
+  try { return JSON.parse(Utilities.ungzip(DriveApp.getFileById(id).getBlob()).getDataAsString('UTF-8')); }
+  catch (error) {
+    console.warn('No se pudo leer la vista publicada de reseñas: ' + errorToString_(error));
+    return null;
+  }
 }
 
 function publishMarketsReviewSnapshot_() {
@@ -688,16 +734,19 @@ function publishMarketsReviewSnapshot_() {
   const catalog = readAppCatalog_(ss), catalogVersion = marketsReviewCatalogVersion_(catalog);
   const versions = marketsReviewVersions_(properties.getProperties(), catalogVersion);
   const { end } = marketsReviewWindow_();
-  const previous = readMarketsPersistentCache_('review-snapshot');
+  const previous = safeJsonParse_(properties.getProperty(MARKETS_REVIEW_SNAPSHOT_POINTER) || 'null');
   if (previous?.schema === MARKETS_REVIEW_SNAPSHOT_SCHEMA && previous.end === end && JSON.stringify(previous.versions) === JSON.stringify(versions)) {
-    return { complete: true, published: Object.keys(previous.values).length };
+    return { complete: true, published: previous.count };
   }
   const analyticsWindow = marketsReviewWindow_();
   const annualWindow = marketsAnnualReviewWindow_(analyticsWindow);
   const commentWindow = marketsReviewWindow_({ start: marketsDefaultCommentStart_(end) });
   const topics = marketsReviewTopics_(ss);
   const year = end.slice(0, 4), analysisMonth = end.slice(0, 7);
-  const earliest = [analyticsWindow.start, (Number(year) - 1) + '-01-01'].sort()[0];
+  const previousMonth = shiftReviewDay_(analysisMonth + '-01', -1).slice(0, 7);
+  const previousWindow = marketsReviewAnalyticsWindow_({ analysisMonth: previousMonth }, end);
+  const earliest = [analyticsWindow.start, marketsAnnualReviewWindow_(previousWindow).start,
+    previousWindow.start, (Number(previousMonth.slice(0, 4)) - 1) + '-01-01', (Number(year) - 1) + '-01-01'].sort()[0];
   const allRows = queryMarketsReviews_(ss, { country: 'ALL', platform: 'ALL' },
     { ...analyticsWindow, start: earliest }, true, catalog);
   const rows = allRows.filter(row => row.date >= analyticsWindow.start);
@@ -731,28 +780,38 @@ function publishMarketsReviewSnapshot_() {
   if (JSON.stringify(marketsReviewVersions_(properties.getProperties(), catalogVersion)) !== JSON.stringify(versions)) {
     return { complete: false, published: 0 };
   }
-  const result = tryWriteMarketsPersistentCache_('review-snapshot', { end, versions, values, schema: MARKETS_REVIEW_SNAPSHOT_SCHEMA }, end);
+
   // Precalienta los mismos parámetros que usan las vistas iniciales. Si una
   // respuesta supera el tamaño de CacheService, se conserva el fallback normal.
   const cache = CacheService.getScriptCache();
   for (const country of ['ALL', ...MARKETS_WEB.countryCodes, 'UNKNOWN']) {
     const scoped = country === 'ALL' ? allRows : byCountry.get(country) || [];
-    if (Date.now() >= warmDeadline) break;
+    if (Date.now() >= warmDeadline) return { complete: false, published: 0 };
     const sourceRange = { start: (Number(year) - 1) + '-01-01', end };
     const query = { country, platform: 'ALL', start: sourceRange.start };
     const sourceKey = marketsReviewAnalyticsSourceKey_(ss, query, sourceRange, versions);
     writeMarketsWebCache_(cache, sourceKey, { rows: compactMarketsReviewAnalyticsRows_(
       scoped.filter(row => row.date >= sourceRange.start), end), topics }, 12);
-    for (const dateFilter of [{ year }, { analysisMonth }]) {
+    for (const dateFilter of [{ year }, { analysisMonth }, { analysisMonth: previousMonth }]) {
       const filters = normalizeMarketsReviewFilters_({ country, ...dateFilter, segment: 'DETRACTOR', entity: MARKETS_REVIEW_ENTITY });
       const window = marketsReviewAnalyticsWindow_(filters, end);
-      const rowsForView = filters.year ? scoped : scoped.filter(row => row.date >= window.start && row.date <= window.end);
+      const sourceStart = filters.year ? sourceRange.start
+        : [marketsAnnualReviewWindow_(window).start, window.start].sort()[0];
+      const queryStart = [sourceStart, (Number(window.end.slice(0, 4)) - 1) + '-01-01'].sort()[0];
+      const rowsForView = compactMarketsReviewAnalyticsRows_(scoped.filter(row => row.date >= queryStart && row.date <= window.end), window.end)
+        .filter(row => row.date >= sourceStart);
       const data = buildMarketsReviewAnalytics_(rowsForView, topics, filters, window);
+      values[marketsReviewSnapshotScope_('analytics', filters, window)] = data;
       writeMarketsWebCache_(cache, marketsReviewCacheKey_(ss, 'analytics', filters, window, versions), data);
     }
   }
-  if (!result.ok) throw new Error(result.error);
-  return { complete: true, published: Object.keys(values).length };
+  if (JSON.stringify(marketsReviewVersions_(properties.getProperties(), catalogVersion)) !== JSON.stringify(versions)) {
+    return { complete: false, published: 0 };
+  }
+  const count = Object.keys(values).length;
+  const complete = writeMarketsReviewSnapshot_(properties, { end, versions, count, schema: MARKETS_REVIEW_SNAPSHOT_SCHEMA }, values,
+    () => JSON.stringify(marketsReviewVersions_(properties.getProperties(), catalogVersion)) === JSON.stringify(versions));
+  return { complete, published: complete ? count : 0 };
 }
 
 function getMarketsReviewPage(filters) {
@@ -771,7 +830,7 @@ function getMarketsReviewPage(filters) {
   const page = readMarketsReviewCache_(ss, 'page', filters, window, catalog => {
     // Text search matches original review text. Only the visible page needs block labels.
     const deferBlocks = !filters.topic && !filters.audience;
-    const query = { ...filters, country: 'ALL', deferBlocks };
+    const query = { ...filters, country: 'ALL', deferBlocks, interactive: true, timing };
     const paging = { ...filters, topics: marketsReviewTopics_(ss) };
     const page = queryMarketsReviews_(ss, query, window, false, catalog, paging);
     if (deferBlocks && page.rows.length) {
@@ -780,7 +839,8 @@ function getMarketsReviewPage(filters) {
       for (const row of page.rows) {
         row.blocks = marketsReviewBlocks_(classifyReviewEvidence_([row.title, row.original].join(' '), rules), knownBlocks);
       }
-      console.log(JSON.stringify({ operation: 'review-page-classify', classified: page.rows.length, durationMs: Date.now() - started }));
+      timing.classificationMs = (timing.classificationMs || 0) + Date.now() - started;
+      timing.classified = (timing.classified || 0) + page.rows.length;
     }
     return page;
   }, timing);
@@ -875,11 +935,15 @@ function getMarketsReviewAnalytics(filters) {
     const key = marketsReviewAnalyticsSourceKey_(ss, query, range, versions);
     const { rows, topics } = readMarketsWebCache_(key, () => {
       timing.source = 'sheet';
-      const rows = queryMarketsReviews_(ss, query, range, true, catalog);
+      const rows = queryMarketsReviews_(ss, { ...query, interactive: true, timing }, range, true, catalog);
       return { rows: compactMarketsReviewAnalyticsRows_(rows, range.end), topics: marketsReviewTopics_(ss) };
     }, 12);
     timing.source = timing.source || 'cache';
-    return buildMarketsReviewAnalytics_(rows.filter(row => row.date >= start), topics, filters, window);
+    const aggregateStarted = Date.now();
+    const result = buildMarketsReviewAnalytics_(rows.filter(row => row.date >= start), topics, filters, window);
+    timing.aggregateMs = Date.now() - aggregateStarted;
+    timing.input = rows.length;
+    return result;
   }, timing);
   function localizeReview({ translations, replyTranslations, ...review }) {
     const translated = translations?.[language];
@@ -955,8 +1019,8 @@ function compactMarketsReviewAnalyticsRows_(rows, end) {
   return rows.map(row => {
     if (authorSamples.has(row) || row.date >= examplesStart || (Number.isInteger(row.helpful) && row.helpful >= MARKETS_REVIEW_HELPFUL_MIN)) return row;
     return { date: row.date, rating: row.rating, entities: row.entities, blocks: row.blocks,
-      author: row.author, reply: row.reply?.trim() ? '1' : '',
-      ...(row.platform === 'Android' && row.volumeKey ? { volumeKey: row.volumeKey, platform: row.platform, countries: row.countries } : {}) };
+      author: row.author, reply: row.reply?.trim() ? '1' : '', countries: row.countries,
+      ...(row.platform === 'Android' && row.volumeKey ? { volumeKey: row.volumeKey, platform: row.platform } : {}) };
   });
 }
 
@@ -981,13 +1045,16 @@ function readMarketsReviewCache_(ss, operation, filters, window, builder, timing
     source = 'sheet';
     const snapshotScope = marketsReviewSnapshotScope_(operation, filters, window);
     if (snapshotScope) {
-      const snapshot = readMarketsPersistentCache_('review-snapshot');
-      if (snapshot?.schema === MARKETS_REVIEW_SNAPSHOT_SCHEMA && snapshot.end === window.end &&
-          JSON.stringify(snapshot.versions) === JSON.stringify(versions) &&
-          Object.hasOwn(snapshot.values, snapshotScope)) { source = 'snapshot'; return snapshot.values[snapshotScope]; }
+      const snapshot = safeJsonParse_(properties[MARKETS_REVIEW_SNAPSHOT_POINTER] || 'null');
+      if (snapshot?.schema === MARKETS_REVIEW_SNAPSHOT_SCHEMA && snapshot.end === marketsReviewWindow_().end &&
+          (filters.analysisMonth || snapshot.end === window.end) &&
+          JSON.stringify(snapshot.versions) === JSON.stringify(versions)) {
+        const value = readMarketsReviewSnapshotShard_(snapshot, filters.country)?.[snapshotScope];
+        if (value) { source = 'snapshot'; return value; }
+      }
     }
     return builder(catalog, versions);
-  }, operation === 'analytics' || operation === 'page' ? 6 : 1);
+  }, operation === 'analytics' || operation === 'page' ? 6 : 1, timing);
   timing.source = timing.source || source;
   timing.durationMs = Date.now() - started;
   console.log(JSON.stringify({ operation: 'review-' + operation, source: timing.source, key, durationMs: timing.durationMs }));
@@ -1046,18 +1113,27 @@ function summarizeMarketsReviewAnalytics_(rows, topics, filters, window, annual 
       groups.set(entity, group);
     }
   }
-  for (const row of filters.year ? [] : monthlyRows) {
+  const geographyMonths = new Map();
+  function countMonthly(points, dimensions, row) {
+    const key = JSON.stringify(dimensions);
+    const point = points.get(key) || { total: 0, promoters: 0, detractors: 0 };
+    count(point, row);
+    points.set(key, point);
+  }
+  for (const row of monthlyRows) {
     const month = row.date.slice(0, 7);
     for (const entityName of row.entities) {
-      if (filters.analysisMonth && entity !== 'ALL' && entityName !== entity) continue;
-      const key = JSON.stringify([entityName, month]);
-      const point = monthly.get(key) || { entity: entityName, month, total: 0, promoters: 0, detractors: 0 };
-      point.total++;
-      point.promoters += Number(net(row.rating) === 1);
-      point.detractors += Number(net(row.rating) === -1);
-      monthly.set(key, point);
+      if ((filters.analysisMonth || filters.year) && entity !== 'ALL' && entityName !== entity) continue;
+      countMonthly(monthly, [entityName, month], row);
+    }
+    if (filters.analysisMonth && row.countries?.length === 1) {
+      countMonthly(geographyMonths, [row.countries[0], month], row);
     }
   }
+  const monthlyPoints = [...monthly].map(([key, point]) => {
+    const [entityName, month] = JSON.parse(key);
+    return { entity: entityName, month, ...point, balance: reviewBalancePoints_(point) };
+  });
   const base = { total: 0, promoters: 0, detractors: 0 };
   const previousEnd = shiftReviewDay_(window.recent, -1);
   const baseStart = filters.analysisMonth ? previousEnd.slice(0, 7) + '-01' : window.start;
@@ -1103,8 +1179,12 @@ function summarizeMarketsReviewAnalytics_(rows, topics, filters, window, annual 
     annual: summarizeAnnualMarketsReviews_(rows, entity, annual, net, Boolean(filters.year)),
     entities: [...groups.values()].sort((a, b) => Number(b.label === 'BBVA Empresas') - Number(a.label === 'BBVA Empresas') ||
       b.total - a.total || a.label.localeCompare(b.label)), entityOptions: [...new Set(visible.flatMap(row => row.entities))].sort(),
-    monthlyEntityOptions: [...new Set([...monthly.values()].map(point => point.entity))].sort(),
-    monthly: [...monthly.values()].map(point => ({ ...point, balance: reviewBalancePoints_(point) })),
+    monthlyEntityOptions: [...new Set(monthlyPoints.map(point => point.entity))].sort(),
+    monthly: monthlyPoints,
+    ...(filters.analysisMonth ? { monthlyByGeography: [...geographyMonths].map(([key, point]) => {
+      const [country, month] = JSON.parse(key);
+      return { country, month, ...point, balance: reviewBalancePoints_(point) };
+    }) } : {}),
     ...(filters.analysisMonth ? { nps: { start: window.recent, end: window.end, current: current.total ? reviewBalancePoints_(current) : null,
       previous: baseline?.balance ?? null, previousStart: baseStart, previousEnd,
       delta: current.total && baseline ? reviewBalancePoints_(current) - baseline.balance : null } } : {}),

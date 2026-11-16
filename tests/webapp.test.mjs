@@ -375,9 +375,9 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(evolutionMarkup, /class="panel-body radar-filters review-gap-controls"[\s\S]*id="monthly-review-segment"/);
   assert.match(app, /searchable\(\$\("monthly-review-segment"\)\)\.refresh\(\)/);
   assert.match(evolutionMarkup, /id="evolution-filters"[\s\S]*name="audience"[\s\S]*name="inferGeography"[\s\S]*<\/form>/);
-  assert.match(evolutionMarkup, /id="review-balance"[\s\S]*id="review-deltas"[\s\S]*id="review-examples"[\s\S]*id="monthly-matrix"[\s\S]*id="new-review-impact"/);
+  assert.match(evolutionMarkup, /id="monthly-matrix"[\s\S]*id="review-balance"[\s\S]*id="review-deltas"[\s\S]*id="review-examples"[\s\S]*id="new-review-impact"/);
   assert.match(analyticsMarkup, /class="annual-chart-layout">\s*<div id="annual-chart"[^>]*><\/div>\s*<aside id="annual-series"[^>]*><\/aside>/);
-  assert.match(analyticsMarkup, /id="review-heatmap"[\s\S]*id="analytics-entity"[\s\S]*id="annual-chart"[\s\S]*id="review-annual"/);
+  assert.match(analyticsMarkup, /id="review-heatmap"[\s\S]*id="analytics-entity"[\s\S]*id="annual-chart"[\s\S]*id="annual-nps-chart"[\s\S]*id="review-annual"/);
   const charts = fs.readFileSync(new URL("../src/Charts.html", import.meta.url), "utf8");
   assert.match(charts, /class="rating-bar-metric"/);
   assert.match(charts, /<\/span><b aria-label="Rating/);
@@ -388,7 +388,7 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(charts, /class="new-review-unavailable"/);
   assert.doesNotMatch(charts, /platformBadge/);
   assert.match(app, /const mobileViewport=window\.matchMedia\("\(max-width:780px\)"\)/);
-  assert.match(app, /monthlyRatingMatrix\(trends,state\.snapshot,\{\.\.\.selection\(\),app:state\.evolutionApp\},period,mobileViewport\.matches\?3:6\)/);
+  assert.match(app, /monthlyRatingMatrix\(trends,state\.snapshot,selected,period,mobileViewport\.matches\?2:6,mobileViewport\.matches\)/);
   assert.match(app, /const compactInteger=/);
   assert.doesNotMatch(charts, /Cierre mensual|<span>\/ 5<\/span>/);
   const components = fs.readFileSync(new URL("../src/Components.html", import.meta.url), "utf8");
@@ -408,7 +408,7 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(index, /Activa por defecto/);
   assert.match(index, /Toda la base activa/);
   assert.match(app, /draft\[period\+"DropEnabled"\]/);
-  assert.match(index, /Probar alertas/);
+  assert.doesNotMatch(index, /Probar alertas/);
   assert.doesNotMatch(index, /id="newsletter-test-button"/);
   assert.match(index, /id="loader-retry"/);
   assert.doesNotMatch(app, /sendMarketsNewsletterTestEmail/);
@@ -418,10 +418,7 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(app, /Market Pulse no ha respondido a tiempo/);
   assert.doesNotMatch(app, /Promise\.all\\(\\[callServer\\("bootstrap"\\),callServer\\("user:context"\\)\\]\\)/);
   assert.match(app, /function renderDashboard\(\)\{if\(state\.view==="benchmark"\)/);
-  assert.match(index, /id="alert-test-result"/);
-  assert.match(app, /Gmail ha aceptado la prueba/);
-  assert.match(app, /result\.senderAddress/);
-  assert.match(app, /result\.messageId/);
+  assert.doesNotMatch(index, /id="alert-test-(?:result|button)"/);
   assert.match(app, /result\.deliveryId/);
   assert.match(index, /Restaurar valores/);
   assert.match(index, /Guardar mis alertas/);

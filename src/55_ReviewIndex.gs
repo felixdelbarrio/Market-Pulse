@@ -180,10 +180,106 @@ function refreshMarketsReviewGeography() {
 }
 
 const MARKETS_GEO_AUDIT_PROPERTY = 'MARKETS_ANDROID_GEO_AUDIT';
+const MARKETS_GEO_ITERATION_23 = 'MARKETS_GEO_ITERATION_23_BACKUP';
+const MARKETS_GEO_SPAIN_CONFIRMATIONS = 'MARKETS_GEO_SPAIN_CONFIRMATIONS';
+const MARKETS_GEO_SPAIN_REASON = 'spain-owner-confirmed';
+
+/** Apply only individually confirmed keys, preserving the original review and storefront. */
+function applyMarketsSpainReviewApprovals() {
+  const { ss, email } = requireMarketsReviewOwner_();
+  const properties = PropertiesService.getScriptProperties();
+  const approved = safeJsonParse_(properties.getProperty(MARKETS_GEO_SPAIN_CONFIRMATIONS));
+  if (!Array.isArray(approved) || !approved.length || approved.length > 20 ||
+      approved.some(item => typeof item?.key !== 'string' || item.key.length > 250 ||
+        !/^[A-Za-z0-9_-]{43}=$/.test(item.digest)) ||
+      new Set(approved.map(item => item.key)).size !== approved.length) {
+    throw new Error('Indica las claves únicas y sus huellas verificadas en MARKETS_GEO_SPAIN_CONFIRMATIONS.');
+  }
+  const backup = safeJsonParse_(properties.getProperty(MARKETS_GEO_ITERATION_23));
+  if (!backup?.backupId) throw new Error('Verifica primero la copia de geografía con enableMarketsIteration23Geography.');
+  const lock = LockService.getUserLock();
+  if (!lock.tryLock(1000)) throw new Error('Hay otra operación de reseñas en curso.');
+  try {
+    const source = marketsReviewSheet_(ss);
+    const target = requireCurrentSheetContract_(ss, MARKETS_ANDROID_GEO_SHEET, MARKETS_ANDROID_GEO_HEADERS);
+    const approvals = readMarketsAndroidGeography_(ss);
+    const packages = new Map();
+    for (const app of readAppCatalog_(ss)) {
+      if (app.platform !== 'Android' || !app.packageName) continue;
+      if (!packages.has(app.packageName)) packages.set(app.packageName, new Set());
+      packages.get(app.packageName).add(app.countryCode);
+    }
+    const edits = [];
+    const width = marketsReviewWidth_(source);
+    if (source.getLastRow() < 2) throw new Error('No hay reseñas que verificar.');
+    const keyColumn = source.getRange(2, 1, source.getLastRow() - 1, 1);
+    let nextRow = target.getLastRow() + 1;
+    for (const { key, digest } of approved) {
+      const found = keyColumn.createTextFinder(key).matchEntireCell(true).findAll();
+      if (found.length !== 1) throw new Error('Una clave confirmada falta o está duplicada.');
+      const row = source.getRange(found[0].getRow(), 1, 1, width).getValues()[0];
+      if (!marketsAndroidGeographyEligible_(row, packages) || !packages.get(row[4]).has('ES')) {
+        throw new Error('Una reseña confirmada carece de una ficha Android compartida elegible para España.');
+      }
+      const previous = approvals.get(key);
+      if ((approvals.has(key) && !previous) || (previous?.country && previous.country !== 'ES')) {
+        throw new Error('Una aprobación existente es ambigua o asigna otra geografía.');
+      }
+      if (marketsAndroidGeographyDigest_(row, false) !== digest) throw new Error('El texto de una reseña confirmada cambió.');
+      if (previous?.country === 'ES' && previous.reason === MARKETS_GEO_SPAIN_REASON && previous.digest === digest) continue;
+      edits.push([previous?.rowNumber || nextRow++, [marketsReviewLiteral_(key), row[4], digest,
+        'ES', MARKETS_ANDROID_GEO_VERSION, new Date(), email, MARKETS_GEO_SPAIN_REASON]]);
+    }
+    if (!edits.length) return { updated: 0, confirmed: approved.length };
+    ensureSheetCapacity_(target, nextRow - 1, MARKETS_ANDROID_GEO_HEADERS.length);
+    properties.setProperty('MARKETS_REVIEW_GEOGRAPHY_REVISION', Utilities.getUuid());
+    for (const [position, values] of edits) target.getRange(position, 1, 1, values.length).setValues([values]);
+    SpreadsheetApp.flush();
+    properties.setProperty('MARKETS_REVIEW_GEOGRAPHY_REVISION', Utilities.getUuid());
+    return { updated: edits.length, confirmed: approved.length };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** Authorize the historic scan only after a fresh recoverable copy is verified. */
+function enableMarketsIteration23Geography() {
+  const { ss } = requireMarketsReviewOwner_();
+  const properties = PropertiesService.getScriptProperties();
+  const existing = safeJsonParse_(properties.getProperty(MARKETS_GEO_ITERATION_23));
+  if (existing?.backupId) return existing;
+  const lock = LockService.getUserLock();
+  if (!lock.tryLock(1000)) throw new Error('Hay una operación de reseñas en curso.');
+  try {
+    const ready = safeJsonParse_(properties.getProperty(MARKETS_GEO_ITERATION_23));
+    if (ready?.backupId) return ready;
+    const geography = ss.getSheetByName(MARKETS_ANDROID_GEO_SHEET);
+    if (!geography) throw new Error('Falta la hoja de geografía de reseñas.');
+    requireCurrentSheetContract_(ss, MARKETS_ANDROID_GEO_SHEET, MARKETS_ANDROID_GEO_HEADERS);
+    const source = marketsReviewSheet_(ss);
+    const folder = DriveApp.getFolderById(marketsStorageFolders_(properties).backups);
+    const name = 'Market Pulse - Antes de inferencia Iteración 23';
+    const candidates = folder.getFilesByName(name);
+    const copy = candidates.hasNext() ? candidates.next() : DriveApp.getFileById(ss.getId()).makeCopy(name, folder);
+    if (candidates.hasNext()) throw new Error('Hay varias copias de la Iteración 23 y deben revisarse.');
+    const backup = SpreadsheetApp.openById(copy.getId());
+    const backupGeography = backup.getSheetByName(MARKETS_ANDROID_GEO_SHEET);
+    const sameGeography = backupGeography &&
+      marketsReviewDigest_(backupGeography.getDataRange().getValues()) === marketsReviewDigest_(geography.getDataRange().getValues());
+    if (!sameGeography || backup.getSheetByName('MARKET_REVIEWS')?.getLastRow() !== source.getLastRow()) {
+      throw new Error('La copia debe coincidir con las filas de origen y las aprobaciones geográficas vigentes.');
+    }
+    const result = { backupId: copy.getId(), enabledAt: new Date().toISOString(), geographyRows: geography.getLastRow() - 1 };
+    properties.setProperty(MARKETS_GEO_ITERATION_23, JSON.stringify(result));
+    return result;
+  } finally {
+    lock.releaseLock();
+  }
+}
 
 function advanceMarketsAndroidGeography_(now = new Date()) {
   const lock = LockService.getUserLock();
-  if (!lock.tryLock(1000)) return false;
+  if (!lock.tryLock(1000)) return null;
   try {
     return scanMarketsAndroidGeographyBatch_(now);
   } catch (error) {
@@ -213,12 +309,13 @@ function marketsAndroidReplyEvidence_(reply) {
   return matches;
 }
 
-function marketsAndroidGeographyEvidence_(row, eligible) {
+function marketsAndroidGeographyEvidence_(row, eligible, iteration23 = true) {
   const original = marketsReviewOriginalText_(row);
   const text = normalizeReviewEvidence_(original);
   // A local reference inside a comparison, a trip or a third person's story
   // cannot establish the author's market, even alongside a support response.
-  if (/\b(?:no (?:vivo|resido|uso|utilizo)|nunca (?:he usado|uso|vivi)|de viaje|de vacaciones|si (?:viviera|pudiera)|desde (?:el extranjero|otro pais)|(?:vivo|resido) en otro pais|como (?:en|yape|plin|pse|paygold|bizum|banco galicia)|a diferencia de|comparad[oa] con|mi (?:amigo|amiga|familiar|hermano|hermana|padre|madre)|segun me (?:dicen|cuentan))\b/u.test(text)) return null;
+  if (/\b(?:no (?:vivo|resido|uso|utilizo)|nunca (?:he usado|uso|vivi)|de viaje|de vacaciones|si (?:viviera|pudiera)|desde (?:el extranjero|otro pais)|(?:vivo|resido) en otro pais|como (?:en|yape|plin|pse|paygold|bizum|banco galicia)|a diferencia de|mi (?:amigo|amiga|familiar|hermano|hermana|padre|madre)|segun me (?:dicen|cuentan))\b/u.test(text)) return null;
+  if ((iteration23 ? /\bcomparad[oa] con\b(?! otros bancos\b)/u : /\bcomparad[oa] con\b/u).test(text)) return null;
 
   const places = { espana: 'ES', madrid: 'ES', colombia: 'CO', bogota: 'CO', peru: 'PE',
     venezuela: 'VE', argentina: 'AR', mexico: 'MX' };
@@ -239,6 +336,20 @@ function marketsAndroidGeographyEvidence_(row, eligible) {
   if (/\b(?:mi cuenta|tengo cuenta|uso) (?:en )?bcp (?:e|y) interbank\b/u.test(text)) matches.set('PE', 'local-bank-use');
   if (/\b(?:mi cuenta (?:de|en)|tengo cuenta en) banco galicia\b/u.test(text)) matches.set('AR', 'own-galicia-account');
 
+  if (iteration23 && /\b(?:no me permite tener plin|no llega la notificacion del plin)\b/u.test(text)) matches.set('PE', 'own-plin-operation');
+  if (iteration23 && /(?:^una de las mejores (?:apps|aplicaciones)(?: de banca)?|\bla peor (?:app|aplicacion) de banca que existe) en espana(?:$| y )/u.test(text) &&
+      !/\b(?:uruguay|turquia|portugal|francia|alemania|italia|comparad[oa]|aunque|pero en|segun|me (?:dijo|dijeron)|dicen que)\b/u.test(text)) {
+    matches.set('ES', 'explicit-spanish-app-market');
+  }
+  // En los escaparates actuales de GEMA, España es el único mercado con esta operativa.
+  if (iteration23 && row[4] === 'com.bbva.GEMA.global' &&
+      eligible.every(country => ['AR', 'CO', 'ES', 'PE', 'UY'].includes(country)) &&
+      /\b(?:mis adeudos sepa|(?:usar|utilizar) la (?:app|aplicacion) para (?:los )?adeudos sepa)\b/u.test(text) &&
+      !/\b(?:uruguay|portugal|francia|alemania|italia|otro pais)\b/u.test(text)) {
+    matches.set('ES', 'gema-sepa-direct-use');
+  }
+  if (iteration23 && /\btratando de hacer pagos pse\b/u.test(text)) matches.set('CO', 'own-pse-payment');
+  if (iteration23 && /\bno se pueden realizar pagos con paygold que antes se podian hacer\b/u.test(text)) matches.set('CO', 'regression-paygold-payment');
   const { reply } = marketsReviewMetadata_(row);
   const support = marketsAndroidReplyEvidence_(reply);
   const replyText = normalizeReviewEvidence_(reply);
@@ -269,6 +380,15 @@ function marketsAndroidGeographyEvidence_(row, eligible) {
   return { status: 'VALIDAR', candidate: country, evidence };
 }
 
+function marketsAndroidGeographyApprovalEvidence_(row, eligible, approval, newRules) {
+  if (approval?.automatic) return marketsAndroidGeographyEvidence_(row, eligible, newRules);
+  if (approval?.country === 'ES' && approval.reason === MARKETS_GEO_SPAIN_REASON) {
+    return eligible.includes('ES') ? { status: 'VALIDAR', candidate: 'ES', evidence: MARKETS_GEO_SPAIN_REASON } : null;
+  }
+  if (approval) return marketsAndroidGeographyCandidate_(marketsReviewOriginalText_(row), eligible);
+  return marketsAndroidGeographyEvidence_(row, eligible, newRules);
+}
+
 function marketsAndroidGeographyDigest_(row, automatic) {
   return automatic ? marketsReviewDigest_([row[9], row[10], marketsReviewMetadata_(row).reply])
     : marketsReviewTextDigest_(row);
@@ -293,7 +413,8 @@ function scanMarketsAndroidGeographyBatch_(now) {
     if (!packages.has(app.packageName)) packages.set(app.packageName, new Set());
     packages.get(app.packageName).add(app.countryCode);
   }
-  const version = marketsReviewDigest_(['storefront-reply-v6', [...packages].map(([id, countries]) => [id, [...countries].sort()])]);
+  const iteration23 = Boolean(properties.getProperty(MARKETS_GEO_ITERATION_23));
+  const version = marketsReviewDigest_([iteration23 ? 'storefront-reply-v9' : 'storefront-reply-v6', [...packages].map(([id, countries]) => [id, [...countries].sort()])]);
   const revision = properties.getProperty('MARKETS_ANDROID_GEO_SOURCE_REVISION') || '';
   const last = Math.max(1, source.getLastRow());
   const previous = safeJsonParse_(properties.getProperty(MARKETS_GEO_AUDIT_PROPERTY));
@@ -325,7 +446,7 @@ function scanMarketsAndroidGeographyBatch_(now) {
     seen.add(key);
     const approval = existing.get(key);
     const eligible = [...packages.get(packageName)];
-    const result = approval && !approval.automatic ? marketsAndroidGeographyCandidate_(marketsReviewOriginalText_(row), eligible) : marketsAndroidGeographyEvidence_(row, eligible);
+    const result = marketsAndroidGeographyApprovalEvidence_(row, eligible, approval, iteration23);
     const valid = result?.status === 'VALIDAR';
     const digest = valid && marketsAndroidGeographyDigest_(row, !approval || approval.automatic);
     const verified = valid && approval?.packageName === packageName && approval.country === result?.candidate && approval.digest === digest &&
