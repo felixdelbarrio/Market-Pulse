@@ -330,6 +330,10 @@
       "Sin reseñas en el periodo reciente.":["No reviews in the recent period.","Yakın dönemde yorum yok."],
       "Ver reseñas del mes anterior":["View previous month’s reviews","Önceki ayın yorumlarını görüntüle"],
       "Bloque":["Block","Grup"],
+      "Base del mes anterior: {dates} · {total} reseñas · NPS {nps} pp.":["Previous month baseline: {dates} · {total} reviews · NPS {nps} pp.","Önceki ayın referansı: {dates} · {total} yorum · NPS {nps} puan."],
+      "Escaparate único":["Single storefront","Tek mağaza"],
+      "Validada":["Verified","Doğrulandı"],
+      "Inferida":["Inferred","Çıkarıldı"],
       "Reseñas del bloque":["Reviews in the block","Gruptaki yorumlar"],
       "{total} reseñas ({assigned} con geografía inferida o validada)":["{total} reviews ({assigned} with inferred or verified geography)","{total} yorum ({assigned} yorumun coğrafyası çıkarıldı veya doğrulandı)"],
       "Geografía inferida o validada":["Inferred or verified geography","Çıkarılan veya doğrulanan coğrafya"],
@@ -1554,7 +1558,15 @@
       const note=document.createElement("p");
       note.textContent=translate("Periodo reciente: {dates}. Los recuentos usan el sentimiento seleccionado. Una reseña puede pertenecer a varios bloques; sus pesos pueden sumar más del 100 %.",{dates:recent});
       target.append(note);
-      if(baseline)appendReviewCohort(target,"Ver reseñas del mes anterior",{...scope,start:baseline.start,end:baseline.end,segment:""});
+      if(baseline){
+        const reference=document.createElement("p");
+        reference.className="review-chart-note";
+        reference.textContent=translate("Base del mes anterior: {dates} · {total} reseñas · NPS {nps} pp.",{
+          dates:`${dateLabel(baseline.start)} – ${dateLabel(baseline.end)}`,total:integer(baseline.total),nps:fmt(baseline.balance,2)
+        });
+        target.append(reference);
+        appendReviewCohort(target,"Ver reseñas del mes anterior",{...scope,start:baseline.start,end:baseline.end,segment:""});
+      }
       target.insertAdjacentHTML("beforeend",C.reviewGaps(deltas,fmt,translate));
       const table=document.createElement("div");
       table.className="admin-table-wrap review-gap-table";
@@ -2518,10 +2530,14 @@
     function hideChartTooltip(){$("chart-tooltip").classList.add("hidden")}
     const exportDates=({start,end})=>[["Desde",start],["Hasta",end]];
     const reviewExportHeader=["Fecha","Aplicación","Plataforma","Escaparate","Estrellas","Autor","Título","Comentario",
-      "Texto original","Bloques funcionales","Votos útiles","Respuesta","Enlace"];
+      "Texto original","Bloques funcionales","Votos útiles","Respuesta","Enlace","Geografía atribuida","Atribución"];
+    const reviewAttributionLabels={
+      single_storefront:"Escaparate único",review_evidence_inferred:"Inferida",review_evidence_validated:"Validada"
+    };
     const reviewExportRow=(row,topics)=>[row.date,row.entities?.join(" · ")||row.app,row.platform,
       row.storefronts?.map(countryLabel).join(" · "),row.rating,row.author,row.title,row.text,row.translated?row.original:"",
-      (row.blocks.length?row.blocks:["general"]).map(id=>topics[id]||id).join(" · "),row.helpful,row.reply,row.url];
+      (row.blocks.length?row.blocks:["general"]).map(id=>topics[id]||id).join(" · "),row.helpful,row.reply,row.url,
+      row.countries?.map(countryLabel).join(" · "),translate(reviewAttributionLabels[row.attributionMethod]||"No atribuible")];
     let reviewsReady=false, analyticsLoading=false, monthlyReviewsLoading=false;
     function setExportSheet(view,name,country,filters,header,rows,chart=false){
       const sheets=exportSheets[view];
@@ -2545,9 +2561,10 @@
           if(!reviewsReady)throw new Error("No hay comentarios cargados para descargar.");
           const scope={...reviewScope(),language:appLanguage};
           const {rows,topics,window:dates}=await callServer("review:export",scope);
-          const filters=[["Geografía",countryLabel(country)],...exportDates(dates)];
-          for(const key of ["app","platform","segment","audience","inferGeography","topic","rating","search","reviewKey"]){
-            if(scope[key])filters.push([({app:"Aplicación",platform:"Plataforma",segment:"Sentimiento",audience:"Comentarios",inferGeography:"Inferir datos",topic:"Bloque funcional",rating:"Estrellas",search:"Buscar",reviewKey:"Reseña"})[key],reviewFilterLabel(key,scope[key])||$(`review-${key}`)?.selectedOptions?.[0]?.textContent||scope[key]]);
+          const filters=[["Geografía",countryLabel(country)],...exportDates(dates),
+            ["Inferir datos",reviewFilterLabel("inferGeography",scope.inferGeography)]];
+          for(const key of ["app","platform","segment","audience","topic","rating","search","reviewKey"]){
+            if(scope[key])filters.push([({app:"Aplicación",platform:"Plataforma",segment:"Sentimiento",audience:"Comentarios",topic:"Bloque funcional",rating:"Estrellas",search:"Buscar",reviewKey:"Reseña"})[key],reviewFilterLabel(key,scope[key])||$(`review-${key}`)?.selectedOptions?.[0]?.textContent||scope[key]]);
           }
           sheets=[{name:"Comentarios",filters,header:reviewExportHeader,rows:rows.map(row=>reviewExportRow(row,topics))}];
         }else{
