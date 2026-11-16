@@ -593,7 +593,7 @@ const MARKETS_REVIEW_MANUAL_IDS = ['index', 'geography', 'taxonomy', 'taxonomyTr
 function marketsReviewSnapshotRefreshDue_(properties, now) {
   if (typeof MARKETS_REVIEW_SNAPSHOT_POINTER !== 'string') return false;
   const published = safeJsonParse_(properties.getProperty(MARKETS_REVIEW_SNAPSHOT_POINTER));
-  if (!Array.isArray(published?.versions) || !published.hasAnnualNps || !published.hasNpsAttribution || published.schema !== MARKETS_REVIEW_SNAPSHOT_SCHEMA ||
+  if (!Array.isArray(published?.versions) || !published.hasAnnualNps || !published.hasNpsAttribution || !published.hasAllSentimentGaps || published.schema !== MARKETS_REVIEW_SNAPSHOT_SCHEMA ||
       published.end !== Utilities.formatDate(now, MARKETS_CONFIG.timeZone, 'yyyy-MM-dd')) return true;
   return published.versions[0] !== (properties.getProperty('MARKETS_REVIEWS_GENERATION') || '') ||
     (published.versions.find(value => Array.isArray(value) && value[0] === 'MARKETS_REVIEW_GEOGRAPHY_REVISION')?.[1] || '') !==

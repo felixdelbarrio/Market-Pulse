@@ -1230,6 +1230,9 @@ test("monthly snapshot scope includes exact closing dates and excludes alternate
   assert.equal(api.marketsReviewSnapshotScope_("analytics", { ...filters, audience: "BEI" }, window), "");
   assert.equal(api.marketsReviewSnapshotScope_("analytics", { ...filters, inferGeography: "NO" }, window), scope + ":NO");
   assert.equal(api.marketsReviewSnapshotScope_("analytics", { ...filters, segment: "PROMOTER" }, window), "");
+  const { segment, ...allStars } = filters;
+  assert.equal(api.marketsReviewSnapshotScope_("analytics", allStars, window), scope + ":all-stars");
+  assert.equal(api.marketsReviewSnapshotScope_("analytics", { ...allStars, inferGeography: "NO" }, window), scope + ":all-stars:NO");
 });
 
 test("monthly pulse and annual NPS use every valid rating independently of heatmap sentiment", () => {
@@ -1402,4 +1405,39 @@ test("monthly gap counts include the selected inferred and validated reviews and
   assert.equal(rows[1].countries[0], "ES");
   const compact = api.compactMarketsReviewAnalyticsRows_(rows, "2027-11-16");
   assert.equal(compact.find(item => item.date === "2026-11-07").attributionMethod, "review_evidence_validated");
+});
+
+test("November all-stars gaps reconcile the exported Spanish sample and distinguish the detractor subset", () => {
+  const reviews = [
+    [5, [], "review_evidence_validated"], [1, ["01"], "single_storefront"],
+    [5, [], "review_evidence_inferred"], [1, [], "single_storefront"],
+    [5, [], "review_evidence_inferred"], [5, [], "single_storefront"]
+  ].map(([rating, blocks, attributionMethod], index) => ({
+    key: String(index), date: "2026-11-03", countries: ["ES"], entities: ["BBVA Empresas"], rating, blocks, attributionMethod
+  }));
+  const filters = { analysisMonth: "2026-11", country: "ES", entity: "BBVA Empresas" };
+  const dates = { start: "2026-10-01", recent: "2026-11-01", end: "2026-11-16" };
+  const build = (rows, segment) => api.buildMarketsReviewAnalytics_(rows,
+    { "01": "Pagos", general: "Generalista" }, { ...filters, segment }, dates);
+  const all = build(reviews);
+  const general = all.deltas.find(point => point.id === "general");
+  assert.deepEqual([all.recentTotal, general.total, general.assignedGeography, general.balance], [6, 5, 3, 60]);
+  const detractors = build(reviews, "DETRACTOR");
+  assert.equal(detractors.recentTotal, 2);
+  assert.ok(detractors.deltas.every(point => point.assignedGeography === 0));
+  assert.equal(detractors.nps.current, all.nps.current);
+  const promoters = build(reviews, "PROMOTER");
+  assert.equal(promoters.recentTotal, 4);
+  assert.deepEqual([promoters.deltas[0].total, promoters.deltas[0].assignedGeography], [4, 3]);
+  assert.equal(promoters.nps.current, all.nps.current);
+
+  const annual = api.summarizeMarketsReviewNps_(reviews)[0];
+  assert.deepEqual([annual.total, annual.assignedGeography, annual.balance], [6, 3, 100 / 3]);
+  assert.equal(all.nps.current, annual.balance);
+  assert.equal(all.monthlyByGeography[0].balance, annual.balance);
+  assert.equal(all.monthlyByGeography[0].assignedGeography, annual.assignedGeography);
+
+  const territorial = reviews.map(api.marketsReviewWithoutAssignedGeography_).filter(row => row.countries[0] === "ES");
+  assert.equal(build(territorial).nps.current, -100 / 3);
+  assert.equal(api.summarizeMarketsReviewNps_(territorial)[0].balance, -100 / 3);
 });
