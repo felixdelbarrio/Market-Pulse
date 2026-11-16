@@ -408,7 +408,7 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(index, /Activa por defecto/);
   assert.match(index, /Toda la base activa/);
   assert.match(app, /draft\[period\+"DropEnabled"\]/);
-  assert.match(index, /Probar alertas/);
+  assert.doesNotMatch(index, /Probar alertas/);
   assert.doesNotMatch(index, /id="newsletter-test-button"/);
   assert.match(index, /id="loader-retry"/);
   assert.doesNotMatch(app, /sendMarketsNewsletterTestEmail/);
@@ -418,10 +418,7 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(app, /Market Pulse no ha respondido a tiempo/);
   assert.doesNotMatch(app, /Promise\.all\\(\\[callServer\\("bootstrap"\\),callServer\\("user:context"\\)\\]\\)/);
   assert.match(app, /function renderDashboard\(\)\{if\(state\.view==="benchmark"\)/);
-  assert.match(index, /id="alert-test-result"/);
-  assert.match(app, /Gmail ha aceptado la prueba/);
-  assert.match(app, /result\.senderAddress/);
-  assert.match(app, /result\.messageId/);
+  assert.doesNotMatch(index, /id="alert-test-(?:result|button)"/);
   assert.match(app, /result\.deliveryId/);
   assert.match(index, /Restaurar valores/);
   assert.match(index, /Guardar mis alertas/);

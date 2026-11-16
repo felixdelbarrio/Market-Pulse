@@ -216,3 +216,100 @@ function storePlayReviews_(sheet, properties, known, listing, reviews, summary, 
     known.set(key, item);
   });
 }
+
+const MARKETS_PLAY_METADATA_REFRESH = 'MARKETS_PLAY_METADATA_REFRESH';
+
+/** Revisit the newest pages independently of the ordinary ingestion overlap cutoff. */
+function advanceMarketsAndroidMetadata_(now = new Date()) {
+  const properties = PropertiesService.getScriptProperties();
+  if (Number(properties.getProperty('MARKETS_PLAY_REVIEW_PAUSE')) > now.getTime()) return null;
+  const day = Utilities.formatDate(now, MARKETS_CONFIG.timeZone, 'yyyy-MM-dd');
+  const previous = safeJsonParse_(properties.getProperty(MARKETS_PLAY_METADATA_REFRESH) || 'null');
+  if (previous?.completedDay === day && previous.complete) return false;
+  const lock = LockService.getUserLock();
+  if (!lock.tryLock(1000)) return null;
+  try {
+    const ss = openMarketsSpreadsheet_(), sheet = marketsReviewSheet_(ss);
+    if (marketsReviewWidth_(sheet) !== MARKETS_REVIEW_METADATA_COLUMN) throw new Error('Falta la columna store_metadata.');
+    const listings = marketsReviewRecoveryListings_(ss).filter(app => app.platform === 'Android')
+      .sort((a, b) => (a.packageName + '|' + a.countryCode).localeCompare(b.packageName + '|' + b.countryCode));
+    const windowPages = Number(properties.getProperty('MARKETS_PLAY_METADATA_WINDOW_PAGES')) || 3;
+    const limit = Math.max(1, Math.min(10, Math.floor(windowPages)));
+    const state = previous && !previous.complete ? previous : { day, listing: 0, pages: 0, done: 0, updated: 0 };
+    const signature = marketsReviewDigest_(listings.map(app => [app.packageName, app.countryCode]));
+    if (state.signature !== signature) Object.assign(state, { signature, listing: 0, page: 0, done: 0, token: '' });
+    state.total = listings.length;
+    if (state.listing < listings.length) {
+      const listing = listings[state.listing];
+      state.runningUntil = Date.now() + 7 * 60 * 1000;
+      properties.setProperty(MARKETS_PLAY_METADATA_REFRESH, JSON.stringify(state));
+      try {
+        const result = fetchPlayReviewPage_(listing, state.token || '');
+        state.updated += refreshMarketsAndroidMetadataPage_(sheet, properties, listing.packageName, result.rows);
+        state.pages++;
+        state.page = (state.page || 0) + 1;
+        if (!result.next || result.next === state.token || state.page >= limit) {
+          state.listing++;
+          state.page = 0;
+          state.token = '';
+        } else {
+          state.token = result.next;
+        }
+      } catch (error) {
+        if (error.rateLimited) properties.setProperty('MARKETS_PLAY_REVIEW_PAUSE', String(Date.now() + 60 * 60 * 1000));
+        else if (state.token && /HTTP (400|404)$/.test(error.message)) {
+          state.page = 0;
+          state.token = '';
+        }
+        throw error;
+      } finally {
+        delete state.runningUntil;
+        state.done = state.listing;
+        state.complete = state.done >= state.total;
+        if (state.complete) state.completedDay = day;
+        state.updatedAt = new Date().toISOString();
+        properties.setProperty(MARKETS_PLAY_METADATA_REFRESH, JSON.stringify(state));
+      }
+    } else {
+      state.complete = true;
+      state.completedDay = day;
+      properties.setProperty(MARKETS_PLAY_METADATA_REFRESH, JSON.stringify(state));
+    }
+    return true;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function refreshMarketsAndroidMetadataPage_(sheet, properties, packageName, reviews) {
+  const last = sheet.getLastRow();
+  if (last < 2 || !reviews.length) return 0;
+  const byKey = new Map(reviews.map(review => [JSON.stringify(['Android', packageName, review.id]), review.metadata]));
+  const candidates = sheet.getRange(2, 1, last - 1, 1).getValues().flatMap(([key], offset) =>
+    byKey.has(key) ? [{ row: [key], rowNumber: offset + 2 }] : []);
+  if (!candidates.length) return 0;
+  if (!hydrateMarketsReviewPage_(sheet, MARKETS_REVIEW_METADATA_COLUMN, candidates)) throw new Error('Las reseñas cambiaron durante la lectura.');
+  const edits = [];
+  let replyChanged = false;
+  for (const { row, rowNumber } of candidates) {
+    const previous = marketsReviewMetadata_(row);
+    const merged = mergeMarketsReviewMetadata_(previous, byKey.get(row[0]) || {});
+    if (!merged || merged === row[15]) continue;
+    replyChanged = replyChanged || parseMarketsReviewMetadata_(merged).reply !== previous.reply;
+    edits.push([rowNumber, merged]);
+  }
+  if (!edits.length) return 0;
+  // Only the metadata cell changes. Keep original IDs, timestamps and main translations.
+  advanceMarketsReviewGeneration_(properties);
+  if (replyChanged) properties.setProperty('MARKETS_ANDROID_GEO_SOURCE_REVISION', Utilities.getUuid());
+  for (let start = 0; start < edits.length;) {
+    let end = start + 1;
+    while (end < edits.length && edits[end][0] === edits[end - 1][0] + 1) end++;
+    sheet.getRange(edits[start][0], MARKETS_REVIEW_METADATA_COLUMN, end - start, 1)
+      .setValues(edits.slice(start, end).map(([, metadata]) => [marketsReviewLiteral_(metadata)]));
+    start = end;
+  }
+  SpreadsheetApp.flush();
+  advanceMarketsReviewGeneration_(properties);
+  return edits.length;
+}

@@ -354,3 +354,31 @@ test("historic newsletter recipients prove a minimum per edition but never suppl
   assert.equal(newsletter.lastAuditedEdition.period, "2026-10");
   assert.equal(newsletter.lastAuditedEdition.minimumConfirmed, 1);
 });
+
+test("manual request persists without taking the worker lock and P3 advances before translation", () => {
+  const properties = new Map(), calls = [], key = "MARKETS_REVIEW_PIPELINE";
+  const props = { getProperty: key => properties.get(key), setProperty: (key, value) => properties.set(key, value),
+    deleteProperty: key => properties.delete(key) };
+  const local = vm.createContext({
+    MARKETS_CONFIG: { timeZone: "Europe/Madrid" },
+    Utilities: { formatDate: (_date, _tz, fmt) => fmt === "yyyy-MM-dd" ? "2026-11-16" : "18:30" },
+    safeJsonParse_: value => JSON.parse(value || "null"), requireMarketsReviewOwner_: () => ({}),
+    PropertiesService: { getScriptProperties: () => props },
+    LockService: { getScriptLock: () => { throw new Error("manual requests need no worker lock"); } },
+    advanceMarketsReviewIndex_: () => { calls.push("index"); return { complete: false }; },
+    advanceMarketsAndroidGeography_: () => { calls.push("geography"); return true; }
+  });
+  vm.runInContext(fs.readFileSync(new URL("../src/51_ReviewOperations.gs", import.meta.url), "utf8"), local);
+  const pipeline = local.newMarketsReviewPipeline_("2026-11-16");
+  pipeline.stage = pipeline.jobs.findIndex(job => job.id === "translate");
+  pipeline.jobs.find(job => job.id === "alerts").status = "Revisar";
+  properties.set(key, JSON.stringify(pipeline));
+  assert.equal(local.runMarketsPanelJob("index").queued, true);
+  assert.match(local.runMarketsPanelJob("index").message, /ya está en cola/);
+  local.LockService = { getScriptLock: () => ({ tryLock: () => true, releaseLock() {} }) };
+  local.advanceMarketsReviewPipeline_();
+  local.advanceMarketsReviewPipeline_();
+  assert.deepEqual(calls, ["index", "geography"]);
+  assert.equal(properties.has("MARKETS_REVIEW_MANUAL:index"), false);
+  assert.equal(JSON.parse(properties.get(key)).stage, pipeline.stage);
+});

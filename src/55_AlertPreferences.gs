@@ -296,6 +296,10 @@ function saveMarketsAlertPreferences(payload) {
   try {
     const ss = openMarketsSpreadsheet_();
     requireCurrentSheetContract_(ss, MARKETS_CONFIG.sheets.alertPreferences, MARKETS_CONFIG.headers.alertPreferences);
+    if (typeof payload?.expectedUpdatedAt === 'string' &&
+        String(alertPreferencesForClient_(readMarketsAlertPreferences_(ss, email)).updatedAt || '') !== payload.expectedUpdatedAt) {
+      throw new Error('Tus alertas cambiaron en otra sesión. Recarga la pantalla antes de guardar.');
+    }
     return alertPreferencesForClient_(upsertMarketsAlertPreferences_(ss,
       normalizeMarketsAlertPreferences_(payload, email), email));
   } finally {
@@ -303,8 +307,8 @@ function saveMarketsAlertPreferences(payload) {
   }
 }
 
-function resetMarketsAlertPreferences() {
-  return saveMarketsAlertPreferences(defaultMarketsAlertPreferences_(currentMarketsUserEmail_()));
+function resetMarketsAlertPreferences(expectedUpdatedAt) {
+  return saveMarketsAlertPreferences({ ...defaultMarketsAlertPreferences_(currentMarketsUserEmail_()), expectedUpdatedAt });
 }
 
 function sendMarketsAlertTestEmail() {
@@ -320,7 +324,13 @@ function sendMarketsAlertTestEmail() {
   const sentAt = new Date();
   const deliveryId = 'COM-' + Utilities.formatDate(sentAt, MARKETS_CONFIG.timeZone, 'yyyyMMdd-HHmmss') + '-' +
     Utilities.getUuid().slice(0, 8).toUpperCase();
-  const preferences = readMarketsAlertPreferences_(ss, email);
+  return sendMarketsAlertPreview_(ss, email, readMarketsAlertPreferences_(ss, email), deliveryId);
+}
+
+function sendMarketsAlertPreview_(ss, email, preferences, deliveryId) {
+  const eventKey = 'TEST|' + deliveryId + '|' + email;
+  if (deliveryId.startsWith('COM-NEWS-REQ-') && readExistingAlertKeys_(ss)[eventKey]) return { sent: true, accepted: true, alreadyAccepted: true, recipient: email, deliveryId };
+  const sentAt = new Date();
   const ratings = readRatingObjects_(ss);
   const catalog = readAppCatalog_(ss);
   const events = validateMarketsRealAlertPreviewEvents_(
@@ -330,7 +340,7 @@ function sendMarketsAlertTestEmail() {
   let auditLogged = true;
   try {
     appendAlertEvents_(ss, [{
-      timestamp: sentAt, eventKey: 'TEST|' + deliveryId + '|' + email,
+      timestamp: sentAt, eventKey,
       referenceDate: events[0].referenceDate || sentAt, platform: 'Configurada',
       countryCode: preferences.countries.join(','), type: 'TEST', severity: 'POSITIVE',
       detail: 'Vista previa con ' + events.length + ' señal(es) o cierre(s) reales según la configuración vigente.',

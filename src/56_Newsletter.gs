@@ -11,7 +11,7 @@ function runMarketsMonthlyNewsletter() {
   return measureMarketsScheduledJob_('newsletter', runMarketsMonthlyNewsletter_);
 }
 
-function runMarketsMonthlyNewsletter_() {
+function runMarketsMonthlyNewsletter_(onProgress) {
   const now = new Date();
   const day = Number(Utilities.formatDate(now, MARKETS_CONFIG.timeZone, 'd'));
   if (day !== 1) return { status: 'SKIPPED_NOT_MONTH_START', sent: 0 };
@@ -27,13 +27,13 @@ function runMarketsMonthlyNewsletter_() {
       return { status: 'DISABLED', sent: 0 };
     }
     const period = marketsPreviousMonthKey_(now);
-    return sendMarketsMonthlyNewsletter_(ss, period, false);
+    return sendMarketsMonthlyNewsletter_(ss, period, false, onProgress);
   } finally {
     lock.releaseLock();
   }
 }
 
-function sendMarketsMonthlyNewsletter_(ss, period, isTest) {
+function sendMarketsMonthlyNewsletter_(ss, period, isTest, onProgress) {
   const subscribers = readAllMarketsAlertPreferences_(ss).filter(function (item) {
     return item.newsletterEnabled;
   });
@@ -46,6 +46,7 @@ function sendMarketsMonthlyNewsletter_(ss, period, isTest) {
   })).filter(({ eventKey }) => !existing[eventKey]);
   result.skipped = subscribers.length - pending.length;
   if (!pending.length) return result;
+  onProgress?.({ total: pending.length, attempted: 0, sent: 0, period });
 
   const ratings = readRatingObjects_(ss);
   const catalog = readAppCatalog_(ss);
@@ -81,6 +82,10 @@ function sendMarketsMonthlyNewsletter_(ss, period, isTest) {
       }
     } catch (error) {
       result.failures.push({ recipient: preferences.email, error: errorToString_(error) });
+    } finally {
+      if (result.attempted % 5 === 0 || result.attempted === pending.length) {
+        onProgress?.({ total: pending.length, attempted: result.attempted, sent: result.sent, failed: result.failures.length, period });
+      }
     }
   });
   appendAlertEvents_(ss, acceptedEvents);
@@ -94,7 +99,7 @@ function sendMarketsAdminNewsletterTestEmail(request) {
   requireMarketsNewsletterContracts_(access.ss);
   const normalized = normalizeMarketsNewsletterPreviewRequest_(request);
   const target = normalizeMarketsAlertEmail_(normalized.targetEmail || access.email);
-  if (!marketsNewsletterDeliveryEnabled_(access.control)) {
+  if (normalized.edition === 'monthly' && !marketsNewsletterDeliveryEnabled_(access.control)) {
     throw new Error('El envío de newsletters está desactivado en CONTROL.');
   }
   const preferences = readMarketsAlertPreferences_(access.ss, target);
@@ -111,10 +116,12 @@ function normalizeMarketsNewsletterPreviewRequest_(request) {
     throw new Error('El identificador de la prueba no es válido.');
   }
   const country = trimString_(input.country), language = trimString_(input.language), period = trimString_(input.period);
-  if (country && !MARKETS_WEB.countryCodes.includes(country)) throw new Error('Geografía no válida.');
+  const edition = trimString_(input.edition) || 'monthly';
+  if (!['monthly', 'alert'].includes(edition)) throw new Error('Edición de prueba no válida.');
+  if (country && country !== 'ALL' && !MARKETS_WEB.countryCodes.includes(country)) throw new Error('Geografía no válida.');
   if (language && !['es', 'en', 'tr'].includes(language)) throw new Error('Idioma no válido.');
   if (period && !['closed', 'current'].includes(period)) throw new Error('Periodo de prueba no válido.');
-  return { targetEmail: input.targetEmail, requestId, country, language, period };
+  return { targetEmail: input.targetEmail, requestId, country, language, period, edition };
 }
 
 function withMarketsNewsletterPreviewLock_(ss, recipient, preferences, configuredFor, requestId, options = {}) {
@@ -123,6 +130,10 @@ function withMarketsNewsletterPreviewLock_(ss, recipient, preferences, configure
     throw new Error('Otra comunicación sigue preparándose. Reintenta: la misma solicitud no se duplicará.');
   }
   try {
+    if (options.edition === 'alert') {
+      if (!parseBoolean_(readControl_(ss).SEND_ALERT_EMAILS, false)) throw new Error('El envío de alertas está desactivado.');
+      return sendMarketsAlertPreview_(ss, recipient, { ...preferences, email: recipient }, 'COM-' + requestId);
+    }
     return sendMarketsNewsletterPreview_(ss, recipient, preferences, configuredFor, requestId, options);
   } finally {
     lock.releaseLock();
@@ -587,7 +598,7 @@ function renderMarketsNewsletterHtml_(model) {
         escapeMarketsAlertHtml_(marketsNewsletterSigned_(item.effect.accumulatedRatingChange)) + ' puntos' +
         (item.shared ? ' sobre la ficha compartida completa, sin atribución geográfica.' : '.') + '</div>';
     }).join('') + '</div></td></tr>' : '';
-  const appUrl = escapeMarketsAlertHtml_(model.interactions?.open || marketsWebAppLoginUrl_(model.configuredFor || ''));
+  const appUrl = escapeMarketsAlertHtml_(marketsWebAppLoginUrl_('', model.interactions?.open));
   return protectMarketsEmailColors_(marketsLightEmailDocument_() +
     '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" bgcolor="#F7F8F8" style="background:#F7F8F8;"><tr><td align="center" style="padding:28px 10px;">' +
     '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" bgcolor="#FFFFFF" style="width:100%;max-width:720px;background:#FFFFFF;color:#000519;border-radius:16px;overflow:hidden;">' +
@@ -608,9 +619,9 @@ function renderMarketsNewsletterHtml_(model) {
       'fichas con lectura') +
     '</tr></table>' + (model.scope.type !== 'SINGLE' && platformVolumes ? '<div style="padding:4px 8px 0;color:#46536D;font-size:10px;text-transform:uppercase;">Valoraciones por plataforma</div><div style="padding:8px 8px 0;">' +
       platformVolumes + '</div>' : '') + '</td></tr>' + coverage + groupHtml + effects +
-    '<tr><td style="padding:4px 30px 28px;"><table role="presentation" cellspacing="0" cellpadding="0"><tr><td bgcolor="#001391" style="border-radius:8px;"><a href="' +
-    appUrl + '" style="display:block;padding:13px 22px;color:#FFFFFF;text-decoration:none;font-weight:700;">Abrir Market Pulse</a></td></tr></table>' +
-    '<p style="margin:16px 0 0;color:#ADB8C2;font-size:10px;line-height:15px;">La lectura ejecutiva se genera exclusivamente a partir de las cifras mostradas. Ratings y volúmenes de Android, iOS y Huawei nunca se combinan. Solo se publican posiciones con cobertura competitiva completa; los volúmenes no atribuibles y los efectos no fiables se presentan como N/D o se omiten.</p></td></tr>' +
+    '<tr><td style="padding:4px 30px 28px;"><table role="presentation" align="center" cellspacing="0" cellpadding="0"><tr><td bgcolor="#001391" style="border-radius:8px;"><a href="' +
+    appUrl + '" style="display:block;padding:13px 22px;color:#FFFFFF;text-decoration:none;font-weight:700;">Ir a Market Pulse</a></td></tr></table>' +
+    '<p align="center" style="margin:16px 0 0;color:#ADB8C2;font-size:10px;line-height:15px;">La lectura ejecutiva se genera exclusivamente a partir de las cifras mostradas. Ratings y volúmenes de Android, iOS y Huawei nunca se combinan. Solo se publican posiciones con cobertura competitiva completa; los volúmenes no atribuibles y los efectos no fiables se presentan como N/D o se omiten.</p></td></tr>' +
     '<tr><td style="padding:0 30px 28px;">' + renderMarketsEmailFooter_(model.interactions, model.language) + '</td></tr>' +
     '</table></td></tr></table></body></html>');
 }
@@ -941,7 +952,7 @@ function marketsNewsletterAuditEvent_(recipient, model, eventKey, source) {
     type: source === 'NEWSLETTER_TEST' ? 'NEWSLETTER_TEST' : 'NEWSLETTER_MONTHLY',
     severity: 'POSITIVE', detail: marketsNewsletterExecutiveNarrative_(model),
     recipients: recipient, runId: (source === 'NEWSLETTER_TEST' ? 'NEWS-TEST-' : 'NEWS-') + model.period,
-    source: source, userEmail: recipient, ruleId: 'MONTHLY_NEWSLETTER',
+    source: source, userEmail: recipient, ruleId: 'MONTHLY_NEWSLETTER:' + model.language,
     metricValue: model.totals.series, threshold: '', appKey: '', direction: 'SUMMARY'
   };
 }
@@ -988,7 +999,7 @@ function localizedMarketsNewsletter_(model) {
   ]);
   const subject = (model.isTest ? '[' + copy.preview + '] ' : '') + MARKETS_NEWSLETTER_SUBJECT_PREFIX + copy.title + ' · ' + period;
   const coverage = model.coverage ? copy.coverage + ' ' + model.coverage.observed + '/' + model.coverage.expected : '';
-  const url = model.interactions?.open || marketsWebAppUrl_(), esc = escapeMarketsAlertHtml_;
+  const url = marketsWebAppLoginUrl_('', model.interactions?.open), esc = escapeMarketsAlertHtml_;
   const plain = [subject, coverage, headers.join(' | '), ...rows.map(row => row.join(' | ')), marketsNewsletterInteractionText_(model)].filter(Boolean).join('\n');
   const html = protectMarketsEmailColors_(marketsLightEmailDocument_(language) +
     '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" bgcolor="#FFFFFF" style="background-color:#FFFFFF;color:#070E46;"><tr><td>' +
@@ -996,7 +1007,8 @@ function localizedMarketsNewsletter_(model) {
     esc(subject) + '</h1></header><p>' + esc(coverage) + '</p><table cellpadding="8"><thead><tr>' +
     headers.map(value => '<th scope="col">' + esc(value) + '</th>').join('') + '</tr></thead><tbody>' +
     rows.map(row => '<tr>' + row.map(value => '<td>' + esc(value) + '</td>').join('') + '</tr>').join('') +
-    '</tbody></table><p><a style="color:#001391;" href="' + esc(url) + '">' + esc(copy.link) + '</a></p>' + renderMarketsEmailFooter_(model.interactions, language) + '</td></tr></table></body></html>');
+    '</tbody></table><p align="center"><a style="display:inline-block;padding:13px 22px;border-radius:8px;background:#001391;color:#FFFFFF;text-decoration:none;font-weight:700;" href="' +
+    esc(url) + '">' + esc(copy.link) + '</a></p>' + renderMarketsEmailFooter_(model.interactions, language) + '</td></tr></table></body></html>');
   return { subject, plain, html };
 }
 
@@ -1052,8 +1064,24 @@ function requireMarketsNewsletterInteractionLink_(token, email) {
 }
 
 function recordMarketsNewsletterOpen(token) {
-  if (parseMarketsNewsletterInteraction_(token)?.action !== 'open') throw new Error('Enlace de acceso no válido.');
-  return saveMarketsNewsletterInteraction(token);
+  if (parseMarketsNewsletterInteraction_(token)?.action === 'open') return saveMarketsNewsletterInteraction(token);
+  if (parseMarketsAlertFeedback_(token)?.vote !== 'open') throw new Error('Enlace de acceso no válido.');
+  const email = currentMarketsUserEmail_();
+  const request = requireMarketsAlertFeedbackLink_(token, email);
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(5000)) throw new Error('No se pudo guardar. Inténtalo de nuevo.');
+  try {
+    const { sheet, headers } = marketsNewsletterInteractionSheet_(openMarketsSpreadsheet_(), true);
+    const id = 'a_' + request.id;
+    const last = sheet.getLastRow();
+    if (last > 1 && sheet.getRange(2, 1, last - 1, 1).createTextFinder(id).matchEntireCell(true).findNext()) return { open: true };
+    ensureSheetCapacity_(sheet, last + 1, headers.length);
+    sheet.getRange(last + 1, 1, 1, headers.length).setValues([[id, '', 'open', new Date(), '', '', marketsReviewLiteral_(email)]]);
+    SpreadsheetApp.flush();
+    return { open: true };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function saveMarketsNewsletterInteraction(token, vote, observation) {
@@ -1132,7 +1160,8 @@ function marketsNewsletterInteractionEditions_(ss, interactions, kind) {
       const id = marketsNewsletterInteractionId_(period, kind, email, secret, preview);
       if (!recordedAt.has(id) || time > recordedAt.get(id) || (matched.has(id) && time <= Date.parse(matched.get(id).sentAt))) continue;
       matched.set(id, kind === 'open' ? { email, sentAt } : {
-        email, sentAt, countries: trimString_(row[indexes.country_code]), summary: trimString_(row[indexes.detail])
+        email, sentAt, countries: trimString_(row[indexes.country_code]), summary: trimString_(row[indexes.detail]),
+        language: /^MONTHLY_NEWSLETTER:(es|en|tr)$/.exec(row[indexes.rule_id])?.[1]
       });
     }
   }
@@ -1210,8 +1239,8 @@ function getMarketsNewsletterInteractions(kind, period, vote, status, start = ''
       const preview = id.startsWith('np_');
       const delivery = editions.get(id);
       const metadata = kind === 'feedback' ? {
-        ...delivery, email: normalizeEmailForComparison_(storedEmail) || delivery?.email || 'desconocido', preview
-      } : preview ? { preview: true } : null;
+        ...delivery, ...(edition ? {} : { language: 'es' }), email: normalizeEmailForComparison_(storedEmail) || delivery?.email || 'desconocido', preview
+      } : id.startsWith('a_') ? { alert: true } : preview ? { preview: true } : null;
       return [edition, action, adminDateTime_(date), state, kind === 'feedback' ? id : '', comment || '', metadata];
     }) };
 }

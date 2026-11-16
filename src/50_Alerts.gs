@@ -45,14 +45,14 @@ function buildMarketsReviewAlertEvents_(groups, preferences, existing, now, day)
 }
 
 function processMarketsReviewAlerts_(day) {
-  const result = measureMarketsScheduledJob_('reviewAlerts', () => deliverMarketsReviewAlertBatch_(day));
+  const result = measureMarketsScheduledJob_('reviewAlerts', progress => deliverMarketsReviewAlertBatch_(day, progress));
   if (['PARTIAL', 'ERROR'].includes(result.status)) throw new Error(result.detail || 'Fallo en el envío de las alertas de reseñas.');
   return result.events;
 }
 
 const MARKETS_REVIEW_ALERTS_RUN = 'REVIEW_ALERTS_RUN';
 
-function deliverMarketsReviewAlertBatch_(day) {
+function deliverMarketsReviewAlertBatch_(day, onProgress) {
   const empty = { events: 0, sent: 0, total: 0, status: 'NOT_REQUIRED' };
   const now = new Date();
   if (Utilities.formatDate(now, MARKETS_CONFIG.timeZone, 'yyyy-MM-dd') !== day) return empty;
@@ -71,7 +71,7 @@ function deliverMarketsReviewAlertBatch_(day) {
     if (groups.length) {
       const existing = readExistingAlertKeys_(ss);
       const events = subscribers.flatMap(preferences => buildMarketsReviewAlertEvents_(groups, preferences, existing, now, day));
-      const result = deliverMarketsAlertEvents_(ss, events, control, subscribers.length);
+      const result = deliverMarketsAlertEvents_(ss, events, control, subscribers.length, onProgress);
       summary = { events: result.length, sent: result.deliveryCount, status: result.deliveryStatus,
         total: new Set(events.map(event => normalizeEmailForComparison_(event.recipients)).filter(Boolean)).size,
         attempted: result.deliveryFailures ? result.deliveryCount + result.deliveryFailures.length : undefined,
@@ -117,7 +117,7 @@ function buildAndProcessAlerts_(ss, referenceDate, catalog, runId, control, rati
   return deliverMarketsAlertEvents_(ss, events, control, subscribers.length);
 }
 
-function deliverMarketsAlertEvents_(ss, events, control, subscriberCount) {
+function deliverMarketsAlertEvents_(ss, events, control, subscriberCount, onProgress) {
   events.subscriberCount = subscriberCount;
   events.deliveryCount = 0;
   events.deliveryStatus = events.length ? 'DISABLED' : 'NOT_REQUIRED';
@@ -127,7 +127,7 @@ function deliverMarketsAlertEvents_(ss, events, control, subscriberCount) {
     return events;
   }
   try {
-    events.deliveryCount = sendAlertEmails_(events, ss);
+    events.deliveryCount = sendAlertEmails_(events, ss, onProgress);
     const delivered = events.deliveredRecipients || [];
     const acceptedEvents = events.filter(function (event) {
       return uniqueStrings_(trimString_(event.recipients).split(/[;,]/)).some(function (recipient) {
@@ -561,7 +561,7 @@ function appendAlertEvents_(ss, events) {
   sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, rows[0].length).setValues(rows);
 }
 
-function sendAlertEmails_(events, ss) {
+function sendAlertEmails_(events, ss, onProgress) {
   const grouped = {};
   (events || []).forEach(function (event) {
     uniqueStrings_(trimString_(event.recipients).split(/[;,]/)).forEach(function (recipient) {
@@ -574,6 +574,7 @@ function sendAlertEmails_(events, ss) {
   const inlineImages = buildMarketsAlertInlineImages_();
   const deliveries = [];
   const failures = [];
+  onProgress?.({ total: recipients.length, attempted: 0, sent: 0 });
   recipients.forEach(function (recipient) {
     try {
       const recipientEvents = grouped[recipient];
@@ -593,6 +594,11 @@ function sendAlertEmails_(events, ss) {
       }
     } catch (error) {
       failures.push({ recipient: normalizeEmailForComparison_(recipient), error: errorToString_(error) });
+    } finally {
+      const attempted = deliveries.length + failures.length;
+      if (attempted % 5 === 0 || attempted === recipients.length) {
+        onProgress?.({ total: recipients.length, attempted, sent: deliveries.length, failed: failures.length });
+      }
     }
   });
   events.deliveryResults = deliveries;
@@ -606,11 +612,11 @@ function sendAlertEmails_(events, ss) {
 function marketsAlertEmailMessage_(recipient, events, inlineImages, sender) {
   const normalizedRecipient = normalizeMarketsAlertEmail_(recipient);
   const subject = marketsAlertEmailSubject_(events);
-  const plainText = renderMarketsAlertPlainText_(events, normalizedRecipient);
   const token = Utilities.getUuid().replace(/-/g, '');
   let feedback = null;
   try { feedback = marketsAlertFeedbackLinks_(normalizedRecipient, token); }
   catch (error) { console.warn('No se pudo preparar la valoración de alertas. ' + error.message); }
+  const plainText = renderMarketsAlertPlainText_(events, normalizedRecipient, feedback?.open);
   const html = renderMarketsAlertEmail_(events, normalizedRecipient, feedback);
   const image = inlineImages && inlineImages.bbvaLogo;
   if (!image || typeof image.getBytes !== 'function') {
@@ -747,11 +753,11 @@ function marketsAlertEmailSubject_(events) {
     (events.length === 1 ? '' : 's') + ' en ratings ';
 }
 
-function renderMarketsAlertPlainText_(events, recipient) {
+function renderMarketsAlertPlainText_(events, recipient, destination) {
   const isTest = marketsAlertIsTest_(events);
   const noSignals = marketsAlertPreviewHasNoSignals_(events);
   const appUrl = marketsWebAppUrl_();
-  const loginUrl = marketsWebAppLoginUrl_(recipient);
+  const loginUrl = marketsWebAppLoginUrl_(destination ? '' : recipient, destination);
   const lines = (events || []).map(function (event) {
     if (event.type === 'TEST_SNAPSHOT') {
       return 'CIERRE REAL — NINGUNA REGLA ACTIVADA\n' +
@@ -783,7 +789,7 @@ function renderMarketsAlertPlainText_(events, recipient) {
     (isTest ? 'Vista previa construida exclusivamente con el último cierre real y la configuración vigente. No genera una alerta operativa.\n\n' : '\n') +
     lines.join('\n\n') + '\n\nDatos obtenidos: ' + marketsAlertDataDateLabel_(events) +
     '\nVersión: backend ' + MARKETS_CONFIG.codeVersion + ' / web ' + marketsAlertWebVersion_() +
-    '\nGestiona tus alertas desde Market Pulse.\nAbrir con la cuenta corporativa: ' + loginUrl + '\nURL directa: ' + appUrl;
+    '\nGestiona tus alertas desde Market Pulse.\nAbrir con la cuenta corporativa: ' + loginUrl + '\nURL directa: ' + (destination || appUrl);
 }
 
 /** Common light canvas for clients that honor email color-scheme hints. */
@@ -845,12 +851,9 @@ function renderMarketsAlertEmail_(events, recipient, feedback) {
   const warning = (events || []).filter(function (event) { return event.severity === 'WARNING'; }).length;
   const positive = (events || []).filter(function (event) { return event.severity === 'POSITIVE'; }).length;
   const cards = (events || []).map(renderMarketsAlertEmailCard_).join('');
-  const appUrl = marketsWebAppUrl_();
-  const loginUrl = marketsWebAppLoginUrl_(recipient);
-  const safeAppUrl = escapeMarketsAlertHtml_(appUrl);
+  const loginUrl = marketsWebAppLoginUrl_(feedback?.open ? '' : recipient, feedback?.open);
   const safeLoginUrl = escapeMarketsAlertHtml_(loginUrl);
-  const cta = '<table role="presentation" cellspacing="0" cellpadding="0"><tr><td bgcolor="#001391" style="border-radius:8px;"><a href="' + safeLoginUrl + '" target="_blank" style="display:block;padding:13px 22px;border-radius:8px;color:#FFFFFF;text-decoration:none;font-weight:700;">Ir a Market Pulse</a></td></tr></table>' +
-    '<p style="margin:12px 0 0;color:#46536D;font-size:11px;line-height:17px;">Si el botón no se abre, utiliza este <a href="' + safeAppUrl + '" target="_blank" style="color:#001391;font-weight:700;">acceso directo a Market Pulse</a>.</p>';
+  const cta = '<table role="presentation" align="center" cellspacing="0" cellpadding="0"><tr><td bgcolor="#001391" style="border-radius:8px;"><a href="' + safeLoginUrl + '" target="_blank" style="display:block;padding:13px 22px;border-radius:8px;color:#FFFFFF;text-decoration:none;font-weight:700;">Ir a Market Pulse</a></td></tr></table>';
   const subtitle = noSignals ? 'El último cierre real del ámbito seleccionado no ha superado ninguna de las condiciones configuradas.' :
     marketsAlertPreviewIsBelowThreshold_(events) ?
       'Prueba construida con movimientos reales del ámbito guardado. En producción no se enviaría: ninguno alcanza el límite configurado.' :
@@ -867,7 +870,7 @@ function renderMarketsAlertEmail_(events, recipient, feedback) {
     '<tr><td width="100%" bgcolor="#001391" style="padding:24px 28px;background:#001391;color:#FFFFFF;"><img src="cid:bbvaLogo" width="156" alt="BBVA Banca de Empresas e Instituciones" style="display:block;width:156px;height:auto;"><div style="margin-top:22px;color:#8BE1E9;font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">MARKET PULSE · ' + (isTest ? 'PRUEBA DE CANAL' : reviewShare ? 'ALERTAS DE RESEÑAS' : 'ALERTAS DE RATINGS') + '</div><h1 style="margin:8px 0 0;color:#FFFFFF;font-size:28px;line-height:34px;">' + (noSignals ? 'Sin alertas activas' : marketsAlertPreviewIsBelowThreshold_(events) ? 'Prueba con datos reales' : reviewShare ? 'Alerta de reseñas' : 'Alerta por cambios en ratings') + '</h1><p style="margin:10px 0 0;color:#85C8FF;font-size:15px;line-height:22px;">' + escapeMarketsAlertHtml_(subtitle) + '</p></td></tr>' +
     '<tr><td width="100%" style="padding:22px 28px 8px;">' + summary + '</td></tr>' +
     '<tr><td width="100%" style="padding:14px 28px 8px;">' + cards + '</td></tr>' +
-    '<tr><td width="100%" style="padding:18px 28px 30px;">' + cta + '<p style="margin:18px 0 0;color:#46536D;font-size:12px;line-height:18px;">Este correo es privado y contiene únicamente señales configuradas para tu cuenta. Las preferencias de otros usuarios nunca son visibles.</p><p style="margin:7px 0 0;color:#ADB8C2;font-size:10px;line-height:15px;">Datos obtenidos el ' + escapeMarketsAlertHtml_(marketsAlertDataDateLabel_(events)) + ' · backend ' + escapeMarketsAlertHtml_(MARKETS_CONFIG.codeVersion) + ' / web ' + escapeMarketsAlertHtml_(marketsAlertWebVersion_()) + '.</p></td></tr>' +
+    '<tr><td width="100%" style="padding:18px 28px 30px;">' + cta + '<p align="center" style="margin:18px 0 0;color:#46536D;font-size:12px;line-height:18px;">Este correo es privado y contiene únicamente señales configuradas para tu cuenta. Las preferencias de otros usuarios nunca son visibles.</p><p align="center" style="margin:7px 0 0;color:#ADB8C2;font-size:10px;line-height:15px;">Datos obtenidos el ' + escapeMarketsAlertHtml_(marketsAlertDataDateLabel_(events)) + ' · backend ' + escapeMarketsAlertHtml_(MARKETS_CONFIG.codeVersion) + ' / web ' + escapeMarketsAlertHtml_(marketsAlertWebVersion_()) + '.</p></td></tr>' +
     '<tr><td style="padding:0 28px 28px;">' + renderMarketsEmailFooter_(feedback) + '</td></tr></table></td></tr></table></body></html>');
 }
 
@@ -1122,18 +1125,18 @@ function renderMarketsEmailFooter_(links, language = 'es') {
     '<table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td align="center" bgcolor="#f4f5f6" style="padding:20px 12px 24px;color:#070e46;">' +
     '<p style="font-size:16px;margin:8px 0 20px;">' + question + '</p>' + button('positive', positive, 'feedbackPositive') +
     button('negative', negative, 'feedbackNegative') + '</td></tr></table>' : '';
-  return '<p style="margin:18px 0 24px;font-size:13px;">' + anchor(marketsWebAppUrl_() + '?view=alerts', manage) +
+  return '<p align="center" style="margin:18px 0 24px;font-size:13px;">' + anchor(marketsWebAppUrl_() + '?view=alerts', manage) +
     (links?.unsubscribe ? ' · ' + anchor(links.unsubscribe, unsubscribe) : '') + '</p>' +
     '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0 0 20px;border-top:1px solid #dfe4e8;color:#070e46;font-size:13px;line-height:24px;">' +
-    '<tr><td width="92" style="padding:22px 8px;"><img src="cid:biaLogo" width="80" alt="bIA" style="display:block;width:80px;height:auto;"></td>' +
-    '<td style="padding:22px 12px;">' + powered + '<br><strong>' + brand + '</strong><br>BBVA · ' + bank + '</td></tr></table>' + feedback;
+    '<tr><td align="center" style="padding:22px 8px 4px;"><img src="cid:biaLogo" width="80" alt="bIA" style="display:block;width:80px;height:auto;"></td></tr>' +
+    '<tr><td align="center" style="padding:4px 12px 22px;">' + powered + '<br><strong>' + brand + '</strong><br>BBVA · ' + bank + '</td></tr></table>' + feedback;
 }
 
 function marketsAlertFeedbackLinks_(recipient, messageId) {
   const secret = marketsEmailSecret_('MARKETS_ALERT_FEEDBACK_SECRET');
   if (secret.length < 32) return null;
   const expiry = Math.floor(Date.now() / 1000) + 30 * 86400;
-  return Object.fromEntries(['positive', 'negative', 'unsubscribe'].map(vote => {
+  return Object.fromEntries(['open', 'positive', 'negative', 'unsubscribe'].map(vote => {
     const payload = [messageId, expiry, vote].join('.');
     const signature = signMarketsAlertFeedback_(payload, recipient, secret);
     return [vote, marketsWebAppUrl_() + '?alertFeedback=' + encodeURIComponent(payload + '.' + signature)];
@@ -1146,7 +1149,7 @@ function signMarketsAlertFeedback_(payload, recipient, secret) {
 }
 
 function parseMarketsAlertFeedback_(token) {
-  const match = /^([a-f0-9]{32})\.(\d{10})\.(positive|negative|unsubscribe)\.([A-Za-z0-9_-]{43})$/.exec(String(token || ''));
+  const match = /^([a-f0-9]{32})\.(\d{10})\.(open|positive|negative|unsubscribe)\.([A-Za-z0-9_-]{43})$/.exec(String(token || ''));
   if (!match || Number(match[2]) <= Math.floor(Date.now() / 1000)) return null;
   return { id: match[1], expiry: Number(match[2]), vote: match[3], signature: match[4] };
 }
@@ -1182,6 +1185,7 @@ function findMarketsAlertFeedback_(sheet, id) {
 function saveMarketsAlertFeedback(token, vote, observation) {
   const recipient = currentMarketsUserEmail_();
   const request = requireMarketsAlertFeedbackLink_(token, recipient);
+  if (request.vote === 'open') throw new Error('Valoración no válida.');
   const comment = trimString_(observation);
   if ((vote !== undefined && !['positive', 'negative'].includes(vote)) || comment.length > 1000 ||
       (request.vote === 'unsubscribe' && (vote !== undefined || comment))) throw new Error('Valoración no válida.');

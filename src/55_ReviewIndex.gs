@@ -180,10 +180,46 @@ function refreshMarketsReviewGeography() {
 }
 
 const MARKETS_GEO_AUDIT_PROPERTY = 'MARKETS_ANDROID_GEO_AUDIT';
+const MARKETS_GEO_ITERATION_23 = 'MARKETS_GEO_ITERATION_23_BACKUP';
+
+/** Authorize the historic scan only after a fresh recoverable copy is verified. */
+function enableMarketsIteration23Geography() {
+  const { ss } = requireMarketsReviewOwner_();
+  const properties = PropertiesService.getScriptProperties();
+  const existing = safeJsonParse_(properties.getProperty(MARKETS_GEO_ITERATION_23));
+  if (existing?.backupId) return existing;
+  const lock = LockService.getUserLock();
+  if (!lock.tryLock(1000)) throw new Error('Hay una operación de reseñas en curso.');
+  try {
+    const ready = safeJsonParse_(properties.getProperty(MARKETS_GEO_ITERATION_23));
+    if (ready?.backupId) return ready;
+    const geography = ss.getSheetByName(MARKETS_ANDROID_GEO_SHEET);
+    if (!geography) throw new Error('Falta la hoja de geografía de reseñas.');
+    requireCurrentSheetContract_(ss, MARKETS_ANDROID_GEO_SHEET, MARKETS_ANDROID_GEO_HEADERS);
+    const source = marketsReviewSheet_(ss);
+    const folder = DriveApp.getFolderById(marketsStorageFolders_(properties).backups);
+    const name = 'Market Pulse - Antes de inferencia Iteración 23';
+    const candidates = folder.getFilesByName(name);
+    const copy = candidates.hasNext() ? candidates.next() : DriveApp.getFileById(ss.getId()).makeCopy(name, folder);
+    if (candidates.hasNext()) throw new Error('Hay varias copias de la Iteración 23 y deben revisarse.');
+    const backup = SpreadsheetApp.openById(copy.getId());
+    const backupGeography = backup.getSheetByName(MARKETS_ANDROID_GEO_SHEET);
+    const sameGeography = backupGeography &&
+      marketsReviewDigest_(backupGeography.getDataRange().getValues()) === marketsReviewDigest_(geography.getDataRange().getValues());
+    if (!sameGeography || backup.getSheetByName('MARKET_REVIEWS')?.getLastRow() !== source.getLastRow()) {
+      throw new Error('La copia debe coincidir con las filas de origen y las aprobaciones geográficas vigentes.');
+    }
+    const result = { backupId: copy.getId(), enabledAt: new Date().toISOString(), geographyRows: geography.getLastRow() - 1 };
+    properties.setProperty(MARKETS_GEO_ITERATION_23, JSON.stringify(result));
+    return result;
+  } finally {
+    lock.releaseLock();
+  }
+}
 
 function advanceMarketsAndroidGeography_(now = new Date()) {
   const lock = LockService.getUserLock();
-  if (!lock.tryLock(1000)) return false;
+  if (!lock.tryLock(1000)) return null;
   try {
     return scanMarketsAndroidGeographyBatch_(now);
   } catch (error) {
@@ -213,12 +249,13 @@ function marketsAndroidReplyEvidence_(reply) {
   return matches;
 }
 
-function marketsAndroidGeographyEvidence_(row, eligible) {
+function marketsAndroidGeographyEvidence_(row, eligible, iteration23 = true) {
   const original = marketsReviewOriginalText_(row);
   const text = normalizeReviewEvidence_(original);
   // A local reference inside a comparison, a trip or a third person's story
   // cannot establish the author's market, even alongside a support response.
-  if (/\b(?:no (?:vivo|resido|uso|utilizo)|nunca (?:he usado|uso|vivi)|de viaje|de vacaciones|si (?:viviera|pudiera)|desde (?:el extranjero|otro pais)|(?:vivo|resido) en otro pais|como (?:en|yape|plin|pse|paygold|bizum|banco galicia)|a diferencia de|comparad[oa] con|mi (?:amigo|amiga|familiar|hermano|hermana|padre|madre)|segun me (?:dicen|cuentan))\b/u.test(text)) return null;
+  if (/\b(?:no (?:vivo|resido|uso|utilizo)|nunca (?:he usado|uso|vivi)|de viaje|de vacaciones|si (?:viviera|pudiera)|desde (?:el extranjero|otro pais)|(?:vivo|resido) en otro pais|como (?:en|yape|plin|pse|paygold|bizum|banco galicia)|a diferencia de|mi (?:amigo|amiga|familiar|hermano|hermana|padre|madre)|segun me (?:dicen|cuentan))\b/u.test(text)) return null;
+  if ((iteration23 ? /\bcomparad[oa] con\b(?! otros bancos\b)/u : /\bcomparad[oa] con\b/u).test(text)) return null;
 
   const places = { espana: 'ES', madrid: 'ES', colombia: 'CO', bogota: 'CO', peru: 'PE',
     venezuela: 'VE', argentina: 'AR', mexico: 'MX' };
@@ -239,6 +276,9 @@ function marketsAndroidGeographyEvidence_(row, eligible) {
   if (/\b(?:mi cuenta|tengo cuenta|uso) (?:en )?bcp (?:e|y) interbank\b/u.test(text)) matches.set('PE', 'local-bank-use');
   if (/\b(?:mi cuenta (?:de|en)|tengo cuenta en) banco galicia\b/u.test(text)) matches.set('AR', 'own-galicia-account');
 
+  if (iteration23 && /\b(?:no me permite tener plin|no llega la notificacion del plin)\b/u.test(text)) matches.set('PE', 'own-plin-operation');
+  if (iteration23 && /\btratando de hacer pagos pse\b/u.test(text)) matches.set('CO', 'own-pse-payment');
+  if (iteration23 && /\bno se pueden realizar pagos con paygold que antes se podian hacer\b/u.test(text)) matches.set('CO', 'regression-paygold-payment');
   const { reply } = marketsReviewMetadata_(row);
   const support = marketsAndroidReplyEvidence_(reply);
   const replyText = normalizeReviewEvidence_(reply);
@@ -293,7 +333,8 @@ function scanMarketsAndroidGeographyBatch_(now) {
     if (!packages.has(app.packageName)) packages.set(app.packageName, new Set());
     packages.get(app.packageName).add(app.countryCode);
   }
-  const version = marketsReviewDigest_(['storefront-reply-v6', [...packages].map(([id, countries]) => [id, [...countries].sort()])]);
+  const iteration23 = Boolean(properties.getProperty(MARKETS_GEO_ITERATION_23));
+  const version = marketsReviewDigest_([iteration23 ? 'storefront-reply-v7' : 'storefront-reply-v6', [...packages].map(([id, countries]) => [id, [...countries].sort()])]);
   const revision = properties.getProperty('MARKETS_ANDROID_GEO_SOURCE_REVISION') || '';
   const last = Math.max(1, source.getLastRow());
   const previous = safeJsonParse_(properties.getProperty(MARKETS_GEO_AUDIT_PROPERTY));
@@ -325,7 +366,7 @@ function scanMarketsAndroidGeographyBatch_(now) {
     seen.add(key);
     const approval = existing.get(key);
     const eligible = [...packages.get(packageName)];
-    const result = approval && !approval.automatic ? marketsAndroidGeographyCandidate_(marketsReviewOriginalText_(row), eligible) : marketsAndroidGeographyEvidence_(row, eligible);
+    const result = approval && !approval.automatic ? marketsAndroidGeographyCandidate_(marketsReviewOriginalText_(row), eligible) : marketsAndroidGeographyEvidence_(row, eligible, iteration23);
     const valid = result?.status === 'VALIDAR';
     const digest = valid && marketsAndroidGeographyDigest_(row, !approval || approval.automatic);
     const verified = valid && approval?.packageName === packageName && approval.country === result?.candidate && approval.digest === digest &&

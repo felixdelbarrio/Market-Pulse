@@ -159,8 +159,7 @@
               </div>
             </section>
 
-            <section class="alert-action-bar"><div><strong id="alert-save-state">Configuración lista para revisar</strong><span>Los cambios se guardan únicamente para tu cuenta.</span></div><div class="alert-actions"><button id="alert-test-button" class="alert-button ghost" type="button">Probar alertas</button><button id="alert-reset-button" class="alert-button secondary" type="button">Restaurar valores</button><button id="alert-save-button" class="alert-button primary" type="submit">Guardar mis alertas</button></div></section>
-            <section id="alert-test-result" class="alert-test-result hidden" aria-live="polite"></section>
+            <section class="alert-action-bar"><div><strong id="alert-save-state">Configuración lista para revisar</strong><span>Los cambios se guardan únicamente para tu cuenta.</span></div><div class="alert-actions"><button id="alert-reset-button" hidden class="alert-button secondary" type="button">Restaurar valores</button><button id="alert-save-button" disabled class="alert-button primary" type="submit">Guardar mis alertas</button></div></section>
           </form>
 
           <section class="section panel alert-activity-panel"><div class="panel-head"><div><h3>Actividad reciente</h3><span>Solo eventos dirigidos a tu cuenta</span></div><span class="panel-meta">Últimos 6</span></div><div id="alert-activity" class="alert-activity"></div></section>
@@ -274,24 +273,7 @@
             </form><button id="admin-log-export" class="button" type="button" disabled>Exportar selección</button></div>
             <div id="admin-log-metrics" class="metrics"></div><div id="admin-log-pagination" class="pagination"></div>
           </section>
-          <div id="admin-panel-health" class="admin-tab-panel" data-admin-panel="health" role="tabpanel" aria-labelledby="admin-tab-health"><div id="admin-loading" class="panel-body" role="status">Cargando contenido...</div><section class="panel"><div class="panel-header"><div><h3>Panel de control</h3><span>Procesos ordenados por prioridad. El supervisor reanuda las tareas pendientes.</span></div><div class="admin-toolbar-actions"></div></div><div class="panel-body">
-            <details id="admin-review-recovery" class="panel-body radar-filters hidden">
-              <summary>Recuperación selectiva de reseñas</summary>
-              <p>Consulta la cobertura por escaparate y mes. La recuperación recorre las páginas disponibles de la tienda.</p>
-              <form id="admin-review-recovery-form">
-                <label for="admin-review-recovery-listing">Escaparate</label>
-                <select id="admin-review-recovery-listing" class="select-control" required></select>
-                <label for="admin-review-recovery-mode">Periodo</label>
-                <select id="admin-review-recovery-mode"><option value="today">Hoy</option><option value="month">Meses</option></select>
-                <label id="admin-review-recovery-month-label" for="admin-review-recovery-month" hidden>Mes</label>
-                <input id="admin-review-recovery-month" type="month" hidden>
-                <button class="button" type="submit" value="coverage">Consultar cobertura</button>
-                <button class="button" type="submit" value="recover">Recuperar reseñas</button>
-                <button class="alert-button secondary hidden" id="admin-review-recovery-close" type="button">Cerrar recuperación</button>
-              </form>
-              <p id="admin-review-coverage" role="status"></p>
-              <p id="admin-review-recovery-result" role="status"></p>
-            </details></div><div id="admin-jobs" class="admin-job-cards panel-body" aria-live="polite" aria-label="Procesos operativos"></div><p id="admin-jobs-result" class="panel-body" role="status"></p></section>
+          <div id="admin-panel-health" class="admin-tab-panel" data-admin-panel="health" role="tabpanel" aria-labelledby="admin-tab-health"><div id="admin-loading" class="panel-body" role="status">Cargando contenido...</div><section class="panel"><div class="panel-header"><div><h3>Panel de control</h3><span>Procesos ordenados por prioridad. El supervisor reanuda las tareas pendientes.</span></div><div class="admin-toolbar-actions"></div></div><div id="admin-jobs" class="admin-job-cards panel-body" aria-live="polite" aria-label="Procesos operativos"></div><p id="admin-jobs-result" class="panel-body" role="status"></p></section>
 </div>
             <section class="section panel hidden" data-admin-log="experience"><div class="panel-header"><div><h3>Incidencias de experiencia</h3><span>Errores detectados durante el uso</span></div><span class="panel-meta">Últimas 20</span></div><div id="admin-usage-incidents" class="admin-list"></div></section>
           <div id="admin-panel-performance" class="admin-tab-panel hidden" data-admin-log="performance" role="region" aria-label="Rendimiento">
@@ -338,15 +320,14 @@
               <p class="small muted" id="newsletter-schedule"></p>
               <p class="muted">Cada newsletter se envía a su destinatario. El grupo se usa como remitente y dirección de respuesta.</p>
               <form id="newsletter-test-form">
-                <h3>Prueba de newsletter</h3>
+                <h3>Prueba de comunicaciones</h3>
                 <div class="subscription-fields">
-                  <label>Destinatario<input name="targetEmail" type="email" placeholder="Correo del administrador conectado" autocomplete="off"></label>
-                  <label>Idioma<select name="language"><option value="">Según suscripción</option><option value="es">Español</option><option value="en">English</option><option value="tr">Türkçe</option></select></label>
-                  <label>Edición<select name="edition"><option value="monthly">Mensual</option></select></label>
-                  <label>Periodo de prueba<select name="period"><option value="closed">Último periodo cerrado</option><option value="current">Periodo en curso</option></select></label>
+                  <label>Configuración del destinatario<input name="targetEmail" type="email" placeholder="Correo del administrador conectado" autocomplete="off"></label>
                   <label>Geografía<select name="country" id="newsletter-test-country"><option value="">Según suscripción</option></select></label>
+                  <label>Idioma<select name="language"><option value="">Según suscripción</option><option value="es">Español</option><option value="en">English</option><option value="tr">Türkçe</option></select></label>
+                  <label>Edición<select name="edition"><option value="monthly">Mensual</option><option value="alert">Alerta</option></select></label>
                 </div>
-                <p class="small muted">La prueba usa la configuración elegida y se envía al destinatario indicado. Si lo dejas en blanco, se envía a tu cuenta.</p>
+                <p class="small muted">La prueba se envía a tu cuenta de administrador. Puedes usar el ámbito de otro suscriptor o elegir Todos para incluir todas las geografías.</p>
                 <button type="submit" class="button">Enviar prueba</button>
               </form>
               <div id="newsletter-test-result" class="message" role="status" aria-live="polite" hidden></div>

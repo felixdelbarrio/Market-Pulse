@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import { createHmac } from "node:crypto";
 import test from "node:test";
 import vm from "node:vm";
 
@@ -580,4 +581,24 @@ test("preview opens and feedback persist separately from the live edition; previ
   assert.deepEqual(rows.slice(1).map(row => [row[0].split("_")[0], row[2], row[5]]), [
     ["n", "positive", "Real"], ["np", "negative", "Prueba"], ["np", "open", ""]
   ]);
+});
+
+test("an alert access is signed for the active account and survives AccountChooser", () => {
+  const runtime = vm.createContext({
+    ...context,
+    PropertiesService: { getScriptProperties: () => ({ getProperty: () => "a".repeat(64) }) },
+    Utilities: {
+      computeHmacSha256Signature: (payload, secret) => createHmac("sha256", secret).update(payload).digest(),
+      base64EncodeWebSafe: value => Buffer.from(value).toString("base64url")
+    }
+  });
+  vm.runInContext(source, runtime);
+  const recipient = "reader@bbva.com", messageId = "a".repeat(32);
+  const direct = runtime.marketsAlertFeedbackLinks_(recipient, messageId).open;
+  const URLWithChooser = runtime.marketsWebAppLoginUrl_("", direct);
+  assert.equal(new URL(URLWithChooser).searchParams.get("continue"), direct);
+  assert.equal(new URL(URLWithChooser).searchParams.get("Email"), null);
+  const token = new URL(direct).searchParams.get("alertFeedback");
+  assert.equal(runtime.requireMarketsAlertFeedbackLink_(token, recipient).vote, "open");
+  assert.throws(() => runtime.requireMarketsAlertFeedbackLink_(token, "other@bbva.com"), /cuenta conectada/);
 });
