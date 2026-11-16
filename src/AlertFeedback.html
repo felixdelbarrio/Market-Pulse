@@ -19,10 +19,10 @@
   </style>
 </head>
 <body>
-  <header class="feedback-brand">BBVA · Market Pulse</header>
+  <header class="feedback-brand">BBVA · EDC Market Pulse</header>
   <dialog id="feedback-dialog" aria-labelledby="feedback-title">
     <div class="dialog-head">
-      <h1 id="feedback-title"><?= rating ? 'Valorar esta edición (opcional)' : newsletter ? 'Newsletter de Market Pulse' : 'Valorar alerta de Market Pulse' ?></h1>
+      <h1 id="feedback-title"><?= rating ? 'Valorar esta edición (opcional)' : newsletter ? 'Newsletter de EDC Market Pulse' : 'Valorar alerta de EDC Market Pulse' ?></h1>
       <button class="dialog-close" id="feedback-close" type="button" aria-label="Cerrar"></button>
     </div>
     <form id="edition-feedback" data-token="<?= token ?>" data-newsletter="<?= newsletter ? 'yes' : 'no' ?>">
@@ -37,7 +37,7 @@
       <? } ?>
       <button type="submit" id="vote" class="alert-button primary"><?= rating ? 'Enviar' : choice ?></button>
       <p id="status" role="status"></p>
-      <? if (destination) { ?><a id="destination" href="<?= destination ?>" hidden>Abrir Market Pulse</a><? } ?>
+      <? if (destination) { ?><a id="destination" href="<?= destination ?>" hidden>Abrir EDC Market Pulse</a><? } ?>
     </form>
   </dialog>
   <script>

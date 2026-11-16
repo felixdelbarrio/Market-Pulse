@@ -5,7 +5,7 @@ function setupProject() {
   seedInitialMarketsAdministrator_(ss);
   installDailyTrigger_();
   const validation = validateProject();
-  console.log('Market Pulse preparado. Abra exclusivamente la Web App: ' + validation.webAppUrl);
+  console.log('EDC Market Pulse preparado. Abra exclusivamente la Web App: ' + validation.webAppUrl);
   console.log('Tipo requerido: Aplicacion web. Nunca use una URL /macros/library/d/.');
   return validation;
 }
@@ -147,7 +147,7 @@ function authorizeAndInstallMarketsAutomation() {
 }
 
 function onOpen() {
-  SpreadsheetApp.getUi().createMenu('Market Pulse')
+  SpreadsheetApp.getUi().createMenu('EDC Market Pulse')
     .addItem('Validar proyecto', 'validateProject')
     .addItem('Mostrar URL de la aplicacion', 'showMarketsWebAppLink')
     .addItem('Ejecutar ahora', 'runNow')
@@ -163,12 +163,12 @@ function showMarketsWebAppLink() {
   const url = marketsWebAppUrl_();
   const html = HtmlService.createHtmlOutput(
     '<div style="font:14px Arial,sans-serif;padding:18px;color:#070E46;">' +
-    '<h2 style="margin:0 0 12px;">Market Pulse</h2>' +
+    '<h2 style="margin:0 0 12px;">EDC Market Pulse</h2>' +
     '<p>Esta es la unica URL que debe abrirse y compartirse:</p>' +
     '<p><a href="' + url + '" target="_blank" rel="noopener noreferrer" ' +
     'style="color:#001391;font-weight:700;">Abrir aplicacion web</a></p>' +
     '<p style="margin-top:16px;color:#46536D;font-size:12px;">La URL debe terminar en <strong>/exec</strong>. ' +
     'No utilice enlaces que contengan <strong>/macros/library/</strong>.</p></div>'
   ).setWidth(480).setHeight(220);
-  SpreadsheetApp.getUi().showModalDialog(html, 'URL oficial de Market Pulse');
+  SpreadsheetApp.getUi().showModalDialog(html, 'URL oficial de EDC Market Pulse');
 }

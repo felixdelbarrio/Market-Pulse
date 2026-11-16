@@ -899,6 +899,27 @@ test("Android inference uses a localized support contact and rejects contradicto
   }
 });
 
+test("the confirmed BBVA Empresas developer reply identifies Spain without overriding contradictory evidence", () => {
+  const local = vm.createContext({ safeJsonParse_: JSON.parse });
+  for (const file of ["54_Reviews.gs", "52_ReviewInsights.gs", "55_ReviewIndex.gs"]) {
+    vm.runInContext(fs.readFileSync(new URL("../src/" + file, import.meta.url), "utf8"), local);
+  }
+  const row = Object.assign(Array(16).fill(""), {
+    4: "com.bbva.GEMA.global", 10: "Rápida",
+    15: JSON.stringify({ reply: "Buenas tardes. ¡Gracias! Para nosotros tu opinión es muy importante. Seguiremos trabajando cada día en el desarrollo de nuestra aplicación para que así cada vez se ajuste más a las necesidades de gestión de tu empresa y tu operativa bancaria. Un saludo." })
+  });
+  assert.equal(local.marketsAndroidGeographyEvidence_(row, ["ES","CO","PE"])?.evidence, "gema-spain-developer-reply");
+  assert.equal(local.marketsAndroidGeographyEvidence_(row, ["CO","PE"]), null);
+  row[10] = "Pagué con PayGold";
+  assert.equal(local.marketsAndroidGeographyEvidence_(row, ["ES","CO","PE"])?.status, "CONFLICTO");
+  row[10] = "Rápida";
+  row[15] = row[15].replace("Un saludo.", "Atención a clientes de Colombia.");
+  assert.equal(local.marketsAndroidGeographyEvidence_(row, ["ES","CO","PE"])?.status, "CONFLICTO");
+  row[15] = row[15].replace("Atención a clientes de Colombia.", "Un saludo.");
+  row[4] = "another.shared.listing";
+  assert.equal(local.marketsAndroidGeographyEvidence_(row, ["ES","CO","PE"]), null);
+});
+
 test("Android geography checkpoints physical and eligible rows independently across appends and revisions", () => {
   const rows = Array.from({ length: 12002 }, (_, i) => [String(i), "", "ES", "iOS", "shared"]);
   const android = key => [key, "", "ES,MX", "Android", "shared"];

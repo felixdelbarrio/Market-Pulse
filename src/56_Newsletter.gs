@@ -1,5 +1,5 @@
 /**
- * Newsletter mensual ejecutiva de Market Pulse.
+ * Newsletter mensual ejecutiva de EDC Market Pulse.
  *
  * Se genera por destinatario y respeta sus mercados y plataformas. Solo usa
  * observaciones reales. Los volúmenes Android compartidos no se atribuyen a
@@ -477,7 +477,7 @@ function marketsNewsletterRawCountDelta_(startCount, endCount) {
   return first === null || last === null || last < first ? null : Math.round(last - first);
 }
 
-const MARKETS_NEWSLETTER_SUBJECT_PREFIX = '[bIA]🚀🚀🚀 [Market Pulse] · ';
+const MARKETS_NEWSLETTER_SUBJECT_PREFIX = '[bIA]🚀🚀🚀 [EDC Market Pulse] · ';
 
 function marketsNewsletterSpanishSubject_(model) {
   return (model.isTest ? '[PRUEBA] ' : '') + MARKETS_NEWSLETTER_SUBJECT_PREFIX + 'Cierre ' +
@@ -546,7 +546,7 @@ function renderMarketsNewsletterPlainText_(model) {
       marketsNewsletterSigned_(item.effect.accumulatedRatingChange) + ' puntos' +
       (item.shared ? ' sobre la ficha completa, sin atribución geográfica' : '');
   });
-  return 'MARKET PULSE\nBBVA Banca de Empresas e Instituciones\n\n' +
+  return 'EDC MARKET PULSE\nBBVA Banca de Empresas e Instituciones\n\n' +
     (model.isTest ? 'VISTA PREVIA CON DATOS REALES — NO ES UN ENVÍO MENSUAL\n' : '') +
     'Cierre ejecutivo · ' + model.periodLabel + '\n' + marketsNewsletterScopeTitle_(model) + '\n\n' +
     brief.headline + '\n' + brief.summary +
@@ -604,7 +604,7 @@ function renderMarketsNewsletterHtml_(model) {
     '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" bgcolor="#FFFFFF" style="width:100%;max-width:720px;background:#FFFFFF;color:#000519;border-radius:16px;overflow:hidden;">' +
     preview +
     '<tr><td bgcolor="#001391" style="padding:26px 30px;background:#001391;color:#FFFFFF;"><img src="cid:bbvaLogo" width="168" alt="BBVA Banca de Empresas e Instituciones" style="display:block;width:168px;height:auto;">' +
-    '<div style="margin-top:24px;color:#8BE1E9;font-size:11px;font-weight:700;letter-spacing:1px;">MARKET PULSE · CIERRE MENSUAL</div>' +
+    '<div style="margin-top:24px;color:#8BE1E9;font-size:11px;font-weight:700;letter-spacing:1px;">EDC MARKET PULSE · CIERRE MENSUAL</div>' +
     '<h1 style="margin:8px 0 0;font-family:Georgia,serif;font-size:31px;line-height:37px;">' +
     escapeMarketsAlertHtml_(model.periodLabel) + '</h1><p style="margin:9px 0 0;color:#85C8FF;font-size:15px;line-height:22px;">' +
     escapeMarketsAlertHtml_(scopeTitle) + '</p></td></tr>' +
@@ -620,7 +620,7 @@ function renderMarketsNewsletterHtml_(model) {
     '</tr></table>' + (model.scope.type !== 'SINGLE' && platformVolumes ? '<div style="padding:4px 8px 0;color:#46536D;font-size:10px;text-transform:uppercase;">Valoraciones por plataforma</div><div style="padding:8px 8px 0;">' +
       platformVolumes + '</div>' : '') + '</td></tr>' + coverage + groupHtml + effects +
     '<tr><td style="padding:4px 30px 28px;"><table role="presentation" align="center" cellspacing="0" cellpadding="0"><tr><td bgcolor="#001391" style="border-radius:8px;"><a href="' +
-    appUrl + '" style="display:block;padding:13px 22px;color:#FFFFFF;text-decoration:none;font-weight:700;">Ir a Market Pulse</a></td></tr></table>' +
+    appUrl + '" style="display:block;padding:13px 22px;color:#FFFFFF;text-decoration:none;font-weight:700;">Ir a EDC Market Pulse</a></td></tr></table>' +
     '<p align="center" style="margin:16px 0 0;color:#ADB8C2;font-size:10px;line-height:15px;">La lectura ejecutiva se genera exclusivamente a partir de las cifras mostradas. Ratings y volúmenes de Android, iOS y Huawei nunca se combinan. Solo se publican posiciones con cobertura competitiva completa; los volúmenes no atribuibles y los efectos no fiables se presentan como N/D o se omiten.</p></td></tr>' +
     '<tr><td style="padding:0 30px 28px;">' + renderMarketsEmailFooter_(model.interactions, model.language) + '</td></tr>' +
     '</table></td></tr></table></body></html>');
@@ -972,10 +972,10 @@ function localizedMarketsNewsletter_(model) {
   const copy = {
     en: { title: 'Monthly review', preview: 'PREVIEW · REAL DATA', country: 'Market', platform: 'Platform',
       rating: 'Closing rating', monthly: 'Monthly change', annual: 'Year to date', volume: 'New ratings',
-      position: 'Position', coverage: 'Coverage', link: 'Open Market Pulse' },
+      position: 'Position', coverage: 'Coverage', link: 'Open EDC Market Pulse' },
     tr: { title: 'Aylık değerlendirme', preview: 'ÖN İZLEME · GERÇEK VERİLER', country: 'Pazar', platform: 'Platform',
       rating: 'Kapanış puanı', monthly: 'Aylık değişim', annual: 'Yılbaşından bu yana', volume: 'Yeni puanlamalar',
-      position: 'Sıralama', coverage: 'Kapsam', link: 'Market Pulse’u aç' }
+      position: 'Sıralama', coverage: 'Kapsam', link: 'EDC Market Pulse’u aç' }
   }[language];
   if (!copy) return null;
   const months = language === 'tr'
@@ -1043,7 +1043,7 @@ function renderMarketsNewsletterInteractionPage_(token) {
   page.rating = '';
   page.destination = marketsWebAppUrl_();
   page.choice = 'Dar de baja la newsletter';
-  return page.evaluate().setTitle('Newsletter de Market Pulse').addMetaTag('viewport', 'width=device-width, initial-scale=1');
+  return page.evaluate().setTitle('Newsletter de EDC Market Pulse').addMetaTag('viewport', 'width=device-width, initial-scale=1');
 }
 
 function marketsNewsletterInteractionSheet_(ss, extend = false) {

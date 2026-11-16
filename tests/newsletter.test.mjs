@@ -436,7 +436,7 @@ test("localized newsletter renders subject, plain text and HTML in the chosen la
   const model = { period: "2026-10", items: [{ countryCode: "TR", platform: "iOS", endRating: 4.2 }] };
   for (const [language, title] of [["en", "Monthly review"], ["tr", "Aylık değerlendirme"]]) {
     const rendered = context.localizedMarketsNewsletter_({ ...model, language });
-    assert.match(rendered.subject, /^\[bIA\]🚀🚀🚀 \[Market Pulse\] · /u);
+    assert.match(rendered.subject, /^\[bIA\]🚀🚀🚀 \[EDC Market Pulse\] · /u);
     assert.match(rendered.subject, new RegExp(title));
     assert.match(rendered.plain, new RegExp(title));
     assert.match(rendered.html, new RegExp('<html lang="' + language + '"'));
@@ -514,7 +514,7 @@ test("newsletter access cohorts use verified accounts and count each recorded ed
 test("the Spanish Argentina closing uses the requested subject and email light canvas", () => {
   const model = { periodLabel: "octubre 2026", scope: { type: "SINGLE", countryLabel: "Argentina", platformLabel: "Todas las plataformas" } };
   assert.equal(context.marketsNewsletterSpanishSubject_(model),
-    "[bIA]🚀🚀🚀 [Market Pulse] · Cierre octubre 2026 · Argentina · Todas las plataformas");
+    "[bIA]🚀🚀🚀 [EDC Market Pulse] · Cierre octubre 2026 · Argentina · Todas las plataformas");
   assert.match(context.marketsLightEmailDocument_("en"), /bgcolor="#F7F8F8"/);
 });
 

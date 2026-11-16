@@ -177,7 +177,7 @@ test("doGet builds an HtmlService response using supported metadata", () => {
   assert.deepEqual(calls, [
     ["template", "Index"],
     ["evaluate"],
-    ["title", "Market Pulse · BBVA Banca de Empresas e Instituciones"],
+    ["title", "EDC Market Pulse · BBVA Banca de Empresas e Instituciones"],
     ["meta", "viewport", "width=device-width, initial-scale=1, viewport-fit=cover"],
     ["favicon", calls.at(-1)[1]]
   ]);
@@ -328,12 +328,12 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(index, /includeMarketsWebPartial_\('BrandAssets'\)/);
   assert.match(index, /includeMarketsWebPartial_\('BrandIdentity'\)/);
   assert.match(identity, /--asset-bbva-bei-logo:url\("data:image\/png;base64,/);
-  assert.match(index, /Market Pulse/);
+  assert.match(index, /EDC Market Pulse/);
   assert.doesNotMatch(index, /Markets Data Studio/);
   assert.match(index, /name="mobile-web-app-capable" content="yes"/);
   assert.match(index, /name="apple-mobile-web-app-capable" content="yes"/);
-  assert.match(index, /name="application-name" content="Market Pulse"/);
-  assert.match(index, /name="apple-mobile-web-app-title" content="Market Pulse"/);
+  assert.match(index, /name="application-name" content="EDC Market Pulse"/);
+  assert.match(index, /name="apple-mobile-web-app-title" content="EDC Market Pulse"/);
   names.forEach(name => assert.match(index, new RegExp(`includeMarketsWebPartial_\\('${name}'\\)`)));
   assert.match(app, /MarketsWorkbook\.build/);
   assert.match(app, /const request=trendRequest\(\)/);
@@ -415,7 +415,7 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(app, /admin:newsletter:test"\?120000/);
   assert.match(app, /form\.dataset\.requestId/);
   assert.match(app, /state\.userContext=data\.userContext/);
-  assert.match(app, /Market Pulse no ha respondido a tiempo/);
+  assert.match(app, /EDC Market Pulse no ha respondido a tiempo/);
   assert.doesNotMatch(app, /Promise\.all\\(\\[callServer\\("bootstrap"\\),callServer\\("user:context"\\)\\]\\)/);
   assert.match(app, /function renderDashboard\(\)\{if\(state\.view==="benchmark"\)/);
   assert.doesNotMatch(index, /id="alert-test-(?:result|button)"/);
@@ -938,4 +938,17 @@ test("newsletter access is recorded before bootstrap and a failed RPC retains th
   assert.deepEqual(attempts, ["signed-token", "signed-token"]);
   const init = source.match(/function initializeApp\(\).*?loadBootstrap\(\)/s)[0];
   assert.match(init, /recordNewsletterOpen\(\).*loadBootstrap\(\)/s);
+});
+
+test("review audience keeps its value and localizes the visible BEI filter across review views", () => {
+  const index = fs.readFileSync(new URL("../src/Index.html", import.meta.url), "utf8");
+  const app = fs.readFileSync(new URL("../src/App.html", import.meta.url), "utf8");
+  const copy = vm.runInNewContext("(" + app.split("const interfaceCopy=")[1].split("const supportedLanguage=")[0].trim().slice(0,-1) + ")");
+  assert.deepEqual([...copy.BEI], ["B&I", "ŞKB"]);
+  assert.equal((index.match(/<option value="BEI">BEI<\/option>/g) || []).length, 3);
+  assert.match(app, /if\(key==="audience"\)return translate/);
+  for (const label of ["Inferir datos", "Incluye geografías inferidas de Android.", "Guardar mis alertas", "Accesos desde newsletters"]) {
+    assert.equal(copy[label].length, 2);
+    assert.ok(copy[label].every(translation => translation && translation !== label), label);
+  }
 });

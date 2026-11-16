@@ -258,8 +258,10 @@ function enableMarketsIteration23Geography() {
     requireCurrentSheetContract_(ss, MARKETS_ANDROID_GEO_SHEET, MARKETS_ANDROID_GEO_HEADERS);
     const source = marketsReviewSheet_(ss);
     const folder = DriveApp.getFolderById(marketsStorageFolders_(properties).backups);
-    const name = 'Market Pulse - Antes de inferencia Iteración 23';
-    const candidates = folder.getFilesByName(name);
+    const name = 'EDC Market Pulse - Antes de inferencia Iteración 23';
+    const previousName = 'Market Pulse - Antes de inferencia Iteración 23';
+    const current = folder.getFilesByName(name);
+    const candidates = current.hasNext() ? current : folder.getFilesByName(previousName);
     const copy = candidates.hasNext() ? candidates.next() : DriveApp.getFileById(ss.getId()).makeCopy(name, folder);
     if (candidates.hasNext()) throw new Error('Hay varias copias de la Iteración 23 y deben revisarse.');
     const backup = SpreadsheetApp.openById(copy.getId());
@@ -361,6 +363,10 @@ function marketsAndroidGeographyEvidence_(row, eligible, iteration23 = true) {
   const { reply } = marketsReviewMetadata_(row);
   const support = marketsAndroidReplyEvidence_(reply);
   const replyText = normalizeReviewEvidence_(reply);
+  if (iteration23 && row[4] === 'com.bbva.GEMA.global' &&
+      /\bpara nosotros tu opinion es muy importante seguiremos trabajando cada dia en el desarrollo de nuestra aplicacion para que asi cada vez se ajuste mas a las necesidades de gestion de tu empresa y tu operativa bancaria\b/u.test(replyText)) {
+    if (!support.has('ES')) support.set('ES', 'gema-spain-developer-reply');
+  }
   const mentionedInReply = [...new Set([...replyText.matchAll(/\b(?:espana|madrid|colombia|bogota|peru|venezuela|argentina|mexico)\b/gu)]
     .map(([place]) => places[place]))];
   if (mentionedInReply.length > 1 || (support.size && mentionedInReply.some(country => !support.has(country)))) {
@@ -423,7 +429,7 @@ function scanMarketsAndroidGeographyBatch_(now) {
     packages.get(app.packageName).add(app.countryCode);
   }
   const iteration23 = Boolean(properties.getProperty(MARKETS_GEO_ITERATION_23));
-  const version = marketsReviewDigest_([iteration23 ? 'storefront-reply-v10' : 'storefront-reply-v6', [...packages].map(([id, countries]) => [id, [...countries].sort()])]);
+  const version = marketsReviewDigest_([iteration23 ? 'storefront-reply-v11' : 'storefront-reply-v6', [...packages].map(([id, countries]) => [id, [...countries].sort()])]);
   const revision = properties.getProperty('MARKETS_ANDROID_GEO_SOURCE_REVISION') || '';
   const last = Math.max(1, source.getLastRow());
   const previous = safeJsonParse_(properties.getProperty(MARKETS_GEO_AUDIT_PROPERTY));

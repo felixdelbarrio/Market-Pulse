@@ -42,7 +42,7 @@ function doGet(event) {
   template.newsletterOpen = newsletterOpen;
   template.initialView = params.view === 'alerts' ? 'alerts' : '';
   const page = template.evaluate()
-    .setTitle('Market Pulse · BBVA Banca de Empresas e Instituciones')
+    .setTitle('EDC Market Pulse · BBVA Banca de Empresas e Instituciones')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover')
     .setFaviconUrl('https://raw.githubusercontent.com/felixdelbarrio/Market-Pulse/3a4ebca6387785f387441aabd591b3e1ba429e49/assets/favicon.png');
   return page;

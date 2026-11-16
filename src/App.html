@@ -8,6 +8,208 @@
     const $=id=>document.getElementById(id);
     const bindOptional=(id,event,handler)=>$(id)?.addEventListener(event,handler);
     const interfaceCopy={
+      "No se pudo guardar la valoración. Inténtalo de nuevo.":["We couldn't save your feedback. Try again.","Değerlendirme kaydedilemedi. Tekrar deneyin."],
+      "Cargando NPS de reseñas":["Loading review NPS","Yorum NPS'si yükleniyor"],
+      "Preparando Excel…":["Preparing Excel…","Excel hazırlanıyor…"],
+      "ADMINISTRACIÓN":["ADMINISTRATION","YÖNETİM"],
+      "Accesos desde newsletters":["Visits from newsletters","Bültenlerden gelen ziyaretler"],
+      "Acciones disponibles solo para el administrador.":["Actions available to administrators only.","Bu işlemleri yalnızca yöneticiler yapabilir."],
+      "Activa":["Active","Etkin"],
+      "Activa las señales que quieras vigilar":["Enable the signals you want to track","İzlemek istediğiniz sinyalleri etkinleştirin"],
+      "Activa por defecto":["Enabled by default","Varsayılan olarak etkin"],
+      "Activa solo las reglas que sean útiles para ti y personaliza sus límites.":["Enable the rules that matter to you and customise their thresholds.","İşinize yarayan kuralları etkinleştirin ve eşiklerini özelleştirin."],
+      "Activar alerta de reseñas":["Enable review alerts","Yorum uyarılarını etkinleştir"],
+      "Activar caída desde inicio de año":["Enable year-to-date decline alerts","Yılbaşından bu yana düşüş uyarılarını etkinleştir"],
+      "Activar caída diaria":["Enable daily decline alerts","Günlük düşüş uyarılarını etkinleştir"],
+      "Activar caída entre cierres del día 15":["Enable mid-month decline alerts","Ayın 15'indeki kapanışlar arası düşüş uyarılarını etkinleştir"],
+      "Activar cruces":["Enable ranking alerts","Sıralama uyarılarını etkinleştir"],
+      "Activar cruces competitivos":["Enable ranking alerts","Sıralama uyarılarını etkinleştir"],
+      "Actividad reciente":["Recent activity","Son etkinlikler"],
+      "Actualizar tiempos":["Refresh timings","Süreleri yenile"],
+      "Advertencia desde":["Warning threshold","Uyarı eşiği"],
+      "Alerta":["Alert","Uyarı"],
+      "Alertas activas":["Active alerts","Etkin uyarılar"],
+      "Alertas de caída de rating":["Rating decline alerts","Puan düşüşü uyarıları"],
+      "Alertas pausadas":["Paused alerts","Duraklatılan uyarılar"],
+      "Alertas por email":["Email alerts","E-posta uyarıları"],
+      "Almacenamiento y archivo":["Storage and archiving","Depolama ve arşivleme"],
+      "Alta manual":["Manual registration","Manuel kayıt"],
+      "Amarilla":["Yellow","Sarı"],
+      "Ambos":["Both","Her ikisi"],
+      "Ambos movimientos":["Both changes","Her iki değişiklik"],
+      "Atendido":["Resolved","Çözüldü"],
+      "Auditoría reciente de señales y destinatarios":["Recent signal and recipient audit","Son sinyal ve alıcı denetimi"],
+      "Avisa cuando la proporción de reseñas públicas de BBVA Empresas de 1 o 2 estrellas fechadas en las últimas 24 horas alcanza el umbral.":["Alerts when the share of public 1- or 2-star BBVA Empresas reviews in the past 24 hours reaches the threshold.","BBVA Empresas'ın son 24 saatteki herkese açık 1 veya 2 yıldızlı yorumlarının oranı eşiğe ulaştığında uyarır."],
+      "Avisa cuando un competidor supera a BBVA Empresas o cuando BBVA recupera la posición.":["Alerts when a competitor overtakes BBVA Empresas or BBVA regains its position.","Bir rakip BBVA Empresas'ı geçtiğinde veya BBVA sırasını geri aldığında uyarır."],
+      "BBVA Banca de Empresas e Instituciones":["BBVA Business and Institutional Banking","BBVA Şirketler ve Kurumlar Bankacılığı"],
+      "BBVA pierde posición":["BBVA drops in the ranking","BBVA sıralamada geriliyor"],
+      "BBVA recupera posición":["BBVA regains its position","BBVA sırasını geri alıyor"],
+      "Banca Inteligente":["Intelligent","Akıllı"],
+      "y Autónoma":["and Autonomous Banking","ve Otonom Bankacılık"],
+      "Buscar":["Search","Ara"],
+      "Buscar en el catálogo":["Search the catalogue","Katalogda ara"],
+      "Buscar por correo…":["Search by email…","E-posta ile ara…"],
+      "Cada newsletter se envía a su destinatario. El grupo se usa como remitente y dirección de respuesta.":["Each newsletter is sent to its recipient. The group serves as the sender and reply-to address.","Her bülten kendi alıcısına gönderilir. Grup adresi gönderen ve yanıt adresi olarak kullanılır."],
+      "Cada pareja indica umbral amarillo y rojo, en puntos. La ventana mensual compara el cierre del día 15 de M-1 con el día 15 vigente.":["Each pair shows the yellow and red thresholds in points. The monthly window compares the closes on the 15th of the previous and current months.","Her çift sarı ve kırmızı eşikleri puan olarak gösterir. Aylık dönem, önceki ayın 15'indeki kapanışla bu ayın 15'indeki kapanışı karşılaştırır."],
+      "Canal de correo":["Email channel","E-posta kanalı"],
+      "Capturas de ratings":["Rating captures","Puan toplama"],
+      "Cargando contenido...":["Loading content…","İçerik yükleniyor…"],
+      "Catálogo":["Catalogue","Katalog"],
+      "Catálogos y operación":["Catalogues and operations","Kataloglar ve operasyon"],
+      "Caída diaria":["Daily decline","Günlük düşüş"],
+      "Caídas de rating":["Rating declines","Puan düşüşleri"],
+      "Cierre seleccionado":["Selected close","Seçili kapanış"],
+      "Combina las tres ventanas. Cada una conserva sus propios límites y puede generar una señal independiente.":["Combine all three windows. Each keeps its own thresholds and can trigger a separate alert.","Üç dönemi birleştirin. Her dönem kendi eşiklerini korur ve ayrı bir uyarı oluşturabilir."],
+      "Combina mercados y plataformas. “Todos” mantiene automáticamente las nuevas geografías.":["Combine markets and platforms. “All” automatically includes new geographies.","Pazarları ve platformları birleştirin. “Tümü” yeni coğrafyaları otomatik olarak kapsar."],
+      "Compara el cierre real del día 15 del mes anterior con el día 15 vigente. Complementa la newsletter sin repetir su cierre natural.":["Compares the actual close on the 15th of last month with the 15th of this month. It supplements the newsletter outside its regular closing period.","Önceki ayın 15'indeki gerçek kapanışla bu ayın 15'indekini karşılaştırır. Normal kapanış dönemi dışında bülteni tamamlar."],
+      "Comparativa semanal":["Weekly comparison","Haftalık karşılaştırma"],
+      "Competidor":["Competitor","Rakip"],
+      "Comprobando":["Checking","Kontrol ediliyor"],
+      "Configuración de negocio":["Business settings","İş ayarları"],
+      "Configuración del destinatario":["Recipient settings","Alıcı ayarları"],
+      "Configuración individual":["Individual settings","Bireysel ayarlar"],
+      "Configuración lista para revisar":["Settings ready for review","Ayarlar incelemeye hazır"],
+      "Conservación":["Retention","Saklama"],
+      "Consulta y edita los catálogos operativos de Google Sheets.":["View and edit the operational catalogues in Google Sheets.","Google Sheets'teki operasyon kataloglarını görüntüleyin ve düzenleyin."],
+      "Contrato de datos":["Data contract","Veri sözleşmesi"],
+      "Correo del administrador conectado":["Signed-in administrator's email","Oturum açmış yöneticinin e-postası"],
+      "Crear suscripción":["Create subscription","Abonelik oluştur"],
+      "Criterios de relevancia":["Relevance criteria","İlgililik ölçütleri"],
+      "Cruce competitivo":["Ranking change","Sıralama değişikliği"],
+      "Crítica desde":["Critical threshold","Kritik eşik"],
+      "Cuentas que pueden necesitar acompañamiento":["Accounts that may need support","Desteğe ihtiyaç duyabilecek hesaplar"],
+      "Cómo la usan":["How they use it","Kullanım biçimleri"],
+      "Del día 15 al día 15":["From the 15th to the 15th","Ayın 15'inden sonraki ayın 15'ine"],
+      "Desactivada":["Disabled","Devre dışı"],
+      "Desactivado por defecto: no repite dentro del mismo periodo; una escalada de amarilla a roja sí genera un nuevo aviso.":["Off by default. An alert is sent again in the same period only if it changes from yellow to red.","Varsayılan olarak kapalıdır. Aynı dönemde yalnızca sarıdan kırmızıya geçişte yeni bir uyarı gönderilir."],
+      "Descartar y recargar":["Discard and reload","Vazgeç ve yeniden yükle"],
+      "Desde inicio de año":["Year to date","Yılbaşından bugüne"],
+      "Diaria":["Daily","Günlük"],
+      "Disponible":["Available","Kullanılabilir"],
+      "Disponible · Multiselección":["Available · Multiple selection","Kullanılabilir · Çoklu seçim"],
+      "Dispositivos":["Devices","Cihazlar"],
+      "Distribución de eventos":["Event breakdown","Etkinlik dağılımı"],
+      "Día 15 → día 15":["15th → 15th","Ayın 15'i → ayın 15'i"],
+      "Días, sesiones y vistas del año":["Days, sessions and views this year","Bu yılın günleri, oturumları ve görüntülemeleri"],
+      "Edición":["Edition","Sayı"],
+      "Editar entrada":["Edit entry","Kaydı düzenle"],
+      "Enviar":["Send","Gönder"],
+      "Enviar prueba":["Send test","Deneme gönder"],
+      "Envía únicamente las señales seleccionadas cuando alcancen sus límites.":["Sends selected alerts when they reach their thresholds.","Seçili uyarıları eşiklerine ulaştıklarında gönderir."],
+      "Envío programado":["Scheduled delivery","Planlı gönderim"],
+      "Equivalencias funcionales":["Functional mappings","İşlevsel eşleştirmeler"],
+      "Errores detectados durante el uso":["Errors detected during use","Kullanım sırasında algılanan hatalar"],
+      "Estado":["Status","Durum"],
+      "Estado de alertas":["Alert status","Uyarı durumu"],
+      "Estado y configuración de la aplicación":["Application status and settings","Uygulama durumu ve ayarları"],
+      "Estado, cobertura y entrega de alertas":["Alert status, coverage and delivery","Uyarı durumu, kapsamı ve gönderimi"],
+      "Evolución del NPS de reseñas":["Review NPS trend","Yorum NPS eğilimi"],
+      "Exportar selección":["Export selection","Seçimi dışa aktar"],
+      "Feedback":["Feedback","Geri bildirim"],
+      "Filtros y acciones más frecuentes":["Most common filters and actions","En sık kullanılan filtreler ve işlemler"],
+      "Frecuencia":["Frequency","Sıklık"],
+      "Gestión de suscriptores":["Subscriber management","Abone yönetimi"],
+      "Guardar mis alertas":["Save my alerts","Uyarılarımı kaydet"],
+      "Histórico hasta el mes seleccionado · rating consolidado, valoraciones por plataforma y NPS de reseñas":["History up to the selected month · consolidated rating, ratings by platform and review NPS","Seçilen aya kadarki geçmiş · konsolide puan, platforma göre puanlar ve yorum NPS'si"],
+      "Identidad y entrega":["Identity and delivery","Kimlik ve gönderim"],
+      "Identificador":["Identifier","Tanımlayıcı"],
+      "Incidencias de captura":["Collection issues","Veri toplama sorunları"],
+      "Incidencias de experiencia":["User experience issues","Kullanıcı deneyimi sorunları"],
+      "Incluye geografías inferidas de Android.":["Includes inferred Android geographies.","Android için çıkarımla belirlenen coğrafyaları içerir."],
+      "Inferir datos":["Infer geography","Coğrafyayı çıkar"],
+      "La prueba se envía a tu cuenta de administrador. Puedes usar el ámbito de otro suscriptor o elegir Todos para incluir todas las geografías.":["The test goes to your administrator account. Use another subscriber's scope or choose All to include every geography.","Deneme yönetici hesabınıza gönderilir. Başka bir abonenin kapsamını kullanın veya tüm coğrafyalar için Tümü'nü seçin."],
+      "Los cambios se guardan únicamente para tu cuenta.":["Changes are saved only for your account.","Değişiklikler yalnızca hesabınız için kaydedilir."],
+      "Lotes de reseñas":["Review batches","Yorum grupları"],
+      "Markets consultados":["App stores checked","Kontrol edilen uygulama mağazaları"],
+      "Mejorable":["Needs improvement","Geliştirilebilir"],
+      "Mensual":["Monthly","Aylık"],
+      "Movimientos":["Changes","Değişiklikler"],
+      "Movimientos que quieres recibir":["Changes you want to hear about","Bildirim almak istediğiniz değişiklikler"],
+      "Muestras de las últimas 3.000 filas de telemetría":["Samples from the last 3,000 telemetry rows","Son 3.000 telemetri satırından örnekler"],
+      "NPS de reseñas: diferencia entre el porcentaje de promotoras y detractoras, sobre todas las reseñas válidas del mes.":["Review NPS is the difference between promoter and detractor percentages across all valid reviews that month.","Yorum NPS'si, ayın geçerli yorumları arasındaki destekleyen ve eleştiren yorum yüzdelerinin farkıdır."],
+      "Newsletter":["Newsletter","Bülten"],
+      "Newsletters":["Newsletters","Bültenler"],
+      "Observaciones (opcional)":["Notes (optional)","Notlar (isteğe bağlı)"],
+      "Operación y selección inicial":["Operations and initial selection","Operasyon ve ilk seçim"],
+      "Panel de control":["Control panel","Kontrol paneli"],
+      "Pendiente":["Pending","Bekliyor"],
+      "Preparando tu configuración privada…":["Preparing your private settings…","Özel ayarlarınız hazırlanıyor…"],
+      "Privacidad":["Privacy","Gizlilik"],
+      "Privado para tu cuenta":["Private to your account","Hesabınıza özel"],
+      "Procesos operativos":["Operational jobs","Operasyon görevleri"],
+      "Procesos ordenados por prioridad. El supervisor reanuda las tareas pendientes.":["Jobs run in priority order. The supervisor resumes pending tasks.","Görevler öncelik sırasına göre çalışır. Denetleyici bekleyen görevleri sürdürür."],
+      "Programación de procesos":["Job schedules","Görev takvimi"],
+      "Programación operativa":["Operations schedule","Operasyon takvimi"],
+      "Prueba de comunicaciones":["Test communications","İletişim denemesi"],
+      "Pulso de adopción":["Adoption overview","Benimseme özeti"],
+      "Qué visitan":["What they visit","Ziyaret ettikleri sayfalar"],
+      "Rating consolidado: media ponderada con los pesos del catálogo o el volumen de valoraciones disponible. Si faltan ambos, se usa la media simple.":["Consolidated rating uses catalogue weights or available rating volumes. It uses a simple average if neither is available.","Konsolide puan, katalog ağırlıklarını veya mevcut puanlama sayısını kullanır. İkisi de yoksa aritmetik ortalamayı kullanır."],
+      "Reavisar mientras continúe la caída":["Repeat alerts while the decline continues","Düşüş sürerken uyarıları yinele"],
+      "Registro":["Log","Kayıt"],
+      "Registro de actividad":["Activity log","Etkinlik kaydı"],
+      "Registros recientes distintos de OK":["Recent entries other than OK","Son başarısız veya bekleyen kayıtlar"],
+      "Reglas de idioma":["Language rules","Dil kuralları"],
+      "Reseñas de 1 y 2 estrellas":["1- and 2-star reviews","1 ve 2 yıldızlı yorumlar"],
+      "Restaurar valores":["Restore defaults","Varsayılanları geri yükle"],
+      "Resumen diario":["Daily summary","Günlük özet"],
+      "Resumen ejecutivo independiente, enviado el día 1":["Separate executive summary sent on the first day","Ayın ilk günü gönderilen ayrı yönetici özeti"],
+      "Resumen ejecutivo independiente, enviado el día 1 de cada mes.":["A separate executive summary sent on the first day of each month.","Her ayın ilk günü ayrı bir yönetici özeti gönderilir."],
+      "Roja":["Red","Kırmızı"],
+      "Salud y newsletter":["Health and newsletter","Sistem durumu ve bülten"],
+      "Secciones":["Sections","Bölümler"],
+      "Secciones de Administración":["Administration sections","Yönetim bölümleri"],
+      "Sección favorita":["Favourite section","Favori bölüm"],
+      "Según suscripción":["Use subscription settings","Abonelik ayarlarını kullan"],
+      "Selecciona “Todos” o combina únicamente los mercados y plataformas que debe recibir esta cuenta.":["Choose “All” or select the markets and platforms for this account.","“Tümü”nü veya bu hesap için istediğiniz pazarları ve platformları seçin."],
+      "Semana contra semana":["Week over week","Haftalık değişim"],
+      "Sesiones frente a la semana anterior":["Sessions compared with the previous week","Önceki haftaya kıyasla oturumlar"],
+      "Señales que quieres recibir":["Alerts you want to receive","Almak istediğiniz uyarılar"],
+      "Sin actividad registrada":["No recorded activity","Kayıtlı etkinlik yok"],
+      "Solo eventos dirigidos a tu cuenta":["Events sent to your account only","Yalnızca hesabınıza gönderilen etkinlikler"],
+      "Solo si BBVA pierde posición":["Only if BBVA drops in the ranking","Yalnızca BBVA sıralamada gerilerse"],
+      "Solo si BBVA recupera posición":["Only if BBVA regains its position","Yalnızca BBVA sırasını geri alırsa"],
+      "Solo tú puedes ver y modificar esta configuración.":["Only you can view and change these settings.","Bu ayarları yalnızca siz görüntüleyebilir ve değiştirebilirsiniz."],
+      "Suscripciones del equipo":["Team subscriptions","Ekip abonelikleri"],
+      "Toda la base activa":["All active subscribers","Tüm etkin aboneler"],
+      "Todos los estados":["All statuses","Tüm durumlar"],
+      "Tu canal de señales":["Your alert channel","Uyarı kanalınız"],
+      "Umbral amarillo anual":["Year-to-date yellow threshold","Yılbaşından bugüne sarı eşik"],
+      "Umbral amarillo de la ventana mensual del día 15":["Mid-month yellow threshold","Ay ortası sarı eşik"],
+      "Umbral amarillo diario":["Daily yellow threshold","Günlük sarı eşik"],
+      "Umbral rojo anual":["Year-to-date red threshold","Yılbaşından bugüne kırmızı eşik"],
+      "Umbral rojo de la ventana mensual del día 15":["Mid-month red threshold","Ay ortası kırmızı eşik"],
+      "Umbral rojo diario":["Daily red threshold","Günlük kırmızı eşik"],
+      "Una, varias o todas":["One, several or all","Bir, birkaç veya tümü"],
+      "Uno, varios o todos":["One, several or all","Bir, birkaç veya tümü"],
+      "Uso de EDC Market Pulse":["EDC Market Pulse usage","EDC Market Pulse kullanımı"],
+      "Usuario":["User","Kullanıcı"],
+      "Usuarios activos":["Active users","Etkin kullanıcılar"],
+      "Usuarios con menor adopción":["Users with lower adoption","Daha düşük kullanıma sahip kullanıcılar"],
+      "Usuarios más activos":["Most active users","En etkin kullanıcılar"],
+      "Usuarios y sesiones de los últimos 14 días":["Users and sessions in the past 14 days","Son 14 gündeki kullanıcılar ve oturumlar"],
+      "Valor":["Value","Değer"],
+      "Valoración":["Feedback","Değerlendirme"],
+      "Ventana mensual":["Monthly window","Aylık dönem"],
+      "Vistas acumuladas del año":["Year-to-date views","Yılbaşından bu yana görüntülemeler"],
+      "amarilla":["yellow","sarı"],
+      "roja":["red","kırmızı"],
+      "listing Android compartido sin desglose fiable por geografía.":["shared Android listing with no reliable geographic breakdown.","coğrafyaya göre güvenilir dağılımı olmayan ortak Android mağaza kaydı."],
+      "· BBVA Banca de Empresas e Instituciones · Ratings y valoraciones públicas":["· BBVA Business and Institutional Banking · Public ratings and reviews","· BBVA Şirketler ve Kurumlar Bankacılığı · Herkese açık puanlar ve yorumlar"],
+      "Ámbito que quieres vigilar":["Scope to track","İzlemek istediğiniz kapsam"],
+      "Últimas 14":["Last 14","Son 14"],
+      "Últimas 20":["Last 20","Son 20"],
+      "Últimas ejecuciones":["Latest runs","Son çalıştırmalar"],
+      "Último rating frente a la observación anterior.":["Latest rating compared with the previous observation.","Son puanın önceki ölçümle karşılaştırması."],
+      "Último rating frente a la primera observación del año.":["Latest rating compared with the first observation of the year.","Son puanın yılın ilk ölçümüyle karşılaştırması."],
+      "Últimos 30":["Last 30","Son 30"],
+      "Últimos 6":["Last 6","Son 6"],
+      "Últimos cierres":["Latest closes","Son kapanışlar"],
+      "Útil":["Helpful","Yararlı"],
+      "“Todas” es exacto; varias coinciden con cualquiera.":["“All” matches exactly. Multiple selections match any selected option.","“Tümü” tam eşleşmedir. Birden fazla seçimde seçilen değerlerden herhangi biri eşleşebilir."],
+      "“Todos” es exacto; varios mercados coinciden con cualquiera.":["“All” matches exactly. Multiple markets match any selected market.","“Tümü” tam eşleşmedir. Birden fazla pazarda seçilen pazarlardan herhangi biri eşleşebilir."],
+      "EDC Market Pulse no ha respondido a tiempo. Reintenta la carga.":["EDC Market Pulse did not respond in time. Try loading it again.","EDC Market Pulse zamanında yanıt vermedi. Yeniden yüklemeyi deneyin."],
+      "No hemos podido iniciar EDC Market Pulse":["We couldn't start EDC Market Pulse","EDC Market Pulse başlatılamadı"],
+      "El servidor ha devuelto una respuesta incompleta. Actualiza el despliegue de EDC Market Pulse.":["The server returned an incomplete response. Update the EDC Market Pulse deployment.","Sunucu eksik yanıt verdi. EDC Market Pulse dağıtımını güncelleyin."],
       "Todas las aplicaciones del país":["All apps in this country","Ülkedeki tüm uygulamalar"],
       "Sin aplicaciones":["No apps","Uygulama yok"],
       "Cargando brechas y ejemplos":["Loading gaps and examples","Farklar ve örnekler yükleniyor"],
@@ -47,9 +249,8 @@
       "Bloque funcional más frecuente {period}: {block} · {count} reseñas":["Most frequent functional block {period}: {block} · {count} reviews","En sık görülen işlev grubu, {period}: {block} · {count} yorum"],
       "Indicadores del periodo":["Period metrics","Dönem göstergeleri"],
       "NPS de reseñas":["Review NPS","Yorum NPS'si"],
-      "Comentarios":["Audience","Hedef kitle"],
-      "BEI":["BEI","BEI"],
-      "BEI incluye reseñas empresariales y experiencias funcionales útiles sin evidencia de uso exclusivamente personal.":["BEI includes business reviews and useful functional experiences without evidence of exclusively personal use.","BEI, işletme yorumlarını ve yalnızca kişisel kullanıma dair kanıt bulunmayan yararlı işlevsel deneyimleri içerir."],
+      "BEI":["B&I","ŞKB"],
+      "BEI incluye reseñas empresariales y experiencias funcionales útiles sin evidencia de uso exclusivamente personal.":["B&I includes business reviews and useful feedback about features with no evidence of exclusively personal use.","ŞKB, işletme yorumlarını ve yalnızca kişisel kullanıma dair kanıt bulunmayan yararlı işlevsel deneyimleri içerir."],
       "NPS: {current} ({dates}) · Mes anterior: {previous} ({previousDates}) · Variación: {delta}":["NPS: {current} ({dates}) · Previous month: {previous} ({previousDates}) · Change: {delta}","NPS: {current} ({dates}) · Önceki ay: {previous} ({previousDates}) · Değişim: {delta}"],
       "Reseñas del año anterior":["Reviews from the previous year","Önceki yılın yorumları"],
       "Reseñas del año seleccionado":["Reviews from the selected year","Seçilen yılın yorumları"],
@@ -165,7 +366,7 @@
       "No hay reseñas para esta selección.":["No reviews match this selection.","Bu seçimle eşleşen yorum yok."],
       "No hay reseñas para este ámbito.":["No reviews in this selection.","Bu seçimde yorum yok."],
       "Filtros ajustados":["Filters updated","Filtreler güncellendi"],
-      "Preparando Market Pulse…":["Preparing Market Pulse…","Market Pulse hazırlanıyor…"],
+      "Preparando EDC Market Pulse…":["Preparing EDC Market Pulse…","EDC Market Pulse hazırlanıyor…"],
       "Reintentar":["Try again","Tekrar dene"],
       "Cerrar":["Close","Kapat"],
       "Cargando":["Loading","Yükleniyor"],
@@ -402,7 +603,7 @@
           }
           else reject(new Error(value?.message||value));
         };
-        const timer=window.setTimeout(()=>finish("TIMEOUT")("Market Pulse no ha respondido a tiempo. Reintenta la carga."),serverTimeoutMs(method));
+        const timer=window.setTimeout(()=>finish("TIMEOUT")(translate("EDC Market Pulse no ha respondido a tiempo. Reintenta la carga.")),serverTimeoutMs(method));
         try{
           const runner=google.script.run.withSuccessHandler(finish("OK")).withFailureHandler(finish("ERROR"));
           if(method==="bootstrap")runner.getMarketsDashboardBootstrap();else if(method==="user:context")runner.getMarketsUserContext();else if(method==="admin:get")runner.getMarketsAdminDashboard(false);else if(method==="admin:jobs:status")runner.getMarketsAdminPanelJobs();else if(method==="admin:business:refresh")runner.refreshMarketsAdminFunctionalCatalog();else if(method==="admin:business")runner.getMarketsBusinessCatalog(argument,appLanguage);else if(method==="admin:business:save")runner.saveMarketsBusinessCatalogEntry(argument);else if(method==="admin:newsletter:feedback-state")runner.setMarketsNewsletterFeedbackState(argument.id,argument.state);else if(method==="admin:newsletter:interactions")runner.getMarketsNewsletterInteractions(argument.kind,argument.period,argument.vote,argument.status,argument.start,argument.end);else if(method==="admin:subscriber:save")runner.saveMarketsAdminSubscriber(argument.email,argument.preferences);else if(method==="admin:newsletter:test")runner.sendMarketsAdminNewsletterTestEmail(argument);else if(method==="admin:jobs:run")runner.runMarketsPanelJob(argument);else if(method==="admin:jobs:interval")runner.configureMarketsReviewSupervisor(argument);else if(method==="admin:jobs:settings")runner.saveMarketsReviewJobSettings(argument.id,argument.config);else if(method==="admin:jobs:folder")runner.saveMarketsStorageFolder(argument.kind,argument.id);else if(method==="admin:reviews:restart")runner.requestMarketsReviewPipeline();else if(method==="admin:ratings:recover")runner.requestMarketsAdminRatingRecovery();else if(method==="reviews:segments")runner.getMarketsReviewSegments();else if(method==="reviews")runner.getMarketsReviews(argument);else if(method==="review:page")runner.getMarketsReviewPage(argument);else if(method==="review:export")runner.getMarketsReviewExport(argument);else if(method==="review:analytics")runner.getMarketsReviewAnalytics(argument);else if(method==="review:nps")runner.getMarketsReviewNps(argument);else if(method==="admin:usage")runner.getMarketsAdminUsage();else if(method==="performance")runner.getMarketsPerformance();else if(method==="trends")runner.getMarketsDashboardTrends(argument);else if(method==="alerts:get")runner.getMarketsAlertPreferences();else if(method==="alerts:save")runner.saveMarketsAlertPreferences(argument);else if(method==="alerts:reset")runner.resetMarketsAlertPreferences(argument);else finish("ERROR")(new Error("Operación no soportada: "+method));
@@ -442,9 +643,9 @@
         }
       }));
     }
-    function validateBootstrap(data){if(!data||!data.meta||!Array.isArray(data.snapshot)||!Array.isArray(data.trends))throw new Error("El servidor ha devuelto una respuesta incompleta. Actualiza el despliegue de Market Pulse.");return data}
-    async function loadBootstrap(){if(state.bootstrapLoading)return;state.bootstrapLoading=true;const loader=$("loader");loader.classList.remove("done","failed");$("loader-title").textContent="Preparando Market Pulse…";$("loader-detail").classList.add("hidden");$("loader-retry").classList.add("hidden");try{const data=validateBootstrap(await callServer("bootstrap"));state.meta=data.meta;state.userContext=data.userContext||{email:"",isAdmin:false};if(Array.isArray(data.reviewSegments)){state.reviewSegments=data.reviewSegments;reviewSegments=Promise.resolve(data.reviewSegments)}state.snapshot=data.snapshot;benchmarkModels.clear();state.trends=data.trends;state.consolidated=data.consolidated||null;state.trendsLoading=false;state.trendCache.clear();state.trendCache.set("ALL|ALL|ALL|BBVA|18",state.trends);state.country=browserMarket();if(state.country==="ALL")state.country=data.meta.countries.find(item=>item.code==="ES")?.code||data.meta.countries[0]?.code;configureAdminNavigation();renderRunStatus();renderDashboard();startUsageTracking();$("footer-version").textContent=`Contrato ${data.meta.codeVersion} · Web ${data.meta.webVersion||"1"}`;loader.classList.add("done")}catch(error){showStartupFailure(error)}finally{state.bootstrapLoading=false}}
-    function showStartupFailure(error){const loader=$("loader");if(!loader)return;loader.classList.remove("done");loader.classList.add("failed");$("loader-title").textContent="No hemos podido iniciar Market Pulse";$("loader-detail").textContent=error?.message||String(error);$("loader-detail").classList.remove("hidden");$("loader-retry").classList.remove("hidden")}
+    function validateBootstrap(data){if(!data||!data.meta||!Array.isArray(data.snapshot)||!Array.isArray(data.trends))throw new Error(translate("El servidor ha devuelto una respuesta incompleta. Actualiza el despliegue de EDC Market Pulse."));return data}
+    async function loadBootstrap(){if(state.bootstrapLoading)return;state.bootstrapLoading=true;const loader=$("loader");loader.classList.remove("done","failed");$("loader-title").textContent="Preparando EDC Market Pulse…";$("loader-detail").classList.add("hidden");$("loader-retry").classList.add("hidden");try{const data=validateBootstrap(await callServer("bootstrap"));state.meta=data.meta;state.userContext=data.userContext||{email:"",isAdmin:false};if(Array.isArray(data.reviewSegments)){state.reviewSegments=data.reviewSegments;reviewSegments=Promise.resolve(data.reviewSegments)}state.snapshot=data.snapshot;benchmarkModels.clear();state.trends=data.trends;state.consolidated=data.consolidated||null;state.trendsLoading=false;state.trendCache.clear();state.trendCache.set("ALL|ALL|ALL|BBVA|18",state.trends);state.country=browserMarket();if(state.country==="ALL")state.country=data.meta.countries.find(item=>item.code==="ES")?.code||data.meta.countries[0]?.code;configureAdminNavigation();renderRunStatus();renderDashboard();startUsageTracking();$("footer-version").textContent=`Contrato ${data.meta.codeVersion} · Web ${data.meta.webVersion||"1"}`;loader.classList.add("done")}catch(error){showStartupFailure(error)}finally{state.bootstrapLoading=false}}
+    function showStartupFailure(error){const loader=$("loader");if(!loader)return;loader.classList.remove("done");loader.classList.add("failed");$("loader-title").textContent="No hemos podido iniciar EDC Market Pulse";$("loader-detail").textContent=error?.message||String(error);$("loader-detail").classList.remove("hidden");$("loader-retry").classList.remove("hidden")}
 
     let usageSession="";
     function usageSessionId(){
@@ -824,8 +1025,8 @@
       });
     }
     function reviewFilterLabel(key,value){
-      if(key==="inferGeography")return value==="NO"?"No":"Sí";
-      if(key==="audience")return ["BEI","BEI_ONLY","BEI_EXTENDED"].includes(value)?"BEI":"Todos";
+      if(key==="inferGeography")return translate(value==="NO"?"No":"Sí");
+      if(key==="audience")return translate(["BEI","BEI_ONLY","BEI_EXTENDED"].includes(value)?"BEI":"Todos");
       if(key==="country")return value==="ALL"?"Todas":countryLabel(value);
       if(!value&&["app","segment","topic"].includes(key))return "Todos";
       if(key==="platform")return D.config.platformLabels[value];
@@ -1692,7 +1893,7 @@
     function exportAdminRows(name,header,rows){
       const file=window.MarketsWorkbook.build([{name,filters:[],header,rows}]);
       const url=URL.createObjectURL(file), link=document.createElement("a");
-      link.href=url;link.download="Market Pulse - "+name+".xlsx";link.click();
+      link.href=url;link.download="EDC Market Pulse - "+name+".xlsx";link.click();
       window.setTimeout(()=>URL.revokeObjectURL(url),1000);
     }
     // Adapted from News Radar activity-chart.js (859e609).
@@ -2261,7 +2462,7 @@
         const url=URL.createObjectURL(file), link=document.createElement("a");
         link.href=url;
         const title={benchmark:"Resumen",evolution:"Análisis mensual",analytics:"Análisis anual",reviews:"Comentarios"}[view];
-        link.download=`Market Pulse - ${title} - ${country}.xlsx`;
+        link.download=`EDC Market Pulse - ${title} - ${country}.xlsx`;
         link.click();
         window.setTimeout(()=>URL.revokeObjectURL(url),1000);
         trackUsage("ACTION",view,"REPORT_DOWNLOAD");
