@@ -1228,7 +1228,7 @@ test("monthly snapshot scope includes exact closing dates and excludes alternate
   assert.equal(scope, "analytics:ES:2026-10:2025-11-16:2026-10-31");
   assert.notEqual(api.marketsReviewSnapshotScope_("analytics", { ...filters, analysisMonth: "2026-11" }, window), scope);
   assert.equal(api.marketsReviewSnapshotScope_("analytics", { ...filters, audience: "BEI" }, window), "");
-  assert.equal(api.marketsReviewSnapshotScope_("analytics", { ...filters, inferGeography: "NO" }, window), "");
+  assert.equal(api.marketsReviewSnapshotScope_("analytics", { ...filters, inferGeography: "NO" }, window), scope + ":NO");
   assert.equal(api.marketsReviewSnapshotScope_("analytics", { ...filters, segment: "PROMOTER" }, window), "");
 });
 
@@ -1357,4 +1357,38 @@ test("review prefetch never rebuilds a stale snapshot or caches its absence", ()
   assert.equal(reads, 1);
   assert.ok(lookup(true));
   assert.equal(reads, 1);
+});
+
+test("monthly gap counts include the selected inferred and validated reviews and keep the prior-month baseline", () => {
+  const row = (key, date, rating, attributionMethod) => ({
+    key, date, rating, attributionMethod, storefronts: ["ES","PE"], countries: ["ES"], entities: ["BBVA Empresas"],
+    blocks: ["01"], title: key, original: key
+  });
+  const rows = [
+    row("direct", "2026-11-14", 5, "single_storefront"),
+    row("automatic", "2026-11-13", 5, "review_evidence_inferred"),
+    row("manual", "2026-11-07", 5, "review_evidence_validated"),
+    row("detractor", "2026-11-02", 1, "review_evidence_inferred"),
+    row("reference", "2026-10-08", 1, "single_storefront"),
+    row("reference-inferred", "2026-10-01", 5, "review_evidence_inferred")
+  ];
+  const direct = rows.map(api.marketsReviewWithoutAssignedGeography_);
+  const dates = { start: "2026-10-01", recent: "2026-11-01", end: "2026-11-16" };
+  const filters = { analysisMonth: "2026-11", country: "ES", entity: "BBVA Empresas", segment: "PROMOTER" };
+  const build = input => api.buildMarketsReviewAnalytics_(input, { "01": "Pagos" }, filters, dates);
+  const yes = build(rows);
+  assert.deepEqual([yes.deltas[0].total, yes.deltas[0].assignedGeography, yes.deltas[0].detractors], [3,2,0]);
+  assert.equal(yes.baseline.total, 2);
+  assert.equal(yes.baseline.balance, 0);
+  assert.equal(yes.nps.current, 50);
+
+  const no = build(direct.filter(item => item.countries[0] === "ES"));
+  assert.deepEqual([no.deltas[0].total, no.deltas[0].assignedGeography], [1,0]);
+  assert.equal(no.baseline.balance, -100);
+  assert.equal(direct.length, rows.length);
+  assert.equal(direct[1].countries[0], "UNKNOWN");
+  assert.equal(direct[1].attributionMethod, "multi_storefront_ambiguous");
+  assert.equal(rows[1].countries[0], "ES");
+  const compact = api.compactMarketsReviewAnalyticsRows_(rows, "2027-11-16");
+  assert.equal(compact.find(item => item.date === "2026-11-07").attributionMethod, "review_evidence_validated");
 });

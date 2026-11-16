@@ -329,6 +329,9 @@
       "Sin reseñas en el periodo reciente.":["No reviews in the recent period.","Yakın dönemde yorum yok."],
       "Ver reseñas del mes anterior":["View previous month’s reviews","Önceki ayın yorumlarını görüntüle"],
       "Bloque":["Block","Grup"],
+      "Reseñas del bloque":["Reviews in the block","Gruptaki yorumlar"],
+      "Geografía inferida o validada":["Inferred or verified geography","Çıkarılan veya doğrulanan coğrafya"],
+      "Periodo reciente: {dates}. Los recuentos usan el sentimiento seleccionado. Una reseña puede pertenecer a varios bloques; sus pesos pueden sumar más del 100 %.":["Recent period: {dates}. Counts use the selected sentiment. A review can belong to more than one block, so the shares may add up to over 100%.","Yakın dönem: {dates}. Sayımlar seçilen duyguya göredir. Bir yorum birden fazla gruba ait olabilir, bu yüzden oranların toplamı %100’ü aşabilir."],
       "Peso en la muestra":["Share of sample","Örneklem payı"],
       "Total reseñas":["Total reviews","Toplam yorum"],
       "Reseñas detractoras":["Detractor reviews","Eleştiren yorumlar"],
@@ -1454,7 +1457,7 @@
           ["Aplicación",scope.entity],["Comentarios",reviewFilterLabel("audience",scope.audience)],["Inferir datos",scope.inferGeography==="NO"?"No":"Sí"],["Sentimiento",reviewFilterLabel("segment",scope.segment)]];
         setExportSheet("evolution","Brechas",scope.country,recentFilters,
           ["Bloque","Peso (%)","Reseñas","Detractoras","Promotoras (%)","Detractoras (%)","NPS (pp)","Brecha (pp)"],
-          data.deltas.map(row=>[row.label,row.weight,row.total,row.detractors,100*row.promoters/row.total,100*row.detractors/row.total,row.balance,row.gap]));
+          data.deltas.map(row=>[row.label,row.weight,row.total,row.assignedGeography,row.detractors,100*row.promoters/row.total,100*row.detractors/row.total,row.balance,row.gap]));
         setExportSheet("evolution","Ejemplos del mes",scope.country,recentFilters,reviewExportHeader,
           data.examples.map(({review})=>reviewExportRow(review,data.topics)));
         monthlyReviewLoadedAt=Date.now();
@@ -1540,14 +1543,14 @@
       const recent=`${dateLabel(dates.recent)} – ${dateLabel(dates.end)}`;
       target.replaceChildren();
       const note=document.createElement("p");
-      note.textContent=translate("Periodo reciente: {dates}. Una reseña puede pertenecer a varios bloques; sus pesos pueden sumar más del 100 %.",{dates:recent});
+      note.textContent=translate("Periodo reciente: {dates}. Los recuentos usan el sentimiento seleccionado. Una reseña puede pertenecer a varios bloques; sus pesos pueden sumar más del 100 %.",{dates:recent});
       target.append(note);
       if(baseline)appendReviewCohort(target,"Ver reseñas del mes anterior",{...scope,start:baseline.start,end:baseline.end,segment:""});
       target.insertAdjacentHTML("beforeend",C.reviewGaps(deltas,fmt,translate));
       const table=document.createElement("div");
       table.className="admin-table-wrap review-gap-table";
-      const headers=["Bloque","Peso en la muestra","Total reseñas","Reseñas detractoras","% Promotoras","% Detractoras","NPS (pp)","Brecha vs. base (pp)"];
-      table.innerHTML=`<table class="admin-table"><caption>${U.esc(translate("Detalle del periodo reciente · {dates}",{dates:recent}))}</caption><thead><tr>${headers.map(label=>`<th scope="col">${label}</th>`).join("")}</tr></thead><tbody>${deltas.map(row=>`<tr><th scope="row"></th><td>${fmt(row.weight,1)} %</td><td>${integer(row.total)}</td><td>${integer(row.detractors)}</td><td>${fmt(100*row.promoters/row.total,1)} %</td><td>${fmt(100*row.detractors/row.total,1)} %</td><td>${fmt(row.balance,1)}</td><td>${row.gap===null?"—":signed(row.gap)}</td></tr>`).join("")}</tbody></table>`;
+      const headers=["Bloque","Peso en la muestra","Reseñas del bloque","Geografía inferida o validada","Reseñas detractoras","% Promotoras","% Detractoras","NPS (pp)","Brecha vs. base (pp)"];
+      table.innerHTML=`<table class="admin-table"><caption>${U.esc(translate("Detalle del periodo reciente · {dates}",{dates:recent}))}</caption><thead><tr>${headers.map(label=>`<th scope="col">${label}</th>`).join("")}</tr></thead><tbody>${deltas.map(row=>`<tr><th scope="row"></th><td>${fmt(row.weight,1)} %</td><td>${integer(row.total)}</td><td>${integer(row.assignedGeography)}</td><td>${integer(row.detractors)}</td><td>${fmt(100*row.promoters/row.total,1)} %</td><td>${fmt(100*row.detractors/row.total,1)} %</td><td>${fmt(row.balance,1)}</td><td>${row.gap===null?"—":signed(row.gap)}</td></tr>`).join("")}</tbody></table>`;
       table.querySelectorAll("tbody th").forEach((cell,index)=>{
         const row=deltas[index];
         appendReviewCohort(cell,row.label,{...scope,start:dates.recent,topic:row.id});
