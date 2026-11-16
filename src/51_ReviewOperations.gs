@@ -119,7 +119,7 @@ function enableMarketsUnifiedSupervisor() {
   } finally { lock.releaseLock(); }
 }
 
-function advanceMarketsScheduledOperations_(now = new Date()) {
+function advanceMarketsScheduledOperations_(now = new Date(), healthOnly = false) {
   const properties = PropertiesService.getScriptProperties();
   const enabledAfter = properties.getProperty(MARKETS_UNIFIED_OPERATIONS);
   if (!enabledAfter) return false;
@@ -128,11 +128,12 @@ function advanceMarketsScheduledOperations_(now = new Date()) {
   if (day <= enabledAfter) return false;
   const time = Utilities.formatDate(now, tz, 'HHmm');
   const due = (hour, minute) => time >= String(hour).padStart(2, '0') + String(minute).padStart(2, '0');
-  const operations = [
-    ['ratings', due(MARKETS_CONFIG.runHour, MARKETS_CONFIG.runMinute), runDailyRatingMonitor],
-    ['newsletter', day.endsWith('-01') && due(MARKETS_CONFIG.newsletterHour, MARKETS_CONFIG.newsletterMinute), runMarketsMonthlyNewsletter],
-    ['health', due(MARKETS_CONFIG.healthCheckHour, MARKETS_CONFIG.healthCheckMinute), checkDailyRatingMonitorHealth]
-  ];
+  const operations = healthOnly
+    ? [['health', due(MARKETS_CONFIG.healthCheckHour, MARKETS_CONFIG.healthCheckMinute), checkDailyRatingMonitorHealth]]
+    : [
+      ['ratings', due(MARKETS_CONFIG.runHour, MARKETS_CONFIG.runMinute), runDailyRatingMonitor],
+      ['newsletter', day.endsWith('-01') && due(MARKETS_CONFIG.newsletterHour, MARKETS_CONFIG.newsletterMinute), runMarketsMonthlyNewsletter]
+    ];
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(1000)) return true;
   let selected;
@@ -141,22 +142,37 @@ function advanceMarketsScheduledOperations_(now = new Date()) {
       if (!ready) continue;
       const key = 'MARKETS_UNIFIED_RUN:' + id;
       const previous = safeJsonParse_(properties.getProperty(key));
-      if (previous?.day === day) continue;
-      properties.setProperty(key, JSON.stringify({ day, status: 'En curso', startedAt: now.toISOString() }));
-      selected = { key, run };
+      const manualKey = id === 'ratings' ? MARKETS_REVIEW_MANUAL + id : '';
+      const request = manualKey && properties.getProperty(manualKey);
+      const running = previous?.status === 'En curso' && now.getTime() - Date.parse(previous.startedAt) < 7 * 60000;
+      if (running || (!request && previous?.day === day) || (request && previous?.request === request &&
+          previous.retryAt > now.getTime())) continue;
+      const attempts = request && previous?.request === request ? (previous.attempts || 0) + 1 : 1;
+      if (attempts > 3) {
+        properties.setProperty(key, JSON.stringify({ ...previous, status: 'ERROR', failure: 'Se agotaron los intentos de recuperación.' }));
+        if (properties.getProperty(manualKey) === request) properties.deleteProperty(manualKey);
+        continue;
+      }
+      properties.setProperty(key, JSON.stringify({ day, status: 'En curso', startedAt: now.toISOString(), request, attempts }));
+      selected = { key, run, manualKey, request, attempts };
       break;
     }
   } finally { lock.releaseLock(); }
   if (!selected) return false;
-  let status = 'ERROR';
+  let status = 'ERROR', retryAt = 0, failure = '';
   try {
     const result = selected.run();
     status = result?.status || 'OK';
   } catch (error) {
-    console.error('Supervisor: ' + errorToString_(error));
+    failure = errorToString_(error).slice(0, 180);
+    if (selected.request && selected.attempts < 3) retryAt = Date.now() + selected.attempts * 5 * 60000;
+    console.error('Supervisor: ' + failure);
   } finally {
     properties.setProperty(selected.key, JSON.stringify({ day, status, startedAt: now.toISOString(),
-      finishedAt: new Date().toISOString() }));
+      finishedAt: new Date().toISOString(), request: selected.request, attempts: selected.attempts, retryAt, failure }));
+    if (selected.request && !retryAt && properties.getProperty(selected.manualKey) === selected.request) {
+      properties.deleteProperty(selected.manualKey);
+    }
   }
   return true;
 }
@@ -541,6 +557,9 @@ function marketsAdminReviewOperations_(email) {
   const now = Date.now();
   const pipeline = readMarketsReviewPipeline_(properties);
   const activeReviewStage = pipeline?.leaseUntil > now ? pipeline.jobs[pipeline.stage]?.label || '' : '';
+  const metadataState = safeJsonParse_(properties.getProperty('MARKETS_PLAY_METADATA_REFRESH') || 'null');
+  const androidMetadata = metadataState && Object.fromEntries(
+    ['done', 'total', 'pages', 'updated', 'updatedAt', 'complete', 'runningUntil'].map(field => [field, metadataState[field]]));
   const workerScheduledAt = Number(properties.getProperty('MARKETS_REVIEW_WORKER_AT')) || 0;
   const nextWorkerAt = workerScheduledAt + 60000;
   return {
@@ -553,8 +572,9 @@ function marketsAdminReviewOperations_(email) {
     interval: Number(properties.getProperty(MARKETS_REVIEW_INTERVAL)) || 15,
     supervisorLast: properties.getProperty('MARKETS_REVIEW_SUPERVISOR_LAST'),
     geography: typeof MARKETS_GEO_AUDIT_PROPERTY === 'string' ? safeJsonParse_(properties.getProperty(MARKETS_GEO_AUDIT_PROPERTY)) : null,
-    androidMetadata: safeJsonParse_(properties.getProperty('MARKETS_PLAY_METADATA_REFRESH') || 'null'),
-    queuedJobs: MARKETS_REVIEW_MANUAL_IDS.filter(id => properties.getProperty(MARKETS_REVIEW_MANUAL + id)),
+    androidMetadata,
+    ratingSchedule: safeJsonParse_(properties.getProperty('MARKETS_UNIFIED_RUN:ratings') || 'null'),
+    queuedJobs: ['ratings', ...MARKETS_REVIEW_MANUAL_IDS].filter(id => properties.getProperty(MARKETS_REVIEW_MANUAL + id)),
     jobRetries: Object.fromEntries(MARKETS_REVIEW_MANUAL_IDS.flatMap(id => {
       const retry = safeJsonParse_(properties.getProperty(MARKETS_REVIEW_AUX_RETRY + id) || 'null');
       return retry ? [[id, retry]] : [];
@@ -573,7 +593,8 @@ const MARKETS_REVIEW_MANUAL_IDS = ['index', 'geography', 'taxonomy', 'taxonomyTr
 function marketsReviewSnapshotRefreshDue_(properties, now) {
   if (typeof MARKETS_REVIEW_SNAPSHOT_POINTER !== 'string') return false;
   const published = safeJsonParse_(properties.getProperty(MARKETS_REVIEW_SNAPSHOT_POINTER));
-  if (!Array.isArray(published?.versions) || published.end !== Utilities.formatDate(now, MARKETS_CONFIG.timeZone, 'yyyy-MM-dd')) return false;
+  if (!Array.isArray(published?.versions) || published.schema !== MARKETS_REVIEW_SNAPSHOT_SCHEMA ||
+      published.end !== Utilities.formatDate(now, MARKETS_CONFIG.timeZone, 'yyyy-MM-dd')) return true;
   return published.versions[0] !== (properties.getProperty('MARKETS_REVIEWS_GENERATION') || '') ||
     (published.versions.find(value => Array.isArray(value) && value[0] === 'MARKETS_REVIEW_GEOGRAPHY_REVISION')?.[1] || '') !==
     (properties.getProperty('MARKETS_REVIEW_GEOGRAPHY_REVISION') || '');
@@ -590,6 +611,7 @@ function marketsReviewAuxiliaryTasks_(properties, settings, now, priority) {
     { id: 'taxonomyTranslation', priority: 4, run: () => advanceMarketsFunctionalCatalog_({ sync: false, translate: true }) },
     { id: 'publish', priority: 5, manualOnly: !marketsReviewSnapshotRefreshDue_(properties, now),
       run: () => publishMarketsReviewSnapshot_().complete },
+    { id: 'health', priority: 6, run: () => advanceMarketsScheduledOperations_(now, true) },
     { id: 'androidMetadata', priority: 6, run: () => typeof advanceMarketsAndroidMetadata_ === 'function' && advanceMarketsAndroidMetadata_(now) },
     { id: 'taxonomy', priority: 6, run: () => advanceMarketsFunctionalCatalog_({ sync: true, translate: false }) },
     { id: 'maintenance', priority: 6, run: manual => typeof advanceMarketsReviewMaintenance_ === 'function' && advanceMarketsReviewMaintenance_(now, manual) },
@@ -631,6 +653,10 @@ function runMarketsPanelJob(id) {
   if (!MARKETS_REVIEW_MANUAL_IDS.includes(id)) throw new Error('Trabajo no disponible para ejecución manual.');
   const properties = PropertiesService.getScriptProperties();
   if (marketsReviewJobSettings_(properties)[id]?.enabled === false) throw new Error('El trabajo está desactivado.');
+  return enqueueMarketsPanelJob_(properties, id);
+}
+
+function enqueueMarketsPanelJob_(properties, id) {
   const key = MARKETS_REVIEW_MANUAL + id;
   if (properties.getProperty(key)) return { queued: true, message: 'La solicitud ya está en cola.' };
   properties.setProperty(key, new Date().toISOString());

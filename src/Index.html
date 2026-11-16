@@ -80,9 +80,9 @@
         </div>
         </div>
         <div id="evolution-markets" class="geography-tabs" role="group" aria-label="Geografías"></div>
+        <section class="section panel monthly-pulse-panel"><div class="panel-head"><div><h3 id="monthly-pulse-title">Pulso mensual de BBVA Empresas</h3><span>Histórico hasta el mes seleccionado · rating consolidado, valoraciones por plataforma y NPS de reseñas</span></div><span id="monthly-matrix-meta" class="panel-meta">Últimos cierres</span></div><div id="monthly-matrix" class="monthly-matrix-wrap"></div><div class="monthly-matrix-note"><span>Rating consolidado: media ponderada con los pesos del catálogo o el volumen de valoraciones disponible. Si faltan ambos, se usa la media simple.</span><span>NPS de reseñas: diferencia entre el porcentaje de promotoras y detractoras, sobre todas las reseñas válidas del mes.</span><span id="monthly-shared-note" class="hidden"><b>N/D:</b> listing Android compartido sin desglose fiable por geografía.</span></div></section>
         <section id="review-balance-panel" class="section panel trend-panel">
           <div class="panel-header"><div><p class="eyebrow">EVOLUCIÓN POR ENTIDAD</p><h3>NPS de reseñas</h3></div><span id="review-balance-period" class="chart-period"></span></div>
-          <p id="review-nps" class="review-chart-note" role="status"></p>
           <div id="review-balance"></div>
         </section>
           <section id="review-gap-panel" class="panel" aria-busy="false">
@@ -98,7 +98,7 @@
             <div id="review-deltas" class="panel-body" aria-live="polite"></div>
           </section>
           <section class="panel hidden" id="review-examples-panel"><div class="panel-head"><h3 id="review-examples-title">Ejemplos del mes en curso</h3></div><div id="review-examples" class="panel-body"></div></section>
-        <section class="section panel monthly-pulse-panel"><div class="panel-head"><div><h3 id="monthly-pulse-title">Pulso mensual de BBVA Empresas</h3><span>Histórico hasta el cierre seleccionado · rating y reseñas por plataforma</span></div><span id="monthly-matrix-meta" class="panel-meta">Últimos cierres</span></div><div id="monthly-matrix" class="monthly-matrix-wrap"></div><div class="monthly-matrix-note"><span><b>Lectura:</b> la variación solo aparece cuando existe movimiento real.</span><span id="monthly-shared-note" class="hidden"><b>N/D:</b> listing Android compartido sin desglose fiable por geografía.</span></div></section>
+
         <section class="section panel new-review-panel" aria-labelledby="new-review-title"><div class="panel-head"><div><span class="section-kicker">Voz nueva del mes</span><h3 id="new-review-title">Qué nota dejan las nuevas reseñas</h3><span>Diferencia entre la nota del mes y el rating previo de la misma ficha.</span></div><span id="new-review-meta" class="panel-meta">Cierre seleccionado</span></div><div id="new-review-impact" class="new-review-impact"></div><div class="new-review-note"><strong>Cómo leerlo</strong><span>La nota del mes se calcula con dos cierres acumulados consecutivos. En una ficha Android multipaís, la nota y el efecto corresponden a toda la ficha. El volumen local queda en N/D cuando no puede verificarse o estimarse de forma fiable.</span></div></section>
       </section>
 
@@ -184,12 +184,17 @@
           <div class="panel-body radar-filters">
             <div class="filter-field analytics-app"><label for="analytics-entity">Aplicación</label><select id="analytics-entity"><option value="BBVA Empresas">BBVA</option></select></div>
           </div>
-          <div class="panel-head"><h3>Rating al cierre del mes</h3><span class="panel-meta">Escala 1–5</span></div>
+          <div class="panel-head"><h3 id="annual-rating-title">Evolución del rating</h3><span class="panel-meta">Escala 1–5</span></div>
           <div class="annual-chart-layout">
             <div id="annual-chart" class="chart-wrap"></div>
             <aside id="annual-series" class="series-summary" aria-label="Entidades de seguimiento" tabindex="0"></aside>
           </div>
-          <div class="panel-head"><h3>Indicadores del periodo</h3></div>
+          <div class="panel-head"><h3 id="annual-nps-title">Evolución del NPS de reseñas</h3><span class="panel-meta">NPS (pp)</span></div>
+          <div class="annual-chart-layout">
+            <div id="annual-nps-chart" class="chart-wrap" aria-live="polite"></div>
+            <aside id="annual-nps-series" class="series-summary" aria-label="Entidades de seguimiento del NPS" tabindex="0"></aside>
+          </div>
+          <div class="panel-head"><h3 id="annual-indicators-title">Indicadores del periodo</h3></div>
           <div id="review-annual" class="panel-body" aria-live="polite"></div>
         </section>
       </section>

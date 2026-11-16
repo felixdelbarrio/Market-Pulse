@@ -514,8 +514,7 @@ function queryMarketsReviews_(ss, filters, window, includeTranslations = false, 
       const eligible = approval && (byPackage.get(row[4]) || []).map(app => app.countryCode);
       if (approval && approval.packageName === row[4] && new Set(eligible).size > 1 &&
           eligible.includes(approval.country) && approval.digest === marketsAndroidGeographyDigest_(row, approval.automatic)) {
-        const evidence = approval.automatic ? marketsAndroidGeographyEvidence_(row, eligible) :
-          marketsAndroidGeographyCandidate_(marketsReviewOriginalText_(row), eligible);
+        const evidence = marketsAndroidGeographyApprovalEvidence_(row, eligible, approval);
         if (evidence?.status === 'VALIDAR' && evidence.candidate === approval.country) {
           country = approval.country;
           attributionMethod = approval.automatic ? 'review_evidence_inferred' : 'review_evidence_validated';

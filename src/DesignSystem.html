@@ -390,6 +390,12 @@
     #admin-panel-business .record-filters,#admin-panel-logs .record-filters{grid-template-columns:minmax(0,1fr)}
     #admin-panel-business select,#admin-panel-logs select,#admin-panel-logs input{max-width:100%;min-width:0}
   }
+  .monthly-nps{display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--space-1);margin-top:var(--space-1);font-size:var(--text-s)}
+  .monthly-nps em{font-style:normal}
+  @media(max-width:780px){
+    .monthly-pulse-panel .monthly-matrix{min-width:0;table-layout:fixed;width:100%}
+    .monthly-pulse-panel .monthly-matrix :is(th,td){min-width:0;overflow-wrap:anywhere}
+  }
 </style>
 <script>
   window.MarketsTheme=Object.freeze({

@@ -625,7 +625,7 @@ function getMarketsReviewHeatmap(filters) {
 }
 
 const MARKETS_REVIEW_ENTITY = 'BBVA Empresas';
-const MARKETS_REVIEW_SNAPSHOT_SCHEMA = 14;
+const MARKETS_REVIEW_SNAPSHOT_SCHEMA = 15;
 const MARKETS_REVIEW_SNAPSHOT_POINTER = 'MARKETS_REVIEW_SNAPSHOT_POINTER';
 const MARKETS_REVIEW_HELPFUL_MIN = 5;
 const MARKETS_REVIEW_PAGE_SIZE = 25;
@@ -1019,8 +1019,8 @@ function compactMarketsReviewAnalyticsRows_(rows, end) {
   return rows.map(row => {
     if (authorSamples.has(row) || row.date >= examplesStart || (Number.isInteger(row.helpful) && row.helpful >= MARKETS_REVIEW_HELPFUL_MIN)) return row;
     return { date: row.date, rating: row.rating, entities: row.entities, blocks: row.blocks,
-      author: row.author, reply: row.reply?.trim() ? '1' : '',
-      ...(row.platform === 'Android' && row.volumeKey ? { volumeKey: row.volumeKey, platform: row.platform, countries: row.countries } : {}) };
+      author: row.author, reply: row.reply?.trim() ? '1' : '', countries: row.countries,
+      ...(row.platform === 'Android' && row.volumeKey ? { volumeKey: row.volumeKey, platform: row.platform } : {}) };
   });
 }
 
@@ -1113,18 +1113,27 @@ function summarizeMarketsReviewAnalytics_(rows, topics, filters, window, annual 
       groups.set(entity, group);
     }
   }
-  for (const row of filters.year ? [] : monthlyRows) {
+  const geographyMonths = new Map();
+  function countMonthly(points, dimensions, row) {
+    const key = JSON.stringify(dimensions);
+    const point = points.get(key) || { total: 0, promoters: 0, detractors: 0 };
+    count(point, row);
+    points.set(key, point);
+  }
+  for (const row of monthlyRows) {
     const month = row.date.slice(0, 7);
     for (const entityName of row.entities) {
-      if (filters.analysisMonth && entity !== 'ALL' && entityName !== entity) continue;
-      const key = JSON.stringify([entityName, month]);
-      const point = monthly.get(key) || { entity: entityName, month, total: 0, promoters: 0, detractors: 0 };
-      point.total++;
-      point.promoters += Number(net(row.rating) === 1);
-      point.detractors += Number(net(row.rating) === -1);
-      monthly.set(key, point);
+      if ((filters.analysisMonth || filters.year) && entity !== 'ALL' && entityName !== entity) continue;
+      countMonthly(monthly, [entityName, month], row);
+    }
+    if (filters.analysisMonth && row.countries?.length === 1) {
+      countMonthly(geographyMonths, [row.countries[0], month], row);
     }
   }
+  const monthlyPoints = [...monthly].map(([key, point]) => {
+    const [entityName, month] = JSON.parse(key);
+    return { entity: entityName, month, ...point, balance: reviewBalancePoints_(point) };
+  });
   const base = { total: 0, promoters: 0, detractors: 0 };
   const previousEnd = shiftReviewDay_(window.recent, -1);
   const baseStart = filters.analysisMonth ? previousEnd.slice(0, 7) + '-01' : window.start;
@@ -1170,8 +1179,12 @@ function summarizeMarketsReviewAnalytics_(rows, topics, filters, window, annual 
     annual: summarizeAnnualMarketsReviews_(rows, entity, annual, net, Boolean(filters.year)),
     entities: [...groups.values()].sort((a, b) => Number(b.label === 'BBVA Empresas') - Number(a.label === 'BBVA Empresas') ||
       b.total - a.total || a.label.localeCompare(b.label)), entityOptions: [...new Set(visible.flatMap(row => row.entities))].sort(),
-    monthlyEntityOptions: [...new Set([...monthly.values()].map(point => point.entity))].sort(),
-    monthly: [...monthly.values()].map(point => ({ ...point, balance: reviewBalancePoints_(point) })),
+    monthlyEntityOptions: [...new Set(monthlyPoints.map(point => point.entity))].sort(),
+    monthly: monthlyPoints,
+    ...(filters.analysisMonth ? { monthlyByGeography: [...geographyMonths].map(([key, point]) => {
+      const [country, month] = JSON.parse(key);
+      return { country, month, ...point, balance: reviewBalancePoints_(point) };
+    }) } : {}),
     ...(filters.analysisMonth ? { nps: { start: window.recent, end: window.end, current: current.total ? reviewBalancePoints_(current) : null,
       previous: baseline?.balance ?? null, previousStart: baseStart, previousEnd,
       delta: current.total && baseline ? reviewBalancePoints_(current) - baseline.balance : null } } : {}),

@@ -507,7 +507,7 @@ test("the persistent snapshot requires the matching schema and generations", () 
   api.readMarketsWebCache_ = (_key,build)=>build();
   api.readMarketsReviewSnapshotShard_ = () => ({ "page:ES:es": staticPage });
   assert.equal(api.readMarketsReviewCache_(ss, "page", filters, window, () => null), null);
-  schema = 14;
+  schema = 15;
   assert.equal(api.readMarketsReviewCache_(ss, "page", filters, window, () => null), staticPage);
   generation = "2";
   assert.equal(api.readMarketsReviewCache_(ss, "page", filters, window, () => null), null);
@@ -1195,4 +1195,51 @@ test("monthly snapshot scope includes exact closing dates and excludes alternate
   assert.equal(api.marketsReviewSnapshotScope_("analytics", { ...filters, audience: "BEI" }, window), "");
   assert.equal(api.marketsReviewSnapshotScope_("analytics", { ...filters, inferGeography: "NO" }, window), "");
   assert.equal(api.marketsReviewSnapshotScope_("analytics", { ...filters, segment: "PROMOTER" }, window), "");
+});
+
+test("monthly pulse and annual NPS use every valid rating independently of heatmap sentiment", () => {
+  const rows = [
+    { key: "one", date: "2026-10-01", countries: ["ES"], entities: ["BBVA Empresas", "Otra"], rating: 5, blocks: [] },
+    { key: "two", date: "2026-10-03", countries: ["ES"], entities: ["BBVA Empresas"], rating: 4, blocks: [] },
+    { key: "three", date: "2026-10-06", countries: ["CO"], entities: ["BBVA Empresas"], rating: 2, blocks: [] },
+    { key: "four", date: "2026-11-01", countries: ["ES"], entities: ["BBVA Empresas"], rating: 1, blocks: [] },
+    { key: "five", date: "2026-11-02", countries: ["ES"], entities: ["Otra"], rating: 5, blocks: [] }
+  ];
+  const compact = api.compactMarketsReviewAnalyticsRows_(rows, "2026-11-16");
+  const window = { start: "2026-01-01", recent: "2026-11-01", end: "2026-11-16" };
+  const topics = { general: "General" };
+  const monthly = api.summarizeMarketsReviewAnalytics_(compact, topics,
+    { analysisMonth: "2026-11", entity: "BBVA Empresas", segment: "DETRACTOR" }, window);
+  const pulse = new Map(Array.from(monthly.monthlyByGeography, item => [item.country + "|" + item.month, item]));
+  assert.equal(pulse.get("ES|2026-10").balance, 50);
+  assert.equal(pulse.get("CO|2026-10").balance, -100);
+  assert.equal(pulse.get("ES|2026-11").balance, -100);
+  const annual = segment => api.summarizeMarketsReviewAnalytics_(compact, topics,
+    { year: "2026", entity: "ALL", segment }, window).monthly;
+  assert.deepEqual(annual("DETRACTOR"), annual("PROMOTER"));
+  assert.equal(annual("DETRACTOR").find(point => point.entity === "BBVA Empresas" && point.month === "2026-10").total, 3);
+  assert.equal(annual("DETRACTOR").find(point => point.entity === "Otra" && point.month === "2026-10").total, 1);
+});
+
+test("Spanish market evidence and manual confirmations have distinct validation", () => {
+  const local = vm.createContext({});
+  for (const file of ["54_Reviews", "52_ReviewInsights", "55_ReviewIndex"]) {
+    vm.runInContext(fs.readFileSync(new URL("../src/" + file + ".gs", import.meta.url), "utf8"), local);
+  }
+  const candidate = (text, eligible = ["ES", "PE"]) => {
+    const row = Array(16).fill("");
+    row[10] = text;
+    return local.marketsAndroidGeographyEvidence_(row, eligible)?.candidate;
+  };
+  assert.equal(candidate("Una de las mejores apps en España."), "ES");
+  assert.equal(candidate("Es un retroceso. La peor App de banca que existe en España."), "ES");
+  assert.equal(candidate("Me dijeron que era la peor app de banca que existe en España."), undefined);
+  assert.equal(candidate("Una de las mejores apps en España y Perú."), undefined);
+  assert.equal(candidate("La peor app de banca que existe en España y vivo en Uruguay."), undefined);
+  assert.equal(candidate("Uso la aplicación para mis adeudos SEPA."), undefined);
+  assert.equal(candidate("Mi amiga dice que es una de las mejores apps en España"), undefined);
+  assert.equal(candidate("Una de las mejores apps en España.", ["PE","CO"]), undefined);
+  const approval = { country: "ES", reason: "spain-owner-confirmed", automatic: false };
+  assert.equal(local.marketsAndroidGeographyApprovalEvidence_([], ["ES","PE"], approval).candidate, "ES");
+  assert.equal(local.marketsAndroidGeographyApprovalEvidence_([], ["CO","PE"], approval), null);
 });
