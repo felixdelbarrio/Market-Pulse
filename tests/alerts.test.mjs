@@ -173,7 +173,7 @@ test("a test email returns traceable acceptance diagnostics and is audited", () 
   context.sendAlertEmails_ = events => {
     sentEvents = events;
     events.deliveryResults = [{
-      senderName: "BBVA Market Pulse", senderAddress: "voc-commercial.group@bbva.com",
+      senderName: "BBVA EDC Market Pulse", senderAddress: "voc-commercial.group@bbva.com",
       verificationStatus: "accepted", messageId: "gmail-message-1", threadId: "gmail-thread-1"
     }];
     return 1;
@@ -186,7 +186,7 @@ test("a test email returns traceable acceptance diagnostics and is audited", () 
   assert.equal(result.accepted, true);
   assert.equal(result.deliveryId, "COM-20260720-141500-ABCD1234");
   assert.equal(result.effectiveSender, "automation.owner@bbva.com");
-  assert.equal(result.senderName, "BBVA Market Pulse");
+  assert.equal(result.senderName, "BBVA EDC Market Pulse");
   assert.equal(result.senderAddress, "voc-commercial.group@bbva.com");
   assert.equal(result.senderMode, "GROUP_ALIAS");
   assert.equal(result.senderVerificationStatus, "accepted");
@@ -195,7 +195,7 @@ test("a test email returns traceable acceptance diagnostics and is audited", () 
   assert.equal(sentEvents[0].isTest, true);
   assert.equal(auditedEvents[0].type, "TEST");
   assert.equal(result.realData, true);
-  assert.equal(context.marketsAlertEmailSubject_(sentEvents), "[PRUEBA] [bIA] 🚀[Market Pulse]  ·Alertas personalizadas · Datos reales · COM-20260720-141500-ABCD1234");
+  assert.equal(context.marketsAlertEmailSubject_(sentEvents), "[PRUEBA] [bIA] 🚀[EDC Market Pulse]  ·Alertas personalizadas · Datos reales · COM-20260720-141500-ABCD1234");
 
   context.currentMarketsUserEmail_ = original.currentUser;
   context.openMarketsSpreadsheet_ = original.open;
@@ -249,7 +249,7 @@ test("a no-signal preview reports every real series in the saved multi-country s
   assert.deepEqual(plain([...new Set(events.map(event => event.countryCode))].sort()), ["CO", "MX"]);
   assert.ok(events.every(event => event.type === "TEST_SNAPSHOT"));
   assert.equal(context.marketsAlertEmailSubject_(events),
-    "[PRUEBA] [bIA] 🚀[Market Pulse]  ·Alertas personalizadas · Sin alertas activas · COM-NO-SIGNALS");
+    "[PRUEBA] [bIA] 🚀[EDC Market Pulse]  ·Alertas personalizadas · Sin alertas activas · COM-NO-SIGNALS");
   const html = context.renderMarketsAlertEmail_(events, pref.email);
   assert.match(html, /Sin alertas activas/);
   assert.match(html, /Se han evaluado 4 series reales/);
@@ -295,7 +295,7 @@ test("test alert uses a real below-threshold fall and explains the production li
   assert.equal(events[0].countryCode, "CO");
   assert.equal(events[0].platform, "iOS");
   assert.equal(context.marketsAlertEmailSubject_(events),
-    "[PRUEBA] [bIA] 🚀[Market Pulse]  ·Alertas personalizadas · Datos reales bajo umbral · COM-BELOW");
+    "[PRUEBA] [bIA] 🚀[EDC Market Pulse]  ·Alertas personalizadas · Datos reales bajo umbral · COM-BELOW");
   const html = context.renderMarketsAlertEmail_(events, pref.email);
   assert.match(html, /este correo no se enviaría/i);
   assert.match(html, /0,10 puntos/);
@@ -387,7 +387,7 @@ test("BBVA alert email uses the official image slot, brand system and safe conte
   assert.match(html, /background:#001391/);
   assert.match(html, /border-radius:16px/);
   assert.match(html, /border-radius:8px/);
-  assert.match(html, /MARKET PULSE · ALERTAS DE RATINGS/);
+  assert.match(html, /EDC MARKET PULSE · ALERTAS DE RATINGS/);
   assert.match(html, /Alerta por cambios en ratings/);
   assert.match(html, /Contexto ejecutivo para valorar la situación/);
   assert.match(html, /BBVA España cae 0,33 puntos/);
@@ -396,19 +396,18 @@ test("BBVA alert email uses the official image slot, brand system and safe conte
   assert.match(html, /Rating actual/);
   assert.match(html, /el límite configurado para el nivel amarillo \(0,30 puntos\)/);
   assert.match(html, /el límite configurado para el nivel rojo \(0,50 puntos\)/);
-  assert.match(html, /Abre Market Pulse/);
-  assert.match(html, />Ir a Market Pulse</);
-  assert.match(html, /acceso directo a Market Pulse/);
+  assert.match(html, /Abre EDC Market Pulse/);
+  assert.match(html, />Ir a EDC Market Pulse</);
+  assert.doesNotMatch(html, /acceso directo a EDC Market Pulse/);
   assert.match(html, /https:\/\/accounts\.google\.com\/AccountChooser\?/);
-  assert.ok(html.includes(`href="${context.MARKETS_CONFIG.webAppUrl}"`));
   assert.match(html, /Siguiente paso/);
   assert.match(html, /Datos obtenidos el 21\/07\/2026/);
   assert.doesNotMatch(html, /Markets Data Studio/i);
   assert.doesNotMatch(html, /Tu pulso de mercado requiere atención/);
   assert.doesNotMatch(html, /<script(?:\s|\/?>)/i);
   assert.match(html, /Android &lt;script&gt;/);
-  assert.equal(context.marketsAlertEmailSubject_(events), "[bIA] 🚀[Market Pulse]  ·Alertas personalizadas · 2 cambios en ratings ");
-  assert.equal(context.marketsAlertEmailSubject_(events.slice(0, 1)), "[bIA] 🚀[Market Pulse]  ·Alertas personalizadas · 1 cambio en ratings ");
+  assert.equal(context.marketsAlertEmailSubject_(events), "[bIA] 🚀[EDC Market Pulse]  ·Alertas personalizadas · 2 cambios en ratings ");
+  assert.equal(context.marketsAlertEmailSubject_(events.slice(0, 1)), "[bIA] 🚀[EDC Market Pulse]  ·Alertas personalizadas · 1 cambio en ratings ");
   const plainText = context.renderMarketsAlertPlainText_(events, "felix.delbarrio@bbva.com");
   assert.match(plainText, /Datos obtenidos: 21\/07\/2026/);
   assert.ok(plainText.includes(context.MARKETS_CONFIG.webAppUrl));
@@ -521,7 +520,7 @@ test("test email is explicit and previews real configured data without mocked co
   assert.doesNotMatch(html, /SIMULADO|BBVA Colombia cae 0,40 puntos.*EJEMPLO/s);
   assert.doesNotMatch(html, /Markets Data Studio/i);
   const text = context.renderMarketsAlertPlainText_(events, "felix.delbarrio@bbva.com");
-  assert.match(text, /MARKET PULSE/);
+  assert.match(text, /EDC MARKET PULSE/);
   assert.match(text, /BBVA Banca de Empresas e Instituciones/);
   assert.match(text, /último cierre real/i);
   assert.match(text, /BBVA Colombia cae 0,40 puntos/);
@@ -700,8 +699,9 @@ test("alert envelopes materialize the light palette for operational and preview 
     const html = context.renderMarketsAlertEmail_([sample], "reader@bbva.com", {
       positive: "https://example.test/positive", negative: "https://example.test/negative"
     });
-    assert.match(html, /name="color-scheme" content="light"/);
-    assert.match(html, /background-image:linear-gradient\(#001391,#001391\)/);
+    assert.match(html, /<head>[^]*?<meta name="color-scheme" content="light only">[^]*?<\/head>/);
+    assert.match(html, /<img src="cid:bbvaLogo"[^>]*background-image:linear-gradient\(#001391,#001391\)/);
+    assert.doesNotMatch(html, /<(?!img\b)[a-z][^>]*background-image:linear-gradient/);
     for (const node of html.match(/<(?:table|tr|td|th)\b[^>]*>/g)) {
       assert.match(node, /bgcolor="#[0-9a-f]{3,6}"/i);
       assert.match(node, /background-color:#[0-9a-f]{3,6}/i);

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import vm from "node:vm";
 
-const api = vm.createContext({ trimString_: value => String(value ?? "").trim() });
+const api = vm.createContext({ trimString_: value => String(value ?? "").trim(), safeJsonParse_: JSON.parse });
 vm.runInContext(fs.readFileSync(new URL("../src/54_Reviews.gs", import.meta.url), "utf8"), api);
 
 vm.runInContext(fs.readFileSync(new URL("../src/52_ReviewInsights.gs", import.meta.url), "utf8"), api);
@@ -272,19 +272,19 @@ test("country pages and snapshots partition each review by its own storefront ev
   let snapshot;
   const cache = new Map();
   Object.assign(runtime,{
-    MARKETS_CONFIG:{timeZone:"Europe/Madrid"},
+    MARKETS_CONFIG:{timeZone:"Europe/Madrid"}, safeJsonParse_:JSON.parse,
     MARKETS_WEB:{countryCodes:["ES","CO","TR"]},
     Utilities:{
       formatDate:()=>"2026-11-11",DigestAlgorithm:{SHA_256:"SHA_256"},
       computeDigest:(_,value)=>value,base64EncodeWebSafe:value=>value
     },
-    PropertiesService:{getScriptProperties:()=>({getProperties:()=>({})})},
+    PropertiesService:{getScriptProperties:()=>({getProperties:()=>({}),getProperty:()=>null})},
     currentMarketsUserEmail_:()=>"reader@bbva.com",
     openMarketsSpreadsheet_:()=>ss,readAppCatalog_:()=>catalog,marketsReviewSheet_:()=>sheet,marketsReviewWidth_:()=>15,
     CacheService:{getScriptCache:()=>cache},
     writeMarketsWebCache_:(cache,key,value)=>cache.set(key,value),
-    readMarketsWebCache_:(key,build)=>cache.get(key)??build(),readMarketsPersistentCache_:()=>snapshot,
-    tryWriteMarketsPersistentCache_:(_name,value)=>{snapshot=value;return {ok:true}}
+    readMarketsWebCache_:(key,build)=>cache.get(key)??build(),
+    writeMarketsReviewSnapshot_:(_properties,manifest,values)=>{snapshot={...manifest,values};return true}
   });
   const window = {start:"2026-10-13",end:"2026-11-11"};
   const aggregate = runtime.queryMarketsReviews_(ss,{country:"ALL",platform:"ALL"},window);
@@ -498,16 +498,16 @@ test("the persistent snapshot requires the matching schema and generations", () 
   const filters = { country: "ES", platform: "ALL", app: "BBVA Empresas", language: "es" };
   const staticPage = { total: 10 };
   const ss = { getId: () => "test" };
-  let generation = "1";
-  api.PropertiesService = { getScriptProperties: () => ({
-    getProperties: () => ({ MARKETS_REVIEWS_GENERATION: generation })
-  }) };
+  let generation = "1", schema = 6;
   const catalogVersion = api.marketsReviewCatalogVersion_(api.readAppCatalog_());
-  let schema = 6;
+  api.PropertiesService = { getScriptProperties: () => ({
+    getProperties: () => ({ MARKETS_REVIEWS_GENERATION: generation, MARKETS_REVIEW_SNAPSHOT_POINTER:
+      JSON.stringify({ schema, end: window.end, versions: ["1", "", catalogVersion] }) })
+  }) };
   api.readMarketsWebCache_ = (_key,build)=>build();
-  api.readMarketsPersistentCache_ = () => ({ schema, end: window.end, versions: ["1", "", catalogVersion], values: { "page:ES:es": staticPage } });
+  api.readMarketsReviewSnapshotShard_ = () => ({ "page:ES:es": staticPage });
   assert.equal(api.readMarketsReviewCache_(ss, "page", filters, window, () => null), null);
-  schema = 13;
+  schema = 15;
   assert.equal(api.readMarketsReviewCache_(ss, "page", filters, window, () => null), staticPage);
   generation = "2";
   assert.equal(api.readMarketsReviewCache_(ss, "page", filters, window, () => null), null);
@@ -868,6 +868,12 @@ test("Android inference uses a localized support contact and rejects contradicto
     ["Mi empresa opera en Bogotá", "", "CO", "personal-location"],
     ["Vivo en Venezuela", "", "VE", "personal-location"],
     ["Pagué con PayGold", "", "CO", "own-paygold-use"],
+    ["No se pueden realizar pagos con PayGold que antes se podían hacer", "", "CO", "paygold-payment-operation"],
+    ["Quiero crear un enlace de PayGold", "", "CO", "paygold-payment-operation"],
+    ["Vivo en Madrid y pagué con PayGold", "", null],
+    ["Necesito realizar mis pagos por PSE", "", "CO", "own-pse-payment"],
+    ["Quiero que las cuentas jurídicas puedan hacer Plin", "", "PE", "own-plin-operation"],
+    ["Recibí un Plin desde Bolivia", "", null],
     ["Tengo cuenta en Banco Galicia", "", "AR", "own-galicia-account"],
     ["Mi cuenta está hasta las patas y no puedo usar BCP", "", "PE", "contextual-pe"],
     ["Esto peta", "", null],
@@ -893,19 +899,42 @@ test("Android inference uses a localized support contact and rejects contradicto
   }
 });
 
+test("the confirmed BBVA Empresas developer reply identifies Spain without overriding contradictory evidence", () => {
+  const local = vm.createContext({ safeJsonParse_: JSON.parse });
+  for (const file of ["54_Reviews.gs", "52_ReviewInsights.gs", "55_ReviewIndex.gs"]) {
+    vm.runInContext(fs.readFileSync(new URL("../src/" + file, import.meta.url), "utf8"), local);
+  }
+  const row = Object.assign(Array(16).fill(""), {
+    4: "com.bbva.GEMA.global", 10: "Rápida",
+    15: JSON.stringify({ reply: "Buenas tardes. ¡Gracias! Para nosotros tu opinión es muy importante. Seguiremos trabajando cada día en el desarrollo de nuestra aplicación para que así cada vez se ajuste más a las necesidades de gestión de tu empresa y tu operativa bancaria. Un saludo." })
+  });
+  assert.equal(local.marketsAndroidGeographyEvidence_(row, ["ES","CO","PE"])?.evidence, "gema-spain-developer-reply");
+  assert.equal(local.marketsAndroidGeographyEvidence_(row, ["CO","PE"]), null);
+  row[10] = "Pagué con PayGold";
+  assert.equal(local.marketsAndroidGeographyEvidence_(row, ["ES","CO","PE"])?.status, "CONFLICTO");
+  row[10] = "Rápida";
+  row[15] = row[15].replace("Un saludo.", "Atención a clientes de Colombia.");
+  assert.equal(local.marketsAndroidGeographyEvidence_(row, ["ES","CO","PE"])?.status, "CONFLICTO");
+  row[15] = row[15].replace("Atención a clientes de Colombia.", "Un saludo.");
+  row[4] = "another.shared.listing";
+  assert.equal(local.marketsAndroidGeographyEvidence_(row, ["ES","CO","PE"]), null);
+});
+
 test("Android geography checkpoints physical and eligible rows independently across appends and revisions", () => {
-  const rows = Array.from({ length: 3002 }, (_, i) => [String(i), "", "ES", "iOS", "shared"]);
+  const rows = Array.from({ length: 12002 }, (_, i) => [String(i), "", "ES", "iOS", "shared"]);
   const android = key => [key, "", "ES,MX", "Android", "shared"];
   rows[1] = android("a");
-  rows[3001] = android("b");
+  rows[12001] = android("b");
   const properties = new Map();
   const inventoryReads = [];
+  const detailReads = [];
   const source = {
     getLastRow: () => rows.length + 1,
     getRange: (start, _column, count, width) => ({
       getValues() {
         if (width === 5) inventoryReads.push([start, count]);
-        return rows.slice(start - 2, start - 2 + count);
+        else detailReads.push([start, count]);
+        return rows.slice(start - 2, start - 2 + count).map(row => row.slice(0, width));
       }
     })
   };
@@ -926,6 +955,9 @@ test("Android geography checkpoints physical and eligible rows independently acr
   vm.runInContext(fs.readFileSync(new URL("../src/55_ReviewIndex.gs", import.meta.url), "utf8"), runtime);
   vm.runInContext(fs.readFileSync(new URL("../src/52_ReviewInsights.gs", import.meta.url), "utf8"), runtime);
   runtime.marketsReviewDigest_ = JSON.stringify;
+  vm.runInContext(fs.readFileSync(new URL("../src/54_Reviews.gs", import.meta.url), "utf8"), runtime);
+  runtime.marketsReviewSheet_ = () => source;
+  runtime.marketsReviewWidth_ = () => 16;
   runtime.readMarketsAndroidGeography_ = () => new Map([["a", {
     automatic:false, packageName:"shared", country:"ES", digest:"manual"
   }]]);
@@ -937,14 +969,15 @@ test("Android geography checkpoints physical and eligible rows independently acr
   const status = () => JSON.parse(properties.get("MARKETS_ANDROID_GEO_AUDIT"));
 
   assert.equal(scan(), true);
-  assert.deepEqual([status().processed, status().total, status().scannedRows, status().complete], [1, 2, 3000, false]);
+  assert.deepEqual([status().processed, status().total, status().scannedRows, status().complete], [1, 2, 12000, false]);
   assert.equal(status().counts.INFERIDO,1);
   rows.push(android("c"));
   assert.equal(scan(), true);
-  assert.deepEqual([status().processed, status().total, status().scannedRows, status().complete], [2, 2, 3002, true]);
+  assert.deepEqual([status().processed, status().total, status().scannedRows, status().complete], [2, 2, 12002, true]);
   assert.equal(scan(), true);
-  assert.deepEqual([status().processed, status().total, status().scannedRows, status().complete], [3, 3, 3003, true]);
-  assert.deepEqual(inventoryReads, [[2, 3002], [3004, 1]]);
+  assert.deepEqual([status().processed, status().total, status().scannedRows, status().complete], [3, 3, 12003, true]);
+  assert.deepEqual(inventoryReads, [[2, 12002], [2, 12000], [12002, 2], [12004, 1], [12004, 1]]);
+  assert.deepEqual(detailReads, [[3, 1], [12003, 1], [12004, 1]]);
   assert.equal(scan(), false);
 
   rows.forEach(row => { row[3] = "iOS"; });
@@ -1014,10 +1047,12 @@ test("geography reprocessing revokes an invalid automatic row once and retains m
     marketsReviewWidth_: () => 16, safeJsonParse_: value => value ? JSON.parse(value) : null,
     MARKETS_WEB: { countryCodes: ["ES", "CO"] }
   });
-  for (const file of ["52_ReviewInsights.gs", "55_ReviewIndex.gs"]) {
+  for (const file of ["52_ReviewInsights.gs", "54_Reviews.gs", "55_ReviewIndex.gs"]) {
     vm.runInContext(fs.readFileSync(new URL("../src/" + file, import.meta.url), "utf8"), runtime);
   }
   runtime.marketsReviewDigest_ = JSON.stringify;
+  runtime.marketsReviewSheet_ = () => source;
+  runtime.marketsReviewWidth_ = () => 16;
   runtime.marketsReviewLiteral_ = value => value;
   runtime.marketsReviewMetadata_ = () => ({ reply: "Gracias por tu calificación" });
   runtime.readMarketsAndroidGeography_ = () => persisted;
@@ -1121,4 +1156,250 @@ test("Turkish employees receiving salary are excluded from BEI while employer pa
   ]) {
     assert.equal(api.matchesMarketsReviewAudience_("BEI", api.classifyMarketsReviewAudience_(review)), true, review);
   }
+});
+
+test("metadata refresh preserves the review row and removes only changed reply translations", () => {
+  const local = vm.createContext({
+    SpreadsheetApp: { flush() {} },
+    Utilities: { getUuid: () => "new-geo-revision" }
+  });
+  for (const file of ["54_Reviews", "53_PlayReviews", "52_ReviewInsights"]) {
+    vm.runInContext(fs.readFileSync(new URL("../src/" + file + ".gs", import.meta.url), "utf8"), local);
+  }
+  const key = '["Android","org.example","review-123"]';
+  const row = [key, "app", "AR,CO,ES,PE,UY", "Android", "org.example", "review-123", "2026-11-11",
+    2, "", "", "Reseña", "Reseña", "Review", "Yorum", "2026-11-11",
+    JSON.stringify({ author: "Autor", helpful: 3, reply: "Respuesta original", replyDate: "2026-11-11",
+      replyTranslations: { en: "Original reply" } })];
+  const old = row.slice();
+  const changes = new Map();
+  const sheet = {
+    getLastRow: () => 2,
+    getRange(_start, column, _height, width) {
+      return {
+        getValues: () => [row.slice(column - 1, column - 1 + width)],
+        setValues(values) {
+          assert.equal(column, 16);
+          row[column - 1] = values[0][0];
+        }
+      };
+    }
+  };
+  const properties = { setProperty: (name, value) => changes.set(name, value) };
+  const refresh = metadata => local.refreshMarketsAndroidMetadataPage_(sheet, properties, "org.example",
+    [{ id: "review-123", date: old[6], metadata }]);
+  assert.equal(refresh({ helpful: 7, author: "" }), 1);
+  assert.equal(JSON.parse(row[15]).replyTranslations.en, "Original reply");
+  assert.equal(JSON.parse(row[15]).author, "Autor");
+  assert.equal(changes.has("MARKETS_ANDROID_GEO_SOURCE_REVISION"), false);
+  assert.equal(refresh({ reply: "Respuesta nueva", replyDate: old[6] }), 1);
+  assert.equal(JSON.parse(row[15]).helpful, 7);
+  assert.equal(JSON.parse(row[15]).replyTranslations, undefined);
+  assert.equal(changes.get("MARKETS_ANDROID_GEO_SOURCE_REVISION"), "new-geo-revision");
+  assert.deepEqual(row.slice(0, 15), old.slice(0, 15));
+  assert.equal(refresh({}), 0);
+});
+
+test("Iteration 23 geography requires specific payment or reply evidence", () => {
+  const local = vm.createContext({});
+  for (const file of ["54_Reviews", "52_ReviewInsights", "55_ReviewIndex"]) {
+    vm.runInContext(fs.readFileSync(new URL("../src/" + file + ".gs", import.meta.url), "utf8"), local);
+  }
+  const candidate = (text, reply = "") => {
+    const row = Array(16).fill("");
+    row[10] = text;
+    row[15] = JSON.stringify({ reply });
+    return local.marketsAndroidGeographyEvidence_(row, ["CO", "ES", "PE"])?.candidate;
+  };
+  assert.equal(candidate("Llevo dos días tratando de hacer pagos PSE"), "CO");
+  assert.equal(candidate("Mi empresa no recibe nada, no llega la notificación del Plin"), "PE");
+  assert.equal(candidate("Tengo que iniciar sesión varias veces, comparado con otros bancos",
+    "Puedes llamar a nuestro teléfono de atención 912249802"), "ES");
+  assert.equal(candidate("Mi amigo lleva dos días tratando de hacer pagos PSE"), undefined);
+  assert.equal(candidate("No me permite tener Plin y vivo en Colombia"), undefined);
+  assert.equal(candidate("Genial, una de las mejores apps en España", "Gracias por tu opinión"), undefined);
+  assert.equal(candidate("Comparado con Colombia", "Puedes llamar al teléfono de atención 912249802"), undefined);
+});
+
+test("monthly snapshot scope includes exact closing dates and excludes alternate analytical semantics", () => {
+  const window = { start: "2025-11-16", end: "2026-10-31" };
+  const filters = { country: "ES", platform: "ALL", analysisMonth: "2026-10", segment: "DETRACTOR" };
+  const scope = api.marketsReviewSnapshotScope_("analytics", filters, window);
+  assert.equal(scope, "analytics:ES:2026-10:2025-11-16:2026-10-31");
+  assert.notEqual(api.marketsReviewSnapshotScope_("analytics", { ...filters, analysisMonth: "2026-11" }, window), scope);
+  assert.equal(api.marketsReviewSnapshotScope_("analytics", { ...filters, audience: "BEI" }, window), "");
+  assert.equal(api.marketsReviewSnapshotScope_("analytics", { ...filters, inferGeography: "NO" }, window), scope + ":NO");
+  assert.equal(api.marketsReviewSnapshotScope_("analytics", { ...filters, segment: "PROMOTER" }, window), "");
+});
+
+test("monthly pulse and annual NPS use every valid rating independently of heatmap sentiment", () => {
+  const rows = [
+    { key: "one", date: "2026-10-01", countries: ["ES"], entities: ["BBVA Empresas", "Otra"], rating: 5, blocks: [] },
+    { key: "two", date: "2026-10-03", countries: ["ES"], entities: ["BBVA Empresas"], rating: 4, blocks: [] },
+    { key: "three", date: "2026-10-06", countries: ["CO"], entities: ["BBVA Empresas"], rating: 2, blocks: [] },
+    { key: "four", date: "2026-11-01", countries: ["ES"], entities: ["BBVA Empresas"], rating: 1, blocks: [] },
+    { key: "five", date: "2026-11-02", countries: ["ES"], entities: ["Otra"], rating: 5, blocks: [] }
+  ];
+  const compact = api.compactMarketsReviewAnalyticsRows_(rows, "2026-11-16");
+  const window = { start: "2026-01-01", recent: "2026-11-01", end: "2026-11-16" };
+  const topics = { general: "General" };
+  const monthly = api.summarizeMarketsReviewAnalytics_(compact, topics,
+    { analysisMonth: "2026-11", entity: "BBVA Empresas", segment: "DETRACTOR" }, window);
+  const pulse = new Map(Array.from(monthly.monthlyByGeography, item => [item.country + "|" + item.month, item]));
+  assert.equal(pulse.get("ES|2026-10").balance, 50);
+  assert.equal(pulse.get("CO|2026-10").balance, -100);
+  assert.equal(pulse.get("ES|2026-11").balance, -100);
+  const annual = segment => api.summarizeMarketsReviewAnalytics_(compact, topics,
+    { year: "2026", entity: "ALL", segment }, window).monthly;
+  assert.deepEqual(annual("DETRACTOR"), annual("PROMOTER"));
+  assert.equal(annual("DETRACTOR").find(point => point.entity === "BBVA Empresas" && point.month === "2026-10").total, 3);
+  assert.equal(annual("DETRACTOR").find(point => point.entity === "Otra" && point.month === "2026-10").total, 1);
+});
+
+test("Spanish market evidence and manual confirmations have distinct validation", () => {
+  const local = vm.createContext({});
+  for (const file of ["54_Reviews", "52_ReviewInsights", "55_ReviewIndex"]) {
+    vm.runInContext(fs.readFileSync(new URL("../src/" + file + ".gs", import.meta.url), "utf8"), local);
+  }
+  const candidate = (text, eligible = ["ES", "PE"], packageName = "com.bbva.GEMA.global") => {
+    const row = Array(16).fill("");
+    row[4] = packageName;
+    row[10] = text;
+    return local.marketsAndroidGeographyEvidence_(row, eligible)?.candidate;
+  };
+  assert.equal(candidate("Una de las mejores apps en España."), "ES");
+  assert.equal(candidate("Es un retroceso. La peor App de banca que existe en España."), "ES");
+  assert.equal(candidate("Me dijeron que era la peor app de banca que existe en España."), undefined);
+  assert.equal(candidate("Una de las mejores apps en España y Perú."), undefined);
+  assert.equal(candidate("La peor app de banca que existe en España y vivo en Uruguay."), undefined);
+  assert.equal(candidate("Uso la aplicación para mis adeudos SEPA."), "ES");
+  assert.equal(candidate("Es fácil de usar la aplicación para los adeudos SEPA."), "ES");
+  assert.equal(candidate("¿Existe SEPA?"), undefined);
+  assert.equal(candidate("Uso la aplicación para mis adeudos SEPA.", ["ES","PT"]), undefined);
+  assert.equal(candidate("Uso la aplicación para mis adeudos SEPA.", ["ES","PE"], "com.example.shared"), undefined);
+  assert.equal(candidate("Uso la aplicación para mis adeudos SEPA desde Uruguay."), undefined);
+  assert.equal(candidate("Mi amiga dice que es una de las mejores apps en España"), undefined);
+  assert.equal(candidate("Una de las mejores apps en España.", ["PE","CO"]), undefined);
+  const approval = { country: "ES", reason: "spain-owner-confirmed", automatic: false };
+  assert.equal(local.marketsAndroidGeographyApprovalEvidence_([], ["ES","PE"], approval).candidate, "ES");
+  assert.equal(local.marketsAndroidGeographyApprovalEvidence_([], ["CO","PE"], approval), null);
+});
+
+test("annual NPS materialization reuses valid counts after a translation and rejects stale geography or year", () => {
+  const local = vm.createContext({
+    safeJsonParse_: value => JSON.parse(value || "null"),
+    MARKETS_CONFIG: { timeZone: "Europe/Madrid" },
+    Utilities: { formatDate: () => "2026-11-16" },
+    readAppCatalog_: () => [],
+    readMarketsWebCache_: (_key, builder) => builder()
+  });
+  vm.runInContext(fs.readFileSync(new URL("../src/54_Reviews.gs", import.meta.url), "utf8"), local);
+  vm.runInContext(fs.readFileSync(new URL("../src/52_ReviewInsights.gs", import.meta.url), "utf8"), local);
+  local.marketsReviewDigest_ = JSON.stringify;
+  const props = { MARKETS_REVIEW_SOURCE_GENERATION: "a", MARKETS_REVIEW_GEOGRAPHY_REVISION: "b", MARKETS_REVIEWS_GENERATION: "translated" };
+  const version = local.marketsReviewCatalogVersion_([]);
+  props.MARKETS_REVIEW_SNAPSHOT_POINTER = JSON.stringify({
+    schema: 15, end: "2026-11-16", hasNpsAttribution: true, versions: ["prior"], npsVersions: ["a", "b", version]
+  });
+  local.PropertiesService = { getScriptProperties: () => ({ getProperties: () => props }) };
+  local.readMarketsReviewSnapshotShard_ = () => ({
+    "nps:ES": { start: "2025-01-01", end: "2026-11-16", monthly: [
+      { month: "2025-06", balance: 0 }, { month: "2026-01", balance: -100 }
+    ] },
+    "nps:ES:NO": { start: "2025-01-01", end: "2026-11-16", monthly: [
+      { month: "2026-01", balance: 100, assignedGeography: 0 }
+    ] }
+  });
+  const query = (year, inferGeography) => local.readMarketsReviewCache_({ getId: () => "ss" }, "nps",
+    { country: "ES", year, platform: "ALL", inferGeography }, local.marketsReviewAnalyticsWindow_({ year }, "2026-11-16"), () => null);
+  assert.equal(query("2025").monthly[0].balance, 0);
+  assert.equal(query("2026").monthly.length, 1);
+  assert.equal(query("2026", "NO").monthly[0].balance, 100);
+  assert.equal(query("2024"), null);
+  props.MARKETS_REVIEW_GEOGRAPHY_REVISION = "changed";
+  assert.equal(query("2025"), null);
+});
+
+test("annual NPS summary preserves neutral denominators and does not invent missing months", () => {
+  const rows = [
+    { date: "2026-01-02", rating: 5, entities: ["BBVA Empresas", "Otra"] },
+    { date: "2026-01-27", rating: 4, entities: ["BBVA Empresas"] },
+    { date: "2026-03-01", rating: 2, entities: ["BBVA Empresas"] }
+  ];
+  const summary = api.summarizeMarketsReviewNps_(rows);
+  assert.equal(summary.find(row => row.entity === "BBVA Empresas" && row.month === "2026-01").balance, 50);
+  assert.equal(summary.find(row => row.entity === "Otra").balance, 100);
+  assert.equal(summary.find(row => row.month === "2026-03").balance, -100);
+  assert.equal(summary.some(row => row.month === "2026-02"), false);
+});
+
+test("review prefetch never rebuilds a stale snapshot or caches its absence", () => {
+  const props = { MARKETS_REVIEW_SOURCE_GENERATION: "present", MARKETS_REVIEW_GEOGRAPHY_REVISION: "ready" };
+  const cache = new Map();
+  const local = vm.createContext({
+    console: { log() {} },
+    MARKETS_CONFIG: { timeZone: "Europe/Madrid" },
+    Utilities: { formatDate: () => "2026-11-16" },
+    safeJsonParse_: JSON.parse,
+    PropertiesService: { getScriptProperties: () => ({ getProperties: () => props }) },
+    CacheService: { getScriptCache: () => ({ get: key => cache.get(key), put: (key, value) => cache.set(key, value) }) },
+    readAppCatalog_: () => []
+  });
+  for (const file of ["52_ReviewInsights.gs", "60_WebApp.gs"]) {
+    vm.runInContext(fs.readFileSync(new URL("../src/" + file, import.meta.url), "utf8"), local);
+  }
+  local.marketsReviewDigest_ = JSON.stringify;
+  const db = { getId: () => "test" }, filters = { country: "ES", platform: "ALL", year: "2026" };
+  const window = { start: "2026-01-01", end: "2026-11-16" };
+  let reads = 0;
+  const rebuild = () => { reads++; return { monthly: [] }; };
+  const lookup = snapshotOnly => local.readMarketsReviewCache_(db, "nps", filters, window, rebuild, {}, snapshotOnly);
+  assert.equal(lookup(true), null);
+  assert.equal(cache.size, 0);
+  assert.equal(reads, 0);
+  assert.ok(lookup(false));
+  assert.equal(reads, 1);
+  assert.ok(lookup(true));
+  assert.equal(reads, 1);
+});
+
+test("monthly gap counts include the selected inferred and validated reviews and keep the prior-month baseline", () => {
+  const row = (key, date, rating, attributionMethod) => ({
+    key, date, rating, attributionMethod, storefronts: ["ES","PE"], countries: ["ES"], entities: ["BBVA Empresas"],
+    blocks: ["01"], title: key, original: key
+  });
+  const rows = [
+    row("direct", "2026-11-14", 5, "single_storefront"),
+    row("automatic", "2026-11-13", 5, "review_evidence_inferred"),
+    row("manual", "2026-11-07", 5, "review_evidence_validated"),
+    row("detractor", "2026-11-02", 1, "review_evidence_inferred"),
+    row("reference", "2026-10-08", 1, "single_storefront"),
+    row("reference-inferred", "2026-10-01", 5, "review_evidence_inferred")
+  ];
+  const direct = rows.map(api.marketsReviewWithoutAssignedGeography_);
+  const dates = { start: "2026-10-01", recent: "2026-11-01", end: "2026-11-16" };
+  const filters = { analysisMonth: "2026-11", country: "ES", entity: "BBVA Empresas", segment: "PROMOTER" };
+  const build = input => api.buildMarketsReviewAnalytics_(input, { "01": "Pagos" }, filters, dates);
+  const yes = build(rows);
+  assert.deepEqual([yes.deltas[0].total, yes.deltas[0].assignedGeography, yes.deltas[0].detractors], [3,2,0]);
+  assert.equal(yes.baseline.total, 2);
+  assert.equal(yes.baseline.balance, 0);
+  assert.equal(yes.nps.current, 50);
+  const annualPoint = api.summarizeMarketsReviewNps_(rows).find(point => point.month === "2026-11");
+  const monthlyPoint = yes.monthly.find(point => point.month === "2026-11");
+  assert.deepEqual([annualPoint.balance, annualPoint.total, annualPoint.assignedGeography], [50,4,3]);
+  assert.deepEqual(JSON.parse(JSON.stringify(monthlyPoint)), JSON.parse(JSON.stringify(annualPoint)));
+
+  const no = build(direct.filter(item => item.countries[0] === "ES"));
+  assert.deepEqual([no.deltas[0].total, no.deltas[0].assignedGeography], [1,0]);
+  assert.equal(no.baseline.balance, -100);
+  const annualNo = api.summarizeMarketsReviewNps_(direct.filter(item => item.countries[0] === "ES"))
+    .find(point => point.month === "2026-11");
+  assert.deepEqual([annualNo.balance, annualNo.total, annualNo.assignedGeography], [100,1,0]);
+  assert.equal(direct.length, rows.length);
+  assert.equal(direct[1].countries[0], "UNKNOWN");
+  assert.equal(direct[1].attributionMethod, "multi_storefront_ambiguous");
+  assert.equal(rows[1].countries[0], "ES");
+  const compact = api.compactMarketsReviewAnalyticsRows_(rows, "2027-11-16");
+  assert.equal(compact.find(item => item.date === "2026-11-07").attributionMethod, "review_evidence_validated");
 });

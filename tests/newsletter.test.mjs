@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import { createHmac } from "node:crypto";
 import test from "node:test";
 import vm from "node:vm";
 
@@ -88,6 +89,9 @@ test("single-country newsletter uses real closes, reliable review effect and com
     /Las nuevas valoraciones se sitúan por encima del rating previo y refuerzan el cierre/);
   assert.doesNotMatch(brief.summary, /4,11|4,21|4,81|20 nuevas valoraciones/);
   const html = context.renderMarketsNewsletterHtml_(model);
+  assert.match(html, /<meta name="color-scheme" content="light only">/);
+  assert.match(html, /<img src="cid:bbvaLogo"[^>]*background-image:linear-gradient\(#001391,#001391\)/);
+  assert.doesNotMatch(html, /<(?!img\b)[a-z][^>]*background-image:linear-gradient/);
   assert.match(html, /España · Todas las plataformas|España · iOS/);
   assert.match(html, /Cierre anterior[\s\S]*4,11[\s\S]*Voz nueva[\s\S]*4,81\/5/);
   assert.match(html, /Cierre[\s\S]*4,21[\s\S]*\+0,10 en el mes/);
@@ -432,10 +436,13 @@ test("localized newsletter renders subject, plain text and HTML in the chosen la
   const model = { period: "2026-10", items: [{ countryCode: "TR", platform: "iOS", endRating: 4.2 }] };
   for (const [language, title] of [["en", "Monthly review"], ["tr", "Aylık değerlendirme"]]) {
     const rendered = context.localizedMarketsNewsletter_({ ...model, language });
-    assert.match(rendered.subject, /^\[bIA\]🚀🚀🚀 \[Market Pulse\] · /u);
+    assert.match(rendered.subject, /^\[bIA\]🚀🚀🚀 \[EDC Market Pulse\] · /u);
     assert.match(rendered.subject, new RegExp(title));
     assert.match(rendered.plain, new RegExp(title));
     assert.match(rendered.html, new RegExp('<html lang="' + language + '"'));
+    assert.match(rendered.html, /<meta name="color-scheme" content="light only">/);
+    assert.match(rendered.html, /<img src="cid:bbvaLogo"[^>]*background-image:linear-gradient\(#070e46,#070e46\)/);
+    assert.doesNotMatch(rendered.html, /<(?!img\b)[a-z][^>]*background-image:linear-gradient/);
     assert.match(rendered.html, /iOS/);
     assert.match(rendered.html, /<header[^>]*bgcolor="#070e46"/i);
     assert.match(rendered.html, /<th scope="col"[^>]*bgcolor="#ffffff"[^>]*color:#070e46/i);
@@ -507,8 +514,7 @@ test("newsletter access cohorts use verified accounts and count each recorded ed
 test("the Spanish Argentina closing uses the requested subject and email light canvas", () => {
   const model = { periodLabel: "octubre 2026", scope: { type: "SINGLE", countryLabel: "Argentina", platformLabel: "Todas las plataformas" } };
   assert.equal(context.marketsNewsletterSpanishSubject_(model),
-    "[bIA]🚀🚀🚀 [Market Pulse] · Cierre octubre 2026 · Argentina · Todas las plataformas");
-  assert.match(context.marketsLightEmailDocument_("es"), /name="color-scheme" content="light"/);
+    "[bIA]🚀🚀🚀 [EDC Market Pulse] · Cierre octubre 2026 · Argentina · Todas las plataformas");
   assert.match(context.marketsLightEmailDocument_("en"), /bgcolor="#F7F8F8"/);
 });
 
@@ -575,4 +581,24 @@ test("preview opens and feedback persist separately from the live edition; previ
   assert.deepEqual(rows.slice(1).map(row => [row[0].split("_")[0], row[2], row[5]]), [
     ["n", "positive", "Real"], ["np", "negative", "Prueba"], ["np", "open", ""]
   ]);
+});
+
+test("an alert access is signed for the active account and survives AccountChooser", () => {
+  const runtime = vm.createContext({
+    ...context,
+    PropertiesService: { getScriptProperties: () => ({ getProperty: () => "a".repeat(64) }) },
+    Utilities: {
+      computeHmacSha256Signature: (payload, secret) => createHmac("sha256", secret).update(payload).digest(),
+      base64EncodeWebSafe: value => Buffer.from(value).toString("base64url")
+    }
+  });
+  vm.runInContext(source, runtime);
+  const recipient = "reader@bbva.com", messageId = "a".repeat(32);
+  const direct = runtime.marketsAlertFeedbackLinks_(recipient, messageId).open;
+  const URLWithChooser = runtime.marketsWebAppLoginUrl_("", direct);
+  assert.equal(new URL(URLWithChooser).searchParams.get("continue"), direct);
+  assert.equal(new URL(URLWithChooser).searchParams.get("Email"), null);
+  const token = new URL(direct).searchParams.get("alertFeedback");
+  assert.equal(runtime.requireMarketsAlertFeedbackLink_(token, recipient).vote, "open");
+  assert.throws(() => runtime.requireMarketsAlertFeedbackLink_(token, "other@bbva.com"), /cuenta conectada/);
 });

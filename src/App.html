@@ -8,6 +8,209 @@
     const $=id=>document.getElementById(id);
     const bindOptional=(id,event,handler)=>$(id)?.addEventListener(event,handler);
     const interfaceCopy={
+      "No se pudo guardar la valoración. Inténtalo de nuevo.":["We couldn't save your feedback. Try again.","Değerlendirme kaydedilemedi. Tekrar deneyin."],
+      "Cargando NPS de reseñas":["Loading review NPS","Yorum NPS'si yükleniyor"],
+      "Preparando Excel…":["Preparing Excel…","Excel hazırlanıyor…"],
+      "ADMINISTRACIÓN":["ADMINISTRATION","YÖNETİM"],
+      "Accesos desde newsletters":["Visits from newsletters","Bültenlerden gelen ziyaretler"],
+      "Acciones disponibles solo para el administrador.":["Actions available to administrators only.","Bu işlemleri yalnızca yöneticiler yapabilir."],
+      "Activa":["Active","Etkin"],
+      "Activa las señales que quieras vigilar":["Enable the signals you want to track","İzlemek istediğiniz sinyalleri etkinleştirin"],
+      "Activa por defecto":["Enabled by default","Varsayılan olarak etkin"],
+      "Activa solo las reglas que sean útiles para ti y personaliza sus límites.":["Enable the rules that matter to you and customise their thresholds.","İşinize yarayan kuralları etkinleştirin ve eşiklerini özelleştirin."],
+      "Activar alerta de reseñas":["Enable review alerts","Yorum uyarılarını etkinleştir"],
+      "Activar caída desde inicio de año":["Enable year-to-date decline alerts","Yılbaşından bu yana düşüş uyarılarını etkinleştir"],
+      "Activar caída diaria":["Enable daily decline alerts","Günlük düşüş uyarılarını etkinleştir"],
+      "Activar caída entre cierres del día 15":["Enable mid-month decline alerts","Ayın 15'indeki kapanışlar arası düşüş uyarılarını etkinleştir"],
+      "Activar cruces":["Enable ranking alerts","Sıralama uyarılarını etkinleştir"],
+      "Activar cruces competitivos":["Enable ranking alerts","Sıralama uyarılarını etkinleştir"],
+      "Usuarios por día":["Users by day","Günlük kullanıcılar"],
+      "Actividad reciente":["Recent activity","Son etkinlikler"],
+      "Actualizar tiempos":["Refresh timings","Süreleri yenile"],
+      "Advertencia desde":["Warning threshold","Uyarı eşiği"],
+      "Alerta":["Alert","Uyarı"],
+      "Alertas activas":["Active alerts","Etkin uyarılar"],
+      "Alertas de caída de rating":["Rating decline alerts","Puan düşüşü uyarıları"],
+      "Alertas pausadas":["Paused alerts","Duraklatılan uyarılar"],
+      "Alertas por email":["Email alerts","E-posta uyarıları"],
+      "Almacenamiento y archivo":["Storage and archiving","Depolama ve arşivleme"],
+      "Alta manual":["Manual registration","Manuel kayıt"],
+      "Amarilla":["Yellow","Sarı"],
+      "Ambos":["Both","Her ikisi"],
+      "Ambos movimientos":["Both changes","Her iki değişiklik"],
+      "Atendido":["Resolved","Çözüldü"],
+      "Auditoría reciente de señales y destinatarios":["Recent signal and recipient audit","Son sinyal ve alıcı denetimi"],
+      "Avisa cuando la proporción de reseñas públicas de BBVA Empresas de 1 o 2 estrellas fechadas en las últimas 24 horas alcanza el umbral.":["Alerts when the share of public 1- or 2-star BBVA Empresas reviews in the past 24 hours reaches the threshold.","BBVA Empresas'ın son 24 saatteki herkese açık 1 veya 2 yıldızlı yorumlarının oranı eşiğe ulaştığında uyarır."],
+      "Avisa cuando un competidor supera a BBVA Empresas o cuando BBVA recupera la posición.":["Alerts when a competitor overtakes BBVA Empresas or BBVA regains its position.","Bir rakip BBVA Empresas'ı geçtiğinde veya BBVA sırasını geri aldığında uyarır."],
+      "BBVA Banca de Empresas e Instituciones":["BBVA Business and Institutional Banking","BBVA Şirketler ve Kurumlar Bankacılığı"],
+      "BBVA pierde posición":["BBVA drops in the ranking","BBVA sıralamada geriliyor"],
+      "BBVA recupera posición":["BBVA regains its position","BBVA sırasını geri alıyor"],
+      "Banca Inteligente":["Intelligent","Akıllı"],
+      "y Autónoma":["and Autonomous Banking","ve Otonom Bankacılık"],
+      "Buscar":["Search","Ara"],
+      "Buscar en el catálogo":["Search the catalogue","Katalogda ara"],
+      "Buscar por correo…":["Search by email…","E-posta ile ara…"],
+      "Cada newsletter se envía a su destinatario. El grupo se usa como remitente y dirección de respuesta.":["Each newsletter is sent to its recipient. The group serves as the sender and reply-to address.","Her bülten kendi alıcısına gönderilir. Grup adresi gönderen ve yanıt adresi olarak kullanılır."],
+      "Cada pareja indica umbral amarillo y rojo, en puntos. La ventana mensual compara el cierre del día 15 de M-1 con el día 15 vigente.":["Each pair shows the yellow and red thresholds in points. The monthly window compares the closes on the 15th of the previous and current months.","Her çift sarı ve kırmızı eşikleri puan olarak gösterir. Aylık dönem, önceki ayın 15'indeki kapanışla bu ayın 15'indeki kapanışı karşılaştırır."],
+      "Canal de correo":["Email channel","E-posta kanalı"],
+      "Capturas de ratings":["Rating captures","Puan toplama"],
+      "Cargando contenido...":["Loading content…","İçerik yükleniyor…"],
+      "Catálogo":["Catalogue","Katalog"],
+      "Catálogos y operación":["Catalogues and operations","Kataloglar ve operasyon"],
+      "Caída diaria":["Daily decline","Günlük düşüş"],
+      "Caídas de rating":["Rating declines","Puan düşüşleri"],
+      "Cierre seleccionado":["Selected close","Seçili kapanış"],
+      "Combina las tres ventanas. Cada una conserva sus propios límites y puede generar una señal independiente.":["Combine all three windows. Each keeps its own thresholds and can trigger a separate alert.","Üç dönemi birleştirin. Her dönem kendi eşiklerini korur ve ayrı bir uyarı oluşturabilir."],
+      "Combina mercados y plataformas. “Todos” mantiene automáticamente las nuevas geografías.":["Combine markets and platforms. “All” automatically includes new geographies.","Pazarları ve platformları birleştirin. “Tümü” yeni coğrafyaları otomatik olarak kapsar."],
+      "Compara el cierre real del día 15 del mes anterior con el día 15 vigente. Complementa la newsletter sin repetir su cierre natural.":["Compares the actual close on the 15th of last month with the 15th of this month. It supplements the newsletter outside its regular closing period.","Önceki ayın 15'indeki gerçek kapanışla bu ayın 15'indekini karşılaştırır. Normal kapanış dönemi dışında bülteni tamamlar."],
+      "Comparativa semanal":["Weekly comparison","Haftalık karşılaştırma"],
+      "Competidor":["Competitor","Rakip"],
+      "Comprobando":["Checking","Kontrol ediliyor"],
+      "Configuración de negocio":["Business settings","İş ayarları"],
+      "Configuración del destinatario":["Recipient settings","Alıcı ayarları"],
+      "Configuración individual":["Individual settings","Bireysel ayarlar"],
+      "Configuración lista para revisar":["Settings ready for review","Ayarlar incelemeye hazır"],
+      "Conservación":["Retention","Saklama"],
+      "Consulta y edita los catálogos operativos de Google Sheets.":["View and edit the operational catalogues in Google Sheets.","Google Sheets'teki operasyon kataloglarını görüntüleyin ve düzenleyin."],
+      "Contrato de datos":["Data contract","Veri sözleşmesi"],
+      "Correo del administrador conectado":["Signed-in administrator's email","Oturum açmış yöneticinin e-postası"],
+      "Crear suscripción":["Create subscription","Abonelik oluştur"],
+      "Criterios de relevancia":["Relevance criteria","İlgililik ölçütleri"],
+      "Cruce competitivo":["Ranking change","Sıralama değişikliği"],
+      "Crítica desde":["Critical threshold","Kritik eşik"],
+      "Cuentas que pueden necesitar acompañamiento":["Accounts that may need support","Desteğe ihtiyaç duyabilecek hesaplar"],
+      "Cómo la usan":["How they use it","Kullanım biçimleri"],
+      "Del día 15 al día 15":["From the 15th to the 15th","Ayın 15'inden sonraki ayın 15'ine"],
+      "Desactivada":["Disabled","Devre dışı"],
+      "Desactivado por defecto: no repite dentro del mismo periodo; una escalada de amarilla a roja sí genera un nuevo aviso.":["Off by default. An alert is sent again in the same period only if it changes from yellow to red.","Varsayılan olarak kapalıdır. Aynı dönemde yalnızca sarıdan kırmızıya geçişte yeni bir uyarı gönderilir."],
+      "Descartar y recargar":["Discard and reload","Vazgeç ve yeniden yükle"],
+      "Desde inicio de año":["Year to date","Yılbaşından bugüne"],
+      "Diaria":["Daily","Günlük"],
+      "Disponible":["Available","Kullanılabilir"],
+      "Disponible · Multiselección":["Available · Multiple selection","Kullanılabilir · Çoklu seçim"],
+      "Dispositivos":["Devices","Cihazlar"],
+      "Distribución de eventos":["Event breakdown","Etkinlik dağılımı"],
+      "Día 15 → día 15":["15th → 15th","Ayın 15'i → ayın 15'i"],
+      "Días, sesiones y vistas del año":["Days, sessions and views this year","Bu yılın günleri, oturumları ve görüntülemeleri"],
+      "Edición":["Edition","Sayı"],
+      "Editar entrada":["Edit entry","Kaydı düzenle"],
+      "Enviar":["Send","Gönder"],
+      "Enviar prueba":["Send test","Deneme gönder"],
+      "Envía únicamente las señales seleccionadas cuando alcancen sus límites.":["Sends selected alerts when they reach their thresholds.","Seçili uyarıları eşiklerine ulaştıklarında gönderir."],
+      "Envío programado":["Scheduled delivery","Planlı gönderim"],
+      "Equivalencias funcionales":["Functional mappings","İşlevsel eşleştirmeler"],
+      "Errores detectados durante el uso":["Errors detected during use","Kullanım sırasında algılanan hatalar"],
+      "Estado":["Status","Durum"],
+      "Estado de alertas":["Alert status","Uyarı durumu"],
+      "Estado y configuración de la aplicación":["Application status and settings","Uygulama durumu ve ayarları"],
+      "Estado, cobertura y entrega de alertas":["Alert status, coverage and delivery","Uyarı durumu, kapsamı ve gönderimi"],
+      "Evolución del NPS de reseñas":["Review NPS trend","Yorum NPS eğilimi"],
+      "Exportar selección":["Export selection","Seçimi dışa aktar"],
+      "Feedback":["Feedback","Geri bildirim"],
+      "Filtros y acciones más frecuentes":["Most common filters and actions","En sık kullanılan filtreler ve işlemler"],
+      "Frecuencia":["Frequency","Sıklık"],
+      "Gestión de suscriptores":["Subscriber management","Abone yönetimi"],
+      "Guardar mis alertas":["Save my alerts","Uyarılarımı kaydet"],
+      "Histórico hasta el mes seleccionado · rating consolidado, valoraciones por plataforma y NPS de reseñas":["History up to the selected month · consolidated rating, ratings by platform and review NPS","Seçilen aya kadarki geçmiş · konsolide puan, platforma göre puanlar ve yorum NPS'si"],
+      "Identidad y entrega":["Identity and delivery","Kimlik ve gönderim"],
+      "Identificador":["Identifier","Tanımlayıcı"],
+      "Incidencias de captura":["Collection issues","Veri toplama sorunları"],
+      "Incidencias de experiencia":["User experience issues","Kullanıcı deneyimi sorunları"],
+      "Incluye geografías inferidas de Android.":["Includes inferred Android geographies.","Android için çıkarımla belirlenen coğrafyaları içerir."],
+      "Inferir datos":["Infer geography","Coğrafyayı çıkar"],
+      "La prueba se envía a tu cuenta de administrador. Puedes usar el ámbito de otro suscriptor o elegir Todos para incluir todas las geografías.":["The test goes to your administrator account. Use another subscriber's scope or choose All to include every geography.","Deneme yönetici hesabınıza gönderilir. Başka bir abonenin kapsamını kullanın veya tüm coğrafyalar için Tümü'nü seçin."],
+      "Los cambios se guardan únicamente para tu cuenta.":["Changes are saved only for your account.","Değişiklikler yalnızca hesabınız için kaydedilir."],
+      "Lotes de reseñas":["Review batches","Yorum grupları"],
+      "Markets consultados":["App stores checked","Kontrol edilen uygulama mağazaları"],
+      "Mejorable":["Needs improvement","Geliştirilebilir"],
+      "Mensual":["Monthly","Aylık"],
+      "Movimientos":["Changes","Değişiklikler"],
+      "Movimientos que quieres recibir":["Changes you want to hear about","Bildirim almak istediğiniz değişiklikler"],
+      "Muestras de las últimas 3.000 filas de telemetría":["Samples from the last 3,000 telemetry rows","Son 3.000 telemetri satırından örnekler"],
+      "NPS de reseñas: diferencia entre el porcentaje de promotoras y detractoras, sobre todas las reseñas válidas del mes.":["Review NPS is the difference between promoter and detractor percentages across all valid reviews that month.","Yorum NPS'si, ayın geçerli yorumları arasındaki destekleyen ve eleştiren yorum yüzdelerinin farkıdır."],
+      "Newsletter":["Newsletter","Bülten"],
+      "Newsletters":["Newsletters","Bültenler"],
+      "Observaciones (opcional)":["Notes (optional)","Notlar (isteğe bağlı)"],
+      "Operación y selección inicial":["Operations and initial selection","Operasyon ve ilk seçim"],
+      "Panel de control":["Control panel","Kontrol paneli"],
+      "Pendiente":["Pending","Bekliyor"],
+      "Preparando tu configuración privada…":["Preparing your private settings…","Özel ayarlarınız hazırlanıyor…"],
+      "Privacidad":["Privacy","Gizlilik"],
+      "Privado para tu cuenta":["Private to your account","Hesabınıza özel"],
+      "Procesos operativos":["Operational jobs","Operasyon görevleri"],
+      "Procesos ordenados por prioridad. El supervisor reanuda las tareas pendientes.":["Jobs run in priority order. The supervisor resumes pending tasks.","Görevler öncelik sırasına göre çalışır. Denetleyici bekleyen görevleri sürdürür."],
+      "Programación de procesos":["Job schedules","Görev takvimi"],
+      "Programación operativa":["Operations schedule","Operasyon takvimi"],
+      "Prueba de comunicaciones":["Test communications","İletişim denemesi"],
+      "Pulso de adopción":["Adoption overview","Benimseme özeti"],
+      "Qué visitan":["What they visit","Ziyaret ettikleri sayfalar"],
+      "Rating consolidado: media ponderada con los pesos del catálogo o el volumen de valoraciones disponible. Si faltan ambos, se usa la media simple.":["Consolidated rating uses catalogue weights or available rating volumes. It uses a simple average if neither is available.","Konsolide puan, katalog ağırlıklarını veya mevcut puanlama sayısını kullanır. İkisi de yoksa aritmetik ortalamayı kullanır."],
+      "Reavisar mientras continúe la caída":["Repeat alerts while the decline continues","Düşüş sürerken uyarıları yinele"],
+      "Registro":["Log","Kayıt"],
+      "Registro de actividad":["Activity log","Etkinlik kaydı"],
+      "Registros recientes distintos de OK":["Recent entries other than OK","Son başarısız veya bekleyen kayıtlar"],
+      "Reglas de idioma":["Language rules","Dil kuralları"],
+      "Reseñas de 1 y 2 estrellas":["1- and 2-star reviews","1 ve 2 yıldızlı yorumlar"],
+      "Restaurar valores":["Restore defaults","Varsayılanları geri yükle"],
+      "Resumen diario":["Daily summary","Günlük özet"],
+      "Resumen ejecutivo independiente, enviado el día 1":["Separate executive summary sent on the first day","Ayın ilk günü gönderilen ayrı yönetici özeti"],
+      "Resumen ejecutivo independiente, enviado el día 1 de cada mes.":["A separate executive summary sent on the first day of each month.","Her ayın ilk günü ayrı bir yönetici özeti gönderilir."],
+      "Roja":["Red","Kırmızı"],
+      "Salud y newsletter":["Health and newsletter","Sistem durumu ve bülten"],
+      "Secciones":["Sections","Bölümler"],
+      "Secciones de Administración":["Administration sections","Yönetim bölümleri"],
+      "Sección favorita":["Favourite section","Favori bölüm"],
+      "Según suscripción":["Use subscription settings","Abonelik ayarlarını kullan"],
+      "Selecciona “Todos” o combina únicamente los mercados y plataformas que debe recibir esta cuenta.":["Choose “All” or select the markets and platforms for this account.","“Tümü”nü veya bu hesap için istediğiniz pazarları ve platformları seçin."],
+      "Semana contra semana":["Week over week","Haftalık değişim"],
+      "Sesiones frente a la semana anterior":["Sessions compared with the previous week","Önceki haftaya kıyasla oturumlar"],
+      "Señales que quieres recibir":["Alerts you want to receive","Almak istediğiniz uyarılar"],
+      "Sin actividad registrada":["No recorded activity","Kayıtlı etkinlik yok"],
+      "Solo eventos dirigidos a tu cuenta":["Events sent to your account only","Yalnızca hesabınıza gönderilen etkinlikler"],
+      "Solo si BBVA pierde posición":["Only if BBVA drops in the ranking","Yalnızca BBVA sıralamada gerilerse"],
+      "Solo si BBVA recupera posición":["Only if BBVA regains its position","Yalnızca BBVA sırasını geri alırsa"],
+      "Solo tú puedes ver y modificar esta configuración.":["Only you can view and change these settings.","Bu ayarları yalnızca siz görüntüleyebilir ve değiştirebilirsiniz."],
+      "Suscripciones del equipo":["Team subscriptions","Ekip abonelikleri"],
+      "Toda la base activa":["All active subscribers","Tüm etkin aboneler"],
+      "Todos los estados":["All statuses","Tüm durumlar"],
+      "Tu canal de señales":["Your alert channel","Uyarı kanalınız"],
+      "Umbral amarillo anual":["Year-to-date yellow threshold","Yılbaşından bugüne sarı eşik"],
+      "Umbral amarillo de la ventana mensual del día 15":["Mid-month yellow threshold","Ay ortası sarı eşik"],
+      "Umbral amarillo diario":["Daily yellow threshold","Günlük sarı eşik"],
+      "Umbral rojo anual":["Year-to-date red threshold","Yılbaşından bugüne kırmızı eşik"],
+      "Umbral rojo de la ventana mensual del día 15":["Mid-month red threshold","Ay ortası kırmızı eşik"],
+      "Umbral rojo diario":["Daily red threshold","Günlük kırmızı eşik"],
+      "Una, varias o todas":["One, several or all","Bir, birkaç veya tümü"],
+      "Uno, varios o todos":["One, several or all","Bir, birkaç veya tümü"],
+      "Uso de EDC Market Pulse":["EDC Market Pulse usage","EDC Market Pulse kullanımı"],
+      "Usuario":["User","Kullanıcı"],
+      "Usuarios activos":["Active users","Etkin kullanıcılar"],
+      "Usuarios con menor adopción":["Users with lower adoption","Daha düşük kullanıma sahip kullanıcılar"],
+      "Usuarios más activos":["Most active users","En etkin kullanıcılar"],
+      "Usuarios y sesiones de los últimos 14 días":["Users and sessions in the past 14 days","Son 14 gündeki kullanıcılar ve oturumlar"],
+      "Valor":["Value","Değer"],
+      "Valoración":["Feedback","Değerlendirme"],
+      "Ventana mensual":["Monthly window","Aylık dönem"],
+      "Vistas acumuladas del año":["Year-to-date views","Yılbaşından bu yana görüntülemeler"],
+      "amarilla":["yellow","sarı"],
+      "roja":["red","kırmızı"],
+      "listing Android compartido sin desglose fiable por geografía.":["shared Android listing with no reliable geographic breakdown.","coğrafyaya göre güvenilir dağılımı olmayan ortak Android mağaza kaydı."],
+      "· BBVA Banca de Empresas e Instituciones · Ratings y valoraciones públicas":["· BBVA Business and Institutional Banking · Public ratings and reviews","· BBVA Şirketler ve Kurumlar Bankacılığı · Herkese açık puanlar ve yorumlar"],
+      "Ámbito que quieres vigilar":["Scope to track","İzlemek istediğiniz kapsam"],
+      "Últimas 14":["Last 14","Son 14"],
+      "Últimas 20":["Last 20","Son 20"],
+      "Últimas ejecuciones":["Latest runs","Son çalıştırmalar"],
+      "Último rating frente a la observación anterior.":["Latest rating compared with the previous observation.","Son puanın önceki ölçümle karşılaştırması."],
+      "Último rating frente a la primera observación del año.":["Latest rating compared with the first observation of the year.","Son puanın yılın ilk ölçümüyle karşılaştırması."],
+      "Últimos 30":["Last 30","Son 30"],
+      "Últimos 6":["Last 6","Son 6"],
+      "Últimos cierres":["Latest closes","Son kapanışlar"],
+      "Útil":["Helpful","Yararlı"],
+      "“Todas” es exacto; varias coinciden con cualquiera.":["“All” matches exactly. Multiple selections match any selected option.","“Tümü” tam eşleşmedir. Birden fazla seçimde seçilen değerlerden herhangi biri eşleşebilir."],
+      "“Todos” es exacto; varios mercados coinciden con cualquiera.":["“All” matches exactly. Multiple markets match any selected market.","“Tümü” tam eşleşmedir. Birden fazla pazarda seçilen pazarlardan herhangi biri eşleşebilir."],
+      "EDC Market Pulse no ha respondido a tiempo. Reintenta la carga.":["EDC Market Pulse did not respond in time. Try loading it again.","EDC Market Pulse zamanında yanıt vermedi. Yeniden yüklemeyi deneyin."],
+      "No hemos podido iniciar EDC Market Pulse":["We couldn't start EDC Market Pulse","EDC Market Pulse başlatılamadı"],
+      "El servidor ha devuelto una respuesta incompleta. Actualiza el despliegue de EDC Market Pulse.":["The server returned an incomplete response. Update the EDC Market Pulse deployment.","Sunucu eksik yanıt verdi. EDC Market Pulse dağıtımını güncelleyin."],
       "Todas las aplicaciones del país":["All apps in this country","Ülkedeki tüm uygulamalar"],
       "Sin aplicaciones":["No apps","Uygulama yok"],
       "Cargando brechas y ejemplos":["Loading gaps and examples","Farklar ve örnekler yükleniyor"],
@@ -38,11 +241,17 @@
       "Explora la evolución anual de las valoraciones y reseñas sobre los canales digitales de banca de empresas e instituciones. Compara tendencias y niveles de satisfacción, identifica patrones de sentimiento y profundiza en los principales indicadores, las reseñas más relevantes y la participación de los usuarios.":["Explore annual ratings and reviews of digital channels for business and institutional banking. Compare trends and satisfaction, identify sentiment patterns and examine key metrics, top reviews and user participation.","İşletme ve kurumsal bankacılık kanallarının yıllık puan ve yorumlarını inceleyin. Trendleri ve memnuniyeti karşılaştırın, duygu örüntülerini, temel göstergeleri, öne çıkan yorumları ve kullanıcı katılımını keşfedin."],
       "Ejemplos del mes en curso":["Examples from this month","Bu aydan örnekler"],
       "Ejemplos del mes seleccionado":["Examples from the selected month","Seçilen aydan örnekler"],
+      "en el acumulado del año hasta la fecha":["year to date","yılbaşından bugüne"],
+      "en {year}":["in {year}","{year} yılında"],
+      "Evolución del rating {period}":["Rating trend {period}","Puan seyri, {period}"],
+      "Evolución del NPS de reseñas {period}":["Review NPS trend {period}","Yorum NPS seyri, {period}"],
+      "Indicadores del acumulado del año hasta la fecha":["Year-to-date metrics","Yılbaşından bugüne göstergeler"],
+      "Indicadores de {year}":["{year} metrics","{year} göstergeleri"],
+      "Bloque funcional más frecuente {period}: {block} · {count} reseñas":["Most frequent functional block {period}: {block} · {count} reviews","En sık görülen işlev grubu, {period}: {block} · {count} yorum"],
       "Indicadores del periodo":["Period metrics","Dönem göstergeleri"],
       "NPS de reseñas":["Review NPS","Yorum NPS'si"],
-      "Comentarios":["Audience","Hedef kitle"],
-      "BEI":["BEI","BEI"],
-      "BEI incluye reseñas empresariales y experiencias funcionales útiles sin evidencia de uso exclusivamente personal.":["BEI includes business reviews and useful functional experiences without evidence of exclusively personal use.","BEI, işletme yorumlarını ve yalnızca kişisel kullanıma dair kanıt bulunmayan yararlı işlevsel deneyimleri içerir."],
+      "BEI":["B&I","ŞKB"],
+      "BEI incluye reseñas empresariales y experiencias funcionales útiles sin evidencia de uso exclusivamente personal.":["B&I includes business reviews and useful feedback about features with no evidence of exclusively personal use.","ŞKB, işletme yorumlarını ve yalnızca kişisel kullanıma dair kanıt bulunmayan yararlı işlevsel deneyimleri içerir."],
       "NPS: {current} ({dates}) · Mes anterior: {previous} ({previousDates}) · Variación: {delta}":["NPS: {current} ({dates}) · Previous month: {previous} ({previousDates}) · Change: {delta}","NPS: {current} ({dates}) · Önceki ay: {previous} ({previousDates}) · Değişim: {delta}"],
       "Reseñas del año anterior":["Reviews from the previous year","Önceki yılın yorumları"],
       "Reseñas del año seleccionado":["Reviews from the selected year","Seçilen yılın yorumları"],
@@ -110,6 +319,8 @@
       "Reseñas contestadas":["Reviews with replies","Yanıtlanan yorumlar"],
       "Reseñas más útiles":["Most helpful reviews","En yararlı yorumlar"],
       "Personas con más reseñas":["Most active reviewers","En çok yorum yapanlar"],
+      "Personas con más reseñas del acumulado del año hasta la fecha":["Most active reviewers year to date","Yılbaşından bugüne en çok yorum yapanlar"],
+      "Personas con más reseñas de {year}":["Most active reviewers in {year}","{year} yılında en çok yorum yapanlar"],
       "Al menos {count} votos útiles":["At least {count} helpful votes","En az {count} yararlı oyu"],
       "Sin autores identificados.":["No identified reviewers.","Kimliği belli yorumcu yok."],
       "Sin reseñas con suficientes votos.":["No reviews with enough votes.","Yeterli oy alan yorum yok."],
@@ -118,6 +329,10 @@
       "Sin reseñas en el periodo reciente.":["No reviews in the recent period.","Yakın dönemde yorum yok."],
       "Ver reseñas del mes anterior":["View previous month’s reviews","Önceki ayın yorumlarını görüntüle"],
       "Bloque":["Block","Grup"],
+      "Reseñas del bloque":["Reviews in the block","Gruptaki yorumlar"],
+      "{total} reseñas ({assigned} con geografía inferida o validada)":["{total} reviews ({assigned} with inferred or verified geography)","{total} yorum ({assigned} yorumun coğrafyası çıkarıldı veya doğrulandı)"],
+      "Geografía inferida o validada":["Inferred or verified geography","Çıkarılan veya doğrulanan coğrafya"],
+      "Periodo reciente: {dates}. Los recuentos usan el sentimiento seleccionado. Una reseña puede pertenecer a varios bloques; sus pesos pueden sumar más del 100 %.":["Recent period: {dates}. Counts use the selected sentiment. A review can belong to more than one block, so the shares may add up to over 100%.","Yakın dönem: {dates}. Sayımlar seçilen duyguya göredir. Bir yorum birden fazla gruba ait olabilir, bu yüzden oranların toplamı %100’ü aşabilir."],
       "Peso en la muestra":["Share of sample","Örneklem payı"],
       "Total reseñas":["Total reviews","Toplam yorum"],
       "Reseñas detractoras":["Detractor reviews","Eleştiren yorumlar"],
@@ -156,7 +371,7 @@
       "No hay reseñas para esta selección.":["No reviews match this selection.","Bu seçimle eşleşen yorum yok."],
       "No hay reseñas para este ámbito.":["No reviews in this selection.","Bu seçimde yorum yok."],
       "Filtros ajustados":["Filters updated","Filtreler güncellendi"],
-      "Preparando Market Pulse…":["Preparing Market Pulse…","Market Pulse hazırlanıyor…"],
+      "Preparando EDC Market Pulse…":["Preparing EDC Market Pulse…","EDC Market Pulse hazırlanıyor…"],
       "Reintentar":["Try again","Tekrar dene"],
       "Cerrar":["Close","Kapat"],
       "Cargando":["Loading","Yükleniyor"],
@@ -326,7 +541,7 @@
       const send=attempt=>{
         const retry=()=>{
           if(attempt<3)setTimeout(()=>send(attempt+1),500*2**(attempt-1));
-          else showToast("No se pudo registrar el acceso desde la newsletter. Recarga la página para reintentar.",false);
+          else showToast("No se pudo registrar el acceso desde el correo. Recarga la página para reintentar.",false);
         };
         google.script.run.withSuccessHandler(result=>{
           if(result?.open)delete document.body.dataset.newsletterOpen;
@@ -365,12 +580,12 @@
       dialog.showModal();
     }
 
-    function initializeApp(){try{document.addEventListener("visibilitychange",recordNewsletterOpen);document.addEventListener("prerenderingchange",recordNewsletterOpen);recordNewsletterOpen();window.addEventListener("error",event=>trackUsage("ERROR",state.view,"RUNTIME_ERROR",event.message));window.addEventListener("unhandledrejection",event=>trackUsage("ERROR",state.view,"PROMISE_REJECTION",event.reason?.message||event.reason));$("view-benchmark").querySelector(".report-slot").append($("report-control").content);bindNavigation();bindFilters();bindInteractions();initializeLanguage();if(document.body.dataset.initialView==="alerts")activateView("alerts");document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="hidden")flushUsage()});const viewportChanged=()=>{syncViewControls();if(state.meta&&state.view==="evolution"){renderEvolution();resizeReviewBalance?.()}};if(typeof mobileViewport.addEventListener==="function")mobileViewport.addEventListener("change",viewportChanged);else if(typeof mobileViewport.addListener==="function")mobileViewport.addListener(viewportChanged);$("dialog-close").innerHTML=U.icon("close");$("loader-retry").addEventListener("click",loadBootstrap);loadBootstrap();openEmailFeedback()}catch(error){showStartupFailure(error)}}
+    function initializeApp(){try{document.addEventListener("visibilitychange",recordNewsletterOpen);document.addEventListener("prerenderingchange",recordNewsletterOpen);recordNewsletterOpen();window.addEventListener("error",event=>trackUsage("ERROR",state.view,"RUNTIME_ERROR",event.message));window.addEventListener("unhandledrejection",event=>trackUsage("ERROR",state.view,"PROMISE_REJECTION",event.reason?.message||event.reason));$("view-benchmark").querySelector(".report-slot").append($("report-control").content);bindNavigation();bindFilters();bindInteractions();initializeLanguage();if(document.body.dataset.initialView==="alerts")activateView("alerts");document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="hidden")flushUsage()});const viewportChanged=()=>{syncViewControls();if(state.meta&&state.view==="evolution")renderEvolution();if(state.view==="analytics")resizeReviewBalance?.()};if(typeof mobileViewport.addEventListener==="function")mobileViewport.addEventListener("change",viewportChanged);else if(typeof mobileViewport.addListener==="function")mobileViewport.addListener(viewportChanged);$("dialog-close").innerHTML=U.icon("close");$("loader-retry").addEventListener("click",loadBootstrap);loadBootstrap();openEmailFeedback()}catch(error){showStartupFailure(error)}}
 
-    function serverTimeoutMs(method){return ["admin:ratings:recover","admin:jobs:run"].includes(method)?360000:method==="admin:newsletter:test"?120000:method==="bootstrap"?60000:(method.startsWith("admin:reviews:")||method.startsWith("review:")||method==="trends")?60000:method==="admin:get"?30000:20000}
+    function serverTimeoutMs(method){return method==="admin:newsletter:test"?120000:method==="bootstrap"?60000:(method.startsWith("review:")||method==="trends")?60000:method==="admin:get"?30000:20000}
     let activeRpc=0;
-    function callServer(method,argument){
-      const started=performance.now(), view=state.view;
+    function callServer(method,argument,snapshotOnly=false){
+      const started=performance.now(), view=state.view, operation=snapshotOnly?method+":prefetch":method;
       return new Promise((resolve,reject)=>{
         if(!window.google?.script?.run)return reject(new Error("El dashboard debe abrirse desde el despliegue de Apps Script."));
         activeRpc++;
@@ -380,20 +595,23 @@
           settled=true;
           activeRpc--;
           window.clearTimeout(timer);
-          trackUsage("PERFORMANCE",view,method,`RPC ${Math.round(performance.now()-started)} ${outcome}`);
+          trackUsage("PERFORMANCE",view,operation,`RPC ${Math.round(performance.now()-started)} ${outcome}`);
           if(outcome==="OK"){
             const timing=value?.timing;
             if(["cache","snapshot","sheet"].includes(timing?.source)&&Number.isFinite(timing.durationMs)){
-              trackUsage("PERFORMANCE",view,method,`SERVER_${timing.source.toUpperCase()} ${Math.round(timing.durationMs)} OK`);
+              trackUsage("PERFORMANCE",view,operation,`SERVER_${timing.source.toUpperCase()} ${Math.round(timing.durationMs)} OK`);
+              const phases=["readMs","classificationMs","aggregateMs","cacheMs","serializationMs","read","classified","returned","input","payloadCharacters"];
+              const metrics=phases.filter(key=>Number.isFinite(timing[key])).map(key=>key+"="+Math.round(timing[key]));
+              if(metrics.length)trackUsage("PERFORMANCE",view,operation,"PHASES "+metrics.join(" "));
             }
             resolve(value);
           }
           else reject(new Error(value?.message||value));
         };
-        const timer=window.setTimeout(()=>finish("TIMEOUT")("Market Pulse no ha respondido a tiempo. Reintenta la carga."),serverTimeoutMs(method));
+        const timer=window.setTimeout(()=>finish("TIMEOUT")(translate("EDC Market Pulse no ha respondido a tiempo. Reintenta la carga.")),serverTimeoutMs(method));
         try{
           const runner=google.script.run.withSuccessHandler(finish("OK")).withFailureHandler(finish("ERROR"));
-          if(method==="bootstrap")runner.getMarketsDashboardBootstrap();else if(method==="user:context")runner.getMarketsUserContext();else if(method==="admin:get")runner.getMarketsAdminDashboard(false);else if(method==="admin:business:refresh")runner.refreshMarketsAdminFunctionalCatalog();else if(method==="admin:business")runner.getMarketsBusinessCatalog(argument,appLanguage);else if(method==="admin:business:save")runner.saveMarketsBusinessCatalogEntry(argument);else if(method==="admin:newsletter:feedback-state")runner.setMarketsNewsletterFeedbackState(argument.id,argument.state);else if(method==="admin:newsletter:interactions")runner.getMarketsNewsletterInteractions(argument.kind,argument.period,argument.vote,argument.status,argument.start,argument.end);else if(method==="admin:subscriber:save")runner.saveMarketsAdminSubscriber(argument.email,argument.preferences);else if(method==="admin:newsletter:test")runner.sendMarketsAdminNewsletterTestEmail(argument);else if(method==="admin:jobs:run")runner.runMarketsPanelJob(argument);else if(method==="admin:jobs:interval")runner.configureMarketsReviewSupervisor(argument);else if(method==="admin:jobs:settings")runner.saveMarketsReviewJobSettings(argument.id,argument.config);else if(method==="admin:jobs:folder")runner.saveMarketsStorageFolder(argument.kind,argument.id);else if(method==="admin:reviews:restart")runner.requestMarketsReviewPipeline();else if(method==="admin:reviews:options")runner.getMarketsReviewRecoveryOptions();else if(method==="admin:reviews:coverage")runner.getMarketsReviewCoverage(argument);else if(method==="admin:reviews:recover")runner.runMarketsReviewRecovery(argument);else if(method==="admin:reviews:close")runner.closeMarketsReviewRecovery();else if(method==="admin:ratings:recover")runner.requestMarketsAdminRatingRecovery();else if(method==="reviews:segments")runner.getMarketsReviewSegments();else if(method==="reviews")runner.getMarketsReviews(argument);else if(method==="review:page")runner.getMarketsReviewPage(argument);else if(method==="review:export")runner.getMarketsReviewExport(argument);else if(method==="review:analytics")runner.getMarketsReviewAnalytics(argument);else if(method==="admin:usage")runner.getMarketsAdminUsage();else if(method==="performance")runner.getMarketsPerformance();else if(method==="trends")runner.getMarketsDashboardTrends(argument);else if(method==="alerts:get")runner.getMarketsAlertPreferences();else if(method==="alerts:save")runner.saveMarketsAlertPreferences(argument);else if(method==="alerts:reset")runner.resetMarketsAlertPreferences();else if(method==="alerts:test")runner.sendMarketsAlertTestEmail();else finish("ERROR")(new Error("Operación no soportada: "+method));
+          if(method==="bootstrap")runner.getMarketsDashboardBootstrap();else if(method==="user:context")runner.getMarketsUserContext();else if(method==="admin:get")runner.getMarketsAdminDashboard(false);else if(method==="admin:jobs:status")runner.getMarketsAdminPanelJobs();else if(method==="admin:business:refresh")runner.refreshMarketsAdminFunctionalCatalog();else if(method==="admin:business")runner.getMarketsBusinessCatalog(argument,appLanguage);else if(method==="admin:business:save")runner.saveMarketsBusinessCatalogEntry(argument);else if(method==="admin:newsletter:feedback-state")runner.setMarketsNewsletterFeedbackState(argument.id,argument.state);else if(method==="admin:newsletter:interactions")runner.getMarketsNewsletterInteractions(argument.kind,argument.period,argument.vote,argument.status,argument.start,argument.end);else if(method==="admin:subscriber:save")runner.saveMarketsAdminSubscriber(argument.email,argument.preferences);else if(method==="admin:newsletter:test")runner.sendMarketsAdminNewsletterTestEmail(argument);else if(method==="admin:jobs:run")runner.runMarketsPanelJob(argument);else if(method==="admin:jobs:interval")runner.configureMarketsReviewSupervisor(argument);else if(method==="admin:jobs:settings")runner.saveMarketsReviewJobSettings(argument.id,argument.config);else if(method==="admin:jobs:folder")runner.saveMarketsStorageFolder(argument.kind,argument.id);else if(method==="admin:reviews:restart")runner.requestMarketsReviewPipeline();else if(method==="admin:ratings:recover")runner.requestMarketsAdminRatingRecovery();else if(method==="reviews:segments")runner.getMarketsReviewSegments();else if(method==="reviews")runner.getMarketsReviews(argument);else if(method==="review:page")runner.getMarketsReviewPage(argument,snapshotOnly);else if(method==="review:export")runner.getMarketsReviewExport(argument);else if(method==="review:analytics")runner.getMarketsReviewAnalytics(argument,snapshotOnly);else if(method==="review:nps")runner.getMarketsReviewNps(argument,snapshotOnly);else if(method==="admin:usage")runner.getMarketsAdminUsage();else if(method==="performance")runner.getMarketsPerformance();else if(method==="trends")runner.getMarketsDashboardTrends(argument,snapshotOnly);else if(method==="alerts:get")runner.getMarketsAlertPreferences();else if(method==="alerts:save")runner.saveMarketsAlertPreferences(argument);else if(method==="alerts:reset")runner.resetMarketsAlertPreferences(argument);else finish("ERROR")(new Error("Operación no soportada: "+method));
         }catch(error){finish("ERROR")(error)}
       });
     }
@@ -401,8 +619,10 @@
     const reviewRequests=new Map(), reviewResponses=new Map();
     const reviewResponseTtl=120000;
     let monthlyReviewLoadedAt=0;
-    function fetchReviewData(method,scope){
-      const key=JSON.stringify([method,Object.keys(scope).sort().map(field=>[field,scope[field]])]);
+    const reviewResponseKey=(method,scope)=>JSON.stringify([method,Object.keys(scope).sort().map(field=>[field,scope[field]])]);
+    const hasReviewResponse=(method,scope)=>reviewResponses.get(reviewResponseKey(method,scope))?.expires>Date.now();
+    function fetchReviewData(method,scope,snapshotOnly=false){
+      const key=reviewResponseKey(method,scope);
       const hit=reviewResponses.get(key);
       if(hit&&hit.expires>Date.now()){
         reviewResponses.delete(key);
@@ -413,14 +633,16 @@
       reviewResponses.delete(key);
       if(reviewRequests.has(key)){
         trackUsage("PERFORMANCE",state.view,method,"SHARED 0 OK");
-        return reviewRequests.get(key);
+        const {promise,prefetch}=reviewRequests.get(key);
+        return snapshotOnly||!prefetch?promise:promise.then(value=>value??fetchReviewData(method,scope),()=>fetchReviewData(method,scope));
       }
-      const request=callServer(method,scope).then(value=>{
+      const request=callServer(method,scope,snapshotOnly).then(value=>{
+        if(value==null)return null;
         reviewResponses.set(key,{value,expires:Date.now()+reviewResponseTtl});
         if(reviewResponses.size>32)reviewResponses.delete(reviewResponses.keys().next().value);
         return value;
       }).finally(()=>reviewRequests.delete(key));
-      reviewRequests.set(key,request);
+      reviewRequests.set(key,{promise:request,prefetch:snapshotOnly});
       return request;
     }
     function trackReady(view,operation,started){
@@ -430,9 +652,9 @@
         }
       }));
     }
-    function validateBootstrap(data){if(!data||!data.meta||!Array.isArray(data.snapshot)||!Array.isArray(data.trends))throw new Error("El servidor ha devuelto una respuesta incompleta. Actualiza el despliegue de Market Pulse.");return data}
-    async function loadBootstrap(){if(state.bootstrapLoading)return;state.bootstrapLoading=true;const loader=$("loader");loader.classList.remove("done","failed");$("loader-title").textContent="Preparando Market Pulse…";$("loader-detail").classList.add("hidden");$("loader-retry").classList.add("hidden");try{const data=validateBootstrap(await callServer("bootstrap"));state.meta=data.meta;state.userContext=data.userContext||{email:"",isAdmin:false};if(Array.isArray(data.reviewSegments)){state.reviewSegments=data.reviewSegments;reviewSegments=Promise.resolve(data.reviewSegments)}state.snapshot=data.snapshot;benchmarkModels.clear();state.trends=data.trends;state.consolidated=data.consolidated||null;state.trendsLoading=false;state.trendCache.clear();state.trendCache.set("ALL|ALL|ALL|BBVA|18",state.trends);state.country=browserMarket();if(state.country==="ALL")state.country=data.meta.countries.find(item=>item.code==="ES")?.code||data.meta.countries[0]?.code;configureAdminNavigation();renderRunStatus();renderDashboard();startUsageTracking();$("footer-version").textContent=`Contrato ${data.meta.codeVersion} · Web ${data.meta.webVersion||"1"}`;loader.classList.add("done")}catch(error){showStartupFailure(error)}finally{state.bootstrapLoading=false}}
-    function showStartupFailure(error){const loader=$("loader");if(!loader)return;loader.classList.remove("done");loader.classList.add("failed");$("loader-title").textContent="No hemos podido iniciar Market Pulse";$("loader-detail").textContent=error?.message||String(error);$("loader-detail").classList.remove("hidden");$("loader-retry").classList.remove("hidden")}
+    function validateBootstrap(data){if(!data||!data.meta||!Array.isArray(data.snapshot)||!Array.isArray(data.trends))throw new Error(translate("El servidor ha devuelto una respuesta incompleta. Actualiza el despliegue de EDC Market Pulse."));return data}
+    async function loadBootstrap(){if(state.bootstrapLoading)return;state.bootstrapLoading=true;const loader=$("loader");loader.classList.remove("done","failed");$("loader-title").textContent="Preparando EDC Market Pulse…";$("loader-detail").classList.add("hidden");$("loader-retry").classList.add("hidden");try{const data=validateBootstrap(await callServer("bootstrap"));state.meta=data.meta;state.userContext=data.userContext||{email:"",isAdmin:false};if(Array.isArray(data.reviewSegments)){state.reviewSegments=data.reviewSegments;reviewSegments=Promise.resolve(data.reviewSegments)}state.snapshot=data.snapshot;benchmarkModels.clear();state.trends=data.trends;state.consolidated=data.consolidated||null;state.trendsLoading=false;state.trendCache.clear();state.trendCache.set("ALL|ALL|ALL|BBVA|18",state.trends);state.country=browserMarket();if(state.country==="ALL")state.country=data.meta.countries.find(item=>item.code==="ES")?.code||data.meta.countries[0]?.code;configureAdminNavigation();renderRunStatus();renderDashboard();startUsageTracking();$("footer-version").textContent=`Contrato ${data.meta.codeVersion} · Web ${data.meta.webVersion||"1"}`;loader.classList.add("done");warmViewsAfterBootstrap()}catch(error){showStartupFailure(error)}finally{state.bootstrapLoading=false}}
+    function showStartupFailure(error){const loader=$("loader");if(!loader)return;loader.classList.remove("done");loader.classList.add("failed");$("loader-title").textContent="No hemos podido iniciar EDC Market Pulse";$("loader-detail").textContent=error?.message||String(error);$("loader-detail").classList.remove("hidden");$("loader-retry").classList.remove("hidden")}
 
     let usageSession="";
     function usageSessionId(){
@@ -498,8 +720,7 @@
     }
     function activateView(view){if(view==="admin"&&!state.userContext?.isAdmin)return;const changed=state.view!==view;if(changed){
       radarFilters[state.view]?.close();
-      if(state.view==="evolution"&&monthlyReviewsLoading){evolutionRender=null;resetMonthlyReviews()}
-    }state.view=view;document.querySelectorAll(".nav-button").forEach(item=>{const active=item.dataset.view===view;item.classList.toggle("active",active);if(active)item.setAttribute("aria-current","page");else item.removeAttribute("aria-current")});document.querySelectorAll(".view").forEach(item=>item.classList.toggle("hidden",item.id!==`view-${view}`));syncViewControls();if(changed)trackUsage("VIEW",view,"OPEN_VIEW");if(view==="benchmark")renderBenchmark();if(view==="evolution")loadTrends();if(view==="alerts")loadAlerts();if(view==="admin")loadAdmin();if(view==="reviews")loadReviews();if(view==="analytics")loadAnalytics()}
+    }state.view=view;document.querySelectorAll(".nav-button").forEach(item=>{const active=item.dataset.view===view;item.classList.toggle("active",active);if(active)item.setAttribute("aria-current","page");else item.removeAttribute("aria-current")});document.querySelectorAll(".view").forEach(item=>item.classList.toggle("hidden",item.id!==`view-${view}`));syncViewControls();if(changed)trackUsage("VIEW",view,"OPEN_VIEW");if(view==="benchmark")renderBenchmark();if(view==="evolution")loadTrends();if(view==="alerts")loadAlerts();if(view==="admin")loadAdmin();if(view==="reviews")loadReviews(reviewPage);if(view==="analytics")loadAnalytics()}
     function syncViewControls(){
       const slot=mobileViewport.matches?null:$(`view-${state.view}`).querySelector(".report-slot");
       if(slot)slot.append($("report-button"));
@@ -513,17 +734,13 @@
       bindOptional("admin-business-form","submit",saveAdminBusiness);
       bindOptional("admin-business-cancel","click",()=>$("admin-business-dialog").close());
 
-      bindOptional("admin-review-recovery","toggle",loadReviewRecoveryOptions);
-      bindOptional("admin-review-recovery-mode","change",syncReviewRecoveryMode);
-      bindOptional("admin-review-recovery-form","submit",submitReviewRecovery);
-      bindOptional("admin-review-recovery-close","click",closeReviewRecovery);
       $("review-enabled").addEventListener("change",syncAlertRuleInputs);
       bindRadarFilters();
       bindEvolutionFilters();
     }
     function bindInteractions(){
       $("incident-button").addEventListener("click",()=>$("incident-dialog").showModal());$("dialog-close").addEventListener("click",()=>$("incident-dialog").close());$("report-button").addEventListener("click",downloadReport);
-      $("alert-form").addEventListener("submit",saveAlerts);$("alert-reset-button").addEventListener("click",resetAlerts);$("alert-test-button").addEventListener("click",testAlerts);$("alert-country-scope").addEventListener("change",handleAlertScopeChange);$("alert-platform-scope").addEventListener("change",handleAlertScopeChange);$("alert-active").addEventListener("change",markAlertsDirty);$("newsletter-enabled").addEventListener("change",markAlertsDirty);["daily","mtd","ytd"].forEach(period=>$(period+"-enabled").addEventListener("change",()=>{syncAlertRuleInputs();markAlertsDirty()}));$("repeat-enabled").addEventListener("change",markAlertsDirty);$("crossover-enabled").addEventListener("change",()=>{syncAlertRuleInputs();markAlertsDirty()});$("alert-form").addEventListener("input",event=>{if(event.target.matches("input,select"))markAlertsDirty()});
+      $("alert-form").addEventListener("submit",saveAlerts);$("alert-reset-button").addEventListener("click",resetAlerts);$("alert-country-scope").addEventListener("change",handleAlertScopeChange);$("alert-platform-scope").addEventListener("change",handleAlertScopeChange);$("alert-active").addEventListener("change",markAlertsDirty);$("newsletter-enabled").addEventListener("change",markAlertsDirty);["daily","mtd","ytd"].forEach(period=>$(period+"-enabled").addEventListener("change",()=>{syncAlertRuleInputs();markAlertsDirty()}));$("repeat-enabled").addEventListener("change",markAlertsDirty);$("crossover-enabled").addEventListener("change",()=>{syncAlertRuleInputs();markAlertsDirty()});$("alert-form").addEventListener("input",event=>{if(event.target.matches("input,select"))markAlertsDirty()});
       document.addEventListener("error",event=>{if(event.target.matches?.(".app-logo img"))event.target.parentElement.classList.add("logo-error")},true);
       document.addEventListener("pointerover",event=>{const point=event.target.closest?.("#annual-chart .chart-point");if(point)showChartTooltip(point,event)});document.addEventListener("pointermove",event=>{if(!$("chart-tooltip").classList.contains("hidden"))positionTooltip(event.clientX,event.clientY)});document.addEventListener("pointerout",event=>{if(event.target.closest?.("#annual-chart .chart-point"))hideChartTooltip()});document.addEventListener("focusin",event=>{const point=event.target.closest?.("#annual-chart .chart-point");if(point){const box=point.getBoundingClientRect();showChartTooltip(point,{clientX:box.left+box.width/2,clientY:box.top})}});document.addEventListener("focusout",event=>{if(event.target.closest?.("#annual-chart .chart-point"))hideChartTooltip()});
     }
@@ -545,7 +762,8 @@
         else renderDashboard();
       });
     }
-    function trendRequest(){return{countryCode:state.country==="ALL"?"":state.country,platform:"",segment:"ALL",months:36,bbvaOnly:false}}
+    const annualTrendRequest=({country})=>({countryCode:country==="ALL"?"":country,platform:"",segment:"ALL",months:36,bbvaOnly:false});
+    function trendRequest(){return annualTrendRequest(state)}
     function trendKey(request){return[request.countryCode||"ALL",request.platform||"ALL",request.segment,request.bbvaOnly?"BBVA":"ALL",request.months].join("|")}
     const trendRequests=new Map();
     function cachedTrendRows(request){
@@ -556,20 +774,23 @@
       const broad=state.trendCache.get(broadKey);
       return broad?.filter(row=>row.countryCode===request.countryCode);
     }
-    function fetchTrends(request){
+    function fetchTrends(request,snapshotOnly=false){
       const key=trendKey(request), cached=cachedTrendRows(request);
       if(cached)return Promise.resolve(cached);
-      const broadPending=request.countryCode&&trendRequests.get(trendKey({...request,countryCode:""}));
-      if(broadPending)return broadPending.then(rows=>rows.filter(row=>row.countryCode===request.countryCode),()=>fetchTrends(request));
-      if(!trendRequests.has(key)){
-        const pending=callServer("trends",request).then(rows=>{
-          state.trendCache.set(key,rows||[]);
-          if(state.trendCache.size>24)state.trendCache.delete(state.trendCache.keys().next().value);
-          return state.trendCache.get(key);
-        }).finally(()=>trendRequests.delete(key));
-        trendRequests.set(key,pending);
-      }
-      return trendRequests.get(key);
+      const broad=request.countryCode&&trendRequests.get(trendKey({...request,countryCode:""}));
+      if(broad)return broad.promise.then(rows=>rows?rows.filter(row=>row.countryCode===request.countryCode)
+        :snapshotOnly?null:fetchTrends(request),()=>snapshotOnly?null:fetchTrends(request));
+      const existing=trendRequests.get(key);
+      if(existing)return snapshotOnly||!existing.prefetch?existing.promise:
+        existing.promise.then(rows=>rows??fetchTrends(request),()=>fetchTrends(request));
+      const promise=callServer("trends",request,snapshotOnly).then(rows=>{
+        if(rows==null)return null;
+        state.trendCache.set(key,rows);
+        if(state.trendCache.size>24)state.trendCache.delete(state.trendCache.keys().next().value);
+        return rows;
+      }).finally(()=>trendRequests.delete(key));
+      trendRequests.set(key,{promise,prefetch:snapshotOnly});
+      return promise;
     }
     async function loadTrends(){
       const started=performance.now();
@@ -600,10 +821,43 @@
     const evolutionContext=()=>selectionContext(trendScope());
 
     function marketLinkAttributes(item,code){const store=D.config.storeLabels[item.platform]||"market",country=countryLabel(code||item.countryCode);return` href="${U.esc(item.storeUrl)}" target="_blank" rel="noopener noreferrer" title="Abrir ficha web de ${U.esc(store)} para ${U.esc(country)}" aria-label="Abrir ${U.esc(store)} web: ${U.esc(D.appName(item))}, ${U.esc(country)}, rating ${fmt(item.rating,2)}"`}
-    function renderMonthlyMatrix(period,trends){if(state.trendsLoading){$("monthly-shared-note").classList.add("hidden");$("monthly-matrix-meta").textContent="Actualizando cierres";$("monthly-matrix").innerHTML=U.loading("Preparando el pulso mensual","La serie se servirá desde la caché compartida.");return}const model=D.monthlyRatingMatrix(trends,state.snapshot,{...selection(),app:state.evolutionApp},period,mobileViewport.matches?3:6);$("monthly-shared-note").classList.toggle("hidden",!model.hasSharedAndroid);$("monthly-matrix-meta").textContent=model.periods.length?`${model.periods.length} cierres hasta ${monthLabel(model.periods.at(-1))} · ${D.config.platformLabels.ALL}`:"Sin cierres";$("monthly-matrix").innerHTML=C.monthlyMatrix(model,{format:fmt,integer,compactInteger,monthLabel,signed,showScopes:state.country==="ALL"});
-      setExportSheet("evolution","Pulso mensual",state.country,[["Mes de cierre",period],["Aplicación",state.evolutionApp]],
-        ["Mes","Rating consolidado","Variación",...model.platforms.flatMap(platform=>[`Rating ${platform}`,`Reseñas ${platform}`])],
-        model.rows.flatMap(row=>row.cells.map(cell=>[cell.month,cell.rating,cell.delta,...cell.platforms.flatMap(item=>[item.rating,item.value])])))}
+    let monthlyPulse;
+    function monthlyReviewScope(analysisMonth){
+      return {...selection(),analysisMonth,audience:monthlyFilters.audience,
+        inferGeography:monthlyFilters.inferGeography,entity:state.evolutionApp,language:appLanguage};
+    }
+    function renderMonthlyMatrix(period,trends){
+      if(state.trendsLoading){
+        $("monthly-shared-note").classList.add("hidden");
+        $("monthly-matrix-meta").textContent="Actualizando cierres";
+        $("monthly-matrix").innerHTML=U.loading("Preparando el pulso mensual","");
+        return;
+      }
+      const selected={...selection(),app:state.evolutionApp};
+      const model=D.monthlyRatingMatrix(trends,state.snapshot,selected,period,mobileViewport.matches?2:6,mobileViewport.matches);
+      const npsReady=monthlyPulse?.key===JSON.stringify(monthlyReviewScope(period));
+
+      const points=new Map((npsReady?monthlyPulse.points:[]).map(row=>[row.country+"|"+row.month,row]));
+      for(const row of model.rows)for(const cell of row.cells){
+        const point=points.get(row.countryCode+"|"+cell.month);
+        cell.nps=point?.balance??null;
+        if(point)cell.npsSample=reviewNpsSample(point);
+        const previous=points.get(row.countryCode+"|"+D.previousCalendarMonth(cell.month))?.balance;
+        cell.npsDelta=D.finite(cell.nps)&&D.finite(previous)?cell.nps-previous:null;
+      }
+      $("monthly-shared-note").classList.toggle("hidden",!model.hasSharedAndroid);
+      $("monthly-matrix-meta").textContent=model.periods.length?`${model.periods.length} meses hasta ${monthLabel(model.periods.at(-1))} · ${D.config.platformLabels.ALL}`:"Sin cierres";
+      $("monthly-matrix").innerHTML=C.monthlyMatrix(model,{format:fmt,integer,compactInteger,monthLabel,signed,npsReady:npsReady||!state.evolutionApp,
+        showScopes:state.country==="ALL"});
+      const columns=["Mes","Rating consolidado","Variación","NPS de reseñas (pp)","Variación NPS (pp)",
+        ...model.platforms.flatMap(platform=>[`Rating ${platform}`,`Valoraciones ${platform}`])];
+      setExportSheet("evolution","Pulso mensual",state.country,
+        [["Mes de cierre",period],["Aplicación",state.evolutionApp],["Comentarios",reviewFilterLabel("audience",monthlyFilters.audience)],
+          ["Inferir datos",reviewFilterLabel("inferGeography",monthlyFilters.inferGeography)]],
+        state.country==="ALL"?["Geografía",...columns]:columns,
+        model.rows.flatMap(row=>row.cells.map(cell=>[...(state.country==="ALL"?[row.country]:[]),cell.month,cell.rating,cell.delta,
+          cell.nps,cell.npsDelta,...cell.platforms.flatMap(item=>[item.rating,item.value])])));
+    }
     function renderNewReviewImpact(period,trends){
       if(state.trendsLoading){
         $("new-review-meta").textContent="Actualizando cierres";
@@ -657,7 +911,7 @@
     function renderRankRow(row){const linked=Boolean(row.storeUrl),tag=linked?"a":"div";return`<li class="rank-item"><${tag} class="rank-row${row.isBbva?" bbva":""}${linked?" market-link":""}"${linked?marketLinkAttributes(row,row.countryCode):""}><span class="rank-number">${row.computedRank}</span>${appLogo(row)}<div class="app-info"><strong>${U.esc(D.appName(row))}</strong><span>${row.isBbva?"BBVA Empresas":row.segment==="BANK"?"Banca":"Fintech / Neobanco"}</span></div><div class="rank-metric"><strong>${fmt(row.rating,2)}</strong><span class="${row.delta30d>0?"delta-up":row.delta30d<0?"delta-down":""}">${signed(row.delta30d)}</span></div>${linked?`<span class="rank-open" aria-hidden="true"><span>Market</span>${U.icon("external")}</span>`:""}</${tag}></li>`}
     function appLogo(row){const url=state.meta.logos?.[row.appKey];return`<span class="app-logo">${url?`<img src="${U.esc(url)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">`:""}<b>${U.esc(initials(D.appName(row)))}</b></span>`}
 
-    let reviewsRequest=0, reviewTotals;
+    let reviewsRequest=0, reviewTotals, reviewPage=0, renderedReviewKey="", pendingReviewKey="";
     const radarFilters={};
     const reviewDay=(day,offset)=>new Date(Date.parse(day+"T00:00:00Z")+offset*86400000).toISOString().slice(0,10);
     function reviewDates(){
@@ -687,6 +941,7 @@
     const defaultAnalyticsEntity="BBVA Empresas";
     let analyticsSelection=null, analyticsEntity=defaultAnalyticsEntity, resizeReviewBalance;
     let annualTrends=[], annualYears=[], heatmapSegment="DETRACTOR", annualAppControl;
+    let annualNpsRequest=0, annualNpsKey="", annualNpsData;
     const monthlyFilterDefaults={audience:"",inferGeography:"YES"};
     let monthlyFilters={...monthlyFilterDefaults};
     let monthlyRequest=0, monthlyReviewKey="", monthlyBalanceKey="";
@@ -698,6 +953,43 @@
     }
     let heatmapMeasure="share";
     const reviewScope=()=>reviewDrilldown?.scope||reviewSelection||initialComments();
+
+    // Preload the default scopes one at a time, without falling back to a historical Sheet scan.
+    function warmViewsAfterBootstrap(){
+      if(navigator.connection?.saveData)return;
+      const steps=[
+        ()=>fetchTrends(trendRequest(),true),
+        ()=>fetchReviewData("review:page",{...reviewScope(),language:appLanguage,page:reviewPage},true),
+        ()=>fetchReviewData("review:nps",annualNpsScope(annualScope()),true),
+        ()=>{
+          const rows=cachedTrendRows(trendRequest());
+          if(!rows)return;
+          const app=state.evolutionApp;
+          if(!app)return;
+          const period=D.periodModel(D.trendRows(withPublishedRatings(rows,selection()),{...selection(),app}),state.periodYear,state.periodMonth);
+          const analysisMonth=period.period||reviewDates().end.slice(0,7);
+          return fetchReviewData("review:analytics",{...monthlyReviewScope(analysisMonth),segment:$("monthly-review-segment").value},true);
+        },
+        ()=>fetchReviewData("review:analytics",annualReviewRequest(annualScope()),true)
+      ];
+      function schedule(){
+        if(!steps.length)return;
+        window.setTimeout(()=>{
+          if(document.visibilityState!=="visible"){
+            document.addEventListener("visibilitychange",schedule,{once:true});
+            return;
+          }
+          if(activeRpc){schedule();return}
+          const run=()=>{
+            if(document.visibilityState!=="visible"||activeRpc){schedule();return}
+            Promise.resolve().then(steps.shift()).catch(()=>{}).finally(schedule);
+          };
+          if(window.requestIdleCallback)window.requestIdleCallback(run,{timeout:2000});
+          else run();
+        },1200);
+      }
+      schedule();
+    }
 
     function validateReviewDates({start,end}){
       $("review-end").setCustomValidity(start&&end&&start>end?"La fecha final debe ser posterior o igual a la inicial.":"");
@@ -785,8 +1077,8 @@
       });
     }
     function reviewFilterLabel(key,value){
-      if(key==="inferGeography")return value==="NO"?"No":"Sí";
-      if(key==="audience")return ["BEI","BEI_ONLY","BEI_EXTENDED"].includes(value)?"BEI":"Todos";
+      if(key==="inferGeography")return translate(value==="NO"?"No":"Sí");
+      if(key==="audience")return translate(["BEI","BEI_ONLY","BEI_EXTENDED"].includes(value)?"BEI":"Todos");
       if(key==="country")return value==="ALL"?"Todas":countryLabel(value);
       if(!value&&["app","segment","topic"].includes(key))return "Todos";
       if(key==="platform")return D.config.platformLabels[value];
@@ -838,40 +1130,51 @@
         scope:{...scope,country:reviewScope().country,reviewKey:""},
         label:translate("Detalle por geografía")
       };
+      reviewPage=0;
       activateView("reviews");
     }
     async function loadReviews(page=0){
-      const started=performance.now(), token=++reviewsRequest, results=$("review-results");
-      reviewsReady=false;
-      const segment=$("review-segment"), pagination=$("review-pagination");
-      results.setAttribute("aria-busy","true");
-      const scope=reviewScope();
-      const {country,...countFilters}=scope;
-      const countKey=JSON.stringify(countFilters);
-      renderReviewMarkets({counts:reviewTotals?.key===countKey?reviewTotals.counts:null},scope);
-      radarFilters.reviews.render();
-      results.innerHTML=U.loading(translate("Cargando comentarios"));
-      pagination.replaceChildren();
+      const started=performance.now(), scope=reviewScope(), request={...scope,language:appLanguage,page};
+      const label=reviewDrilldown?.label||"", key=JSON.stringify([reviewResponseKey("review:page",request),label]);
+      if(pendingReviewKey===key)return;
+      const sameView=renderedReviewKey===key, cached=hasReviewResponse("review:page",request);
+      if(sameView&&cached){trackReady("reviews","Mostrar comentarios",started);return}
+      const token=++reviewsRequest, results=$("review-results"), pagination=$("review-pagination");
+      const countKey=JSON.stringify(Object.fromEntries(Object.entries(scope).filter(([field])=>field!=="country")));
+      reviewPage=page;
+      pendingReviewKey=key;
+      if(!sameView){
+        renderedReviewKey="";
+        reviewsReady=false;
+        renderReviewMarkets({counts:reviewTotals?.key===countKey?reviewTotals.counts:null},scope);
+        radarFilters.reviews.render();
+        if(!cached){
+          results.setAttribute("aria-busy","true");
+          results.innerHTML=U.loading(translate("Cargando comentarios"));
+          pagination.replaceChildren();
+        }
+      }
       try{
-        await prepareReviewSegments(segment);
-        if(token!==reviewsRequest||state.view!=="reviews")return;
-        $("review-filter-status").textContent=reviewDrilldown?.label||"";
-        const data=await fetchReviewData("review:page",{...scope,language:appLanguage,page});
-        if(token!==reviewsRequest||state.view!=="reviews")return;
+        await prepareReviewSegments($("review-segment"));
+        if(token!==reviewsRequest)return;
+        const data=await fetchReviewData("review:page",request);
+        if(token!==reviewsRequest)return;
+        $("review-filter-status").textContent=label;
         reviewTopics=data.topics||{};
         reviewTotals={key:countKey,counts:data.counts};
         renderReviewMarkets(data,scope);
         reviewsReady=data.total>0;
         radarFilters.reviews.render();
         results.innerHTML=data.rows.map(row=>renderReviewCard(row,reviewTopics)).join("")||U.empty("Sin comentarios","No hay reseñas para esta selección.");
+        renderedReviewKey=key;
         trackReady("reviews","Mostrar comentarios",started);
-        if(data.total<=data.size)return;
+        if(data.total<=data.size){pagination.replaceChildren();return}
         pagination.innerHTML=`${data.page>0?'<button class="alert-button secondary" type="button" data-step="-1">Anterior</button>':""}
           <span>${U.esc(translate("{count} reseñas · Página {page} de {pages}",{count:integer(data.total),page:data.page+1,pages:Math.ceil(data.total/data.size)}))}</span>
           ${(data.page+1)*data.size<data.total?'<button class="alert-button secondary" type="button" data-step="1">Siguiente</button>':""}`;
         pagination.onclick=event=>{const step=event.target.closest("[data-step]")?.dataset.step;if(step)loadReviews(data.page+Number(step))};
       }catch(error){
-        if(token!==reviewsRequest||state.view!=="reviews")return;
+        if(token!==reviewsRequest||sameView||state.view!=="reviews")return;
         const retry=document.createElement("button");
         retry.type="button";
         retry.className="alert-button secondary";
@@ -879,7 +1182,7 @@
         retry.onclick=()=>loadReviews(page);
         results.replaceChildren(error.message,retry);
       }
-      finally{if(token===reviewsRequest)results.setAttribute("aria-busy","false")}
+      finally{if(token===reviewsRequest){pendingReviewKey="";results.setAttribute("aria-busy","false")}}
     }
     function renderReviewMarkets(data,scope){
       const android = state.snapshot.filter(row=>row.platform==="Android"&&(!scope.app||D.appName(row)===scope.app));
@@ -941,40 +1244,63 @@
         <div class="review-blocks radar-filters">${row.attributionMethod?.startsWith("review_evidence_")?'<span class="filter-chip">Inferido</span>':""}${blocks.map(block=>`<span class="filter-chip">Bloque funcional · ${U.esc(block)}</span>`).join("")}</div>
         ${row.reply?`<blockquote><strong>${U.esc(row.replyAuthor||entity)}</strong> ${row.replyDate?`<time datetime="${U.esc(row.replyDate)}">${U.esc(dateLabel(row.replyDate.slice(0,10)))}</time>`:""}<p>${U.esc(row.reply)}</p></blockquote>`:""}</article>`;
     }
+    const annualReviewRequest=(scope,entity=analyticsEntity)=>({...scope,segment:heatmapSegment,entity,language:appLanguage});
+    const annualNpsScope=scope=>({country:scope.country,year:scope.year,audience:scope.audience,inferGeography:scope.inferGeography});
+    let pendingAnalyticsKey="",renderedAnalyticsKey="";
     async function loadAnalytics(localOnly=false, heatmapOnly=false){
-      const started=performance.now();
-      // A new request must replace all panels still waiting for the superseded request.
+      const started=performance.now(), scope=annualScope(), dates=annualDates(scope.year);
+      const key=JSON.stringify([annualReviewRequest(scope),dates.end]);
+      if(pendingAnalyticsKey===key)return;
+      const sameView=renderedAnalyticsKey===key;
+      if(!localOnly&&!heatmapOnly&&sameView&&hasReviewResponse("review:analytics",annualReviewRequest(scope))){
+        trackReady("analytics","Mostrar análisis anual",started);return;
+      }
+      // A changed scope must replace all panels still waiting for a superseded request.
       if(analyticsLoading){localOnly=false;heatmapOnly=false}
+      const request=annualReviewRequest(scope,heatmapOnly?defaultAnalyticsEntity:analyticsEntity);
+      const cached=hasReviewResponse("review:analytics",request);
+      const showLoading=!sameView&&!cached;
+      if(!sameView)renderedAnalyticsKey="";
+      pendingAnalyticsKey=key;
       analyticsLoading=true;
       const sheets=exportSheets.analytics;
-      if(!localOnly)sheets.delete("Mapa de calor");
-      if(!heatmapOnly){sheets.delete("Rating al cierre del mes");sheets.delete("Indicadores del periodo");sheets.delete("Reseñas más útiles");sheets.delete("Personas con más reseñas")}
+      if(!sameView&&!localOnly)sheets.delete("Mapa de calor");
+      if(!sameView&&!heatmapOnly){sheets.delete("Rating al cierre del mes");sheets.delete("Indicadores del periodo");sheets.delete("Reseñas más útiles");sheets.delete("Personas con más reseñas")}
       const token=++analyticsRequest, target=$("review-heatmap"), entityControl=$("analytics-entity");
-      const scope=annualScope(), dates=annualDates(scope.year);
+      const period=annualPeriodLabel(scope.year);
+      $("annual-rating-title").textContent=translate("Evolución del rating {period}",{period});
+      $("annual-nps-title").textContent=translate("Evolución del NPS de reseñas {period}",{period});
+      $("annual-indicators-title").textContent=scope.year===reviewDates().end.slice(0,4)
+        ?translate("Indicadores del acumulado del año hasta la fecha"):translate("Indicadores de {year}",{year:scope.year});
       radarFilters.analytics.render();
-      if(!localOnly){
+      if(!localOnly&&showLoading){
         target.setAttribute("aria-busy","true");
         const matrix=target.querySelector("[data-matrix]");
         if(matrix){matrix.innerHTML=U.loading(translate("Cargando el mapa de calor"));target.querySelector("[data-pages]").replaceChildren()}
         else target.innerHTML=U.loading(translate("Cargando el mapa de calor"));
       }
-      if(!heatmapOnly){$("annual-chart").innerHTML=U.loading(translate("Cargando el histórico de ratings"));$("annual-series").replaceChildren()}
-      if(!heatmapOnly)$("review-annual").innerHTML=U.loading(translate("Cargando indicadores de reseñas"));
+      if(!heatmapOnly){
+        const trends=annualTrendRequest(scope);
+        if(!sameView&&scope.country!=="UNKNOWN"&&!cachedTrendRows(trends)){
+          $("annual-chart").innerHTML=U.loading(translate("Cargando el histórico de ratings"));
+          $("annual-series").replaceChildren();
+        }
+        if(showLoading)$("review-annual").innerHTML=U.loading(translate("Cargando indicadores de reseñas"));
+        loadAnnualNps(scope,dates);
+      }
       try{
-        const countryCode=scope.country==="ALL"?"":scope.country;
-        const request={countryCode,platform:"",segment:"ALL",months:36,bbvaOnly:false};
-        const trends=heatmapOnly||scope.country==="UNKNOWN"?[]:fetchTrends(request);
+        const trends=heatmapOnly||scope.country==="UNKNOWN"?[]:fetchTrends(annualTrendRequest(scope));
         const chartReady=Promise.resolve(trends).then(rows=>{
-          if(token!==analyticsRequest||state.view!=="analytics"||heatmapOnly)return;
+          if(token!==analyticsRequest||heatmapOnly)return;
           annualTrends=scope.country==="UNKNOWN"?[]:withPublishedRatings(rows,{country:scope.country,platform:"ALL"});
           renderAnnualChart(scope,dates,analyticsEntity);
           trackReady("analytics","Mostrar histórico de ratings",started);
         });
         const [data]=await Promise.all([
-          fetchReviewData("review:analytics",{...scope,segment:heatmapSegment,entity:heatmapOnly?defaultAnalyticsEntity:analyticsEntity,language:appLanguage}),
+          fetchReviewData("review:analytics",request),
           chartReady
         ]);
-        if(token!==analyticsRequest||state.view!=="analytics")return;
+        if(token!==analyticsRequest)return;
         if(!localOnly)renderReviewMatrix(target,data,{...dates,country:scope.country,platform:"ALL",segment:heatmapSegment,audience:scope.audience,inferGeography:scope.inferGeography});
         if(!heatmapOnly){
           if(scope.country!=="UNKNOWN")annualYears=[...new Set(annualTrends.filter(row=>D.finite(row.ratingEom)).map(row=>row.month.slice(0,4)))].sort().reverse();
@@ -986,23 +1312,25 @@
           if(!options.includes(analyticsEntity)){
             analyticsEntity=defaultAnalyticsEntity;
             analyticsLoading=false;
+            pendingAnalyticsKey="";
             return loadAnalytics(true);
           }
           entityControl.innerHTML=options.map(name=>U.option(name,name===defaultAnalyticsEntity?"BBVA":annualEntityLabel(name),name===analyticsEntity)).join("");
           annualAppControl.refresh();
-          renderAnnualChart(scope,dates,analyticsEntity);
           renderAnnualReviews($("review-annual"),data,scope);
         }
+        renderedAnalyticsKey=key;
         trackReady("analytics",heatmapOnly?"Mostrar mapa de calor":"Mostrar análisis anual",started);
       }catch(error){
-        if(token!==analyticsRequest||state.view!=="analytics")return;
+        if(token!==analyticsRequest||sameView)return;
         if(!localOnly)(target.querySelector("[data-matrix]")||target).textContent=error.message;
         if(!heatmapOnly&&$("annual-chart").querySelector(".loading-state"))$("annual-chart").textContent=error.message;
-        if(!heatmapOnly)$("review-annual").textContent=error.message;
+        if(!heatmapOnly)$("review-annual").textContent=error.message
       }finally{
         if(token===analyticsRequest){
           target.setAttribute("aria-busy","false");
           analyticsLoading=false;
+          pendingAnalyticsKey="";
           annualAppControl.enable(Boolean(entityControl.options.length));
         }
       }
@@ -1036,10 +1364,56 @@
           ["Mes",...chart.series.map(item=>item.label)],months.map(month=>[month,...points.map(values=>values.get(month))]),true);
       }
     }
+    function annualPeriodLabel(year){
+      return year===reviewDates().end.slice(0,4)?translate("en el acumulado del año hasta la fecha"):translate("en {year}",{year});
+    }
+    async function loadAnnualNps(scope,dates){
+      const request=annualNpsScope(scope);
+      const key=JSON.stringify(request), token=++annualNpsRequest, started=performance.now();
+      const target=$("annual-nps-chart");
+      $("review-balance-period").textContent=`${dateLabel(dates.start)} – ${dateLabel(dates.end)}`;
+      if(key!==annualNpsKey||!annualNpsData){
+        resizeReviewBalance=null;
+        exportSheets.analytics.delete("Evolución del NPS de reseñas");
+        if(!hasReviewResponse("review:nps",request))target.innerHTML=U.loading(translate("Cargando NPS de reseñas"));
+        target.setAttribute("aria-busy","true");
+      }else renderAnnualNps(scope,dates,annualNpsData,analyticsEntity);
+      try{
+        const data=await fetchReviewData("review:nps",request);
+        if(token!==annualNpsRequest)return;
+        if(key!==annualNpsKey||data!==annualNpsData)renderAnnualNps(scope,dates,data,analyticsEntity);
+        annualNpsKey=key;
+        annualNpsData=data;
+        trackReady("analytics","Mostrar gráfico anual de NPS",started);
+      }catch(error){
+        if(token!==annualNpsRequest)return;
+        if(key!==annualNpsKey||!annualNpsData)target.textContent=error.message;
+      }finally{
+        if(token===annualNpsRequest)target.setAttribute("aria-busy","false");
+      }
+    }
+    function renderAnnualNps(scope,dates,data,app){
+      const compare=app==="ALL"&&isAnnualCountry(scope.country);
+      const target=$("annual-nps-chart");
+      const filtered=data.monthly.filter(point=>compare||point.entity===app);
+      const monthlyEntityOptions=[...new Set(filtered.map(point=>point.entity))]
+        .sort((a,b)=>Number(b===defaultAnalyticsEntity)-Number(a===defaultAnalyticsEntity)||a.localeCompare(b,locale()));
+      resizeReviewBalance=renderReviewBalance(target,{monthly:filtered,monthlyEntityOptions},dates,compare);
+      const name="Evolución del NPS de reseñas";
+      exportSheets.analytics.delete(name);
+      if(!monthlyEntityOptions.length)return;
+      const months=Array.from({length:Number(dates.end.slice(5,7))},(_,i)=>`${scope.year}-${String(i+1).padStart(2,"0")}`);
+      const points=new Map(filtered.map(row=>[JSON.stringify([row.entity,row.month]),row.balance]));
+      setExportSheet("analytics",name,scope.country,
+        [...exportDates(dates),["Aplicación",annualEntityLabel(app)],["Comentarios",reviewFilterLabel("audience",scope.audience)],
+          ["Inferir datos",reviewFilterLabel("inferGeography",scope.inferGeography)]],
+        ["Mes",...monthlyEntityOptions.map(entity=>entity+" (pp)")],
+        months.map(month=>[month,...monthlyEntityOptions.map(entity=>points.get(JSON.stringify([entity,month])))]),true);
+    }
     async function loadMonthlyReviews(period){
       const started=performance.now(), current=reviewDates().end.slice(0,7);
       const analysisMonth=period||current;
-      const balanceScope={...selection(),analysisMonth,audience:monthlyFilters.audience,inferGeography:monthlyFilters.inferGeography,entity:state.evolutionApp,language:appLanguage};
+      const balanceScope=monthlyReviewScope(analysisMonth);
       const balanceKey=JSON.stringify(balanceScope);
       const scope={...balanceScope,segment:$("monthly-review-segment").value};
       const key=JSON.stringify(scope);
@@ -1047,42 +1421,35 @@
       monthlyReviewKey=key;
       monthlyReviewsLoading=true;
       for(const name of ["Brechas","Ejemplos del mes"])exportSheets.evolution.delete(name);
-      const token=++monthlyRequest, balance=$("review-balance"), gaps=$("review-deltas"), examples=$("review-examples");
+      const token=++monthlyRequest, gaps=$("review-deltas"), examples=$("review-examples");
       const gapPanel=$("review-gap-panel");
       if(balanceKey!==monthlyBalanceKey){
         monthlyBalanceKey="";
-        resizeReviewBalance=null;
         exportSheets.evolution.delete("NPS de reseñas");
         exportSheets.evolution.delete("Comparativa NPS");
-        $("review-balance-period").textContent="";
-        $("review-nps").textContent="";
-        if(!balance.querySelector(".loading-state"))balance.innerHTML=U.loading(translate("Cargando el NPS de reseñas"));
       }
       gapPanel.classList.remove("hidden");
       gapPanel.setAttribute("aria-busy","true");
-      gaps.innerHTML=U.loading(translate("Cargando brechas y ejemplos"),"");
-      examples.replaceChildren();
-      $("review-examples-panel").classList.add("hidden");
+      if(!hasReviewResponse("review:analytics",scope)){
+        gaps.innerHTML=U.loading(translate("Cargando brechas y ejemplos"),"");
+        examples.replaceChildren();
+        $("review-examples-panel").classList.add("hidden");
+      }
       try{
         const data=await fetchReviewData("review:analytics",scope);
-        if(token!==monthlyRequest||state.view!=="evolution")return;
+        if(token!==monthlyRequest)return;
         const applied={country:scope.country,platform:scope.platform,start:data.window.start,end:data.window.end,segment:"",audience:scope.audience,inferGeography:scope.inferGeography};
         if(balanceKey!==monthlyBalanceKey){
-          resizeReviewBalance=renderReviewBalance(balance,data,applied);
           const {nps}=data;
-          const dates=(start,end)=>dateLabel(start)+" – "+dateLabel(end);
-          const value=number=>number===null?"N/D":fmt(number,1);
-          $("review-nps").textContent=translate("NPS: {current} ({dates}) · Mes anterior: {previous} ({previousDates}) · Variación: {delta}",{
-            current:value(nps.current),dates:dates(nps.start,nps.end),previous:value(nps.previous),
-            previousDates:dates(nps.previousStart,nps.previousEnd),delta:nps.delta===null?"N/D":signed(nps.delta)+" pp"
-          });
+          monthlyPulse={key:balanceKey,points:data.monthlyByGeography||[]};
+          renderMonthlyMatrix(analysisMonth,withPublishedRatings(state.trends,selection()));
           const filters=[...exportDates(applied),["Mes",analysisMonth],["Aplicación",scope.entity],["Comentarios",reviewFilterLabel("audience",scope.audience)],["Inferir datos",scope.inferGeography==="NO"?"No":"Sí"]];
           setExportSheet("evolution","Comparativa NPS",scope.country,filters,
             ["Desde","Hasta","NPS de reseñas","Desde (mes anterior)","Hasta (mes anterior)","NPS anterior","Variación (pp)"],
             [[nps.start,nps.end,nps.current,nps.previousStart,nps.previousEnd,nps.previous,nps.delta]]);
           setExportSheet("evolution","NPS de reseñas",scope.country,filters,
-            ["Mes","Entidad","NPS (pp)","Promotoras","Detractoras","Reseñas"],
-            data.monthly.map(row=>[row.month,row.entity,row.balance,row.promoters,row.detractors,row.total]));
+            ["Mes","Entidad","NPS (pp)","Promotoras","Detractoras","Reseñas","Geografía inferida o validada"],
+            data.monthly.map(row=>[row.month,row.entity,row.balance,row.promoters,row.detractors,row.total,row.assignedGeography]));
           monthlyBalanceKey=balanceKey;
         }
         if(data.deltas.length)renderReviewGaps(gaps,data,{...applied,app:scope.entity,segment:scope.segment});
@@ -1094,20 +1461,22 @@
           ["Aplicación",scope.entity],["Comentarios",reviewFilterLabel("audience",scope.audience)],["Inferir datos",scope.inferGeography==="NO"?"No":"Sí"],["Sentimiento",reviewFilterLabel("segment",scope.segment)]];
         setExportSheet("evolution","Brechas",scope.country,recentFilters,
           ["Bloque","Peso (%)","Reseñas","Detractoras","Promotoras (%)","Detractoras (%)","NPS (pp)","Brecha (pp)"],
-          data.deltas.map(row=>[row.label,row.weight,row.total,row.detractors,100*row.promoters/row.total,100*row.detractors/row.total,row.balance,row.gap]));
+          data.deltas.map(row=>[row.label,row.weight,row.total,row.assignedGeography,row.detractors,100*row.promoters/row.total,100*row.detractors/row.total,row.balance,row.gap]));
         setExportSheet("evolution","Ejemplos del mes",scope.country,recentFilters,reviewExportHeader,
           data.examples.map(({review})=>reviewExportRow(review,data.topics)));
         monthlyReviewLoadedAt=Date.now();
         trackReady("evolution","Mostrar reseñas mensuales",started);
       }catch(error){
-        if(token!==monthlyRequest||state.view!=="evolution")return;
+        if(token!==monthlyRequest)return;
         monthlyReviewKey="";
-        if(balanceKey!==monthlyBalanceKey)balance.textContent=error.message;
+        if(balanceKey!==monthlyBalanceKey){
+          monthlyPulse={key:balanceKey,points:[]};
+          renderMonthlyMatrix(analysisMonth,withPublishedRatings(state.trends,selection()));
+        }
         gaps.textContent=error.message;
       }finally{
         if(token===monthlyRequest){
           monthlyReviewsLoading=false;
-          if(state.view!=="evolution")monthlyReviewKey="";
           gapPanel.setAttribute("aria-busy","false");
         }
       }
@@ -1144,6 +1513,9 @@
         ]}
       ];
       const authors=annual.topAuthors.filter(row=>row.count>1);
+      const authorsTitle=scope.year===reviewDates().end.slice(0,4)
+        ?translate("Personas con más reseñas del acumulado del año hasta la fecha")
+        :translate("Personas con más reseñas de {year}",{year:scope.year});
       const filters=[...exportDates(annual),["Aplicación",annualEntityLabel(analyticsEntity)],["Comentarios",reviewFilterLabel("audience",scope.audience)],["Inferir datos",scope.inferGeography==="NO"?"No":"Sí"]];
       setExportSheet("analytics","Indicadores del periodo",scope.country,filters,["Indicador","Valor","Variación","Cierre"],
         annual.total||annual.previousTotal||D.finite(openingRating)||D.finite(closingRating)?
@@ -1162,7 +1534,7 @@
         <div class="annual-kpis">${metrics}</div>
         ${annual.topHelpful.length?`<section class="annual-review-section"><h4>Reseñas más útiles</h4><p>${U.esc(translate("Al menos {count} votos útiles",{count:integer(annual.helpfulMinimum)}))}</p>
           ${annual.topHelpful.map(review=>renderReviewCard(review,topics)).join("")}</section>`:""}
-        ${authors.length?`<section class="annual-review-section"><h4>Personas con más reseñas</h4><div class="annual-author-list">
+        ${authors.length?`<section class="annual-review-section"><h4>${U.esc(authorsTitle)}</h4><div class="annual-author-list">
           ${authors.map(({author,count,reviews=[]})=>`<details class="annual-author">
             <summary><span data-review-content>${U.esc(author)}</span><strong>${U.esc(translate("{count} reseñas",{count:integer(count)}))}</strong></summary>
             <div class="annual-author-reviews">
@@ -1173,30 +1545,27 @@
     function renderReviewGaps(target,data,scope){
       const {baseline,deltas,window:dates}=data;
       const recent=`${dateLabel(dates.recent)} – ${dateLabel(dates.end)}`;
-      const base=baseline?`${dateLabel(baseline.start)} – ${dateLabel(baseline.end)}`:"";
       target.replaceChildren();
-      const context=document.createElement("p");
-      context.textContent=baseline?translate("NPS del mes anterior (todas las estrellas): {value} pp ({dates}; {count} reseñas).",{value:fmt(baseline.balance,1),dates:base,count:integer(baseline.total)}):
-        "El mes anterior no tiene reseñas. Se muestra el NPS del mes seleccionado sin variación.";
-      target.append(context);
       const note=document.createElement("p");
-      note.textContent=translate("Periodo reciente: {dates}. Una reseña puede pertenecer a varios bloques; sus pesos pueden sumar más del 100 %.",{dates:recent});
+      note.textContent=translate("Periodo reciente: {dates}. Los recuentos usan el sentimiento seleccionado. Una reseña puede pertenecer a varios bloques; sus pesos pueden sumar más del 100 %.",{dates:recent});
       target.append(note);
       if(baseline)appendReviewCohort(target,"Ver reseñas del mes anterior",{...scope,start:baseline.start,end:baseline.end,segment:""});
       target.insertAdjacentHTML("beforeend",C.reviewGaps(deltas,fmt,translate));
       const table=document.createElement("div");
       table.className="admin-table-wrap review-gap-table";
-      const headers=["Bloque","Peso en la muestra","Total reseñas","Reseñas detractoras","% Promotoras","% Detractoras","NPS (pp)","Brecha vs. base (pp)"];
-      table.innerHTML=`<table class="admin-table"><caption>${U.esc(translate("Detalle del periodo reciente · {dates}",{dates:recent}))}</caption><thead><tr>${headers.map(label=>`<th scope="col">${label}</th>`).join("")}</tr></thead><tbody>${deltas.map(row=>`<tr><th scope="row"></th><td>${fmt(row.weight,1)} %</td><td>${integer(row.total)}</td><td>${integer(row.detractors)}</td><td>${fmt(100*row.promoters/row.total,1)} %</td><td>${fmt(100*row.detractors/row.total,1)} %</td><td>${fmt(row.balance,1)}</td><td>${row.gap===null?"—":signed(row.gap)}</td></tr>`).join("")}</tbody></table>`;
+      const headers=["Bloque","Peso en la muestra","Reseñas del bloque","Geografía inferida o validada","Reseñas detractoras","% Promotoras","% Detractoras","NPS (pp)","Brecha vs. base (pp)"];
+      table.innerHTML=`<table class="admin-table"><caption>${U.esc(translate("Detalle del periodo reciente · {dates}",{dates:recent}))}</caption><thead><tr>${headers.map(label=>`<th scope="col">${label}</th>`).join("")}</tr></thead><tbody>${deltas.map(row=>`<tr><th scope="row"></th><td>${fmt(row.weight,1)} %</td><td>${integer(row.total)}</td><td>${integer(row.assignedGeography)}</td><td>${integer(row.detractors)}</td><td>${fmt(100*row.promoters/row.total,1)} %</td><td>${fmt(100*row.detractors/row.total,1)} %</td><td>${fmt(row.balance,1)}</td><td>${row.gap===null?"—":signed(row.gap)}</td></tr>`).join("")}</tbody></table>`;
       table.querySelectorAll("tbody th").forEach((cell,index)=>{
         const row=deltas[index];
         appendReviewCohort(cell,row.label,{...scope,start:dates.recent,topic:row.id});
       });
       target.append(table);
     }
-    function renderReviewBalance(target,data,scope){
+
+    const reviewNpsSample=point=>translate("{total} reseñas ({assigned} con geografía inferida o validada)",
+      {total:integer(point.total),assigned:integer(point.assignedGeography)});
+    function renderReviewBalance(target,data,scope,compare){
       target.innerHTML='<p class="review-chart-note">NPS en puntos sobre todas las reseñas válidas del mes. Una línea interrumpida indica un mes sin datos.</p>';
-      $("review-balance-period").textContent=`${dateLabel(scope.start)} – ${dateLabel(scope.end)}`;
       if(!data.monthly.length){target.append("Sin observaciones para este intervalo.");return null}
       const plot=document.createElement("div"), tooltip=document.createElement("div");
       plot.className="trend-chart";
@@ -1229,15 +1598,19 @@
       }
       const points=new Map(), totals=new Map();
       for(const point of data.monthly){
-        points.set(JSON.stringify([point.entity,point.month]),point.balance);
+        points.set(JSON.stringify([point.entity,point.month]),point);
         totals.set(point.entity,(totals.get(point.entity)||0)+point.total);
       }
       const entities=data.monthlyEntityOptions;
       target.append(layout,tooltip);
-      const series=entities.map(entity=>({entity,values:months.map(month=>points.get(JSON.stringify([entity,month]))??null)}));
+
+      const series=entities.map(entity=>{
+        const samples=months.map(month=>points.get(JSON.stringify([entity,month])));
+        return {entity,values:samples.map(point=>point?.balance??null),samples};
+      });
       const render=()=>{
         tooltip.hidden=true;
-        plot.innerHTML=C.reviewBalance(months,series,{fmt,monthLabel,width:plot.clientWidth});
+        plot.innerHTML=C.reviewBalance(months,series,{fmt,monthLabel,width:plot.clientWidth,shade:!compare,sampleLabel:reviewNpsSample});
       };
       render();
       legend.innerHTML=C.reviewBalanceLegend(entities.map(entity=>({entity,total:totals.get(entity)||0})),integer);
@@ -1260,7 +1633,7 @@
       const ids=[...totals.keys()].sort((a,b)=>totals.get(b)-totals.get(a)||a.localeCompare(b));
       const max=Math.max(1,...data.entities.flatMap(group=>Object.values(group.counts)));
       const leading=data.leadingBlock;
-      target.innerHTML=`${leading?`<p class="heatmap-focus">${U.esc(translate("Bloque funcional más frecuente: {block} · {count} reseñas",{block:data.topics[leading.id],count:integer(leading.count)}))}</p>`:""}<div class="heatmap-controls"><label>Sentimiento <select data-heatmap-segment class="select-control"><option value="DETRACTOR">Detractores</option><option value="PROMOTER">Promotores</option><option value="NEUTRAL">Neutros</option></select></label><label>Medida <select data-measure class="select-control"><option value="share">% de reseñas</option><option value="count">N.º de reseñas</option></select></label></div>
+      target.innerHTML=`${leading?`<p class="heatmap-focus">${U.esc(translate("Bloque funcional más frecuente {period}: {block} · {count} reseñas",{period:annualPeriodLabel(scope.start.slice(0,4)),block:data.topics[leading.id],count:integer(leading.count)}))}</p>`:""}<div class="heatmap-controls"><label>Sentimiento <select data-heatmap-segment class="select-control"><option value="DETRACTOR">Detractores</option><option value="PROMOTER">Promotores</option><option value="NEUTRAL">Neutros</option></select></label><label>Medida <select data-measure class="select-control"><option value="share">% de reseñas</option><option value="count">N.º de reseñas</option></select></label></div>
         <div data-matrix class="heatmap-scroll"></div><div data-pages class="heatmap-pagination"></div>`;
       const table=target.querySelector("[data-matrix]"), pages=target.querySelector("[data-pages]"), measure=target.querySelector("[data-measure]");
       const sentiment=target.querySelector("[data-heatmap-segment]");
@@ -1352,13 +1725,11 @@
       $("review-examples-panel").classList.add("hidden");
       $("review-gap-panel").classList.add("hidden");
       monthlyReviewKey=monthlyBalanceKey="";
-      resizeReviewBalance=null;
+      monthlyPulse=null;
       monthlyReviewsLoading=false;
       $("review-gap-panel").setAttribute("aria-busy","false");
       monthlyRequest++;
-      for(const id of ["review-balance","review-deltas","review-examples"])$(id).replaceChildren();
-      $("review-balance-period").textContent="";
-      $("review-nps").textContent="";
+      for(const id of ["review-deltas","review-examples"])$(id).replaceChildren();
     }
     function renderChartsLoading(){
       exportSheets.evolution.clear();
@@ -1416,7 +1787,6 @@
       if(state.trendsLoading){evolutionRender=null;renderChartsLoading();return}
       const apps=evolutionApps();
       if(!apps.includes(state.evolutionApp))state.evolutionApp=preferredEvolutionApp(apps);
-      $("review-balance-panel").classList.toggle("hidden",!state.evolutionApp);
       const renderKey=JSON.stringify([state.country,state.evolutionApp,state.periodYear,state.periodMonth,monthlyFilters,mobileViewport.matches,appLanguage]);
       if(evolutionRender?.trends===state.trends&&evolutionRender.key===renderKey){
         radarFilters.evolution.render();
@@ -1436,20 +1806,34 @@
     function renderSeriesSummary(series,period){$("annual-series").innerHTML=series.map((item,index)=>{const points=[...item.points].filter(point=>D.finite(point.value)&&point.month<=period).sort((a,b)=>a.month.localeCompare(b.month)),current=points.at(-1),previous=points.at(-2),change=current&&previous?current.value-previous.value:null,color=T.chart.palette[index%T.chart.palette.length];return`<article class="series-card"><i class="series-dot" style="background:${color}"></i><div><strong>${U.esc(item.label)}</strong><span>${fmt(current?.value,2)} · ${current?monthLabel(current.month):"sin dato"}</span></div><b class="${change>0?"delta-up":change<0?"delta-down":""}">${signed(change)}</b></article>`}).join("")}
 
     async function loadAlerts(force=false){const started=performance.now();if(state.alertsLoading||state.alertsLoaded&&!force){if(state.alertsLoaded){renderAlerts();trackReady("alerts","Mostrar alertas",started)}return}state.alertsLoading=true;$("alerts-loading").classList.remove("hidden");$("alerts-content").classList.add("hidden");try{state.alertCenter=await callServer("alerts:get");state.alertDraft=JSON.parse(JSON.stringify(state.alertCenter.preferences));const market=browserMarket();if(!state.alertDraft.persisted&&market!=="ALL")state.alertDraft.countries=[market];state.alertsLoaded=true;renderAlerts();trackReady("alerts","Mostrar alertas",started)}catch(error){showError(error);$("alerts-loading").textContent=error?.message||String(error)}finally{state.alertsLoading=false}}
-    function renderAlerts(){const center=state.alertCenter,draft=state.alertDraft;if(!center||!draft)return;$("alerts-loading").classList.add("hidden");$("alerts-content").classList.remove("hidden");$("alert-user-email").textContent=center.user.email;$("alert-system-copy").textContent=center.system.privacy;$("alert-active").checked=Boolean(draft.active);$("newsletter-enabled").checked=Boolean(draft.newsletterEnabled);$("alert-master-copy").textContent=draft.active?"Tus alertas están activas":"Las alertas están en pausa";$("newsletter-master-copy").textContent=draft.newsletterEnabled?"Recibirás el resumen ejecutivo el día 1":"La newsletter mensual está desactivada";$("alert-mail-status").textContent=center.system.emailDeliveryEnabled?"Envío global activo":"Envío global desactivado";$("alert-mail-orb").classList.toggle("bad",!center.system.emailDeliveryEnabled);$("alert-schedule").textContent=center.system.schedule;$("alert-delivery-scope").textContent=center.system.deliveryScope;$("review-rule-card").classList.toggle("hidden",!center.system.reviewDataAvailable);$("review-enabled").checked=Boolean(draft.reviewShareEnabled);$("review-warning").value=draft.reviewWarningPct;$("review-critical").value=draft.reviewCriticalPct;["daily","mtd","ytd"].forEach(period=>{$(period+"-enabled").checked=Boolean(draft[period+"DropEnabled"]);$(period+"-warning").value=draft[period+"WarningDrop"];$(period+"-critical").value=draft[period+"CriticalDrop"]});$("repeat-enabled").checked=Boolean(draft.repeatWhileBreached);$("crossover-enabled").checked=Boolean(draft.crossoverEnabled);$("crossover-direction").value=draft.crossoverDirection;$("alert-test-button").disabled=!center.system.emailDeliveryEnabled;const warning=$("alert-config-warning");warning.textContent=center.system.configWarning||"";warning.classList.toggle("hidden",!center.system.configWarning);renderAlertScopes();renderAlertActivity(center.recentEvents||[]);syncAlertRuleInputs();$("alert-save-state").textContent=draft.persisted?`Guardado ${draft.updatedAt?dateTimeLabel(draft.updatedAt):"para tu cuenta"}`:"Valores recomendados · activa y guarda cuando quieras"}
+    function renderAlerts(){const center=state.alertCenter,draft=state.alertDraft;if(!center||!draft)return;$("alerts-loading").classList.add("hidden");$("alerts-content").classList.remove("hidden");$("alert-user-email").textContent=center.user.email;$("alert-system-copy").textContent=center.system.privacy;$("alert-active").checked=Boolean(draft.active);$("newsletter-enabled").checked=Boolean(draft.newsletterEnabled);$("alert-master-copy").textContent=draft.active?"Tus alertas están activas":"Las alertas están en pausa";$("newsletter-master-copy").textContent=draft.newsletterEnabled?"Recibirás el resumen ejecutivo el día 1":"La newsletter mensual está desactivada";$("alert-mail-status").textContent=center.system.emailDeliveryEnabled?"Envío global activo":"Envío global desactivado";$("alert-mail-orb").classList.toggle("bad",!center.system.emailDeliveryEnabled);$("alert-schedule").textContent=center.system.schedule;$("alert-delivery-scope").textContent=center.system.deliveryScope;$("review-rule-card").classList.toggle("hidden",!center.system.reviewDataAvailable);$("review-enabled").checked=Boolean(draft.reviewShareEnabled);$("review-warning").value=draft.reviewWarningPct;$("review-critical").value=draft.reviewCriticalPct;["daily","mtd","ytd"].forEach(period=>{$(period+"-enabled").checked=Boolean(draft[period+"DropEnabled"]);$(period+"-warning").value=draft[period+"WarningDrop"];$(period+"-critical").value=draft[period+"CriticalDrop"]});$("repeat-enabled").checked=Boolean(draft.repeatWhileBreached);$("crossover-enabled").checked=Boolean(draft.crossoverEnabled);$("crossover-direction").value=draft.crossoverDirection;const warning=$("alert-config-warning");warning.textContent=center.system.configWarning||"";warning.classList.toggle("hidden",!center.system.configWarning);renderAlertScopes();renderAlertActivity(center.recentEvents||[]);syncAlertRuleInputs();syncAlertSaveState()}
     function renderAlertScopes(){const selectedCountries=state.alertDraft.countries||["ALL"],selectedPlatforms=state.alertDraft.platforms||["ALL"],countries=[{code:"ALL",name:"Todos"},...Object.entries(D.config.countries).map(([code,name])=>({code,name}))],platforms=["ALL",...D.config.platforms];$("alert-country-scope").innerHTML=countries.map(item=>scopeChip("alert-country",item.code,item.name,selectedCountries.includes(item.code))).join("");$("alert-platform-scope").innerHTML=platforms.map(platform=>scopeChip("alert-platform",platform,D.config.platformLabels[platform]||platform,selectedPlatforms.includes(platform))).join("");updateAlertScopeSummaries()}
     const scopeChip=(name,value,label,checked)=>`<label class="scope-chip"><input type="checkbox" name="${name}" value="${U.esc(value)}" ${checked?"checked":""}><span>${name==="alert-country"?geographyFlag(value):""}${U.esc(label)}</span></label>`;
     function updateAlertScopeSummaries(){const countries=selectedAlertScope("alert-country"),platforms=selectedAlertScope("alert-platform");$("alert-country-scope-summary").textContent=countries.includes("ALL")?"Todos los mercados, incluidas futuras incorporaciones":countries.map(countryLabel).join(", ");$("alert-platform-scope-summary").textContent=platforms.includes("ALL")?"Todas las plataformas":platforms.map(item=>D.config.platformLabels[item]||item).join(", ")}
     function handleAlertScopeChange(event){if(!event.target.matches("input[type=checkbox]"))return;const inputs=[...event.currentTarget.querySelectorAll("input[type=checkbox]")],selected=inputs.filter(input=>input.checked).map(input=>input.value),normalized=D.exclusiveScopeSelection(selected,event.target.value,event.target.checked);inputs.forEach(input=>input.checked=normalized.includes(input.value));updateAlertScopeSummaries();markAlertsDirty()}
     function selectedAlertScope(name){const values=[...document.querySelectorAll(`input[name="${name}"]:checked`)].map(input=>input.value);return values.length?values:["ALL"]}
-    function alertDraftFromForm(){return{active:$("alert-active").checked,newsletterEnabled:$("newsletter-enabled").checked,countries:selectedAlertScope("alert-country"),platforms:selectedAlertScope("alert-platform"),reviewShareEnabled:Boolean(state.alertCenter?.system.reviewDataAvailable&&$("review-enabled").checked),reviewWarningPct:Number($("review-warning").value),reviewCriticalPct:Number($("review-critical").value),dailyDropEnabled:$("daily-enabled").checked,dailyWarningDrop:Number($("daily-warning").value),dailyCriticalDrop:Number($("daily-critical").value),mtdDropEnabled:$("mtd-enabled").checked,mtdWarningDrop:Number($("mtd-warning").value),mtdCriticalDrop:Number($("mtd-critical").value),ytdDropEnabled:$("ytd-enabled").checked,ytdWarningDrop:Number($("ytd-warning").value),ytdCriticalDrop:Number($("ytd-critical").value),repeatWhileBreached:$("repeat-enabled").checked,crossoverEnabled:$("crossover-enabled").checked,crossoverDirection:$("crossover-direction").value}}
+    function alertDraftFromForm(){return{active:$("alert-active").checked,newsletterEnabled:$("newsletter-enabled").checked,countries:selectedAlertScope("alert-country"),platforms:selectedAlertScope("alert-platform"),reviewShareEnabled:Boolean($("review-enabled").checked),reviewWarningPct:Number($("review-warning").value),reviewCriticalPct:Number($("review-critical").value),dailyDropEnabled:$("daily-enabled").checked,dailyWarningDrop:Number($("daily-warning").value),dailyCriticalDrop:Number($("daily-critical").value),mtdDropEnabled:$("mtd-enabled").checked,mtdWarningDrop:Number($("mtd-warning").value),mtdCriticalDrop:Number($("mtd-critical").value),ytdDropEnabled:$("ytd-enabled").checked,ytdWarningDrop:Number($("ytd-warning").value),ytdCriticalDrop:Number($("ytd-critical").value),repeatWhileBreached:$("repeat-enabled").checked,crossoverEnabled:$("crossover-enabled").checked,crossoverDirection:$("crossover-direction").value}}
     function syncAlertRuleInputs(){["daily","mtd","ytd"].forEach(period=>{$(period+"-warning").disabled=!$(period+"-enabled").checked;$(period+"-critical").disabled=!$(period+"-enabled").checked});$("crossover-direction").disabled=!$("crossover-enabled").checked;const enabled=state.alertCenter?.system.reviewDataAvailable&&$("review-enabled").checked;$("review-warning").disabled=$("review-critical").disabled=!enabled}
-    function markAlertsDirty(){$("alert-master-copy").textContent=$("alert-active").checked?"Tus alertas estarán activas":"Las alertas quedarán en pausa";$("newsletter-master-copy").textContent=$("newsletter-enabled").checked?"Recibirás el resumen ejecutivo el día 1":"La newsletter mensual quedará desactivada";$("alert-save-state").textContent="Tienes cambios sin guardar"}
-    function setAlertActionsBusy(busy){["alert-save-button","alert-reset-button","alert-test-button"].forEach(id=>$(id).disabled=busy||(id==="alert-test-button"&&!state.alertCenter?.system.emailDeliveryEnabled))}
-    async function saveAlerts(event){event.preventDefault();setAlertActionsBusy(true);try{const saved=await callServer("alerts:save",alertDraftFromForm());state.alertCenter.preferences=saved;state.alertDraft=JSON.parse(JSON.stringify(saved));trackUsage("ACTION","alerts","ALERTS_SAVE");renderAlerts();showToast("Tus alertas se han guardado solo para tu cuenta.",true)}catch(error){showError(error)}finally{setAlertActionsBusy(false)}}
-    async function resetAlerts(){setAlertActionsBusy(true);try{const saved=await callServer("alerts:reset");state.alertCenter.preferences=saved;state.alertDraft=JSON.parse(JSON.stringify(saved));trackUsage("ACTION","alerts","ALERTS_RESET");renderAlerts();showToast("Valores recomendados restaurados.",true)}catch(error){showError(error)}finally{setAlertActionsBusy(false)}}
-    function renderAlertTestResult(result,error){const panel=$("alert-test-result");panel.classList.remove("hidden");panel.classList.toggle("error",Boolean(error));if(error){panel.innerHTML=`<div><strong>No se pudo aceptar la prueba</strong><span>${U.esc(error?.message||String(error))}</span></div>`;return}const delivery=result.senderAddress?` · remitente ${result.senderName} <${result.senderAddress}>`:"";const sender=result.effectiveSender?` · ejecutado por ${result.effectiveSender}`:"";const gmail=result.messageId?` · Gmail ID ${result.messageId}`:"";const audit=result.auditLogged?" · auditoría registrada":" · auditoría pendiente",scope=` · ámbito ${result.scopeCountries?.join(", ")||"—"} / ${result.scopePlatforms?.join(", ")||"—"} · evidencia ${result.previewCountries?.join(", ")||"—"}`;panel.innerHTML=`<div><strong>Gmail ha aceptado la prueba ${U.esc(result.deliveryId)}</strong><span>Destino ${U.esc(result.recipient)}${U.esc(scope)}${U.esc(delivery)}${U.esc(sender)}${U.esc(gmail)}${U.esc(audit)} · backend ${U.esc(result.codeVersion)} / web ${U.esc(result.webVersion)}. Busca ese identificador en Recibidos, spam o cuarentena.</span></div>`}
-    async function testAlerts(){setAlertActionsBusy(true);try{const result=await callServer("alerts:test");if(!result?.sent||!result?.accepted)throw new Error("Google no ha aceptado la solicitud de correo.");trackUsage("ACTION","alerts","ALERTS_TEST");renderAlertTestResult(result);showToast(`Prueba aceptada para ${result.recipient} · ${result.deliveryId}.`,true);await loadAlerts(true)}catch(error){renderAlertTestResult(null,error);showError(error)}finally{setAlertActionsBusy(false)}}
+    let alertActionsBusy=false;
+    function syncAlertSaveState(){
+      const draft=alertDraftFromForm(), saved=state.alertCenter?.preferences;
+      const dirty=saved&&Object.entries(draft).some(([key,value])=>Array.isArray(value)
+        ? JSON.stringify([...value].sort())!==JSON.stringify([...(saved[key]||["ALL"])].sort())
+        : value!==saved[key]);
+      $("alert-reset-button").hidden=!dirty;
+      $("alert-reset-button").disabled=alertActionsBusy;
+      const valid=$("alert-form").checkValidity()&&
+        [["review-warning","review-critical"],...["daily","mtd","ytd"].map(period=>[period+"-warning",period+"-critical"])]
+          .every(([warning,critical])=>$(warning).value!==""&&$(critical).value!==""&&Number($(critical).value)>Number($(warning).value));
+      $("alert-save-button").disabled=alertActionsBusy||!dirty||!valid;
+      $("alert-save-state").textContent=dirty?(valid?"Tienes cambios sin guardar":"Revisa los umbrales antes de guardar"):saved?.persisted
+        ? `Guardado ${saved.updatedAt?dateTimeLabel(saved.updatedAt):"para tu cuenta"}`
+        : "Valores recomendados";
+    }
+    function markAlertsDirty(){$("alert-master-copy").textContent=$("alert-active").checked?"Tus alertas estarán activas":"Las alertas quedarán en pausa";$("newsletter-master-copy").textContent=$("newsletter-enabled").checked?"Recibirás el resumen ejecutivo el día 1":"La newsletter mensual quedará desactivada";syncAlertSaveState()}
+    function setAlertActionsBusy(busy){alertActionsBusy=busy;$("alert-form").inert=busy;syncAlertSaveState()}
+    async function saveAlerts(event){event.preventDefault();if($("alert-save-button").disabled)return;setAlertActionsBusy(true);try{const saved=await callServer("alerts:save",{...alertDraftFromForm(),expectedUpdatedAt:state.alertCenter.preferences.updatedAt||""});state.alertCenter.preferences=saved;state.alertDraft=JSON.parse(JSON.stringify(saved));trackUsage("ACTION","alerts","ALERTS_SAVE");renderAlerts();showToast("Tus alertas se han guardado solo para tu cuenta.",true)}catch(error){showError(error)}finally{setAlertActionsBusy(false)}}
+    async function resetAlerts(){setAlertActionsBusy(true);try{const saved=await callServer("alerts:reset",state.alertCenter.preferences.updatedAt||"");state.alertCenter.preferences=saved;state.alertDraft=JSON.parse(JSON.stringify(saved));trackUsage("ACTION","alerts","ALERTS_RESET");renderAlerts();showToast("Valores recomendados restaurados.",true)}catch(error){showError(error)}finally{setAlertActionsBusy(false)}}
     function alertActivityLabel(type){return type==="REVIEW_LOW_SHARE"?"Reseñas de 1 y 2 estrellas":type==="RATING_DROP_DAILY"?"Caída diaria":type==="RATING_DROP_MTD"?"Caída del día 15 al día 15":type==="RATING_DROP_YTD"?"Caída desde inicio de año":type==="NEWSLETTER_MONTHLY"?"Newsletter mensual":type==="NEWSLETTER_TEST"?"Prueba de newsletter":type==="TEST"?"Prueba de entrega":"Cruce competitivo"}
     function renderAlertActivity(events){if(!events.length){$("alert-activity").innerHTML=U.empty("Todavía no hay alertas para ti","Cuando una regla se active, aparecerá aquí y recibirás el resumen por email.");return}$("alert-activity").innerHTML=events.map(event=>`<article class="alert-event"><i class="alert-event-dot ${event.severity==="CRITICAL"?"critical":event.severity==="POSITIVE"?"positive":""}"></i><div><strong>${U.esc(alertActivityLabel(event.type))}</strong><span>${U.esc(`${event.countryCode==="ALL"&&event.type==="REVIEW_LOW_SHARE"?"Ficha compartida":countryLabel(event.countryCode)} · ${event.platform} · ${event.detail}`)}</span></div><time>${U.esc(dateTimeLabel(event.timestamp))}</time></article>`).join("")}
 
@@ -1596,35 +1980,54 @@
 
     const newsletterRequests={}, newsletterFilters={};
     let adoptionFilters={query:""}, adoptionCohort="dau", adoptionPage=0, subscriberPage=0;
-    const activityWindows=new Map();
     let renderedAdoptionTrend;
     function exportAdminRows(name,header,rows){
       const file=window.MarketsWorkbook.build([{name,filters:[],header,rows}]);
       const url=URL.createObjectURL(file), link=document.createElement("a");
-      link.href=url;link.download="Market Pulse - "+name+".xlsx";link.click();
+      link.href=url;link.download="EDC Market Pulse - "+name+".xlsx";link.click();
       window.setTimeout(()=>URL.revokeObjectURL(url),1000);
     }
-    function renderActivityWindow(target,trend,render){
-      const size=14, maxOffset=Math.max(0,trend.length-size);
-      const offset=Math.min(activityWindows.get(target)||0,maxOffset);
-      const end=trend.length-offset, visible=trend.slice(Math.max(0,end-size),end);
-      render(visible);
-      if(!visible.length)return;
-      const controls=document.createElement("div");
-      controls.className="pagination";
-      controls.innerHTML=`<button class="button" type="button" data-shift="older" ${offset<maxOffset?"":"disabled"}>Anterior</button>
-        <span>${U.esc(dateLabel(visible[0].date))} – ${U.esc(dateLabel(visible.at(-1).date))}</span>
-        <button class="button" type="button" data-shift="newer" ${offset?"":"disabled"}>Siguiente</button>
-        <button class="button" type="button" data-shift="latest" ${offset?"":"disabled"}>Últimos días</button>`;
-      controls.onclick=event=>{
-        const step=event.target.dataset.shift;
-        if(!step)return;
-        activityWindows.set(target,step==="latest"?0:step==="older"?Math.min(maxOffset,offset+size):Math.max(0,offset-size));
-        renderActivityWindow(target,trend,render);
-        const buttons=[...$(target).querySelectorAll("[data-shift]:not(:disabled)")];
-        (buttons.find(button=>button.dataset.shift===step)||buttons[0])?.focus();
+    // Adapted from News Radar activity-chart.js (859e609).
+    function renderAdminActivity(target,days,label,primary,heading="Actividad diaria"){
+      const root=$(target);
+      if(!days.length){root.innerHTML=U.empty("Sin actividad diaria","");return}
+      const max=Math.max(1,...days.map(primary));
+      const months=new Map();
+      for(const day of days){const key=day.date.slice(0,7);months.set(key,(months.get(key)||0)+1)}
+      const monthFormat=new Intl.DateTimeFormat(locale(),{month:"long",year:"numeric",timeZone:"UTC"});
+      const control=(step,caption)=>`<button type="button" class="button activity-control" data-step="${step}" aria-label="${caption}">${step<0?"‹":"›"}</button>`;
+      root.innerHTML=`<section class="activity-timeline"><div class="activity-heading"><div><strong>${U.esc(translate(heading))}</strong>
+        <p class="activity-range small muted" aria-live="polite"></p></div><button type="button" class="button" data-step="end">Últimos días</button></div>
+        <div class="activity-navigation">${control(-1,"Ver días anteriores")}<ul class="activity-chart" tabindex="0" aria-label="${U.esc(label)}">${days.map((day,i)=>{
+          const month=day.date.slice(0,7), value=primary(day);
+          const description=`${dateLabel(day.date)} · ${integer(value)} ${translate(label).toLocaleLowerCase(locale())}`;
+          return `<li class="activity-column" data-date="${day.date}" aria-label="${U.esc(description)}" title="${U.esc(description)}"><span>${integer(value)}</span>
+            <div class="activity-bars"><i style="height:${100*value/max}%"></i></div>
+            <time datetime="${day.date}">${day.date.slice(8)}</time>${days[i-1]?.date.slice(0,7)!==month?`<span class="activity-month" style="--days:${months.get(month)}">${U.esc(monthFormat.format(new Date(month+"-01T00:00:00Z")))}</span>`:""}</li>`;
+        }).join("")}</ul>${control(1,"Ver días siguientes")}</div></section>`;
+      const chart=root.querySelector(".activity-chart"), range=root.querySelector(".activity-range");
+      const earlier=root.querySelector('[data-step="-1"]'), later=root.querySelector('[data-step="1"]'), latest=root.querySelector('[data-step="end"]');
+      const step=()=>chart.children[1]?.offsetLeft-chart.children[0].offsetLeft||chart.children[0].offsetWidth||1;
+      const update=()=>{
+        const left=chart.scrollLeft, width=step();
+        earlier.disabled=left<=1;later.disabled=latest.disabled=left+chart.clientWidth>=chart.scrollWidth-1;
+        const first=Math.min(days.length-1,Math.floor((left+1)/width));
+        const last=Math.min(days.length-1,Math.max(first,Math.ceil((left+chart.clientWidth-1)/width)-1));
+        const text=`${dateLabel(days[first].date)} – ${dateLabel(days[last].date)}`;
+        if(range.textContent!==text)range.textContent=text;
       };
-      $(target).prepend(controls);
+      const navigate=direction=>{
+        const page=step()*Math.max(1,Math.floor(chart.clientWidth/step())-1);
+        chart.scrollLeft=direction==="end"?chart.scrollWidth:direction==="start"?0:chart.scrollLeft+direction*page;
+        update();
+      };
+      [earlier,later,latest].forEach(button=>button.onclick=()=>navigate(button===latest?"end":Number(button.dataset.step)));
+      chart.onkeydown=event=>{
+        const direction={ArrowLeft:-1,ArrowRight:1,PageUp:-1,PageDown:1,Home:"start",End:"end"}[event.key];
+        if(direction!==undefined){event.preventDefault();navigate(direction)}
+      };
+      chart.addEventListener("scroll",update,{passive:true});
+      navigate("end");
     }
 
     let newsletterAccessCohort="dau", newsletterAccessPage=0;
@@ -1676,7 +2079,7 @@
       ];
       const selected=cohorts.find(item=>item.key===adoptionCohort), matched=selected.rows;
       if(trend!==renderedAdoptionTrend){
-        renderActivityWindow("admin-adoption-chart",trend,rows=>renderUsageTrend(rows,"admin-adoption-chart"));
+        renderAdminActivity("admin-adoption-chart",trend,"Usuarios",day=>day.users||0,"Usuarios por día");
         renderedAdoptionTrend=trend;
       }
       const metrics=$("admin-adoption-metrics");
@@ -1714,20 +2117,14 @@
         if(!feedback){
           newsletterAccessPage=0;
           renderNewsletterAccessUsers(data.access,data.total);
-          const chart=$("admin-newsletter-access-chart");
-          activityWindows.delete(chart.id);
-          renderActivityWindow(chart.id,data.daily||[],daily=>{
-            const maximum=Math.max(1,...daily.map(day=>day.count));
-            chart.innerHTML=daily.length?`<h4>Actividad diaria</h4><div class="usage-trend-bars admin-access-bars">${daily.map(day=>`<article class="usage-trend-day" title="${U.esc(dateLabel(day.date))}"><div><i class="sessions" style="height:${100*day.count/maximum}%"></i></div><strong>${integer(day.count)}</strong><span>${U.esc(dateLabel(day.date))}</span></article>`).join("")}</div>`:"";
-          });
+          renderAdminActivity("admin-newsletter-access-chart",data.daily||[],"Accesos",day=>day.count);
         }
         const labels={open:"Acceso confirmado",positive:"Útil",negative:"Mejorable"};
-        const columns=feedback?["Fecha","Correo","Edición","Fecha de envío","Periodicidad","País","Idioma","Valoración","Observaciones","Estado"]:
+        const columns=feedback?["Fecha","Correo","Edición","País","Idioma","Valoración","Observaciones","Estado"]:
           ["Fecha","Edición","Interacción"];
         const rows=data.rows.map(([edition,action,date,status,,comment,metadata])=>feedback?
-          [dateTimeLabel(date),metadata?.email||"desconocido",metadata?.preview?edition+" · Prueba":edition||"Alerta",metadata?.sentAt?dateTimeLabel(metadata.sentAt):"—",
-            edition?"Mensual":"—",metadata?.countries||"—","—",labels[action],comment,status]:
-          [dateTimeLabel(date),metadata?.preview?edition+" · Prueba":edition,labels[action]]);
+          [dateTimeLabel(date),metadata?.email||"desconocido",metadata?.preview?edition+" · Prueba":edition||"Alerta",metadata?.countries||"—",metadata?.language||"—",labels[action],comment,status]:
+          [dateTimeLabel(date),metadata?.alert?"Alerta":metadata?.preview?edition+" · Prueba":edition,labels[action]]);
         const cards=`<div class="metrics${feedback?" feedback-metrics":""}">`+adminMetricCards(feedback?[
           {label:"Total",value:integer(data.total)},{label:"Útil",value:integer(data.positive)},{label:"Mejorable",value:integer(data.negative)},
           {label:"% útil",value:data.total?fmt(100*data.positive/data.total,0)+"%":"—"},
@@ -1803,87 +2200,34 @@
       if(state.adminTab==="logs")renderAdminLog();
       if(state.adminTab==="business")loadAdminBusiness();
     }
-    let reviewRecoveryLoaded=false,reviewRecoveryBusy=false;
-    function setReviewRecoveryBusy(busy){
-      reviewRecoveryBusy=busy;
-      $("admin-review-recovery-form").querySelectorAll("button, input, select").forEach(control=>control.disabled=busy||!reviewRecoveryLoaded);
-    }
-    function renderReviewRecovery(result){
-      const close=$("admin-review-recovery-close"), target=$("admin-review-recovery-result");
-      if(!result){close.classList.add("hidden");target.textContent="";return}
-      if(result.deferred){target.textContent=result.retryAt?`Escaparate en pausa hasta ${dateTimeLabel(new Date(result.retryAt).toISOString())}.`:"La captura de reseñas está en curso. Vuelve a intentarlo.";return}
-      close.classList.remove("hidden");
-      const reason={source_end:"Fin de las páginas disponibles",page_limit:"Límite de páginas alcanzado",invalid_cursor:"La tienda no devolvió una continuación válida"}[result.reason];
-      const progress=`${result.pages} / ${result.pageLimit} páginas · ${result.added} nuevas · ${result.updated} actualizadas · ${result.unchanged} ya existentes · ${result.failures} incidencias`;
-      const retry=result.retryAt>Date.now()&&!result.complete?`Reintento a partir de ${dateTimeLabel(new Date(result.retryAt).toISOString())}`:"";
-      target.textContent=[result.month,progress,reason,retry].filter(Boolean).join(" · ");
-    }
-    let recoveryPlatform="";
-    function syncReviewRecoveryMode(){
-      const monthly=$("admin-review-recovery-mode").value==="month";
-      $("admin-review-recovery-month").hidden=!monthly;
-      $("admin-review-recovery-month").required=monthly;
-      $("admin-review-recovery-month-label").hidden=!monthly;
-    }
-    async function loadReviewRecoveryOptions(event){
-      if(!event.currentTarget.open||reviewRecoveryBusy)return;
-      const target=$("admin-review-recovery-result");
-      setReviewRecoveryBusy(true);
-      try{
-        const {listings,state:previous}=await callServer("admin:reviews:options");
-        const ordered=listings.filter(item=>!recoveryPlatform||item.platform===recoveryPlatform).sort((a,b)=>countryLabel(a.countryCode).localeCompare(countryLabel(b.countryCode))||a.appName.localeCompare(b.appName)||a.platform.localeCompare(b.platform));
-        $("admin-review-recovery-listing").innerHTML=ordered.map(item=>U.option(item.appKey,`${countryLabel(item.countryCode)} · ${item.appName} · ${item.platform}`,previous?.appKey===item.appKey)).join("");
-        $("admin-review-recovery-month").value=previous?.month||state.meta.dataDate.slice(0,7);
-        $("admin-review-recovery-mode").value=previous&&!previous.day?"month":"today";
-        syncReviewRecoveryMode();
-        reviewRecoveryLoaded=ordered.length>0;
-        renderReviewRecovery(previous);
-        if(!ordered.length)target.textContent="No hay escaparates disponibles para recuperar.";
-      }catch(error){target.textContent=error.message}
-      finally{setReviewRecoveryBusy(false)}
-    }
-    async function submitReviewRecovery(event){
-      event.preventDefault();
-      if(reviewRecoveryBusy||!reviewRecoveryLoaded)return;
-      const scope={appKey:$("admin-review-recovery-listing").value,month:$("admin-review-recovery-month").value,mode:$("admin-review-recovery-mode").value};
-      const recover=event.submitter?.value==="recover";
-      const target=$(recover?"admin-review-recovery-result":"admin-review-coverage");
-      target.textContent=recover?"Consultando una página de la tienda…":"Consultando la cobertura…";
-      setReviewRecoveryBusy(true);
-      try{
-        let result;
-        do {
-          result=await callServer(recover?"admin:reviews:recover":"admin:reviews:coverage",scope);
-          if(recover)renderReviewRecovery(result);
-        } while(recover&&result&&!result.complete&&!result.deferred&&!(result.retryAt>Date.now()));
-        if(recover){$("admin-review-coverage").textContent="";renderReviewRecovery(result)}
-        else target.textContent=`${result.status} · ${result.values.map(item=>`${item.month}: ${integer(item.count)}`).join(" · ")}`;
-      }catch(error){target.textContent=error.message}
-      finally{setReviewRecoveryBusy(false)}
-    }
-    async function closeReviewRecovery(){
-      if(reviewRecoveryBusy)return;
-      setReviewRecoveryBusy(true);
-      try{
-        const result=await callServer("admin:reviews:close");
-        if(result.closed)renderReviewRecovery(null);else renderReviewRecovery(result);
-      }catch(error){$("admin-review-recovery-result").textContent=error.message}
-      finally{setReviewRecoveryBusy(false)}
-    }
     let runningPanelJob = false;
     window.setInterval?.(()=>{
-      if(state.view==="admin"&&state.adminTab==="health"&&!document.hidden&&!runningPanelJob&&!$("admin-jobs").contains(document.activeElement)) loadAdmin(true);
+      if(state.view==="admin"&&state.adminTab==="health"&&!document.hidden&&!runningPanelJob&&!$("admin-jobs").contains(document.activeElement)) refreshAdminJobs();
     },30000);
+    let adminJobsPolling=false;
+    async function refreshAdminJobs(){
+      if(adminJobsPolling||state.adminLoading||!state.adminCenter)return;
+      adminJobsPolling=true;
+      try{
+        const jobs=await callServer("admin:jobs:status");
+        if(state.view!=="admin"||state.adminTab!=="health")return;
+        Object.assign(state.adminCenter.system,jobs);
+        renderAdminJobs(state.adminCenter.system,state.adminCenter.recentRuns||[]);
+      }catch(error){
+        if(state.view==="admin"&&state.adminTab==="health")$("admin-jobs-result").textContent=error.message;
+      }finally{adminJobsPolling=false}
+    }
     function renderAdminJobs(system,runs){
       const pipeline=system.reviewPipeline, operations=system.operations;
       renderAdminJobSettings(operations, pipeline, system);
-      $("admin-review-recovery").classList.toggle("hidden",!pipeline?.canRestart);
       const latest=runs[0], config=operations?.config||{};
-      const index=operations?.index, geo=operations?.geography, maintenance=operations?.maintenance, backup=operations?.backup;
+      const index=operations?.index, geo=operations?.geography, maintenance=operations?.maintenance, backup=operations?.backup, androidMetadata=operations?.androidMetadata;
       const waiting=job=>job?.runningUntil>Date.now()?"En curso":job?.error?"Reintento pendiente":job?.complete?"Completado":
         operations?.activeReviewStage?"Esperando "+operations.activeReviewStage:"Pendiente del supervisor";
       const delivery=(id,fallback)=>{
-        const data=system.deliveries?.[id]||{};
+        const timing=system.deliveryTiming?.[id], audit=system.deliveries?.[id];
+        const data=Date.parse(timing?.startedAt)>=Date.parse(audit?.startedAt||0)?{...audit,...timing}:audit||{};
+        const running=data.status==="RUNNING"&&Date.now()-Date.parse(data.startedAt)<7*60000;
         const known=Number.isInteger(data.sent)&&Number.isInteger(data.total)&&data.sent>=0&&data.sent<=data.total;
         const details=[
           Number.isInteger(data.attempted)?`${integer(data.attempted)} intentadas`:"",
@@ -1892,14 +2236,16 @@
           !known&&data.lastAuditedEdition?`Edición ${data.lastAuditedEdition.period} · al menos ${integer(data.lastAuditedEdition.minimumConfirmed)} confirmadas`:""
         ].filter(Boolean);
         return {updatedAt:data.startedAt||fallback,deliveredAt:data.lastDeliveryAt,
-          done:known&&(data.sent<data.total||data.status==="DELIVERED")?data.sent:undefined,total:known?data.total:undefined,
-          status:known&&data.status==="DELIVERED"&&data.sent===data.total?"Completado":
+          done:known?(running?data.attempted:data.sent):undefined,total:known?data.total:undefined,
+          status:running?"En curso":data.status==="RUNNING"?"Revisar":known&&data.status==="DELIVERED"&&data.sent===data.total?"Completado":
             data.status==="NOT_REQUIRED"?"Sin envíos pendientes":!known&&data.status!=="ERROR"?"No verificable":data.status||"Pendiente",
           detail:details.join(" · ")};
       };
+      const ratingSchedule=operations?.ratingSchedule;
+      const runningRatings=ratingSchedule?.status==="En curso"&&Date.now()-Date.parse(ratingSchedule.startedAt)<7*60000;
       const jobs=[
         {id:"ratings",priority:1,group:"Ratings",name:"Carga diaria de ratings",detail:latest?`${latest.appsError} con error · ${latest.appsNoRating} sin rating · ${latest.rowsUpserted} filas actualizadas`:"",schedule:system.dailySchedule,
-          status:["PARTIAL","OK"].includes(latest?.status)&&latest.appsError===0&&latest.appsTotal>0&&latest.appsOk+latest.appsNoRating===latest.appsTotal?"Activo":latest?.status||"Sin ejecuciones",updatedAt:latest?.startedAt,done:latest?latest.appsOk+latest.appsNoRating+latest.appsError:0,total:latest?.appsTotal},
+          status:runningRatings?"En curso":["PARTIAL","OK"].includes(latest?.status)&&latest.appsError===0&&latest.appsTotal>0&&latest.appsOk+latest.appsNoRating===latest.appsTotal?"Activo":latest?.status||"Sin ejecuciones",updatedAt:latest?.startedAt,done:latest?latest.appsOk+latest.appsNoRating+latest.appsError:0,total:latest?.appsTotal,retryAt:ratingSchedule?.retryAt,error:ratingSchedule?.failure},
         {id:"newsletter",priority:2,group:"Envíos planificados",name:"Newsletter mensual",schedule:system.newsletterSchedule,enabled:system.newsletterDeliveryEnabled,...delivery("newsletter",operations?.newsletter?.startedAt)},
         ...(pipeline?.jobs||[]).map(job=>({...job,name:job.label,
           group:({supervisor:"Supervisor",ios:"Recopilación de reseñas",android:"Recopilación de reseñas",
@@ -1919,6 +2265,8 @@
         {id:"geography",priority:3,group:"Inferencia geográfica",name:"Inferencia geográfica Android",...geo,status:waiting(geo),
           done:geo?.processed,total:geo?.last?geo.total:undefined,
           detail:geo?`${integer(geo.processed)} Android sin geografía revisadas · ${integer(geo.counts?.INFERIDO||0)} inferidas · ${integer(geo.counts?.NO_ATRIBUIBLE||0)} no atribuibles`:""},
+        {id:"androidMetadata",priority:6,group:"Mantenimiento y backup",name:"Refresco de metadatos Android",...androidMetadata,status:waiting(androidMetadata),
+          detail:androidMetadata?`${integer(androidMetadata.pages||0)} páginas · ${integer(androidMetadata.updated||0)} reseñas actualizadas`:""},
         {id:"maintenance",priority:6,group:"Mantenimiento y backup",name:"Mantenimiento incremental",...maintenance,done:maintenance?.total,
           detail:maintenance?.total==null?"":`${maintenance.invalid} inválidas · ${maintenance.duplicates} duplicadas · ${maintenance.archived||0} archivadas`},
         {...backup,id:"backup",priority:6,group:"Mantenimiento y backup",name:"Backup mensual",done:backup?.id?1:0,total:1},
@@ -1926,7 +2274,7 @@
           detail:job.changed==null?"":job.changed?"Cambios detectados":"Sin cambios"}))
       ];
       const actions={backup:"Crear copia mensual",index:"Clasificar pendientes",geography:"Iniciar inferencia",maintenance:"Iniciar mantenimiento",
-        ios:"Recuperar reseñas",android:"Recuperar reseñas",publish:"Generar snapshots",taxonomy:"Actualizar catálogo",taxonomyTranslation:"Traducir pendientes"};
+        publish:"Generar snapshots",androidMetadata:"Solicitar refresco",taxonomy:"Actualizar catálogo",taxonomyTranslation:"Traducir pendientes"};
       const groups=new Map();
       for(const job of jobs){
         const saved=config[job.id]||{};
@@ -1934,6 +2282,9 @@
         job.enabled=saved.enabled??job.enabled??true;
         job.schedule=saved.time||job.schedule;
         job.timeZone=saved.timeZone||system.timeZone;
+        const retry=operations?.jobRetries?.[job.id];
+        if(retry){job.retryAt=retry.next;job.error=retry.error}
+        if(operations?.queuedJobs?.includes(job.id)&&job.status!=="En curso")job.status="En cola";
         const key=job.priority+"|"+job.group;
         if(!groups.has(key))groups.set(key,{name:job.group,priority:job.priority,jobs:[]});
         groups.get(key).jobs.push(job);
@@ -1945,8 +2296,8 @@
           /^(Activo|OK|Completad)/i.test(status)?"complete":"pending";
         const confirmed=Number.isInteger(job.total)&&Number.isInteger(job.done);
         const progress=confirmed&&job.total>0&&job.done>=0&&job.done<=job.total
-          ? `<progress value="${job.done}" max="${job.total}" aria-label="${U.esc(job.name)}"></progress><p class="small muted">${job.id==="alerts"?`${integer(job.done)} enviadas / ${integer(job.total)} alertas`:`${job.done}/${job.total}`}</p>`
-          : status==="En curso"?`<progress aria-label="${U.esc(job.name)}"></progress>`:"";
+          ? `<progress value="${status==="En curso"?job.done:job.total}" max="${job.total}" aria-label="${U.esc(job.name)}"></progress><p class="small muted">${job.id==="alerts"?`${integer(job.done)} / ${integer(job.total)} destinatarios`:`${job.done}/${job.total}`}</p>`
+          : status==="En curso"?`<progress aria-label="${U.esc(job.name)}"></progress>`:`<progress value="1" max="1" aria-label="${U.esc(job.name)}"></progress>`;
         return `<article class="process-card"><div class="schedule-heading"><h4>${U.esc(job.name)}</h4>
           <span class="process-state" data-status="${tone}">${job.enabled?U.esc(status):"Inactivo"}</span></div>
           <p class="small muted">${[job.schedule,job.timeZone].filter(Boolean).map(U.esc).join(" · ")}</p>${progress}
@@ -1954,7 +2305,7 @@
           ${job.waitingFor?`<p class="small muted">Trabajo activo · ${U.esc(job.waitingFor)}</p>`:""}${statusLine("Último avance",job.lastProgressAt)}${statusLine("Último éxito",job.lastSuccessAt)}
           ${statusLine("Reintento",job.retryAt?new Date(job.retryAt).toISOString():"")}
           ${job.detail?`<p class="small muted">${U.esc(job.detail)}</p>`:""}${job.error?`<p>${U.esc(job.error)}</p>`:""}
-          ${job.id==="ratings"?'<button id="admin-recovery" class="button" type="button" data-run-job="ratings">Recuperar ratings ahora</button>':operations?.owner&&actions[job.id]?`<button class="button" type="button" data-run-job="${job.id}" ${!job.enabled||status==="En curso"||status.startsWith("Esperando ")||status.startsWith("En pausa")||job.retryAt>Date.now()||(["index","geography","taxonomyTranslation"].includes(job.id)&&status==="Completado")?"disabled":""}>${actions[job.id]}</button>`:""}</article>`;
+          ${job.id==="ratings"?`<button id="admin-recovery" class="button" type="button" data-run-job="ratings" ${["En curso","En cola"].includes(status)?"disabled":""}>Solicitar recuperación de ratings</button>`:operations?.owner&&actions[job.id]?`<button class="button" type="button" data-run-job="${job.id}" ${!job.enabled||["En curso","En cola"].includes(status)?"disabled":""}>${actions[job.id]}</button>`:""}</article>`;
       };
       const root=$("admin-jobs");
       root.innerHTML=[...groups.values()].sort((a,b)=>a.priority-b.priority).map(group=>`<section class="process-group">
@@ -1963,22 +2314,15 @@
       root.onclick=async event=>{
         const button=event.target.closest("[data-run-job]");
         if(!button||runningPanelJob)return;
-        if(["ios","android"].includes(button.dataset.runJob)){
-          const details=$("admin-review-recovery");
-          recoveryPlatform=button.dataset.runJob==="ios"?"iOS":"Android";
-          if(details.open)await loadReviewRecoveryOptions({currentTarget:details});else details.open=true;
-          details.scrollIntoView({block:"nearest"});
-          return;
-        }
         if(button.dataset.runJob==="ratings"){runningPanelJob=true;try{await requestAdminRatingRecovery();}finally{runningPanelJob=false}return;}
         runningPanelJob=true;
         const result=$("admin-jobs-result");
         button.disabled=true;
-        result.textContent="Ejecutando…";
+        result.textContent="Solicitando turno…";
         try{
           const response=await callServer("admin:jobs:run",button.dataset.runJob);
           result.textContent=response.message;
-          await loadAdmin(true);
+          await refreshAdminJobs();
         }catch(error){result.textContent=error.message}
         finally{button.disabled=false;runningPanelJob=false}
       };
@@ -1992,7 +2336,8 @@
         <select id="job-interval" name="minutes">${[1,5,10,15,30].map(value=>U.option(value,value,value===operations.interval)).join("")}</select>
         <button class="button" type="submit">Guardar</button></form>`;
       const jobs=[...(pipeline?.jobs||[]).filter(job=>job.priority),...(system.functionalJobs||[]),
-        {id:"index",name:"Clasificación de reseñas",priority:3},{id:"geography",name:"Inferencia geográfica Android",priority:3},{id:"backup",name:"Backup mensual",priority:6},{id:"maintenance",name:"Mantenimiento",priority:6}];
+        {id:"index",name:"Clasificación de reseñas",priority:3},{id:"geography",name:"Inferencia geográfica Android",priority:3},{id:"backup",name:"Backup mensual",priority:6},{id:"maintenance",name:"Mantenimiento",priority:6},
+        {id:"androidMetadata",name:"Refresco de metadatos Android",priority:6}];
       const forms=jobs.map(job=>{
         const settings=operations.config[job.id]||{};
         const enabled=settings.enabled ?? true;
@@ -2070,7 +2415,7 @@
         latestTest?`<span>Última prueba aceptada en el registro reciente · ${U.esc(dateTimeLabel(latestTest.timestamp))} · ${U.esc(latestTest.userEmail)}</span>`:""
       ].join("");
       const country=$("newsletter-test-country"), known=country.value;
-      country.innerHTML=U.option("","Según suscripción")+Object.entries(D.config.countries).map(([code,label])=>U.option(code,label)).join("");
+      country.innerHTML=U.option("","Según suscripción")+U.option("ALL","Todos")+Object.entries(D.config.countries).map(([code,label])=>U.option(code,label)).join("");
       country.value=known;
     }
     function renderAdminSubscribers(rows){
@@ -2115,7 +2460,18 @@
     function closeAdminSubscriber(){$("admin-subscription-editor").hidden=true;state.adminEditingEmail=""}
     function adminSubscriberPayload(){const existing=(state.adminCenter?.subscribers||[]).find(item=>item.email===state.adminEditingEmail)||adminSubscriberDefault(),payload=Object.assign({},existing,{newsletterLanguage:$("admin-newsletter-language").value,active:$("admin-subscriber-active").checked,newsletterEnabled:$("admin-newsletter-enabled").checked,countries:normalizeAdminScope("country",adminScopeSelection("country")),platforms:normalizeAdminScope("platform",adminScopeSelection("platform")),dailyDropEnabled:$("admin-daily-enabled").checked,dailyWarningDrop:Number($("admin-daily-warning").value),dailyCriticalDrop:Number($("admin-daily-critical").value),mtdDropEnabled:$("admin-mtd-enabled").checked,mtdWarningDrop:Number($("admin-mtd-warning").value),mtdCriticalDrop:Number($("admin-mtd-critical").value),ytdDropEnabled:$("admin-ytd-enabled").checked,ytdWarningDrop:Number($("admin-ytd-warning").value),ytdCriticalDrop:Number($("admin-ytd-critical").value),repeatWhileBreached:$("admin-repeat-enabled").checked,crossoverEnabled:$("admin-crossover-enabled").checked,crossoverDirection:$("admin-crossover-direction").value});return{email:state.adminEditingEmail||$("admin-subscriber-email").value.trim().toLowerCase(),preferences:payload}}
     async function saveAdminSubscriber(event){event.preventDefault();const button=$("admin-subscriber-save"),errorPanel=$("admin-subscriber-error"),previous=button.textContent;button.disabled=true;button.textContent="Guardando…";errorPanel.classList.add("hidden");try{const saved=await callServer("admin:subscriber:save",adminSubscriberPayload());const rows=state.adminCenter.subscribers||[],index=rows.findIndex(row=>row.email===saved.email);if(index<0)rows.push(saved);else rows[index]=saved;trackUsage("ACTION","admin","SUBSCRIBER_SAVE");closeAdminSubscriber();await loadAdmin(true);showToast(`${saved.email}: alertas ${saved.active?"activas":"pausadas"} y newsletter ${saved.newsletterEnabled?"activa":"desactivada"}.${saved.enrollmentYtdAcknowledged?` ${saved.enrollmentYtdAcknowledged} señales YTD previas reconocidas sin envío.`:""}`,true)}catch(error){trackUsage("ERROR","admin","SUBSCRIBER_ERROR",error?.message||error);errorPanel.textContent=error?.message||String(error);errorPanel.classList.remove("hidden")}finally{button.disabled=false;button.textContent=previous}}
-    async function requestAdminRatingRecovery(){if(!window.confirm("Se recuperarán ahora todos los ratings y se registrará una nueva ejecución. ¿Continuar?"))return;const button=$("admin-recovery"),previous=button.textContent;button.disabled=true;button.textContent="Recuperando ratings…";try{const result=await callServer("admin:ratings:recover");trackUsage("ACTION","admin","RATING_RECOVERY");await loadAdmin(true);showToast(`Recuperación ${result.runId} completada: ${result.rowsUpserted} filas actualizadas.`,true)}catch(error){showError(error)}finally{button.disabled=false;button.textContent=previous}}
+    async function requestAdminRatingRecovery(){
+      if(!window.confirm("El supervisor encolará la recuperación de ratings para su próximo turno elegible. ¿Continuar?"))return;
+      const button=$("admin-recovery");
+      button.disabled=true;
+      try{
+        const response=await callServer("admin:ratings:recover");
+        trackUsage("ACTION","admin","RATING_RECOVERY");
+        $("admin-jobs-result").textContent=response.message;
+        await refreshAdminJobs();
+      }catch(error){showError(error)}
+      finally{if(button.isConnected)button.disabled=false}
+    }
     async function unsubscribeAdminNewsletter(button){
       const rows=state.adminCenter?.subscribers||[];
       const row=rows.find(item=>item.email===button.dataset.subscriber);
@@ -2131,7 +2487,9 @@
     async function testAdminNewsletter(event){
       event.preventDefault();
       const form=event.currentTarget, button=event.submitter||form.querySelector('button[type="submit"]');
-      const fields=Object.fromEntries(new FormData(form)), fingerprint=JSON.stringify(fields);
+      const fields=Object.fromEntries(new FormData(form));
+      if(fields.edition==="monthly")fields.period="current";
+      const fingerprint=JSON.stringify(fields);
       if(form.dataset.fingerprint!==fingerprint){
         form.dataset.fingerprint=fingerprint;
         form.dataset.requestId="NEWS-REQ-"+(window.crypto?.randomUUID?window.crypto.randomUUID():`${Date.now()}-${Math.random().toString(16).slice(2)}`);
@@ -2194,7 +2552,7 @@
         const url=URL.createObjectURL(file), link=document.createElement("a");
         link.href=url;
         const title={benchmark:"Resumen",evolution:"Análisis mensual",analytics:"Análisis anual",reviews:"Comentarios"}[view];
-        link.download=`Market Pulse - ${title} - ${country}.xlsx`;
+        link.download=`EDC Market Pulse - ${title} - ${country}.xlsx`;
         link.click();
         window.setTimeout(()=>URL.revokeObjectURL(url),1000);
         trackUsage("ACTION",view,"REPORT_DOWNLOAD");

@@ -44,9 +44,9 @@ test("admin endpoint always performs server-side authorization", () => {
   const admin = fs.readFileSync(new URL("../src/58_Admin.gs", import.meta.url), "utf8");
   assert.match(admin, /function getMarketsAdminDashboard\(includeUsage = true\) \{\s*const access = requireMarketsAdministrator_\(\)/);
   assert.match(admin, /function saveMarketsAdminSubscriber\(email, payload\) \{\s*const access = requireMarketsAdministrator_\(\)/);
-  assert.match(admin, /function requestMarketsAdminRatingRecovery\(\) \{\s*const access = requireMarketsAdministrator_\(\)/);
+  assert.match(admin, /function requestMarketsAdminRatingRecovery\(\) \{\s*requireMarketsAdministrator_\(\)/);
   assert.match(admin, /normalizeMarketsAlertEmail_\(email\)/);
-  assert.match(admin, /runDailyRatingMonitor\(\)/);
+  assert.match(admin, /enqueueMarketsPanelJob_\(properties, 'ratings'\)/);
   assert.match(admin, /requireCurrentSheetContract_/);
   assert.match(admin, /webAppUrl:\s*marketsWebAppUrl_\(\)/);
   assert.match(admin, /readMarketsUsageAnalytics_/);
@@ -259,6 +259,9 @@ test("unified supervisor waits for the migration day, then dispatches each sched
   assert.equal(runtime.advanceMarketsScheduledOperations_(new Date("2026-11-14")),false);
   const first = new Date("2026-12-01");
   for(let i=0;i<4;i++)runtime.advanceMarketsScheduledOperations_(first);
+  assert.deepEqual(calls,["ratings","newsletter"]);
+  runtime.advanceMarketsScheduledOperations_(first,true);
+  runtime.advanceMarketsScheduledOperations_(first,true);
   assert.deepEqual(calls,["ratings","newsletter","health"]);
 });
 
@@ -353,4 +356,57 @@ test("historic newsletter recipients prove a minimum per edition but never suppl
   assert.equal(newsletter.total, undefined);
   assert.equal(newsletter.lastAuditedEdition.period, "2026-10");
   assert.equal(newsletter.lastAuditedEdition.minimumConfirmed, 1);
+});
+
+test("manual request persists without taking the worker lock and P3 advances before translation", () => {
+  const properties = new Map(), calls = [], key = "MARKETS_REVIEW_PIPELINE";
+  const props = { getProperty: key => properties.get(key), setProperty: (key, value) => properties.set(key, value),
+    deleteProperty: key => properties.delete(key) };
+  const local = vm.createContext({
+    MARKETS_CONFIG: { timeZone: "Europe/Madrid" },
+    Utilities: { formatDate: (_date, _tz, fmt) => fmt === "yyyy-MM-dd" ? "2026-11-16" : "18:30" },
+    safeJsonParse_: value => JSON.parse(value || "null"), requireMarketsReviewOwner_: () => ({}),
+    PropertiesService: { getScriptProperties: () => props },
+    LockService: { getScriptLock: () => { throw new Error("manual requests need no worker lock"); } },
+    advanceMarketsReviewIndex_: () => { calls.push("index"); return { complete: false }; },
+    advanceMarketsAndroidGeography_: () => { calls.push("geography"); return true; }
+  });
+  vm.runInContext(fs.readFileSync(new URL("../src/51_ReviewOperations.gs", import.meta.url), "utf8"), local);
+  const pipeline = local.newMarketsReviewPipeline_("2026-11-16");
+  pipeline.stage = pipeline.jobs.findIndex(job => job.id === "translate");
+  pipeline.jobs.find(job => job.id === "alerts").status = "Revisar";
+  properties.set(key, JSON.stringify(pipeline));
+  assert.equal(local.runMarketsPanelJob("index").queued, true);
+  assert.match(local.runMarketsPanelJob("index").message, /ya está en cola/);
+  local.LockService = { getScriptLock: () => ({ tryLock: () => true, releaseLock() {} }) };
+  local.advanceMarketsReviewPipeline_();
+  local.advanceMarketsReviewPipeline_();
+  assert.deepEqual(calls, ["index", "geography"]);
+  assert.equal(properties.has("MARKETS_REVIEW_MANUAL:index"), false);
+  assert.equal(JSON.parse(properties.get(key)).stage, pipeline.stage);
+});
+
+test("manual ratings are queued after the daily capture and run through the unified supervisor", () => {
+  const state = new Map([["MARKETS_UNIFIED_OPERATIONS","2026-11-14"]]);
+  const properties = {getProperty:key=>state.get(key),setProperty:(key,value)=>state.set(key,value),
+    deleteProperty:key=>state.delete(key)};
+  let calls = 0;
+  const runtime = vm.createContext({
+    safeJsonParse_:value=>JSON.parse(value||"null"),
+    PropertiesService:{getScriptProperties:()=>properties},
+    LockService:{getScriptLock:()=>({tryLock:()=>true,releaseLock(){}})},
+    Utilities:{formatDate:(_date,_zone,format)=>format==="HHmm"?"1000":"2026-11-16"},
+    MARKETS_CONFIG:{timeZone:"Europe/Madrid",runHour:7,runMinute:5,newsletterHour:8,newsletterMinute:15},
+    runDailyRatingMonitor:()=>{calls++;return {status:"OK"};},
+    runMarketsMonthlyNewsletter:()=>assert.fail("Newsletter is not scheduled today")
+  });
+  vm.runInContext(fs.readFileSync(new URL("../src/51_ReviewOperations.gs", import.meta.url),"utf8"),runtime);
+  assert.equal(runtime.advanceMarketsScheduledOperations_(),true);
+  assert.equal(calls,1);
+  assert.equal(runtime.enqueueMarketsPanelJob_(properties,"ratings").queued,true);
+  assert.match(runtime.enqueueMarketsPanelJob_(properties,"ratings").message,/ya está en cola/);
+  assert.equal(calls,1);
+  assert.equal(runtime.advanceMarketsScheduledOperations_(),true);
+  assert.equal(calls,2);
+  assert.equal(runtime.advanceMarketsScheduledOperations_(),false);
 });

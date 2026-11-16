@@ -51,6 +51,20 @@ function requireMarketsAdministrator_() {
   return { email: email, ss: ss, control: control };
 }
 
+/** Panel polling should not reload subscribers, sender verification, or operational logs. */
+function getMarketsAdminPanelJobs() {
+  const { email } = requireMarketsAdministrator_();
+  const properties = PropertiesService.getScriptProperties();
+  const deliveryTiming = Object.fromEntries(['newsletter', 'reviewAlerts'].map(id =>
+    [id, safeJsonParse_(properties.getProperty('MARKETS_JOB_TIMING:' + id))]));
+  return {
+    deliveryTiming,
+    reviewPipeline: marketsAdminReviewPipeline_(email),
+    operations: marketsAdminReviewOperations_(email),
+    functionalJobs: marketsFunctionalJobStatus_()
+  };
+}
+
 function getMarketsAdminDashboard(includeUsage = true) {
   const access = requireMarketsAdministrator_();
   const ss = access.ss;
@@ -188,13 +202,10 @@ function saveMarketsAdminSubscriber(email, payload) {
  * la auditoria en RUN_LOG y conserva el mismo bloqueo que la carga programada.
  */
 function requestMarketsAdminRatingRecovery() {
-  const access = requireMarketsAdministrator_();
-  const result = runDailyRatingMonitor();
-  return Object.assign({}, result, {
-    requestedBy: access.email,
-    requestedAt: new Date().toISOString(),
-    mode: 'MANUAL_ADMIN_RECOVERY'
-  });
+  requireMarketsAdministrator_();
+  const properties = PropertiesService.getScriptProperties();
+  if (!properties.getProperty(MARKETS_UNIFIED_OPERATIONS)) throw new Error('La recuperación requiere el supervisor unificado.');
+  return enqueueMarketsPanelJob_(properties, 'ratings');
 }
 
 function marketsAdminReviewPipeline_(email) {

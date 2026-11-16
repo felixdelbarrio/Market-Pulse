@@ -177,7 +177,7 @@ test("doGet builds an HtmlService response using supported metadata", () => {
   assert.deepEqual(calls, [
     ["template", "Index"],
     ["evaluate"],
-    ["title", "Market Pulse · BBVA Banca de Empresas e Instituciones"],
+    ["title", "EDC Market Pulse · BBVA Banca de Empresas e Instituciones"],
     ["meta", "viewport", "width=device-width, initial-scale=1, viewport-fit=cover"],
     ["favicon", calls.at(-1)[1]]
   ]);
@@ -328,12 +328,12 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(index, /includeMarketsWebPartial_\('BrandAssets'\)/);
   assert.match(index, /includeMarketsWebPartial_\('BrandIdentity'\)/);
   assert.match(identity, /--asset-bbva-bei-logo:url\("data:image\/png;base64,/);
-  assert.match(index, /Market Pulse/);
+  assert.match(index, /EDC Market Pulse/);
   assert.doesNotMatch(index, /Markets Data Studio/);
   assert.match(index, /name="mobile-web-app-capable" content="yes"/);
   assert.match(index, /name="apple-mobile-web-app-capable" content="yes"/);
-  assert.match(index, /name="application-name" content="Market Pulse"/);
-  assert.match(index, /name="apple-mobile-web-app-title" content="Market Pulse"/);
+  assert.match(index, /name="application-name" content="EDC Market Pulse"/);
+  assert.match(index, /name="apple-mobile-web-app-title" content="EDC Market Pulse"/);
   names.forEach(name => assert.match(index, new RegExp(`includeMarketsWebPartial_\\('${name}'\\)`)));
   assert.match(app, /MarketsWorkbook\.build/);
   assert.match(app, /const request=trendRequest\(\)/);
@@ -375,9 +375,9 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(evolutionMarkup, /class="panel-body radar-filters review-gap-controls"[\s\S]*id="monthly-review-segment"/);
   assert.match(app, /searchable\(\$\("monthly-review-segment"\)\)\.refresh\(\)/);
   assert.match(evolutionMarkup, /id="evolution-filters"[\s\S]*name="audience"[\s\S]*name="inferGeography"[\s\S]*<\/form>/);
-  assert.match(evolutionMarkup, /id="review-balance"[\s\S]*id="review-deltas"[\s\S]*id="review-examples"[\s\S]*id="monthly-matrix"[\s\S]*id="new-review-impact"/);
+  assert.match(evolutionMarkup, /id="monthly-matrix"[\s\S]*id="review-deltas"[\s\S]*id="review-examples"[\s\S]*id="new-review-impact"/);
   assert.match(analyticsMarkup, /class="annual-chart-layout">\s*<div id="annual-chart"[^>]*><\/div>\s*<aside id="annual-series"[^>]*><\/aside>/);
-  assert.match(analyticsMarkup, /id="review-heatmap"[\s\S]*id="analytics-entity"[\s\S]*id="annual-chart"[\s\S]*id="review-annual"/);
+  assert.match(analyticsMarkup, /id="review-heatmap"[\s\S]*id="analytics-entity"[\s\S]*id="annual-chart"[\s\S]*id="annual-nps-chart"[\s\S]*id="review-annual"/);
   const charts = fs.readFileSync(new URL("../src/Charts.html", import.meta.url), "utf8");
   assert.match(charts, /class="rating-bar-metric"/);
   assert.match(charts, /<\/span><b aria-label="Rating/);
@@ -388,7 +388,7 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(charts, /class="new-review-unavailable"/);
   assert.doesNotMatch(charts, /platformBadge/);
   assert.match(app, /const mobileViewport=window\.matchMedia\("\(max-width:780px\)"\)/);
-  assert.match(app, /monthlyRatingMatrix\(trends,state\.snapshot,\{\.\.\.selection\(\),app:state\.evolutionApp\},period,mobileViewport\.matches\?3:6\)/);
+  assert.match(app, /monthlyRatingMatrix\(trends,state\.snapshot,selected,period,mobileViewport\.matches\?2:6,mobileViewport\.matches\)/);
   assert.match(app, /const compactInteger=/);
   assert.doesNotMatch(charts, /Cierre mensual|<span>\/ 5<\/span>/);
   const components = fs.readFileSync(new URL("../src/Components.html", import.meta.url), "utf8");
@@ -408,20 +408,17 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   assert.match(index, /Activa por defecto/);
   assert.match(index, /Toda la base activa/);
   assert.match(app, /draft\[period\+"DropEnabled"\]/);
-  assert.match(index, /Probar alertas/);
+  assert.doesNotMatch(index, /Probar alertas/);
   assert.doesNotMatch(index, /id="newsletter-test-button"/);
   assert.match(index, /id="loader-retry"/);
   assert.doesNotMatch(app, /sendMarketsNewsletterTestEmail/);
   assert.match(app, /admin:newsletter:test"\?120000/);
   assert.match(app, /form\.dataset\.requestId/);
   assert.match(app, /state\.userContext=data\.userContext/);
-  assert.match(app, /Market Pulse no ha respondido a tiempo/);
+  assert.match(app, /EDC Market Pulse no ha respondido a tiempo/);
   assert.doesNotMatch(app, /Promise\.all\\(\\[callServer\\("bootstrap"\\),callServer\\("user:context"\\)\\]\\)/);
   assert.match(app, /function renderDashboard\(\)\{if\(state\.view==="benchmark"\)/);
-  assert.match(index, /id="alert-test-result"/);
-  assert.match(app, /Gmail ha aceptado la prueba/);
-  assert.match(app, /result\.senderAddress/);
-  assert.match(app, /result\.messageId/);
+  assert.doesNotMatch(index, /id="alert-test-(?:result|button)"/);
   assert.match(app, /result\.deliveryId/);
   assert.match(index, /Restaurar valores/);
   assert.match(index, /Guardar mis alertas/);
@@ -737,7 +734,7 @@ test("evolution includes all apps by default and supports filtering by app", () 
   assert.deepEqual(labels, ["BBVA Empresas Colombia", "BBVA Empresas México", "Banco Uno México", "Fintech Uno México"]);
   assert.deepEqual(Array.from(browser.MarketsDomain.selectionRows(snapshot, { country: "MX", platform: "ALL" }, "FINTECH", true), row => row.appKey), ["BBVA", "MP"]);
   const app = fs.readFileSync(new URL("../src/App.html", import.meta.url), "utf8");
-  assert.match(app, /function trendRequest\(\)\{return\{[^}]*segment:"ALL"/);
+  assert.match(app, /const annualTrendRequest=[^\n]*segment:"ALL"/);
   assert.match(app, /function activeTrendRows\(trends\)\{return D\.trendRows\(trends,\{\.\.\.selection\(\),app:state\.evolutionApp\}\)\}/);
   assert.doesNotMatch(app, /activeTrendRows\(\).*benchmarkSegment/);
 });
@@ -941,4 +938,61 @@ test("newsletter access is recorded before bootstrap and a failed RPC retains th
   assert.deepEqual(attempts, ["signed-token", "signed-token"]);
   const init = source.match(/function initializeApp\(\).*?loadBootstrap\(\)/s)[0];
   assert.match(init, /recordNewsletterOpen\(\).*loadBootstrap\(\)/s);
+});
+
+test("review audience keeps its value and localizes the visible BEI filter across review views", () => {
+  const index = fs.readFileSync(new URL("../src/Index.html", import.meta.url), "utf8");
+  const app = fs.readFileSync(new URL("../src/App.html", import.meta.url), "utf8");
+  const copy = vm.runInNewContext("(" + app.split("const interfaceCopy=")[1].split("const supportedLanguage=")[0].trim().slice(0,-1) + ")");
+  assert.deepEqual([...copy.BEI], ["B&I", "ŞKB"]);
+  assert.equal((index.match(/<option value="BEI">BEI<\/option>/g) || []).length, 3);
+  assert.match(app, /if\(key==="audience"\)return translate/);
+  for (const label of ["Inferir datos", "Incluye geografías inferidas de Android.", "Guardar mis alertas", "Accesos desde newsletters"]) {
+    assert.equal(copy[label].length, 2);
+    assert.ok(copy[label].every(translation => translation && translation !== label), label);
+  }
+});
+
+test("review prefetch uses the same scope key and retries only after a snapshot miss", async () => {
+  const script = clientScript(fs.readFileSync(new URL("../src/App.html", import.meta.url), "utf8"));
+  const helper = script.slice(script.indexOf("    const reviewRequests="), script.indexOf("    function trackReady("));
+  const calls = [];
+  const runtime = vm.createContext({
+    state: { view: "benchmark" }, trackUsage() {},
+    callServer(method, scope, prefetch) {
+      return new Promise(resolve => calls.push({ method, scope, prefetch, resolve }));
+    }
+  });
+  vm.runInContext(helper, runtime);
+  const request = { country: "ES", page: 0, language: "es" };
+  const background = runtime.fetchReviewData("review:page", request, true);
+  const visible = runtime.fetchReviewData("review:page", { language: "es", page: 0, country: "ES" });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].prefetch, true);
+  const page = { total: 12 };
+  calls[0].resolve(page);
+  assert.equal(await background, page);
+  assert.equal(await visible, page);
+  assert.equal(await runtime.fetchReviewData("review:page", request), page);
+  assert.equal(calls.length, 1);
+
+  const otherScope = { ...request, country: "PE" };
+  const miss = runtime.fetchReviewData("review:page", otherScope, true);
+  const one = runtime.fetchReviewData("review:page", otherScope);
+  const two = runtime.fetchReviewData("review:page", otherScope);
+  calls[1].resolve(null);
+  assert.equal(await miss, null);
+  await Promise.resolve();
+  assert.equal(calls.length, 3);
+  assert.equal(calls[2].prefetch, false);
+  calls[2].resolve(page);
+  assert.equal(await one, page);
+  assert.equal(await two, page);
+});
+
+test("adoption uses one activity series while usage analytics retains both series", () => {
+  const app = fs.readFileSync(new URL("../src/App.html", import.meta.url), "utf8");
+  assert.match(app, /renderAdminActivity\("admin-adoption-chart",trend,"Usuarios",day=>day.users\|\|0,"Usuarios por día"\)/);
+  assert.match(app, /function renderUsageTrend\(rows,target="admin-usage-trend"\)[^\n]+class="sessions"/);
+  assert.doesNotMatch(app, /activity-secondary/);
 });

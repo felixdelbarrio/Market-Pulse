@@ -29,11 +29,11 @@ function marketsDeploymentUrlType_(value) {
 }
 
 /** Fuerza la seleccion de la cuenta Workspace antes de entrar desde un correo. */
-function marketsWebAppLoginUrl_(email) {
+function marketsWebAppLoginUrl_(email, destination = marketsWebAppUrl_()) {
   const account = trimString_(email).toLowerCase();
   const query = [];
   if (/^[^\s@]+@bbva\.com$/.test(account)) query.push('Email=' + encodeURIComponent(account));
-  query.push('continue=' + encodeURIComponent(marketsWebAppUrl_()));
+  query.push('continue=' + encodeURIComponent(destination));
   return 'https://accounts.google.com/AccountChooser?' + query.join('&');
 }
 

@@ -400,6 +400,8 @@ function readMarketsReviewsForWeb_(filters) {
   return queryMarketsReviews_(openMarketsSpreadsheet_(), filters).slice(0, 100);
 }
 
+const MARKETS_REVIEW_CLASSIFIER_SCHEMA = 13;
+
 function marketsReviewClassification_(ss) {
   const taxonomy = ss.getSheetByName('FUNCTIONAL_CATALOG');
   const entries = taxonomy && taxonomy.getLastRow() > 1
@@ -413,7 +415,7 @@ function marketsReviewClassification_(ss) {
   }
   return { rules: compileReviewRules_(entries, aliases), knownBlocks,
     version: typeof Utilities === 'object' && Utilities.computeDigest ?
-      marketsReviewDigest_([MARKETS_REVIEW_SNAPSHOT_SCHEMA, MARKETS_REVIEW_AUDIENCE_VERSION, entries, aliases]) : '' };
+      marketsReviewDigest_([MARKETS_REVIEW_CLASSIFIER_SCHEMA, MARKETS_REVIEW_AUDIENCE_VERSION, entries, aliases]) : '' };
 }
 
 function marketsReviewBlocks_(ids, knownBlocks) {
@@ -444,19 +446,20 @@ function queryMarketsReviews_(ss, filters, window, includeTranslations = false, 
   }
   const readStarted = Date.now();
   const width = marketsReviewWidth_(sheet);
-  const indexOnly = Boolean(paging && !paging.fullRead);
+  const indexOnly = Boolean((paging && !paging.fullRead) || (filters.npsOnly && !filters.fullRead));
   const search = normalizeReviewEvidence_(String(filters.search || "").slice(0, 200));
   const approvedGeo = filters.inferGeography !== 'NO' && typeof readMarketsAndroidGeography_ === 'function'
     ? readMarketsAndroidGeography_(ss) : new Map();
   const filterText = Boolean(search || filters.audience || filters.topic);
-  const readOriginal = filterText || approvedGeo.size > 0;
-  const indexWidth = MARKETS_REVIEW_HEADERS.indexOf(readOriginal ? 'original' : 'rating') + 1;
+  const indexWidth = MARKETS_REVIEW_HEADERS.indexOf(filterText ? 'original' : 'rating') + 1;
   const stored = sheet.getRange(2, 1, lastRow - 1, indexOnly ? indexWidth : width).getValues();
-  if (indexOnly && width === MARKETS_REVIEW_METADATA_COLUMN && [...approvedGeo.values()].some(approval => approval?.automatic)) {
-    const rows = sheet.getRange(2, MARKETS_REVIEW_METADATA_COLUMN, lastRow - 1, 1).getValues();
-    for (const [offset, row] of stored.entries()) {
-      if (approvedGeo.get(row[0])?.automatic) row[MARKETS_REVIEW_METADATA_COLUMN - 1] = rows[offset][0];
+  if (indexOnly && approvedGeo.size) {
+    const geographicRows = stored.flatMap((row, offset) => approvedGeo.get(row[0])?.country
+      ? [{ row, rowNumber: offset + 2 }] : []);
+    if (geographicRows.length && !hydrateMarketsReviewPage_(sheet, width, geographicRows)) {
+      return queryMarketsReviews_(ss, { ...filters, fullRead: true }, window, includeTranslations, apps, paging && { ...paging, fullRead: true });
     }
+    for (const { row, rowNumber } of geographicRows) stored[rowNumber - 2] = row;
   }
   let readMs = Date.now() - readStarted;
   const byPackage = new Map();
@@ -467,7 +470,7 @@ function queryMarketsReviews_(ss, filters, window, includeTranslations = false, 
   const derived = Boolean(classification?.version) && typeof marketsReviewIndexSheet_ === 'function' && marketsReviewIndexSheet_(ss);
   const derivedCount = derived ? Math.max(0, Math.min(stored.length, derived.getLastRow() - 1)) : 0;
   const derivedRows = derivedCount ? derived.getRange(2, 1, derivedCount, derived.getLastColumn()).getValues() : [];
-  let classified = 0;
+  let classified = 0, classificationMs = 0;
   const started = Date.now();
   const identities = new Map();
   for (const [offset, row] of stored.entries()) {
@@ -511,8 +514,7 @@ function queryMarketsReviews_(ss, filters, window, includeTranslations = false, 
       const eligible = approval && (byPackage.get(row[4]) || []).map(app => app.countryCode);
       if (approval && approval.packageName === row[4] && new Set(eligible).size > 1 &&
           eligible.includes(approval.country) && approval.digest === marketsAndroidGeographyDigest_(row, approval.automatic)) {
-        const evidence = approval.automatic ? marketsAndroidGeographyEvidence_(row, eligible) :
-          marketsAndroidGeographyCandidate_(marketsReviewOriginalText_(row), eligible);
+        const evidence = marketsAndroidGeographyApprovalEvidence_(row, eligible, approval);
         if (evidence?.status === 'VALIDAR' && evidence.candidate === approval.country) {
           country = approval.country;
           attributionMethod = approval.automatic ? 'review_evidence_inferred' : 'review_evidence_validated';
@@ -538,13 +540,27 @@ function queryMarketsReviews_(ss, filters, window, includeTranslations = false, 
     const saved = derivedRows[candidate.rowNumber - 2];
     const indexed = saved && saved[0] === row[0] && saved[2] === classification.version &&
       saved[1] === marketsReviewTextDigest_(row) && Boolean(saved[7]);
-    if (!indexed && rules) classified++;
+    if (!indexed && (rules || filters.audience)) {
+      classified++;
+      if (filters.interactive && classified > 250) {
+        throw new Error('La clasificación de reseñas se está actualizando. Vuelve a consultar en unos minutos.');
+      }
+    }
+    const classifyStarted = filters.timing && !indexed ? Date.now() : 0;
     const indexedEvidence = filters.audience && indexed && safeJsonParse_(saved[8]);
     const decision = filters.audience && (indexedEvidence ? { audience: saved[4], sharedOperation: saved[5] === true, reason: saved[6],
       relevance: saved[7], evidence: indexedEvidence }
       : classifyMarketsReviewAudience_(original));
-    if (decision && !matchesMarketsReviewAudience_(filters.audience, decision)) return false;
+    if (decision && !matchesMarketsReviewAudience_(filters.audience, decision)) {
+      if (classifyStarted) classificationMs += Date.now() - classifyStarted;
+      return false;
+    }
+    if (filters.npsOnly) {
+      if (classifyStarted) classificationMs += Date.now() - classifyStarted;
+      return true;
+    }
     const ids = indexed ? JSON.parse(saved[3]) : rules ? classifyReviewEvidence_(original, rules) : [];
+    if (classifyStarted) classificationMs += Date.now() - classifyStarted;
     if (window && filters.topic === 'general' && marketsReviewBlocks_(ids, knownBlocks).length) return false;
     if (topic && ((!window && !(row[7] >= 1 && row[7] <= 3)) ||
         !ids.some(id => id === topic || id.slice(0, 2) === topic))) return false;
@@ -564,7 +580,11 @@ function queryMarketsReviews_(ss, filters, window, includeTranslations = false, 
       readMs += Date.now() - startedTextRead;
     }
   }
-  const results = (page?.rows || matching).map(candidate => {
+  const results = filters.npsOnly
+    ? matching.map(({ row, date, apps, attributionMethod }) => ({
+      date, rating: row[7], entities: marketsReviewEntities_(apps, row[4]), attributionMethod
+    }))
+    : (page?.rows || matching).map(candidate => {
       if (!filterText) matchingEvidence(candidate);
       const { row, key, date, countries, android, storefronts, attributionMethod, sharedListing, apps, ids } = candidate;
       const [country] = countries;
@@ -573,7 +593,7 @@ function queryMarketsReviews_(ss, filters, window, includeTranslations = false, 
           ? 'https://apps.apple.com/' + storefronts[0].toLowerCase() + '/app/' + row[4] + '?see-all=reviews&platform=iphone' : '';
       const { author, helpful, reply, replyDate, replyAuthor, replyTranslations } = marketsReviewMetadata_(row);
       return { key, listings: apps.map(app => ({ country: app.countryCode, app: app.appName, entity: app.isBbva ? 'BBVA Empresas' : app.appName })),
-        entities: apps.length ? [...new Set(apps.map(app => app.isBbva ? 'BBVA Empresas' : app.appName))] : [String(row[4])],
+        entities: marketsReviewEntities_(apps, row[4]),
         blocks: marketsReviewBlocks_(ids, knownBlocks), app: apps[0]?.appName || String(row[4]), countries: [country], storefronts,
         attributionMethod, confidence: country === 'UNKNOWN' ? 'unknown' : 'inferred',
         platform: row[3], ...(android ? { volumeKey: 'ANDROID|' + String(row[4]).toLowerCase() } : {}), date, rating: row[7], version: String(row[8]),
@@ -588,9 +608,15 @@ function queryMarketsReviews_(ss, filters, window, includeTranslations = false, 
         translated: Boolean(row[languageColumn] && row[languageColumn] !== row[10]) };
     })
     .sort(compareMarketsReviewRows_);
-  console.log(JSON.stringify({ operation: 'review-query', readMs, durationMs: Date.now() - started + readMs,
-    read: stored.length, indexOnly, classified, returned: results.length }));
+  const stats = { readMs, classificationMs, queryMs: Date.now() - started,
+    read: stored.length, indexOnly, classified, returned: results.length };
+  if (filters.timing) Object.assign(filters.timing, stats);
+  console.log(JSON.stringify({ operation: 'review-query', ...stats }));
   return page ? { ...page, rows: results } : results;
+}
+
+function marketsReviewEntities_(apps, storeId) {
+  return apps.length ? [...new Set(apps.map(app => app.isBbva ? 'BBVA Empresas' : app.appName))] : [String(storeId)];
 }
 
 function compareMarketsReviewRows_(a, b) {

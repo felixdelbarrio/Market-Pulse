@@ -1,6 +1,6 @@
 /** Web app de lectura para el dashboard de ratings. */
 var MARKETS_WEB = Object.freeze({
-  version: '2026.11.15.78',
+  version: '2026.11.16.83',
   // Solo debe cambiar si cambia el formato serializado. Un cambio visual no
   // puede obligar al primer usuario a reconstruir la cache desde Sheets.
   cacheSchemaVersion: '2026.10.21.41',
@@ -23,7 +23,7 @@ function doGet(event) {
   const vote = newsletter ? link?.action : link?.vote;
   let feedback = null, newsletterOpen = '';
   if (token) {
-    const open = newsletter && vote === 'open';
+    const open = vote === 'open';
     if (!open && !['positive', 'negative'].includes(vote)) {
       return newsletter ? renderMarketsNewsletterInteractionPage_(token) : renderMarketsAlertFeedbackPage_(token);
     }
@@ -42,7 +42,7 @@ function doGet(event) {
   template.newsletterOpen = newsletterOpen;
   template.initialView = params.view === 'alerts' ? 'alerts' : '';
   const page = template.evaluate()
-    .setTitle('Market Pulse · BBVA Banca de Empresas e Instituciones')
+    .setTitle('EDC Market Pulse · BBVA Banca de Empresas e Instituciones')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover')
     .setFaviconUrl('https://raw.githubusercontent.com/felixdelbarrio/Market-Pulse/3a4ebca6387785f387441aabd591b3e1ba429e49/assets/favicon.png');
   return page;
@@ -97,18 +97,19 @@ function buildMarketsDashboardBootstrap_(ss, allTrends, catalog) {
 }
 
 /** RPC para series mensuales filtradas. */
-function getMarketsDashboardTrends(request) {
+function getMarketsDashboardTrends(request, snapshotOnly = false) {
   const normalized = normalizeDashboardTrendRequest_(request);
   const cacheKey = marketsTrendCacheKey_(normalized);
   return readMarketsWebCache_(cacheKey, function () {
     let allTrends = readMarketsPersistentCache_('trends');
     if (!allTrends) {
+      if (snapshotOnly === true) return undefined;
       const ss = openMarketsSpreadsheet_();
       allTrends = buildAllDashboardTrendsForWeb_(ss, MARKETS_WEB.maxTrendMonths);
       tryWriteMarketsPersistentCache_('trends', allTrends, readLatestCompetitionDateForWeb_(ss));
     }
     return filterDashboardTrendsForWeb_(allTrends, normalized);
-  });
+  }) ?? null;
 }
 
 function normalizeDashboardTrendRequest_(request) {
@@ -503,8 +504,9 @@ function readRunFetchSummaryForWeb_(ss, runId, appsTotal) {
   };
 }
 
-function readMarketsWebCache_(key, builder, maxParts = 1) {
+function readMarketsWebCache_(key, builder, maxParts = 1, timing) {
   const cache = CacheService.getScriptCache();
+  const cacheStarted = Date.now();
   try {
     const cached = cache.get(key);
     if (cached?.startsWith('gzip-single:')) return decodeMarketsCache_(cached.slice(12));
@@ -517,15 +519,23 @@ function readMarketsWebCache_(key, builder, maxParts = 1) {
         if (keys.every(part => chunks[part])) return decodeMarketsCache_(keys.map(part => chunks[part]).join(''));
       }
     } else if (cached) return JSON.parse(cached);
-  } catch (ignored) {}
+  } catch (ignored) {
+  } finally {
+    if (timing) timing.cacheMs = Date.now() - cacheStarted;
+  }
   const value = builder();
-  writeMarketsWebCache_(cache, key, value, maxParts);
+  if (value !== undefined) writeMarketsWebCache_(cache, key, value, maxParts, timing);
   return value;
 }
 
-function writeMarketsWebCache_(cache, key, value, maxParts = 1) {
+function writeMarketsWebCache_(cache, key, value, maxParts = 1, timing) {
   try {
+    const started = Date.now();
     const serialized = JSON.stringify(value);
+    if (timing) {
+      timing.serializationMs = Date.now() - started;
+      timing.payloadCharacters = serialized.length;
+    }
     const size = MARKETS_WEB.maxCacheCharacters;
     // UTF-8 can occupy more bytes than a JavaScript string has characters.
     if (serialized.length <= size / 3) {
@@ -801,7 +811,14 @@ function measureMarketsScheduledJob_(name, run) {
   const started = new Date();
   let status = 'ERROR', result;
   try {
-    result = run();
+    result = run(progress => {
+      try {
+        PropertiesService.getScriptProperties().setProperty('MARKETS_JOB_TIMING:' + name,
+          JSON.stringify({ ...progress, startedAt: started.toISOString(), status: 'RUNNING' }));
+      } catch (error) {
+        console.warn('No se pudo registrar el avance de ' + name + ': ' + errorToString_(error));
+      }
+    });
     status = result?.status || 'OK';
     return result;
   } finally {
@@ -845,13 +862,19 @@ function summarizeMarketsPerformance_(rows) {
   for (const [type, view, operation, detail, version] of rows) {
     if (type !== 'PERFORMANCE') continue;
     const match = /^(RPC|CACHE|SHARED|UI|SERVER_CACHE|SERVER_SNAPSHOT|SERVER_SHEET) (\d{1,6}) (OK|ERROR|TIMEOUT)$/.exec(detail);
-    if (!match) continue;
-    const [, kind, milliseconds, outcome] = match;
+    const phases = typeof detail === 'string' && detail.startsWith('PHASES ') ? [...detail.matchAll(
+      /\b(readMs|classificationMs|aggregateMs|cacheMs|serializationMs|read|classified|returned|input|payloadCharacters)=(\d{1,9})\b/g)] : [];
+    if (!match && !phases.length) continue;
     const key = JSON.stringify([view, operation, version]);
     if (!samples.has(key)) samples.set(key, {
-      view, operation, version, rpc: [], ui: [], server: [], serverHits: 0, hits: 0, shared: 0, errors: 0, timeouts: 0
+      view, operation, version, rpc: [], ui: [], server: [], phases: {}, sources: {}, serverHits: 0, hits: 0, shared: 0, errors: 0, timeouts: 0
     });
     const sample = samples.get(key);
+    if (phases.length) {
+      for (const [, phase, value] of phases) (sample.phases[phase] || (sample.phases[phase] = [])).push(Number(value));
+      continue;
+    }
+    const [, kind, milliseconds, outcome] = match;
     if (outcome === 'TIMEOUT') sample.timeouts++;
     else if (outcome === 'ERROR') sample.errors++;
     else if (kind === 'CACHE') sample.hits++;
@@ -859,14 +882,19 @@ function summarizeMarketsPerformance_(rows) {
     else if (kind.startsWith('SERVER_')) {
       if (kind !== 'SERVER_SHEET') sample.serverHits++;
       sample.server.push(Number(milliseconds));
+      (sample.sources[kind] || (sample.sources[kind] = [])).push(Number(milliseconds));
     } else (kind === 'UI' ? sample.ui : sample.rpc).push(Number(milliseconds));
   }
   const percentile = (values, fraction) => values.length ? values[Math.ceil(values.length * fraction) - 1] : null;
-  return [...samples.values()].map(({ rpc, ui, server, ...sample }) => {
+  const stats = series => Object.fromEntries(Object.entries(series).map(([key, values]) => {
+    values.sort((a, b) => a - b);
+    return [key, { samples: values.length, p50: percentile(values, .5), p95: percentile(values, .95) }];
+  }));
+  return [...samples.values()].map(({ rpc, ui, server, phases, sources, ...sample }) => {
     rpc.sort((a, b) => a - b);
     ui.sort((a, b) => a - b);
     server.sort((a, b) => a - b);
-    return { ...sample, calls: rpc.length, uiSamples: ui.length,
+    return { ...sample, phases: stats(phases), sources: stats(sources), calls: rpc.length, uiSamples: ui.length,
       p50: percentile(rpc, .5), p95: percentile(rpc, .95), uiP95: percentile(ui, .95), serverP95: percentile(server, .95), serverSamples: server.length };
   }).sort((a, b) => String(b.version).localeCompare(String(a.version)) || (b.p95 ?? 0) - (a.p95 ?? 0));
 }
