@@ -1426,6 +1426,10 @@ test("November all-stars gaps reconcile the exported Spanish sample and distingu
   assert.equal(detractors.recentTotal, 2);
   assert.ok(detractors.deltas.every(point => point.assignedGeography === 0));
   assert.equal(detractors.nps.current, all.nps.current);
+  const promoters = build(reviews, "PROMOTER");
+  assert.equal(promoters.recentTotal, 4);
+  assert.deepEqual([promoters.deltas[0].total, promoters.deltas[0].assignedGeography], [4, 3]);
+  assert.equal(promoters.nps.current, all.nps.current);
 
   const annual = api.summarizeMarketsReviewNps_(reviews)[0];
   assert.deepEqual([annual.total, annual.assignedGeography, annual.balance], [6, 3, 100 / 3]);
