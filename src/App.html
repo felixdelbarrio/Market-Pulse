@@ -330,10 +330,14 @@
       "Sin reseñas en el periodo reciente.":["No reviews in the recent period.","Yakın dönemde yorum yok."],
       "Ver reseñas del mes anterior":["View previous month’s reviews","Önceki ayın yorumlarını görüntüle"],
       "Bloque":["Block","Grup"],
+      "Base del mes anterior: {dates} · {total} reseñas · NPS {nps} pp.":["Previous month baseline: {dates} · {total} reviews · NPS {nps} pp.","Önceki ayın referansı: {dates} · {total} yorum · NPS {nps} puan."],
+      "Escaparate único":["Single storefront","Tek mağaza"],
+      "Validada":["Verified","Doğrulandı"],
+      "Inferida":["Inferred","Çıkarıldı"],
       "Reseñas del bloque":["Reviews in the block","Gruptaki yorumlar"],
       "{total} reseñas ({assigned} con geografía inferida o validada)":["{total} reviews ({assigned} with inferred or verified geography)","{total} yorum ({assigned} yorumun coğrafyası çıkarıldı veya doğrulandı)"],
       "Geografía inferida o validada":["Inferred or verified geography","Çıkarılan veya doğrulanan coğrafya"],
-      "Periodo reciente: {dates}. Los recuentos usan el sentimiento seleccionado. Una reseña puede pertenecer a varios bloques; sus pesos pueden sumar más del 100 %.":["Recent period: {dates}. Counts use the selected sentiment. A review can belong to more than one block, so the shares may add up to over 100%.","Yakın dönem: {dates}. Sayımlar seçilen duyguya göredir. Bir yorum birden fazla gruba ait olabilir, bu yüzden oranların toplamı %100’ü aşabilir."],
+      "Periodo reciente: {dates} · {sentiment} · {count} reseñas. Una reseña puede pertenecer a varios bloques; sus pesos pueden sumar más del 100 %.":["Recent period: {dates} · {sentiment} · {count} reviews. A review can belong to more than one block, so the shares may add up to over 100%.","Yakın dönem: {dates} · {sentiment} · {count} yorum. Bir yorum birden fazla gruba ait olabilir, bu yüzden oranların toplamı %100’ü aşabilir."],
       "Peso en la muestra":["Share of sample","Örneklem payı"],
       "Total reseñas":["Total reviews","Toplam yorum"],
       "Reseñas detractoras":["Detractor reviews","Eleştiren yorumlar"],
@@ -1081,7 +1085,8 @@
       if(key==="inferGeography")return translate(value==="NO"?"No":"Sí");
       if(key==="audience")return translate(["BEI","BEI_ONLY","BEI_EXTENDED"].includes(value)?"BEI":"Todos");
       if(key==="country")return value==="ALL"?"Todas":countryLabel(value);
-      if(!value&&["app","segment","topic"].includes(key))return "Todos";
+      if(key==="segment")return translate(value?(state.reviewSegments?.find(group=>group.id===value)?.label||value):"Todas las estrellas");
+      if(!value&&["app","topic"].includes(key))return "Todos";
       if(key==="platform")return D.config.platformLabels[value];
       if(key==="start"||key==="end")return dateLabel(value);
       if(key==="topic")return reviewTopics[value];
@@ -1461,8 +1466,7 @@
         const recentFilters=[...exportDates({start:data.window.recent,end:applied.end}),["Mes",analysisMonth],
           ["Aplicación",scope.entity],["Comentarios",reviewFilterLabel("audience",scope.audience)],["Inferir datos",scope.inferGeography==="NO"?"No":"Sí"],["Sentimiento",reviewFilterLabel("segment",scope.segment)]];
         setExportSheet("evolution","Brechas",scope.country,recentFilters,
-          ["Bloque","Peso (%)","Reseñas","Detractoras","Promotoras (%)","Detractoras (%)","NPS (pp)","Brecha (pp)"],
-          data.deltas.map(row=>[row.label,row.weight,row.total,row.assignedGeography,row.detractors,100*row.promoters/row.total,100*row.detractors/row.total,row.balance,row.gap]));
+          reviewGapColumns.map(column=>column.label),data.deltas.map(row=>reviewGapColumns.map(column=>column.value(row))));
         setExportSheet("evolution","Ejemplos del mes",scope.country,recentFilters,reviewExportHeader,
           data.examples.map(({review})=>reviewExportRow(review,data.topics)));
         monthlyReviewLoadedAt=Date.now();
@@ -1547,19 +1551,42 @@
               ${reviews.map(review=>renderReviewCard(review,topics)).join("")}
             </div></details>`).join("")}</div></section>`:""}`;
     }
+    const reviewGapPercent=value=>`${fmt(value,1)} %`;
+    const reviewGapColumns=[
+      {label:"Bloque",value:row=>row.label},
+      {label:"Peso en la muestra",value:row=>row.weight,format:reviewGapPercent},
+      {label:"Reseñas del bloque",value:row=>row.total,format:integer},
+      {label:"Geografía inferida o validada",value:row=>row.assignedGeography,format:integer},
+      {label:"Reseñas detractoras",value:row=>row.detractors,format:integer},
+      {label:"% Promotoras",value:row=>100*row.promoters/row.total,format:reviewGapPercent},
+      {label:"% Detractoras",value:row=>100*row.detractors/row.total,format:reviewGapPercent},
+      {label:"NPS (pp)",value:row=>row.balance,format:value=>fmt(value,1)},
+      {label:"Brecha vs. base (pp)",value:row=>row.gap,format:value=>value===null?"—":signed(value)}
+    ];
     function renderReviewGaps(target,data,scope){
-      const {baseline,deltas,window:dates}=data;
+      const {baseline,deltas,recentTotal,window:dates}=data;
       const recent=`${dateLabel(dates.recent)} – ${dateLabel(dates.end)}`;
       target.replaceChildren();
       const note=document.createElement("p");
-      note.textContent=translate("Periodo reciente: {dates}. Los recuentos usan el sentimiento seleccionado. Una reseña puede pertenecer a varios bloques; sus pesos pueden sumar más del 100 %.",{dates:recent});
+      note.textContent=translate("Periodo reciente: {dates} · {sentiment} · {count} reseñas. Una reseña puede pertenecer a varios bloques; sus pesos pueden sumar más del 100 %.",{
+        dates:recent,sentiment:reviewFilterLabel("segment",scope.segment),count:integer(recentTotal)
+      });
       target.append(note);
-      if(baseline)appendReviewCohort(target,"Ver reseñas del mes anterior",{...scope,start:baseline.start,end:baseline.end,segment:""});
+      if(baseline){
+        const reference=document.createElement("p");
+        reference.className="review-chart-note";
+        reference.textContent=translate("Base del mes anterior: {dates} · {total} reseñas · NPS {nps} pp.",{
+          dates:`${dateLabel(baseline.start)} – ${dateLabel(baseline.end)}`,total:integer(baseline.total),nps:fmt(baseline.balance,2)
+        });
+        target.append(reference);
+        appendReviewCohort(target,"Ver reseñas del mes anterior",{...scope,start:baseline.start,end:baseline.end,segment:""});
+      }
       target.insertAdjacentHTML("beforeend",C.reviewGaps(deltas,fmt,translate));
       const table=document.createElement("div");
       table.className="admin-table-wrap review-gap-table";
-      const headers=["Bloque","Peso en la muestra","Reseñas del bloque","Geografía inferida o validada","Reseñas detractoras","% Promotoras","% Detractoras","NPS (pp)","Brecha vs. base (pp)"];
-      table.innerHTML=`<table class="admin-table"><caption>${U.esc(translate("Detalle del periodo reciente · {dates}",{dates:recent}))}</caption><thead><tr>${headers.map(label=>`<th scope="col">${label}</th>`).join("")}</tr></thead><tbody>${deltas.map(row=>`<tr><th scope="row"></th><td>${fmt(row.weight,1)} %</td><td>${integer(row.total)}</td><td>${integer(row.assignedGeography)}</td><td>${integer(row.detractors)}</td><td>${fmt(100*row.promoters/row.total,1)} %</td><td>${fmt(100*row.detractors/row.total,1)} %</td><td>${fmt(row.balance,1)}</td><td>${row.gap===null?"—":signed(row.gap)}</td></tr>`).join("")}</tbody></table>`;
+      const headers=reviewGapColumns.map(column=>`<th scope="col">${U.esc(translate(column.label))}</th>`).join("");
+      const metrics=reviewGapColumns.slice(1);
+      table.innerHTML=`<table class="admin-table"><caption>${U.esc(translate("Detalle del periodo reciente · {dates}",{dates:recent}))}</caption><thead><tr>${headers}</tr></thead><tbody>${deltas.map(row=>`<tr><th scope="row"></th>${metrics.map(column=>`<td>${U.esc(column.format(column.value(row)))}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
       table.querySelectorAll("tbody th").forEach((cell,index)=>{
         const row=deltas[index];
         appendReviewCohort(cell,row.label,{...scope,start:dates.recent,topic:row.id});
@@ -2518,10 +2545,14 @@
     function hideChartTooltip(){$("chart-tooltip").classList.add("hidden")}
     const exportDates=({start,end})=>[["Desde",start],["Hasta",end]];
     const reviewExportHeader=["Fecha","Aplicación","Plataforma","Escaparate","Estrellas","Autor","Título","Comentario",
-      "Texto original","Bloques funcionales","Votos útiles","Respuesta","Enlace"];
+      "Texto original","Bloques funcionales","Votos útiles","Respuesta","Enlace","Geografía atribuida","Atribución"];
+    const reviewAttributionLabels={
+      single_storefront:"Escaparate único",review_evidence_inferred:"Inferida",review_evidence_validated:"Validada"
+    };
     const reviewExportRow=(row,topics)=>[row.date,row.entities?.join(" · ")||row.app,row.platform,
       row.storefronts?.map(countryLabel).join(" · "),row.rating,row.author,row.title,row.text,row.translated?row.original:"",
-      (row.blocks.length?row.blocks:["general"]).map(id=>topics[id]||id).join(" · "),row.helpful,row.reply,row.url];
+      (row.blocks.length?row.blocks:["general"]).map(id=>topics[id]||id).join(" · "),row.helpful,row.reply,row.url,
+      row.countries?.map(countryLabel).join(" · "),translate(reviewAttributionLabels[row.attributionMethod]||"No atribuible")];
     let reviewsReady=false, analyticsLoading=false, monthlyReviewsLoading=false;
     function setExportSheet(view,name,country,filters,header,rows,chart=false){
       const sheets=exportSheets[view];
@@ -2545,9 +2576,10 @@
           if(!reviewsReady)throw new Error("No hay comentarios cargados para descargar.");
           const scope={...reviewScope(),language:appLanguage};
           const {rows,topics,window:dates}=await callServer("review:export",scope);
-          const filters=[["Geografía",countryLabel(country)],...exportDates(dates)];
-          for(const key of ["app","platform","segment","audience","inferGeography","topic","rating","search","reviewKey"]){
-            if(scope[key])filters.push([({app:"Aplicación",platform:"Plataforma",segment:"Sentimiento",audience:"Comentarios",inferGeography:"Inferir datos",topic:"Bloque funcional",rating:"Estrellas",search:"Buscar",reviewKey:"Reseña"})[key],reviewFilterLabel(key,scope[key])||$(`review-${key}`)?.selectedOptions?.[0]?.textContent||scope[key]]);
+          const filters=[["Geografía",countryLabel(country)],...exportDates(dates),
+            ["Inferir datos",reviewFilterLabel("inferGeography",scope.inferGeography)]];
+          for(const key of ["app","platform","segment","audience","topic","rating","search","reviewKey"]){
+            if(scope[key])filters.push([({app:"Aplicación",platform:"Plataforma",segment:"Sentimiento",audience:"Comentarios",topic:"Bloque funcional",rating:"Estrellas",search:"Buscar",reviewKey:"Reseña"})[key],reviewFilterLabel(key,scope[key])||$(`review-${key}`)?.selectedOptions?.[0]?.textContent||scope[key]]);
           }
           sheets=[{name:"Comentarios",filters,header:reviewExportHeader,rows:rows.map(row=>reviewExportRow(row,topics))}];
         }else{

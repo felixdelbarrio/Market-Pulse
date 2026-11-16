@@ -1010,3 +1010,13 @@ test("the useful reviews heading follows the year selected in annual analysis", 
   assert.equal(heading("2025"), "Reseñas más útiles del 2025");
   assert.match(source, /annual\.topHelpful\.length\?[^\n]+<h4>\$\{U\.esc\(helpfulTitle\)\}<\/h4>/);
 });
+
+test("monthly gaps use the same column definitions for the table and workbook", () => {
+  const source = fs.readFileSync(new URL("../src/App.html", import.meta.url), "utf8");
+  const columns = vm.runInNewContext(source.slice(source.indexOf("    const reviewGapPercent"),
+    source.indexOf("    function renderReviewGaps(")) + "reviewGapColumns", { integer: String, fmt: String, signed: String });
+  const gap = { label: "Generalista", weight: 100, total: 4, assignedGeography: 3, detractors: 0, promoters: 4, balance: 100, gap: 105 };
+  assert.equal(columns[3].label, "Geografía inferida o validada");
+  assert.deepEqual(Array.from(columns, column => column.value(gap)), ["Generalista", 100, 4, 3, 0, 100, 0, 100, 105]);
+  assert.match(source, /reviewGapColumns\.map\(column=>column\.label\),data\.deltas\.map\(row=>reviewGapColumns\.map\(column=>column\.value\(row\)\)\)/);
+});
