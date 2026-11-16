@@ -317,7 +317,8 @@
       "Neutros":["Neutral","Nötr"],
       "Reseñas útiles":["Helpful reviews","Yararlı yorumlar"],
       "Reseñas contestadas":["Reviews with replies","Yanıtlanan yorumlar"],
-      "Reseñas más útiles":["Most helpful reviews","En yararlı yorumlar"],
+      "Reseñas más útiles del acumulado del año hasta la fecha":["Most helpful reviews year to date","Yılbaşından bugüne en yararlı yorumlar"],
+      "Reseñas más útiles del {year}":["Most helpful reviews in {year}","{year} yılının en yararlı yorumları"],
       "Personas con más reseñas":["Most active reviewers","En çok yorum yapanlar"],
       "Personas con más reseñas del acumulado del año hasta la fecha":["Most active reviewers year to date","Yılbaşından bugüne en çok yorum yapanlar"],
       "Personas con más reseñas de {year}":["Most active reviewers in {year}","{year} yılında en çok yorum yapanlar"],
@@ -1513,7 +1514,11 @@
         ]}
       ];
       const authors=annual.topAuthors.filter(row=>row.count>1);
-      const authorsTitle=scope.year===reviewDates().end.slice(0,4)
+      const currentYear=scope.year===reviewDates().end.slice(0,4);
+      const helpfulTitle=currentYear
+        ?translate("Reseñas más útiles del acumulado del año hasta la fecha")
+        :translate("Reseñas más útiles del {year}",{year:scope.year});
+      const authorsTitle=currentYear
         ?translate("Personas con más reseñas del acumulado del año hasta la fecha")
         :translate("Personas con más reseñas de {year}",{year:scope.year});
       const filters=[...exportDates(annual),["Aplicación",annualEntityLabel(analyticsEntity)],["Comentarios",reviewFilterLabel("audience",scope.audience)],["Inferir datos",scope.inferGeography==="NO"?"No":"Sí"]];
@@ -1532,7 +1537,7 @@
         }))}</div></section>`).join("");
       target.innerHTML=`<p class="review-chart-note">${U.esc(dateLabel(annual.start))} – ${U.esc(dateLabel(annual.end))} · <span>Todas las estrellas</span></p>
         <div class="annual-kpis">${metrics}</div>
-        ${annual.topHelpful.length?`<section class="annual-review-section"><h4>Reseñas más útiles</h4><p>${U.esc(translate("Al menos {count} votos útiles",{count:integer(annual.helpfulMinimum)}))}</p>
+        ${annual.topHelpful.length?`<section class="annual-review-section"><h4>${U.esc(helpfulTitle)}</h4><p>${U.esc(translate("Al menos {count} votos útiles",{count:integer(annual.helpfulMinimum)}))}</p>
           ${annual.topHelpful.map(review=>renderReviewCard(review,topics)).join("")}</section>`:""}
         ${authors.length?`<section class="annual-review-section"><h4>${U.esc(authorsTitle)}</h4><div class="annual-author-list">
           ${authors.map(({author,count,reviews=[]})=>`<details class="annual-author">
