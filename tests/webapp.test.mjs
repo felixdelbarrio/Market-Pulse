@@ -996,3 +996,17 @@ test("adoption uses one activity series while usage analytics retains both serie
   assert.match(app, /function renderUsageTrend\(rows,target="admin-usage-trend"\)[^\n]+class="sessions"/);
   assert.doesNotMatch(app, /activity-secondary/);
 });
+
+test("the useful reviews heading follows the year selected in annual analysis", () => {
+  const source = fs.readFileSync(new URL("../src/App.html", import.meta.url), "utf8");
+  const start = source.indexOf("      const currentYear=scope.year===reviewDates()");
+  const end = source.indexOf("      const filters=", start);
+  assert.ok(start >= 0 && end > start);
+  const heading = vm.runInNewContext("year=>{ const scope={year};" + source.slice(start, end) + "return helpfulTitle; }", {
+    reviewDates: () => ({ end: "2026-11-16" }),
+    translate: (text, values = {}) => text.replace("{year}", values.year)
+  });
+  assert.equal(heading("2026"), "Reseñas más útiles del acumulado del año hasta la fecha");
+  assert.equal(heading("2025"), "Reseñas más útiles del 2025");
+  assert.match(source, /annual\.topHelpful\.length\?[^\n]+<h4>\$\{U\.esc\(helpfulTitle\)\}<\/h4>/);
+});
