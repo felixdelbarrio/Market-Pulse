@@ -341,6 +341,13 @@ function marketsAndroidGeographyEvidence_(row, eligible, iteration23 = true) {
       !/\b(?:uruguay|turquia|portugal|francia|alemania|italia|comparad[oa]|aunque|pero en|segun|me (?:dijo|dijeron)|dicen que)\b/u.test(text)) {
     matches.set('ES', 'explicit-spanish-app-market');
   }
+  // En los escaparates actuales de GEMA, España es el único mercado con esta operativa.
+  if (iteration23 && row[4] === 'com.bbva.GEMA.global' &&
+      eligible.every(country => ['AR', 'CO', 'ES', 'PE', 'UY'].includes(country)) &&
+      /\b(?:mis adeudos sepa|(?:usar|utilizar) la (?:app|aplicacion) para (?:los )?adeudos sepa)\b/u.test(text) &&
+      !/\b(?:uruguay|portugal|francia|alemania|italia|otro pais)\b/u.test(text)) {
+    matches.set('ES', 'gema-sepa-direct-use');
+  }
   if (iteration23 && /\btratando de hacer pagos pse\b/u.test(text)) matches.set('CO', 'own-pse-payment');
   if (iteration23 && /\bno se pueden realizar pagos con paygold que antes se podian hacer\b/u.test(text)) matches.set('CO', 'regression-paygold-payment');
   const { reply } = marketsReviewMetadata_(row);
@@ -407,7 +414,7 @@ function scanMarketsAndroidGeographyBatch_(now) {
     packages.get(app.packageName).add(app.countryCode);
   }
   const iteration23 = Boolean(properties.getProperty(MARKETS_GEO_ITERATION_23));
-  const version = marketsReviewDigest_([iteration23 ? 'storefront-reply-v8' : 'storefront-reply-v6', [...packages].map(([id, countries]) => [id, [...countries].sort()])]);
+  const version = marketsReviewDigest_([iteration23 ? 'storefront-reply-v9' : 'storefront-reply-v6', [...packages].map(([id, countries]) => [id, [...countries].sort()])]);
   const revision = properties.getProperty('MARKETS_ANDROID_GEO_SOURCE_REVISION') || '';
   const last = Math.max(1, source.getLastRow());
   const previous = safeJsonParse_(properties.getProperty(MARKETS_GEO_AUDIT_PROPERTY));

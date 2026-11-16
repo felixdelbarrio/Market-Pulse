@@ -13,7 +13,7 @@ La recuperación manual de ratings se encola con el supervisor unificado. El mon
 
 ## Confirmaciones de España
 
-El código reconoce una valoración directa de la aplicación que identifica expresamente el mercado español. Una mención de SEPA, una comparación entre países o la experiencia de un tercero requieren evidencia adicional. La confirmación de una reseña individual se guarda como una aprobación con huella del título y del texto, sin tocar su escaparate ni la reseña de origen.
+El código reconoce una valoración directa de la aplicación que identifica expresamente el mercado español. En la ficha compartida de BBVA Empresas, el uso directo de adeudos SEPA se atribuye a España mientras la ficha se limite a los mercados comprobados AR, CO, ES, PE y UY. Una mención genérica a SEPA, una comparación entre países o la experiencia de un tercero requiere evidencia adicional. La confirmación de una reseña individual se guarda como una aprobación con huella del título y del texto, sin tocar su escaparate ni la reseña de origen.
 
 Para aplicar las confirmaciones históricas, identificar las claves exactas de la auditoría y validar que siguen apuntando a las mismas reseñas. Después de comprobar las cabeceras, verificar el respaldo con `enableMarketsIteration23Geography`, configurar `MARKETS_GEO_SPAIN_CONFIRMATIONS` con el array JSON de clave y huella de cada reseña confirmada y ejecutar `applyMarketsSpainReviewApprovals` como propietario. La operación comprueba unicidad, ficha compartida elegible y conflictos con aprobaciones anteriores antes de escribir. Después, comparar las filas, comprobar la nueva revisión geográfica y verificar en Comentarios que cambia el país de esas claves y se conserva el total de reseñas.
 

@@ -1226,8 +1226,9 @@ test("Spanish market evidence and manual confirmations have distinct validation"
   for (const file of ["54_Reviews", "52_ReviewInsights", "55_ReviewIndex"]) {
     vm.runInContext(fs.readFileSync(new URL("../src/" + file + ".gs", import.meta.url), "utf8"), local);
   }
-  const candidate = (text, eligible = ["ES", "PE"]) => {
+  const candidate = (text, eligible = ["ES", "PE"], packageName = "com.bbva.GEMA.global") => {
     const row = Array(16).fill("");
+    row[4] = packageName;
     row[10] = text;
     return local.marketsAndroidGeographyEvidence_(row, eligible)?.candidate;
   };
@@ -1236,7 +1237,12 @@ test("Spanish market evidence and manual confirmations have distinct validation"
   assert.equal(candidate("Me dijeron que era la peor app de banca que existe en España."), undefined);
   assert.equal(candidate("Una de las mejores apps en España y Perú."), undefined);
   assert.equal(candidate("La peor app de banca que existe en España y vivo en Uruguay."), undefined);
-  assert.equal(candidate("Uso la aplicación para mis adeudos SEPA."), undefined);
+  assert.equal(candidate("Uso la aplicación para mis adeudos SEPA."), "ES");
+  assert.equal(candidate("Es fácil de usar la aplicación para los adeudos SEPA."), "ES");
+  assert.equal(candidate("¿Existe SEPA?"), undefined);
+  assert.equal(candidate("Uso la aplicación para mis adeudos SEPA.", ["ES","PT"]), undefined);
+  assert.equal(candidate("Uso la aplicación para mis adeudos SEPA.", ["ES","PE"], "com.example.shared"), undefined);
+  assert.equal(candidate("Uso la aplicación para mis adeudos SEPA desde Uruguay."), undefined);
   assert.equal(candidate("Mi amiga dice que es una de las mejores apps en España"), undefined);
   assert.equal(candidate("Una de las mejores apps en España.", ["PE","CO"]), undefined);
   const approval = { country: "ES", reason: "spain-owner-confirmed", automatic: false };
