@@ -307,6 +307,7 @@
       "Brecha de NPS por bloque":["Balance gap by functional block","İşlev grubuna göre denge farkı"],
       "Ejemplos de los últimos 30 días":["Examples from the last 30 days","Son 30 günden örnekler"],
       "Reseñas de los últimos 365 días":["Reviews from the last 365 days","Son 365 günün yorumları"],
+      "Todas las reseñas":["All reviews","Tüm yorumlar"],
       "Todas las estrellas":["All star ratings","Tüm yıldız puanları"],
       "Reseñas":["Reviews","Yorumlar"],
       "Promotoras":["Promoters","Destekleyen yorumlar"],
@@ -1085,7 +1086,7 @@
       if(key==="inferGeography")return translate(value==="NO"?"No":"Sí");
       if(key==="audience")return translate(["BEI","BEI_ONLY","BEI_EXTENDED"].includes(value)?"BEI":"Todos");
       if(key==="country")return value==="ALL"?"Todas":countryLabel(value);
-      if(key==="segment")return translate(value?(state.reviewSegments?.find(group=>group.id===value)?.label||value):"Todas las estrellas");
+      if(key==="segment")return translate(value?(state.reviewSegments?.find(group=>group.id===value)?.label||value):"Todas las reseñas");
       if(!value&&["app","topic"].includes(key))return "Todos";
       if(key==="platform")return D.config.platformLabels[value];
       if(key==="start"||key==="end")return dateLabel(value);
