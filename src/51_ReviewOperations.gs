@@ -580,6 +580,13 @@ function marketsAdminReviewOperations_(email) {
       return retry ? [[id, retry]] : [];
     })),
     index: safeJsonParse_(properties.getProperty('MARKETS_REVIEW_INDEX_STATUS')),
+    snapshot: (() => {
+      const manifest = safeJsonParse_(properties.getProperty('MARKETS_REVIEW_SNAPSHOT_POINTER') || 'null');
+      return { publishedAt: manifest?.publishedAt || null, asOf: manifest?.end || null,
+        generation: manifest?.versions?.[0] || '',
+        ageSeconds: manifest?.publishedAt ? Math.max(0, (now - Date.parse(manifest.publishedAt)) / 1000) : null,
+        publish: safeJsonParse_(properties.getProperty('MARKETS_REVIEW_PUBLISH_STATUS') || 'null') };
+    })(),
     backup: typeof MARKETS_BACKUP_PROPERTY === 'string' ? safeJsonParse_(properties.getProperty(MARKETS_BACKUP_PROPERTY)) : null,
     maintenance: typeof MARKETS_MAINTENANCE_PROPERTY === 'string' ? safeJsonParse_(properties.getProperty(MARKETS_MAINTENANCE_PROPERTY)) : null,
     folders: owner && typeof marketsStorageFolders_ === 'function' ? marketsStorageFolders_(properties) : null
@@ -593,14 +600,22 @@ const MARKETS_REVIEW_MANUAL_IDS = ['index', 'geography', 'taxonomy', 'taxonomyTr
 function marketsReviewSnapshotRefreshDue_(properties, now) {
   if (typeof MARKETS_REVIEW_SNAPSHOT_POINTER !== 'string') return false;
   const published = safeJsonParse_(properties.getProperty(MARKETS_REVIEW_SNAPSHOT_POINTER));
-  if (!Array.isArray(published?.versions) || !published.hasAnnualNps || !published.hasNpsAttribution || !published.hasAllSentimentGaps || published.schema !== MARKETS_REVIEW_SNAPSHOT_SCHEMA ||
+  const migration = safeJsonParse_(properties.getProperty('MARKETS_FUNCTIONAL_MIGRATION') || 'null');
+  if (migration?.ready && !migration.complete && published?.engine?.sheet !== migration.sheet) return true;
+  if (!Array.isArray(published?.versions) || !published.hasAnnualNps || !published.hasNpsAttribution || !published.hasAllSentimentGaps || !published.hasReviewRanking || !published.hasFeaturedReviews || published.schema !== MARKETS_REVIEW_SNAPSHOT_SCHEMA ||
       published.end !== Utilities.formatDate(now, MARKETS_CONFIG.timeZone, 'yyyy-MM-dd')) return true;
-  return published.versions[0] !== (properties.getProperty('MARKETS_REVIEWS_GENERATION') || '') ||
-    (published.versions.find(value => Array.isArray(value) && value[0] === 'MARKETS_REVIEW_GEOGRAPHY_REVISION')?.[1] || '') !==
-    (properties.getProperty('MARKETS_REVIEW_GEOGRAPHY_REVISION') || '');
+  if (published.audienceVersion !== MARKETS_REVIEW_AUDIENCE_VERSION ||
+      marketsReviewRequestedScopes_(properties, now.getTime()).some(entry => !published.requestedScopes?.includes(entry.id))) return true;
+  const catalog = readAppCatalog_(openMarketsSpreadsheet_());
+  return JSON.stringify(published.versions) !== JSON.stringify(marketsReviewVersions_(properties.getProperties(), marketsReviewCatalogVersion_(catalog)));
 }
 
 function marketsReviewAuxiliaryTasks_(properties, settings, now, priority) {
+  const snapshot = safeJsonParse_(properties.getProperty('MARKETS_REVIEW_SNAPSHOT_POINTER') || 'null');
+  const maxStale = Number(properties.getProperty('MARKETS_REVIEW_STALE_MAX_SECONDS') || 3600);
+  const migration = safeJsonParse_(properties.getProperty('MARKETS_FUNCTIONAL_MIGRATION') || 'null');
+  const publishOverdue = (migration?.ready && !migration.complete) || !snapshot?.publishedAt ||
+    now.getTime() - Date.parse(snapshot.publishedAt) > Math.max(0, maxStale) * 500;
   const tasks = [
     { id: 'index', priority: 3, run: () => {
       if (typeof advanceMarketsReviewIndex_ !== 'function') return false;
@@ -619,7 +634,7 @@ function marketsReviewAuxiliaryTasks_(properties, settings, now, priority) {
   ];
   const previous = properties.getProperty('MARKETS_REVIEW_LAST_AUX');
   return tasks.map(task => ({
-    ...task, priority: settings[task.id]?.priority || task.priority,
+    ...task, priority: task.id === 'publish' && publishOverdue ? 3 : settings[task.id]?.priority || task.priority,
     request: properties.getProperty(MARKETS_REVIEW_MANUAL + task.id),
     retry: safeJsonParse_(properties.getProperty(MARKETS_REVIEW_AUX_RETRY + task.id) || 'null')
   })).filter(task => task.priority < priority && (!task.manualOnly || task.request) &&
@@ -630,9 +645,24 @@ function marketsReviewAuxiliaryTasks_(properties, settings, now, priority) {
 function runMarketsAuxiliaryTask_(properties, task) {
   const key = MARKETS_REVIEW_MANUAL + task.id;
   const retryKey = MARKETS_REVIEW_AUX_RETRY + task.id;
+  const started = Date.now();
+  const publishStatus = (status, error) => {
+    if (task.id !== 'publish') return;
+    const previous = safeJsonParse_(properties.getProperty('MARKETS_REVIEW_PUBLISH_STATUS') || 'null') || {};
+    properties.setProperty('MARKETS_REVIEW_PUBLISH_STATUS', JSON.stringify({ ...previous, status,
+      attemptedAt: new Date(started).toISOString(), durationMs: Date.now() - started,
+      attempts: (previous.attempts || 0) + 1, error: error || '',
+      ...(status === 'OK' ? { lastSuccessAt: new Date().toISOString() } : { lastFailureAt: new Date().toISOString() }) }));
+  };
   try {
     const advanced = task.run(Boolean(task.request));
-    if (advanced === null || (task.id === 'publish' && !advanced)) return false;
+    if (advanced === null) return false;
+    if (task.id === 'publish' && !advanced) {
+      publishStatus('INCOMPLETE', 'La generación cambió o el commit sigue pendiente.');
+      properties.setProperty(retryKey, JSON.stringify({ failures: (task.retry?.failures || 0) + 1, next: Date.now() + 5 * 60000 }));
+      return false;
+    }
+    publishStatus('OK');
     if (task.retry) properties.deleteProperty(retryKey);
     if (task.request && (task.id !== 'publish' || advanced) && properties.getProperty(key) === task.request) {
       properties.deleteProperty(key);
@@ -640,6 +670,7 @@ function runMarketsAuxiliaryTask_(properties, task) {
     if (advanced || task.request) properties.setProperty('MARKETS_REVIEW_LAST_AUX', task.id);
     return advanced || Boolean(task.request);
   } catch (error) {
+    publishStatus('ERROR', errorToString_(error).slice(0, 180));
     const failures = (task.retry?.failures || 0) + 1;
     const next = Date.now() + (failures >= 3 ? 6 * 60 : 5 * Math.pow(2, failures - 1)) * 60000;
     properties.setProperty(retryKey, JSON.stringify({ failures: failures >= 3 ? 0 : failures, next,

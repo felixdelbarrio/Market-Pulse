@@ -52,6 +52,12 @@
       const sorted=[...(rows||[])].sort((a,b)=>b.rating-a.rating||(a.displayOrder||0)-(b.displayOrder||0)||appName(a).localeCompare(appName(b)));
       return sorted.map(row=>({...row,computedRank:1+sorted.filter(other=>other.rating>row.rating).length}));
     }
+    function rankReviewNpsRows(rows){
+      const sampled=row=>row.total>0&&finite(row.rating);
+      return [...rankRows(rows.filter(sampled)),...rows.filter(row=>!sampled(row))
+        .sort((a,b)=>(a.displayOrder||0)-(b.displayOrder||0)||appName(a).localeCompare(appName(b)))
+        .map(row=>({...row,rating:null,computedRank:null}))];
+    }
     function countBbvaLeaders(rows){
       const groups=groupBy(rows||[],row=>`${row.countryCode}|${row.platform}`);
       let value=0,comparable=0,sole=0,shared=0;
@@ -237,6 +243,6 @@
       const specific=selected.filter(value=>value!=="ALL");
       return specific.length?specific:["ALL"];
     }
-    window.MarketsDomain=Object.freeze({config,browserMarket,benchmarkWeightedRows,finite,sum,sumOrNull,mean,weightedMean,groupBy,appName,isCriticalPlatform,selectionRows,coverageRows,trendRows,uniqueStoreRows,volumeSummary,rankRows,countBbvaLeaders,availablePeriods,periodModel,ratingAt,evolutionKpis,prepareSeries,latestValue,ratingComparison,monthlyRatingMatrix,previousCalendarMonth,ratingRoundingHalfStep,monthlyNewReviewImpact,monthlyVoiceScope,monthlyVoiceVolumeDetail,exclusiveScopeSelection});
+    window.MarketsDomain=Object.freeze({config,browserMarket,benchmarkWeightedRows,finite,sum,sumOrNull,mean,weightedMean,groupBy,appName,isCriticalPlatform,selectionRows,coverageRows,trendRows,uniqueStoreRows,volumeSummary,rankRows,rankReviewNpsRows,countBbvaLeaders,availablePeriods,periodModel,ratingAt,evolutionKpis,prepareSeries,latestValue,ratingComparison,monthlyRatingMatrix,previousCalendarMonth,ratingRoundingHalfStep,monthlyNewReviewImpact,monthlyVoiceScope,monthlyVoiceVolumeDetail,exclusiveScopeSelection});
   })();
 </script>

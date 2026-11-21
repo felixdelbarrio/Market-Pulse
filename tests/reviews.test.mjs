@@ -311,6 +311,10 @@ test("country pages and snapshots partition each review by its own storefront ev
   const annual = { country:"ES", year:"2026", segment:"DETRACTOR", entity:"BBVA Empresas" };
   const expected = [runtime.getMarketsReviewAnalytics(monthly),runtime.getMarketsReviewAnalytics(annual)];
   runtime.publishMarketsReviewSnapshot_();
+  runtime.PropertiesService = {getScriptProperties:()=>({getProperty:()=>null,getProperties:()=>({
+    MARKETS_REVIEW_SNAPSHOT_POINTER: JSON.stringify(snapshot)
+  })})};
+  runtime.readMarketsReviewSnapshotShard_ = () => snapshot.values;
   const query = runtime.queryMarketsReviews_;
   runtime.queryMarketsReviews_ = () => { throw new Error("unexpected Sheets read"); };
   const withoutTiming = ({ timing, ...data }) => data;
@@ -1227,9 +1231,14 @@ test("monthly snapshot scope includes exact closing dates and excludes alternate
   const scope = api.marketsReviewSnapshotScope_("analytics", filters, window);
   assert.equal(scope, "analytics:ES:2026-10:2025-11-16:2026-10-31");
   assert.notEqual(api.marketsReviewSnapshotScope_("analytics", { ...filters, analysisMonth: "2026-11" }, window), scope);
-  assert.equal(api.marketsReviewSnapshotScope_("analytics", { ...filters, audience: "BEI" }, window), "");
+  const business = api.marketsReviewSnapshotScope_("analytics", { ...filters, audience: "BEI" }, window);
+  assert.match(business, /^analytics:ES:requested:/);
+  assert.notEqual(business, scope);
   assert.equal(api.marketsReviewSnapshotScope_("analytics", { ...filters, inferGeography: "NO" }, window), scope + ":NO");
-  assert.equal(api.marketsReviewSnapshotScope_("analytics", { ...filters, segment: "PROMOTER" }, window), "");
+  const promoters = api.marketsReviewSnapshotScope_("analytics", { ...filters, segment: "PROMOTER" }, window);
+  assert.match(promoters, /^analytics:ES:requested:/);
+  assert.notEqual(promoters, scope);
+  assert.notEqual(promoters, business);
   const { segment, ...allStars } = filters;
   assert.equal(api.marketsReviewSnapshotScope_("analytics", allStars, window), scope + ":all-stars");
   assert.equal(api.marketsReviewSnapshotScope_("analytics", { ...allStars, inferGeography: "NO" }, window), scope + ":all-stars:NO");
@@ -1313,7 +1322,7 @@ test("annual NPS materialization reuses valid counts after a translation and rej
       { month: "2026-01", balance: 100, assignedGeography: 0 }
     ] }
   });
-  const query = (year, inferGeography) => local.readMarketsReviewCache_({ getId: () => "ss" }, "nps",
+  const query = (year, inferGeography) => local.readMarketsReviewCache_({ getId: () => "ss", getSheetByName: () => null }, "nps",
     { country: "ES", year, platform: "ALL", inferGeography }, local.marketsReviewAnalyticsWindow_({ year }, "2026-11-16"), () => null);
   assert.equal(query("2025").monthly[0].balance, 0);
   assert.equal(query("2026").monthly.length, 1);
@@ -1352,7 +1361,7 @@ test("review prefetch never rebuilds a stale snapshot or caches its absence", ()
     vm.runInContext(fs.readFileSync(new URL("../src/" + file, import.meta.url), "utf8"), local);
   }
   local.marketsReviewDigest_ = JSON.stringify;
-  const db = { getId: () => "test" }, filters = { country: "ES", platform: "ALL", year: "2026" };
+  const db = { getId: () => "test", getSheetByName: () => null }, filters = { country: "ES", platform: "ALL", year: "2026" };
   const window = { start: "2026-01-01", end: "2026-11-16" };
   let reads = 0;
   const rebuild = () => { reads++; return { monthly: [] }; };
