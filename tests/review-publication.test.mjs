@@ -175,7 +175,8 @@ test('featured newsletter reviews share exact scopes, deduplicate keys and escap
 
 test('NPS ranking keeps zero and negative scores, deterministic ties and absent samples', () => {
   const window = {};
-  const source = fs.readFileSync(new URL('../src/Domain.html', import.meta.url), 'utf8').replace(/<\/?script>/g, '');
+  const html = fs.readFileSync(new URL('../src/Domain.html', import.meta.url), 'utf8');
+  const source = html.match(/^<script>([\s\S]*)<\/script>\s*$/i)[1];
   vm.runInNewContext(source, { window });
   const rows = [
     { appName: 'Missing', rating: 0, total: 0 }, { appName: 'Negative', rating: -60, total: 5 },
