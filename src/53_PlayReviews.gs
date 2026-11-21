@@ -302,14 +302,18 @@ function refreshMarketsAndroidMetadataPage_(sheet, properties, packageName, revi
   // Only the metadata cell changes. Keep original IDs, timestamps and main translations.
   advanceMarketsReviewGeneration_(properties);
   if (replyChanged) properties.setProperty('MARKETS_ANDROID_GEO_SOURCE_REVISION', Utilities.getUuid());
-  for (let start = 0; start < edits.length;) {
-    let end = start + 1;
-    while (end < edits.length && edits[end][0] === edits[end - 1][0] + 1) end++;
-    sheet.getRange(edits[start][0], MARKETS_REVIEW_METADATA_COLUMN, end - start, 1)
-      .setValues(edits.slice(start, end).map(([, metadata]) => [marketsReviewLiteral_(metadata)]));
-    start = end;
+  try {
+    for (let start = 0; start < edits.length;) {
+      let end = start + 1;
+      while (end < edits.length && edits[end][0] === edits[end - 1][0] + 1) end++;
+      sheet.getRange(edits[start][0], MARKETS_REVIEW_METADATA_COLUMN, end - start, 1)
+        .setValues(edits.slice(start, end).map(([, metadata]) => [marketsReviewLiteral_(metadata)]));
+      start = end;
+    }
+    SpreadsheetApp.flush();
+  } finally {
+    // Una escritura parcial también debe retirar cualquier build concurrente.
+    advanceMarketsReviewGeneration_(properties);
   }
-  SpreadsheetApp.flush();
-  advanceMarketsReviewGeneration_(properties);
   return edits.length;
 }

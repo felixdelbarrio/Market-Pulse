@@ -327,16 +327,27 @@ function sendMarketsAlertTestEmail() {
   return sendMarketsAlertPreview_(ss, email, readMarketsAlertPreferences_(ss, email), deliveryId);
 }
 
-function sendMarketsAlertPreview_(ss, email, preferences, deliveryId) {
+function sendMarketsAlertPreview_(ss, email, preferences, deliveryId, reviewOnly = false, onAccepted) {
   const eventKey = 'TEST|' + deliveryId + '|' + email;
   if (deliveryId.startsWith('COM-NEWS-REQ-') && readExistingAlertKeys_(ss)[eventKey]) return { sent: true, accepted: true, alreadyAccepted: true, recipient: email, deliveryId };
   const sentAt = new Date();
   const ratings = readRatingObjects_(ss);
   const catalog = readAppCatalog_(ss);
-  const events = validateMarketsRealAlertPreviewEvents_(
-    buildMarketsRealAlertPreviewEvents_(ratings, catalog, preferences, deliveryId), preferences);
+  let sourceEvents;
+  if (reviewOnly) {
+    const day = Utilities.formatDate(sentAt, MARKETS_CONFIG.timeZone, 'yyyy-MM-dd');
+    const rows = queryMarketsReviews_(ss, { country: 'ALL', platform: 'ALL', app: 'BBVA Empresas', deferBlocks: true },
+      { start: shiftReviewDay_(day, -2), end: shiftReviewDay_(day, 1) });
+    sourceEvents = buildMarketsReviewAlertEvents_(summarizeMarketsReviewAlerts_(rows, sentAt),
+      { ...preferences, active: true, reviewShareEnabled: true }, {}, sentAt, day, true).map(event => ({ ...event,
+        isTest: true, testId: deliveryId, eventKey: 'TEST_PREVIEW|' + deliveryId + '|' + event.eventKey,
+        source: 'SELF_SERVICE_TEST_REAL_DATA' }));
+  } else sourceEvents = buildMarketsRealAlertPreviewEvents_(ratings, catalog, preferences, deliveryId);
+  const events = validateMarketsRealAlertPreviewEvents_(sourceEvents, preferences);
   const delivered = sendAlertEmails_(events, ss);
   if (delivered !== 1) throw new Error('Google no ha aceptado la prueba para el destinatario esperado.');
+  onAccepted?.({ sent: true, accepted: true, recipient: email, deliveryId, realData: true, auditLogged: false,
+    messageId: events.deliveryResults?.[0]?.messageId || '' });
   let auditLogged = true;
   try {
     appendAlertEvents_(ss, [{

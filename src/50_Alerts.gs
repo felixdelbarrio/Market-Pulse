@@ -26,18 +26,18 @@ function summarizeMarketsReviewAlerts_(rows, now) {
   return [...groups.values()].filter(group => group.low);
 }
 
-function buildMarketsReviewAlertEvents_(groups, preferences, existing, now, day) {
+function buildMarketsReviewAlertEvents_(groups, preferences, existing, now, day, preview = false) {
   if (!preferences.active || !preferences.reviewShareEnabled) return [];
   return groups.flatMap(group => {
     if (!marketsAlertScopeMatches_(preferences, group)) return [];
     const share = 100 * group.low / group.total;
-    const severity = share >= preferences.reviewCriticalPct ? 'CRITICAL' : share >= preferences.reviewWarningPct ? 'WARNING' : '';
+    const severity = share >= preferences.reviewCriticalPct ? 'CRITICAL' : share >= preferences.reviewWarningPct ? 'WARNING' : preview ? 'PREVIEW' : '';
     const eventKey = ['REVIEW_LOW_SHARE', day, group.platform, group.countryCode, preferences.email].join('|');
     if (!severity || existing[eventKey]) return [];
     const threshold = severity === 'CRITICAL' ? preferences.reviewCriticalPct : preferences.reviewWarningPct;
     return [{ timestamp: now, eventKey, referenceDate: dateFromKey_(day), platform: group.platform,
       countryCode: group.countryCode, country: group.countryCode === 'ALL' ? 'Sin geografía' : group.countryCode,
-      type: 'REVIEW_LOW_SHARE', severity, threshold, metricValue: round2_(share),
+      type: 'REVIEW_LOW_SHARE', severity, threshold, metricValue: round2_(share), reviewTotal: group.total, reviewLow: group.low,
       detail: group.low + ' de ' + group.total + ' reseñas públicas de BBVA Empresas fechadas en las últimas 24 horas. Umbral: ' + threshold + ' %.',
       recipients: preferences.email, userEmail: preferences.email, ruleId: 'REVIEW_LOW_SHARE', direction: 'UP',
       runId: 'review-' + day, source: 'REVIEW_ALERTS' }];
@@ -382,6 +382,13 @@ function validateMarketsRealAlertPreviewEvents_(events, preferences) {
     }
     if (!marketsAlertScopeMatches_(preferences, { countryCode: countryCode, platform: platform })) {
       throw new Error('La prueba se ha cancelado: los datos no pertenecen al ámbito guardado.');
+    }
+    if (event.type === 'REVIEW_LOW_SHARE' && event.isTest) {
+      if (!Number.isInteger(event.reviewTotal) || !Number.isInteger(event.reviewLow) || event.reviewTotal < event.reviewLow ||
+          event.reviewLow <= 0 || Math.abs(event.metricValue - 100 * event.reviewLow / event.reviewTotal) > 0.01) {
+        throw new Error('La muestra de reseñas de la prueba no es válida.');
+      }
+      return;
     }
     if (!(event.referenceDate instanceof Date) || !isFinite(event.referenceDate.getTime()) ||
         !trimString_(event.appKey)) {
@@ -1079,7 +1086,7 @@ function buildMarketsAlertInlineImages_() {
 }
 
 function marketsEmailFooterImages_(html) {
-  const entries = html.matchAll(/<template id="mail-(biaLogo|feedbackPositive|feedbackNegative)">([A-Za-z0-9+/=]+)<\/template>/g);
+  const entries = html.matchAll(/<template id="mail-(biaLogo|feedbackPositive|feedbackNegative|reviewAndroid)">([A-Za-z0-9+/=]+)<\/template>/g);
   return Object.fromEntries([...entries].map(([, id, data]) => [id, data]));
 }
 
@@ -1088,8 +1095,8 @@ function escapeMarketsAlertHtml_(value) {
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
-function marketsEmailFooterMime_(images, boundary) {
-  return ['biaLogo', 'feedbackPositive', 'feedbackNegative'].flatMap(id => images?.[id] ? [
+function marketsEmailFooterMime_(images, boundary, ids = ['biaLogo', 'feedbackPositive', 'feedbackNegative']) {
+  return ids.flatMap(id => images?.[id] ? [
     '--' + boundary, 'Content-Type: image/png; name="' + id + '.png"',
     'Content-Transfer-Encoding: base64', 'Content-ID: <' + id + '>',
     'Content-Disposition: inline; filename="' + id + '.png"', '', marketsAlertMimeBytes_(images[id].getBytes())

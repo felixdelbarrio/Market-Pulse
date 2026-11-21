@@ -112,8 +112,10 @@
         const y=top+i*step, end=x(row.gap);
         return `<path class="gap-grid" d="M${left} ${y+step/2}H${width-right}"/><text x="${left-8}" y="${y+step/2+4}" text-anchor="end">${esc(row.label)}</text><rect class="${row.gap<0?"gap-negative":"gap-positive"}" x="${Math.min(zero,end)}" y="${y+4}" width="${Math.abs(end-zero)}" height="${step-8}"><title>${esc(row.label)}: ${fmt(row.gap,1)} pp</title></rect>`;
       }).join("");
-      return `<div class="review-gap-plot"><svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${esc(translate("Brecha de NPS por bloque"))}"><rect class="gap-background" x="${left}" y="${top}" width="${width-left-right}" height="${bottom-top}"/>${grid}${bars}<text x="${(left+width-right)/2}" y="${height-8}" text-anchor="middle">${esc(translate("Brecha de NPS vs. mes anterior (pp)"))}</text></svg></div>`;
+      const mobileX=value=>20+(value-low)/(high-low)*280;
+      const mobile=rows.map(row=>`<div class="review-gap-mobile-row"><strong>${esc(row.label)}</strong><span>${row.gap===null?"N/D":fmt(row.gap,1)+" pp"}</span><svg viewBox="0 0 320 28" role="img" aria-label="${esc(row.label)}: ${row.gap===null?"N/D":fmt(row.gap,1)+" pp"}"><rect class="gap-background" x="20" y="4" width="280" height="20"/><path class="gap-zero" d="M${mobileX(0)} 0V28"/>${row.gap===null?"":`<rect class="${row.gap<0?"gap-negative":"gap-positive"}" x="${Math.min(mobileX(0),mobileX(row.gap))}" y="4" width="${Math.abs(mobileX(row.gap)-mobileX(0))}" height="20"/>`}</svg></div>`).join("");
+      return `<div class="review-gap-mobile">${mobile}<div class="review-gap-mobile-axis"><span>${fmt(low,0)}</span><span>${fmt(high,0)}</span></div><p>${esc(translate("Brecha de NPS vs. mes anterior (pp)"))}</p></div><div class="review-gap-plot"><svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${esc(translate("Brecha de NPS por bloque"))}"><rect class="gap-background" x="${left}" y="${top}" width="${width-left-right}" height="${bottom-top}"/>${grid}${bars}<text x="${(left+width-right)/2}" y="${height-8}" text-anchor="middle">${esc(translate("Brecha de NPS vs. mes anterior (pp)"))}</text></svg></div>`;
     }
-    window.MarketsCharts=Object.freeze({lineChart,ratingBars,monthlyMatrix,newReviewImpact,reviewBalance,reviewBalanceLegend,reviewGaps});
+    window.MarketsCharts=Object.freeze({lineChart,ratingBars,monthlyMatrix,newReviewImpact,reviewBalance,reviewBalanceLegend,reviewSeriesColor,reviewGaps});
   })();
 </script>
