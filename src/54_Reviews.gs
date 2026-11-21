@@ -407,6 +407,9 @@ function marketsReviewClassification_(ss) {
   const entries = taxonomy && taxonomy.getLastRow() > 1
     ? taxonomy.getRange(2, 1, taxonomy.getLastRow() - 1, 4).getDisplayValues() : [];
   const knownBlocks = new Set(entries.filter(([id, label]) => /^\d{2}\./.test(id) && label).map(([id]) => id.slice(0, 2)));
+  const active = typeof PropertiesService === 'object' && marketsFunctionalEngine_(PropertiesService.getScriptProperties());
+  if (active?.engine === 'EDCCatalogClassifier') return { library: active, knownBlocks,
+    version: marketsReviewDigest_([MARKETS_REVIEW_CLASSIFIER_SCHEMA, MARKETS_REVIEW_AUDIENCE_VERSION, active.pins]) };
   const aliases = marketsBusinessAliases_(ss);
   const translations = ['en', 'tr'].map(language => marketsFunctionalTranslations_(ss, language));
   for (const [id, , name] of entries) {
@@ -432,8 +435,8 @@ function queryMarketsReviews_(ss, filters, window, includeTranslations = false, 
   if (lastRow < 2) return paging ? paginateMarketsReviews_([], paging, window) : [];
   marketsReviewSheet_(ss);
   const topic = /^(?:\d{2})(?:\.(?:\d{2}|xx))?$/.test(filters.topic) ? filters.topic : "";
-  const classification = ((window && !filters.deferBlocks) || filters.includeTopics || filters.audience || topic)
-    ? marketsReviewClassification_(ss) : null;
+  const classification = filters.classificationOverride || (((window && !filters.deferBlocks) || filters.includeTopics || filters.audience || topic)
+    ? marketsReviewClassification_(ss) : null);
   const rules = classification?.rules;
   const knownBlocks = window ? classification?.knownBlocks : null;
   const languageColumn = { es: 11, en: 12, tr: 13 }[filters.language] || 11;
@@ -446,13 +449,17 @@ function queryMarketsReviews_(ss, filters, window, includeTranslations = false, 
   }
   const readStarted = Date.now();
   const width = marketsReviewWidth_(sheet);
-  const indexOnly = Boolean((paging && !paging.fullRead) || (filters.npsOnly && !filters.fullRead));
+  const indexOnly = !filters.fullRead && !paging?.fullRead;
   const search = normalizeReviewEvidence_(String(filters.search || "").slice(0, 200));
   const approvedGeo = filters.inferGeography !== 'NO' && typeof readMarketsAndroidGeography_ === 'function'
     ? readMarketsAndroidGeography_(ss) : new Map();
   const filterText = Boolean(search || filters.audience || filters.topic);
   const indexWidth = MARKETS_REVIEW_HEADERS.indexOf(filterText ? 'original' : 'rating') + 1;
   const stored = sheet.getRange(2, 1, lastRow - 1, indexOnly ? indexWidth : width).getValues();
+  if (indexOnly && filters.sort === 'HELPFUL' && width > 15) {
+    const metadata = sheet.getRange(2, 16, lastRow - 1, 1).getValues();
+    stored.forEach((row, index) => { row[15] = metadata[index][0]; });
+  }
   if (indexOnly && approvedGeo.size) {
     const geographicRows = stored.flatMap((row, offset) => approvedGeo.get(row[0])?.country
       ? [{ row, rowNumber: offset + 2 }] : []);
@@ -467,7 +474,8 @@ function queryMarketsReviews_(ss, filters, window, includeTranslations = false, 
     if (!byPackage.has(app.packageName)) byPackage.set(app.packageName, []);
     byPackage.get(app.packageName).push(app);
   }
-  const derived = Boolean(classification?.version) && typeof marketsReviewIndexSheet_ === 'function' && marketsReviewIndexSheet_(ss);
+  const derived = Boolean(classification?.version) && (filters.indexSheetName ? ss.getSheetByName(filters.indexSheetName)
+    : typeof marketsReviewIndexSheet_ === 'function' && marketsReviewIndexSheet_(ss));
   const derivedCount = derived ? Math.max(0, Math.min(stored.length, derived.getLastRow() - 1)) : 0;
   const derivedRows = derivedCount ? derived.getRange(2, 1, derivedCount, derived.getLastColumn()).getValues() : [];
   let classified = 0, classificationMs = 0;
@@ -492,7 +500,7 @@ function queryMarketsReviews_(ss, filters, window, includeTranslations = false, 
   const localDate = typeof Intl === 'object' && new Intl.DateTimeFormat('sv-SE', {
     timeZone: MARKETS_CONFIG.timeZone, year: 'numeric', month: '2-digit', day: '2-digit'
   });
-  const candidates = Array.from(identities.values())
+  let candidates = Array.from(identities.values())
     .flatMap(({ row, rowNumber, markets, key, matches }) => {
       if (filters.reviewKey && !matches) return [];
       if (filters.platform !== 'ALL' && row[3] !== filters.platform) return [];
@@ -531,8 +539,41 @@ function queryMarketsReviews_(ss, filters, window, includeTranslations = false, 
       }
       const apps = candidates.filter(app => !filters.app || (app.isBbva ? 'BBVA Empresas' : app.appName) === filters.app);
       if (!apps.length && (filters.app || candidates.length || !['Android', 'iOS'].includes(row[3]) || !row[4])) return [];
-      return [{ row, rowNumber, key, date, countries: [country], android, storefronts, attributionMethod, sharedListing, apps }];
+      return [{ row, rowNumber, key, date, countries: [country], android, storefronts, attributionMethod, sharedListing, apps,
+        ...(filters.sort === 'HELPFUL' ? { helpful: marketsReviewMetadata_(row).helpful } : {}) }];
     });
+  if (filters.helpfulLimit) {
+    const counts = new Map(), limit = Math.min(3, Math.max(1, filters.helpfulLimit));
+    candidates = candidates.filter(row => row.helpful > 0).sort(compareMarketsHelpfulReviews_).filter(row => {
+      const key = JSON.stringify([row.countries[0], row.row[3]]), count = counts.get(key) || 0;
+      counts.set(key, count + 1); return count < limit;
+    });
+  }
+  if (filters.interactive && !paging && !filters.npsOnly && candidates.length > 250) {
+    throw new Error('La selección de reseñas requiere una vista publicada. Reintenta cuando termine la actualización.');
+  }
+  if (indexOnly && !paging && !filters.npsOnly && candidates.length) {
+    if (!hydrateMarketsReviewPage_(sheet, width, candidates)) {
+      return queryMarketsReviews_(ss, { ...filters, fullRead: true }, window, includeTranslations, apps,
+        paging && { ...paging, fullRead: true });
+    }
+  }
+  const compare = filters.sort === 'HELPFUL' ? compareMarketsHelpfulReviews_ : compareMarketsReviewRows_;
+  const libraryIds = new Map();
+  if (classification?.library && !filters.npsOnly) {
+    const missing = candidates.filter(candidate => {
+      const saved = derivedRows[candidate.rowNumber - 2];
+      return !saved || saved[0] !== candidate.row[0] || saved[2] !== classification.version ||
+        saved[1] !== marketsReviewTextDigest_(candidate.row);
+    });
+    if (missing.length > (filters.interactive ? 250 : MARKETS_REVIEW_INDEX_BATCH)) {
+      throw new Error('La clasificación de reseñas se está actualizando. Vuelve a consultar en unos minutos.');
+    }
+    if (missing.length) {
+      const ids = classifyMarketsFunctionalBatch_(missing.map(({ row }) => row), classification.library.pins);
+      missing.forEach((candidate, index) => libraryIds.set(candidate.row[0], ids[index]));
+    }
+  }
   function matchingEvidence(candidate) {
     const { row } = candidate;
     const original = marketsReviewOriginalText_(row);
@@ -540,6 +581,7 @@ function queryMarketsReviews_(ss, filters, window, includeTranslations = false, 
     const saved = derivedRows[candidate.rowNumber - 2];
     const indexed = saved && saved[0] === row[0] && saved[2] === classification.version &&
       saved[1] === marketsReviewTextDigest_(row) && Boolean(saved[7]);
+    if (filters.includeAudience) candidate.relevance = indexed ? saved[7] : classifyMarketsReviewAudience_(original).relevance;
     if (!indexed && (rules || filters.audience)) {
       classified++;
       if (filters.interactive && classified > 250) {
@@ -559,7 +601,7 @@ function queryMarketsReviews_(ss, filters, window, includeTranslations = false, 
       if (classifyStarted) classificationMs += Date.now() - classifyStarted;
       return true;
     }
-    const ids = indexed ? JSON.parse(saved[3]) : rules ? classifyReviewEvidence_(original, rules) : [];
+    const ids = indexed ? JSON.parse(saved[3]) : libraryIds.get(row[0]) || (rules ? classifyReviewEvidence_(original, rules) : []);
     if (classifyStarted) classificationMs += Date.now() - classifyStarted;
     if (window && filters.topic === 'general' && marketsReviewBlocks_(ids, knownBlocks).length) return false;
     if (topic && ((!window && !(row[7] >= 1 && row[7] <= 3)) ||
@@ -570,7 +612,7 @@ function queryMarketsReviews_(ss, filters, window, includeTranslations = false, 
   const matching = filterText ? candidates.filter(matchingEvidence) : candidates;
   let page;
   if (paging) {
-    matching.sort(compareMarketsReviewRows_);
+    matching.sort(compare);
     page = paginateMarketsReviews_(matching, paging, window);
     if (indexOnly && page.rows.length) {
       const startedTextRead = Date.now();
@@ -594,6 +636,7 @@ function queryMarketsReviews_(ss, filters, window, includeTranslations = false, 
       const { author, helpful, reply, replyDate, replyAuthor, replyTranslations } = marketsReviewMetadata_(row);
       return { key, listings: apps.map(app => ({ country: app.countryCode, app: app.appName, entity: app.isBbva ? 'BBVA Empresas' : app.appName })),
         entities: marketsReviewEntities_(apps, row[4]),
+        ...(filters.includeAudience ? { relevance: candidate.relevance } : {}),
         blocks: marketsReviewBlocks_(ids, knownBlocks), app: apps[0]?.appName || String(row[4]), countries: [country], storefronts,
         attributionMethod, confidence: country === 'UNKNOWN' ? 'unknown' : 'inferred',
         platform: row[3], ...(android ? { volumeKey: 'ANDROID|' + String(row[4]).toLowerCase() } : {}), date, rating: row[7], version: String(row[8]),
@@ -607,7 +650,7 @@ function queryMarketsReviews_(ss, filters, window, includeTranslations = false, 
         capturedAt: row[14] ? String(row[14]).slice(0, 10) : '',
         translated: Boolean(row[languageColumn] && row[languageColumn] !== row[10]) };
     })
-    .sort(compareMarketsReviewRows_);
+    .sort(compare);
   const stats = { readMs, classificationMs, queryMs: Date.now() - started,
     read: stored.length, indexOnly, classified, returned: results.length };
   if (filters.timing) Object.assign(filters.timing, stats);
@@ -621,6 +664,14 @@ function marketsReviewEntities_(apps, storeId) {
 
 function compareMarketsReviewRows_(a, b) {
   return b.date.localeCompare(a.date) || a.key.localeCompare(b.key);
+}
+
+function compareMarketsHelpfulReviews_(a, b) {
+  const votes = item => {
+    const helpful = item.helpful;
+    return Number.isInteger(helpful) && helpful > 0 ? helpful : 0;
+  };
+  return votes(b) - votes(a) || compareMarketsReviewRows_(a, b);
 }
 
 /** Recupera como máximo cuatro intervalos, separados por los huecos más grandes. */

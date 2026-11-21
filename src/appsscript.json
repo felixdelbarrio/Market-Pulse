@@ -1,6 +1,14 @@
 {
   "timeZone": "Europe/Madrid",
   "dependencies": {
+    "libraries": [
+      {
+        "userSymbol": "EDCCatalogClassifier",
+        "version": "1",
+        "libraryId": "17WXA8vGqYUgQUKDquUXRe_vvPBWbcBuX-Nj1TTLDGtM9WNq5a4UPIT1s",
+        "developmentMode": false
+      }
+    ],
     "enabledAdvancedServices": [
       {
         "userSymbol": "Gmail",

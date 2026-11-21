@@ -55,7 +55,7 @@
 </svg>Resumen</h2><p>Ranking actual, de la aplicación GEMA, frente a los competidores en los distintos markets</p></div><div class="report-slot"></div><p id="benchmark-context" class="data-freshness"></p><div id="benchmark-filters" class="radar-filters">
           <form class="filter-panel" hidden>
             <div class="filter-field"><label for="segment-filter">Tipo de entidad</label><select id="segment-filter" name="segment"><option value="BANK">Solo bancos</option><option value="FINTECH">Fintech y Neobancos</option><option value="ALL">Todo el mercado</option></select></div>
-            <div class="filter-field"><label for="ranking-filter">Ranking</label><select id="ranking-filter" name="ranking"><option value="MARKET">Por market</option><option value="WEIGHTED">Ponderado</option></select></div>
+            <div class="filter-field"><label for="ranking-filter">Ranking</label><select id="ranking-filter" name="ranking"><option value="MARKET">Por market</option><option value="WEIGHTED">Ponderado</option><option value="NPS">NPS de reseñas</option></select></div>
           </form>
         </div></div>
         <div id="benchmark-markets" class="geography-tabs" role="group" aria-label="Geografías"></div>
@@ -86,7 +86,7 @@
             <div class="panel-body radar-filters review-gap-controls">
               <label for="monthly-review-segment">Sentimiento</label>
               <select id="monthly-review-segment">
-                <option value="">Todas las estrellas</option>
+                <option value="">Todas las reseñas</option>
                 <option value="DETRACTOR">Detractores</option>
                 <option value="PROMOTER">Promotores</option>
                 <option value="NEUTRAL">Neutros</option>
@@ -213,6 +213,7 @@
               <label>Desde<input id="review-start" name="start" type="date" required></label>
               <label>Hasta<input id="review-end" name="end" type="date" required></label>
             </div>
+            <div class="filter-field"><label for="review-sort">Orden</label><select id="review-sort" name="sort"><option value="">Más recientes</option><option value="HELPFUL">Más útiles</option></select></div>
             <label>Buscar<input id="review-search" name="search" type="search" maxlength="200"></label>
             <details class="filter-advanced"><summary>Filtros avanzados</summary>
               <div class="filter-field"><label for="review-topic">Bloque funcional</label><select id="review-topic" name="topic"></select></div>
@@ -329,7 +330,7 @@
                   <label>Configuración del destinatario<input name="targetEmail" type="email" placeholder="Correo del administrador conectado" autocomplete="off"></label>
                   <label>Geografía<select name="country" id="newsletter-test-country"><option value="">Según suscripción</option></select></label>
                   <label>Idioma<select name="language"><option value="">Según suscripción</option><option value="es">Español</option><option value="en">English</option><option value="tr">Türkçe</option></select></label>
-                  <label>Edición<select name="edition"><option value="monthly">Mensual</option><option value="alert">Alerta</option></select></label>
+                  <label>Edición<select name="edition"><option value="monthly">Mensual</option><option value="alert">Alerta</option><option value="reviewAlert">Reseñas de 1 y 2 estrellas</option><option value="featured">Reseñas destacadas por nuestros clientes</option></select></label>
                 </div>
                 <p class="small muted">La prueba se envía a tu cuenta de administrador. Puedes usar el ámbito de otro suscriptor o elegir Todos para incluir todas las geografías.</p>
                 <button type="submit" class="button">Enviar prueba</button>
