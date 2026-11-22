@@ -320,10 +320,17 @@ function advanceMarketsFunctionalMigration_() {
 
 function advanceMarketsFunctionalMigration() {
   requireMarketsReviewOwner_();
-  const result = advanceMarketsFunctionalMigration_();
+  const deadline = Date.now() + 235000;
+  let result, longest = 0;
+  for (let step = 0; step < 12 && Date.now() + 2 * longest < deadline; step++) {
+    const started = Date.now();
+    result = advanceMarketsFunctionalMigration_();
+    longest = Math.max(longest, Date.now() - started);
+    if (result.deferred || result.ready || result.complete) break;
+  }
   console.log(JSON.stringify({ operation: 'functional-migration', done: result.done, total: result.total,
     verified: Math.max(0, (result.verifyNext || 2) - 2), complete: result.complete, errors: result.errors,
-    before: result.before, after: result.after }));
+    ready: Boolean(result.ready), deferred: Boolean(result.deferred), before: result.before, after: result.after }));
   return result;
 }
 

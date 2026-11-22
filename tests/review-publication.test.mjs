@@ -321,6 +321,15 @@ test('a full production workbook keeps the shadow in a separate index workbook',
   assert.equal(f.api.advanceMarketsFunctionalMigration_().done, 2);
 });
 
+test('the operator advances several checkpoints and stops before activation', () => {
+  const f = migrationFixture();
+  f.api.startMarketsFunctionalMigration();
+  const result = f.api.advanceMarketsFunctionalMigration();
+  assert.equal(result.ready, true);
+  assert.equal(result.complete, false);
+  assert.ok(!f.properties.has('MARKETS_REVIEW_SNAPSHOT_POINTER'));
+});
+
 test('monthly windows contain exactly six calendar months across years and leap days', () => {
   const api = runtime({ Utilities: { formatDate: () => '2026-11-21' }, MARKETS_CONFIG: { timeZone: 'Europe/Madrid' } });
   for (const [month, start, end] of [['2026-11', '2026-06-01', '2026-11-21'],
