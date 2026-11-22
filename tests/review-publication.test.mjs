@@ -236,6 +236,25 @@ test('featured newsletter reviews share exact scopes, deduplicate keys and escap
   assert.equal(api.renderMarketsNewsletterFeatured_({ featuredReviews: selected }, 'CO'), '');
 });
 
+test('NPS ranking usa el mismo balance mensual con las muestras de iOS y Android por país y aplicación', () => {
+  const api = runtime();
+  const entity = 'Example';
+  const row = (platform, rating) => ({ platform, rating, entities: [entity], date: '2026-11-01' });
+  const android = [row('Android', 1), row('Android', 1), row('Android', 4)];
+  const ios = [row('iOS', 5)];
+  const monthly = api.summarizeMarketsReviewNps_([...android, ...ios])[0];
+  const platformPoints = [android, ios, [row('Huawei', 5)]].flatMap(rows =>
+    api.summarizeMarketsReviewNps_(rows).map(point => ({ ...point, platform: rows[0].platform, country: 'ES' })));
+  const ranked = api.consolidateMarketsReviewRanking_([...platformPoints,
+    { ...platformPoints[1], country: 'MX' }, { ...platformPoints[1], entity: 'Other' }]);
+  assert.equal(ranked.length, 3);
+  assert.equal(ranked[0].total, monthly.total);
+  assert.equal(ranked[0].balance, monthly.balance);
+  assert.equal(ranked[0].balance, -25);
+  assert.equal(ranked[1].balance, 100);
+  assert.equal(ranked[2].balance, 100);
+});
+
 test('NPS ranking keeps zero and negative scores, deterministic ties and absent samples', () => {
   const window = {};
   const html = fs.readFileSync(new URL('../src/Domain.html', import.meta.url), 'utf8');

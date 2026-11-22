@@ -18,9 +18,9 @@
 .annual-chart-layout .series-summary:empty{display:none}
 .annual-chart-layout .series-card{grid-template-columns:var(--space-1) minmax(0,1fr) auto;overflow-wrap:anywhere}
 @media(max-width:780px){
-  .annual-chart-layout .series-summary,.annual-chart-layout .series-card{padding:var(--space-1)}
-  .annual-chart-layout .series-card{grid-template-columns:var(--space-1) minmax(0,1fr)}
-  .annual-chart-layout .series-card>b{grid-column:2}
+  .annual-chart-layout{grid-template-columns:minmax(0,1fr);gap:var(--space-2)}
+  .annual-chart-layout .chart-wrap{min-width:0;min-height:0;padding:0}
+  .annual-chart-layout .series-summary{min-width:0;max-block-size:none;overflow:visible;padding:0}
 }
 /* News Radar chart styles scoped to the annual review balance card. */
 #review-balance-panel .trend-chart svg{width:100%;display:block;overflow:visible}

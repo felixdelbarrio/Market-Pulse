@@ -1092,7 +1092,21 @@ function getMarketsReviewRanking(filters) {
     queueMarketsReviewSnapshotRefresh_();
     throw new Error('El ranking de NPS se está publicando. Reintenta en unos minutos.');
   }, timing);
-  return { ...value, timing };
+  return { ...value, rows: consolidateMarketsReviewRanking_(value.rows), timing };
+}
+
+function consolidateMarketsReviewRanking_(rows) {
+  const groups = new Map();
+  for (const row of rows) {
+    if (row.platform !== 'Android' && row.platform !== 'iOS') continue;
+    const key = JSON.stringify([row.country, row.entity]);
+    const group = groups.get(key) || { country: row.country, entity: row.entity, total: 0, promoters: 0, detractors: 0 };
+    group.total += row.total;
+    group.promoters += row.promoters;
+    group.detractors += row.detractors;
+    groups.set(key, group);
+  }
+  return [...groups.values()].map(group => ({ ...group, balance: reviewBalancePoints_(group) }));
 }
 
 function summarizeMarketsReviewNps_(rows) {

@@ -978,23 +978,21 @@
       try{
         const data=await fetchReviewData("review:ranking",scope);
         if(token!==benchmarkNpsRequest||!benchmarkNps)return;
-        const rows=D.selectionRows(state.snapshot,selection(),segment,true);
+        const rows=D.selectionRows(state.snapshot,selection(),segment,true).filter(row=>D.isCriticalPlatform(row.platform));
         const groups=D.groupBy(rows,row=>row.countryCode);
+        const points=new Map(data.rows.map(point=>[JSON.stringify([point.country,point.entity]),point]));
         target.innerHTML=Object.entries(groups).map(([code,apps])=>{
-          const boards=D.config.platforms.map(platform=>{
-            const unique=new Map(apps.filter(row=>row.platform===platform).map(row=>[D.appName(row),row]));
-            const ranked=D.rankReviewNpsRows([...unique].map(([entity,row])=>{
-              const point=data.rows.find(point=>point.country===code&&point.platform===platform&&point.entity===entity);
-              return {...row,rating:point?.balance??null,total:point?.total||0,promoters:point?.promoters||0,detractors:point?.detractors||0,nps:true};
-            }));
-            setExportSheet("benchmark",countryLabel(code)+" · "+platform,code,
-              [["Ranking","NPS de reseñas"],["Mes",scope.analysisMonth],["Tipo de entidad",D.config.segmentLabels[segment]]],
-              ["Posición","Aplicación","NPS (pp)","Reseñas","Promotoras","Detractoras","Market"],
-              ranked.map(row=>[row.computedRank,D.appName(row),row.rating,row.total,row.promoters,row.detractors,row.storeUrl]));
-            return `<section class="platform-board"><header class="platform-head"><strong>${platformIcon(platform)}${U.esc(platform)}</strong></header><ol class="rank-list">${ranked.map(renderRankRow).join("")}</ol></section>`;
-          }).join("");
-          return `<article class="benchmark-country" aria-label="${U.esc(countryLabel(code))}">${country==="ALL"?`<h3>${U.esc(countryLabel(code))}</h3>`:""}<div class="platform-boards">${boards}</div></article>`;
-        }).join("");
+          const unique=new Map(apps.map(row=>[D.appName(row),row]));
+          const ranked=D.rankReviewNpsRows([...unique].map(([entity,row])=>{
+            const point=points.get(JSON.stringify([code,entity]));
+            return {...row,storeUrl:"",rating:point?.balance??null,total:point?.total||0,promoters:point?.promoters||0,detractors:point?.detractors||0,nps:true};
+          }));
+          setExportSheet("benchmark",countryLabel(code),code,
+            [["Ranking","NPS de reseñas"],["Mes",scope.analysisMonth],["Tipo de entidad",D.config.segmentLabels[segment]]],
+            ["Posición","Aplicación","NPS (pp)","Reseñas","Promotoras","Detractoras"],
+            ranked.map(row=>[row.computedRank,D.appName(row),row.rating,row.total,row.promoters,row.detractors]));
+          return `<article class="benchmark-country" aria-label="${U.esc(countryLabel(code))}">${country==="ALL"?`<h3>${U.esc(countryLabel(code))}</h3>`:""}<section class="platform-board"><header class="platform-head"><strong>${platformIcon("iOS")}${platformIcon("Android")}iOS + Android</strong></header><ol class="rank-list">${ranked.map(renderRankRow).join("")}</ol></section></article>`;
+        }).join("")||U.empty("Benchmark sin datos","Selecciona otra geografía o benchmark.");
         $("benchmark-context").textContent=translate("NPS de reseñas")+" · "+monthLabel(scope.analysisMonth);
         appendReviewFreshness(target,data.timing);
       }catch(error){if(token===benchmarkNpsRequest)renderReviewRetry(target,error,renderBenchmark)}
