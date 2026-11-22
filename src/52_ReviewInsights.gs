@@ -844,7 +844,7 @@ function publishMarketsReviewSnapshot() {
   return result;
 }
 
-function publishMarketsReviewSnapshot_() {
+function publishMarketsReviewSnapshot_(force = false) {
   const ss = openMarketsSpreadsheet_();
   const properties = PropertiesService.getScriptProperties();
   const catalog = readAppCatalog_(ss), catalogVersion = marketsReviewCatalogVersion_(catalog);
@@ -872,7 +872,7 @@ function publishMarketsReviewSnapshot_() {
   const { end } = marketsReviewWindow_();
   const previousPointer = current[MARKETS_REVIEW_SNAPSHOT_POINTER] ?? null;
   const previous = safeJsonParse_(previousPointer || 'null');
-  if (!current.MARKETS_REVIEW_SNAPSHOT_REPAIR && previous?.schema === MARKETS_REVIEW_SNAPSHOT_SCHEMA && previous.hasAnnualNps && previous.hasNpsAttribution && previous.hasAllSentimentGaps && previous.hasReviewRanking && previous.hasFeaturedReviews && previous.audienceVersion === MARKETS_REVIEW_AUDIENCE_VERSION && previous.end === end && JSON.stringify(previous.versions) === JSON.stringify(versions) &&
+  if (!force && !current.MARKETS_REVIEW_SNAPSHOT_REPAIR && previous?.schema === MARKETS_REVIEW_SNAPSHOT_SCHEMA && previous.hasAnnualNps && previous.hasNpsAttribution && previous.hasAllSentimentGaps && previous.hasReviewRanking && previous.hasFeaturedReviews && previous.audienceVersion === MARKETS_REVIEW_AUDIENCE_VERSION && previous.end === end && JSON.stringify(previous.versions) === JSON.stringify(versions) &&
       JSON.stringify(previous.npsVersions) === JSON.stringify(npsVersions) &&
       requestedScopes.every(entry => previous.requestedScopes?.includes(entry.id))) {
     return { complete: true, published: previous.count };

@@ -204,7 +204,8 @@ test('NPS ranking keeps zero and negative scores, deterministic ties and absent 
 
 function migrationFixture() {
   const properties = new Map([['MARKETS_REVIEW_SOURCE_GENERATION', 'source-1']]);
-  const props = { getProperty: key => properties.get(key) ?? null, setProperty: (key, value) => properties.set(key, value) };
+  const props = { getProperty: key => properties.get(key) ?? null, setProperty: (key, value) => properties.set(key, value),
+    deleteProperty: key => properties.delete(key) };
   const sheets = new Map();
   function sheet(name, rows) {
     const value = { rows, getName: () => name, getLastRow: () => rows.length,
@@ -328,6 +329,24 @@ test('the operator advances several checkpoints and stops before activation', ()
   assert.equal(result.ready, true);
   assert.equal(result.complete, false);
   assert.ok(!f.properties.has('MARKETS_REVIEW_SNAPSHOT_POINTER'));
+});
+
+test('retirement preserves rollback metadata until both live snapshots use v5', () => {
+  const f = migrationFixture();
+  const sheet = 'MARKET_REVIEW_INDEX', indexSpreadsheetId = 'isolated';
+  const state = { complete: true, sheet, indexSpreadsheetId, libraryVersion: '5', backup: 'index-v1', previousSnapshot: '{}' };
+  f.api.SpreadsheetApp.openById = () => f.api.openMarketsSpreadsheet_();
+  f.properties.set('MARKETS_FUNCTIONAL_MIGRATION', JSON.stringify(state));
+  f.properties.set('MARKETS_FUNCTIONAL_MIGRATION_PREVIOUS', JSON.stringify({ sheet: 'index-v1', backup: 'pre-v1' }));
+  const snapshot = { engine: { libraryVersion: '5', sheet, indexSpreadsheetId }, files: { ES: 'shard' } };
+  f.properties.set('MARKETS_REVIEW_SNAPSHOT_POINTER', JSON.stringify(snapshot));
+  assert.throws(() => f.api.retireMarketsFunctionalV1References(), /dos punteros/);
+  assert.equal(JSON.parse(f.properties.get('MARKETS_FUNCTIONAL_MIGRATION')).backup, 'index-v1');
+  f.properties.set('MARKETS_REVIEW_SNAPSHOT_PREVIOUS', JSON.stringify(snapshot));
+  assert.deepEqual(Array.from(f.api.retireMarketsFunctionalV1References().retired), ['index-v1', 'pre-v1']);
+  assert.equal(f.properties.has('MARKETS_FUNCTIONAL_MIGRATION_PREVIOUS'), false);
+  assert.ok(JSON.parse(f.properties.get('MARKETS_FUNCTIONAL_MIGRATION')).retiredLegacyAt);
+  assert.throws(() => f.api.rollbackMarketsFunctionalMigration(), /No hay una migración/);
 });
 
 test('monthly windows contain exactly six calendar months across years and leap days', () => {

@@ -334,6 +334,48 @@ function advanceMarketsFunctionalMigration() {
   return result;
 }
 
+/** Owner-only rotation before retiring legacy migration metadata. */
+function rotateMarketsFunctionalV5Snapshot() {
+  requireMarketsReviewOwner_();
+  const properties = PropertiesService.getScriptProperties();
+  const state = safeJsonParse_(properties.getProperty('MARKETS_FUNCTIONAL_MIGRATION') || 'null');
+  const engine = marketsFunctionalEngine_(properties);
+  if (!state?.complete || state.rolledBackAt || state.libraryVersion !== '5' ||
+      engine?.libraryVersion !== '5' || engine.sheet !== state.sheet || engine.indexSpreadsheetId !== state.indexSpreadsheetId) {
+    throw new Error('El clasificador v5 no está activo y verificado.');
+  }
+  const result = publishMarketsReviewSnapshot_(true);
+  console.log(JSON.stringify(result));
+  return result;
+}
+
+/** Retira la reversión a v1 solo cuando ambos snapshots usan el índice v5. */
+function retireMarketsFunctionalV1References() {
+  const { ss } = requireMarketsReviewOwner_();
+  const properties = PropertiesService.getScriptProperties(), lock = LockService.getUserLock();
+  if (!lock.tryLock(1000)) throw new Error('Hay otra operación de reseñas en curso.');
+  try {
+    const state = safeJsonParse_(properties.getProperty('MARKETS_FUNCTIONAL_MIGRATION') || 'null');
+    const snapshots = [MARKETS_REVIEW_SNAPSHOT_POINTER, 'MARKETS_REVIEW_SNAPSHOT_PREVIOUS']
+      .map(key => safeJsonParse_(properties.getProperty(key) || 'null'));
+    if (!state?.complete || state.rolledBackAt || state.libraryVersion !== '5' || !state.indexSpreadsheetId ||
+        snapshots.some(item => item?.engine?.libraryVersion !== '5' || item.engine.sheet !== state.sheet ||
+          item.engine.indexSpreadsheetId !== state.indexSpreadsheetId || !Object.keys(item.files || {}).length) ||
+        !marketsReviewIndexSheet_(ss)) {
+      throw new Error('Los dos punteros y el índice activo deben estar verificados en v5.');
+    }
+    const old = safeJsonParse_(properties.getProperty(MARKETS_FUNCTIONAL_MIGRATION_PREVIOUS) || 'null');
+    const retired = [state.backup, old?.sheet, old?.backup].filter(Boolean);
+    for (const field of ['backup', 'backupDigest', 'backupSpreadsheetId', 'previousSnapshot']) delete state[field];
+    state.retiredLegacyAt = new Date().toISOString();
+    properties.setProperty('MARKETS_FUNCTIONAL_MIGRATION', JSON.stringify(state));
+    properties.deleteProperty(MARKETS_FUNCTIONAL_MIGRATION_PREVIOUS);
+    const result = { active: state.sheet, retired: [...new Set(retired)] };
+    console.log(JSON.stringify(result));
+    return result;
+  } finally { lock.releaseLock(); }
+}
+
 /** Reversión de punteros y derivados: conserva fuente, backup e índice de sombra. */
 function rollbackMarketsFunctionalMigration() {
   const { ss } = requireMarketsReviewOwner_();
@@ -341,7 +383,7 @@ function rollbackMarketsFunctionalMigration() {
   if (!lock.tryLock(1000)) throw new Error('Hay otra operación de reseñas en curso.');
   try {
     const state = safeJsonParse_(properties.getProperty('MARKETS_FUNCTIONAL_MIGRATION') || 'null');
-    if (!state || marketsFunctionalEngine_(properties)?.sheet !== state.sheet || state.rolledBackAt) throw new Error('No hay una migración activada que revertir.');
+    if (!state || state.retiredLegacyAt || marketsFunctionalEngine_(properties)?.sheet !== state.sheet || state.rolledBackAt) throw new Error('No hay una migración activada que revertir.');
     const backup = marketsFunctionalIndexSheet_(ss, { sheet: state.backup, indexSpreadsheetId: state.backupSpreadsheetId });
     if (!backup || marketsReviewDigest_(backup.getRange(1, 1, backup.getLastRow(), MARKETS_REVIEW_INDEX_HEADERS.length).getValues()) !== state.backupDigest) {
       throw new Error('El respaldo no coincide con el verificado antes de migrar.');
