@@ -2,11 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import vm from "node:vm";
+import { reviewInsightsSource, reviewSource } from "./review-insights-source.mjs";
 
 const api = vm.createContext({ trimString_: value => String(value ?? "").trim(), safeJsonParse_: JSON.parse });
 vm.runInContext(fs.readFileSync(new URL("../src/54_Reviews.gs", import.meta.url), "utf8"), api);
 
-vm.runInContext(fs.readFileSync(new URL("../src/52_ReviewInsights.gs", import.meta.url), "utf8"), api);
+vm.runInContext(reviewInsightsSource, api);
 test("App Store reviews require the requested storefront and listing and follow its pagination", () => {
   const app = { platform: "iOS", countryCode: "TR", appId: "123", appKey: "IOS|TR|BANK" };
   const entry = {
@@ -249,7 +250,7 @@ test("recent block statistics do not invent a historical baseline or sum duplica
 test("country pages and snapshots partition each review by its own storefront evidence", () => {
   const runtime = vm.createContext({ trimString_: value => String(value ?? "").trim() });
   for (const file of ["54_Reviews.gs", "52_ReviewInsights.gs"]) {
-    vm.runInContext(fs.readFileSync(new URL("../src/" + file, import.meta.url), "utf8"), runtime);
+    vm.runInContext(reviewSource(file), runtime);
   }
   const android = (packageName,countryCode) => ({
     platform:"Android",appKey:packageName+"|"+countryCode,packageName,countryCode,appName:"BBVA",isBbva:true
@@ -471,7 +472,7 @@ test("review cache isolates scopes and invalidates when the data or catalog chan
     }
   });
   let builds = 0;
-  const get = scope => api.readMarketsReviewCache_({ getId: () => "test" }, "page", scope,
+  const get = scope => api.readMarketsReviewCache_({ getId: () => "test", getSheetByName: () => null }, "page", scope,
     { end: "2026-11-11" }, () => ++builds);
   assert.equal(get({ country: "ES", page: 0 }), 1);
   assert.equal(get({ page: 0, country: "ES" }), 1);
@@ -505,7 +506,7 @@ test("the persistent snapshot requires the matching schema and generations", () 
   const window = { start: "2026-10-13", end: "2026-11-11" };
   const filters = { country: "ES", platform: "ALL", app: "BBVA Empresas", language: "es" };
   const staticPage = { total: 10 };
-  const ss = { getId: () => "test" };
+  const ss = { getId: () => "test", getSheetByName: () => null };
   let generation = "1", schema = 6;
   const catalogVersion = api.marketsReviewCatalogVersion_(api.readAppCatalog_());
   api.PropertiesService = { getScriptProperties: () => ({
@@ -740,7 +741,7 @@ test("catalogue TF-IDF assigns rare descriptive evidence, abstains on ties and r
 test("Android geography only proposes a local rail for human review", () => {
   const runtime = vm.createContext({});
   for (const file of ["52_ReviewInsights.gs", "55_ReviewIndex.gs"]) {
-    vm.runInContext(fs.readFileSync(new URL("../src/" + file, import.meta.url), "utf8"), runtime);
+    vm.runInContext(reviewSource(file), runtime);
   }
   const eligible = ["AR","CO","ES","MX","PE","UY"];
   for (const [text, status, country] of [
@@ -773,7 +774,7 @@ test("edited developer replies only invalidate their own translations", () => {
 test("automatic Android inference requires own use of one compatible payment rail", () => {
   const runtime = vm.createContext({});
   for (const file of ["52_ReviewInsights.gs", "55_ReviewIndex.gs"]) {
-    vm.runInContext(fs.readFileSync(new URL("../src/" + file, import.meta.url), "utf8"), runtime);
+    vm.runInContext(reviewSource(file), runtime);
   }
   assert.equal(runtime.inferMarketsAndroidCountry_("Mi Bizum no funciona", ["ES","MX"]).candidate, "ES");
   assert.equal(runtime.inferMarketsAndroidCountry_("Pagué con PSE y falló", ["CO","MX"]).candidate, "CO");
@@ -811,7 +812,7 @@ test("index invalidation rewinds only for edits within the completed range", () 
 test("Android inference uses a localized support contact and rejects contradictory evidence", () => {
   const runtime = vm.createContext({console, marketsReviewMetadata_: row => row[15] || {},
     marketsReviewTextDigest_: row => JSON.stringify(row.slice(9, 11)), marketsReviewDigest_: values => JSON.stringify(values)});
-  vm.runInContext(fs.readFileSync(new URL("../src/52_ReviewInsights.gs", import.meta.url), "utf8"), runtime);
+  vm.runInContext(reviewInsightsSource, runtime);
   vm.runInContext(fs.readFileSync(new URL("../src/55_ReviewIndex.gs", import.meta.url), "utf8"), runtime);
   runtime.marketsReviewDigest_ = JSON.stringify;
   const row = [];
@@ -910,7 +911,7 @@ test("Android inference uses a localized support contact and rejects contradicto
 test("the confirmed BBVA Empresas developer reply identifies Spain without overriding contradictory evidence", () => {
   const local = vm.createContext({ safeJsonParse_: JSON.parse });
   for (const file of ["54_Reviews.gs", "52_ReviewInsights.gs", "55_ReviewIndex.gs"]) {
-    vm.runInContext(fs.readFileSync(new URL("../src/" + file, import.meta.url), "utf8"), local);
+    vm.runInContext(reviewSource(file), local);
   }
   const row = Object.assign(Array(16).fill(""), {
     4: "com.bbva.GEMA.global", 10: "Rápida",
@@ -961,7 +962,7 @@ test("Android geography checkpoints physical and eligible rows independently acr
     marketsReviewDigest_: JSON.stringify
   });
   vm.runInContext(fs.readFileSync(new URL("../src/55_ReviewIndex.gs", import.meta.url), "utf8"), runtime);
-  vm.runInContext(fs.readFileSync(new URL("../src/52_ReviewInsights.gs", import.meta.url), "utf8"), runtime);
+  vm.runInContext(reviewInsightsSource, runtime);
   runtime.marketsReviewDigest_ = JSON.stringify;
   vm.runInContext(fs.readFileSync(new URL("../src/54_Reviews.gs", import.meta.url), "utf8"), runtime);
   runtime.marketsReviewSheet_ = () => source;
@@ -1056,7 +1057,7 @@ test("geography reprocessing revokes an invalid automatic row once and retains m
     MARKETS_WEB: { countryCodes: ["ES", "CO"] }
   });
   for (const file of ["52_ReviewInsights.gs", "54_Reviews.gs", "55_ReviewIndex.gs"]) {
-    vm.runInContext(fs.readFileSync(new URL("../src/" + file, import.meta.url), "utf8"), runtime);
+    vm.runInContext(reviewSource(file), runtime);
   }
   runtime.marketsReviewDigest_ = JSON.stringify;
   runtime.marketsReviewSheet_ = () => source;
@@ -1114,10 +1115,10 @@ test("BEI index migrates additively, restarts at the new classifier version and 
     SpreadsheetApp: { flush() { flushes++; } }
   });
   for (const file of ["40_Sheets.gs", "52_ReviewInsights.gs", "55_ReviewIndex.gs"]) {
-    vm.runInContext(fs.readFileSync(new URL("../src/" + file, import.meta.url), "utf8")
+    vm.runInContext(reviewSource(file)
       .replace("MARKETS_REVIEW_INDEX_BATCH = 3000", "MARKETS_REVIEW_INDEX_BATCH = 1"), runtime);
   }
-  runtime.openMarketsSpreadsheet_ = () => ({ getSheetByName: () => index });
+  runtime.openMarketsSpreadsheet_ = () => ({ getSheetByName: name => name === "MARKET_REVIEW_INDEX" ? index : null });
   runtime.classifyReviewEvidence_ = () => [];
   runtime.marketsReviewDigest_ = JSON.stringify;
   runtime.advanceMarketsReviewGeneration_ = () => generations++;
@@ -1139,6 +1140,16 @@ test("BEI index migrates additively, restarts at the new classifier version and 
   assert.equal(runtime.advanceMarketsReviewIndex_().complete, true);
   assert.equal(indexWrites, 4);
   assert.ok(stored.slice(1).every(row => row[2] === "new-rules"));
+  const priorTopics = stored.slice(1).map(row => row[3]);
+  runtime.marketsReviewClassification_ = () => ({ version, library: { pins: {} } });
+  runtime.classifyMarketsFunctionalBatch_ = () => assert.fail("Audience edits must reuse indexed topics");
+  runtime.marketsAudienceCatalog_ = () => ({ revision: "audience-edit" });
+  assert.equal(runtime.advanceMarketsReviewIndex_().complete, false);
+  assert.equal(runtime.advanceMarketsReviewIndex_().complete, true);
+  assert.equal(indexWrites, 6);
+  assert.deepEqual(stored.slice(1).map(row => row[3]), priorTopics);
+  assert.ok(stored.slice(1).every(row => row[2] === "new-rules:audience-edit"));
+
 });
 
 test("Turkish employees receiving salary are excluded from BEI while employer payroll remains eligible", () => {
@@ -1172,7 +1183,7 @@ test("metadata refresh preserves the review row and removes only changed reply t
     Utilities: { getUuid: () => "new-geo-revision" }
   });
   for (const file of ["54_Reviews", "53_PlayReviews", "52_ReviewInsights"]) {
-    vm.runInContext(fs.readFileSync(new URL("../src/" + file + ".gs", import.meta.url), "utf8"), local);
+    vm.runInContext(reviewSource(file), local);
   }
   const key = '["Android","org.example","review-123"]';
   const row = [key, "app", "AR,CO,ES,PE,UY", "Android", "org.example", "review-123", "2026-11-11",
@@ -1211,7 +1222,7 @@ test("metadata refresh preserves the review row and removes only changed reply t
 test("Iteration 23 geography requires specific payment or reply evidence", () => {
   const local = vm.createContext({});
   for (const file of ["54_Reviews", "52_ReviewInsights", "55_ReviewIndex"]) {
-    vm.runInContext(fs.readFileSync(new URL("../src/" + file + ".gs", import.meta.url), "utf8"), local);
+    vm.runInContext(reviewSource(file), local);
   }
   const candidate = (text, reply = "") => {
     const row = Array(16).fill("");
@@ -1275,7 +1286,7 @@ test("monthly pulse and annual NPS use every valid rating independently of heatm
 test("Spanish market evidence and manual confirmations have distinct validation", () => {
   const local = vm.createContext({});
   for (const file of ["54_Reviews", "52_ReviewInsights", "55_ReviewIndex"]) {
-    vm.runInContext(fs.readFileSync(new URL("../src/" + file + ".gs", import.meta.url), "utf8"), local);
+    vm.runInContext(reviewSource(file), local);
   }
   const candidate = (text, eligible = ["ES", "PE"], packageName = "com.bbva.GEMA.global") => {
     const row = Array(16).fill("");
@@ -1310,7 +1321,7 @@ test("annual NPS materialization reuses valid counts after a translation and rej
     readMarketsWebCache_: (_key, builder) => builder()
   });
   vm.runInContext(fs.readFileSync(new URL("../src/54_Reviews.gs", import.meta.url), "utf8"), local);
-  vm.runInContext(fs.readFileSync(new URL("../src/52_ReviewInsights.gs", import.meta.url), "utf8"), local);
+  vm.runInContext(reviewInsightsSource, local);
   local.marketsReviewDigest_ = JSON.stringify;
   const props = { MARKETS_REVIEW_SOURCE_GENERATION: "a", MARKETS_REVIEW_GEOGRAPHY_REVISION: "b", MARKETS_REVIEWS_GENERATION: "translated" };
   const version = local.marketsReviewCatalogVersion_([]);
@@ -1362,7 +1373,7 @@ test("review prefetch never rebuilds a stale snapshot or caches its absence", ()
     readAppCatalog_: () => []
   });
   for (const file of ["52_ReviewInsights.gs", "60_WebApp.gs"]) {
-    vm.runInContext(fs.readFileSync(new URL("../src/" + file, import.meta.url), "utf8"), local);
+    vm.runInContext(reviewSource(file), local);
   }
   local.marketsReviewDigest_ = JSON.stringify;
   const db = { getId: () => "test", getSheetByName: () => null }, filters = { country: "ES", platform: "ALL", year: "2026" };

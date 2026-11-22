@@ -140,4 +140,4 @@ npm test
 
 La suite cubre adaptadores, normalizacion, ranking, variacion y volumen a 30 dias, materializaciones, consolidados, cache persistente, URLs oficiales, reglas de alerta, privacidad de preferencias, telemetría de adopción, email BBVA y compilacion del HTML.
 
-Consulte [WEB_APP.md](WEB_APP.md) para detalles del despliegue y comportamiento de cache.
+Consulte [WEB_APP.md](WEB_APP.md) para detalles del despliegue y comportamiento de cache. Consulta [Clasificación de reseñas y contratos de operación](docs/clasificacion-resenas.md) para la configuración de audiencia y el inventario de dependencias.

@@ -397,18 +397,23 @@ function getMarketsBusinessCatalog(section, language) {
         .map(app => [app.appKey, app.displayOrder, app.countryCode, app.store, app.appName, app.enabled]), 'markets');
     case 'geography':
       return table(['Código', 'Geografía'], [...new Map(readAppCatalog_(ss, true).map(app => [app.countryCode, app.country])).entries()].sort());
-    case 'relevance':
-      return table(['Criterio', 'Regla'], [
-        ['Todos', 'Audiencia inicial de Comentarios'],
-        ['BEI', 'Actividad empresarial explícita o experiencia funcional concreta sin evidencia de uso exclusivamente personal'],
-        ['Audiencia', 'Empresa, personal, mixta o desconocida según el título y cuerpo originales'],
-        ['Relevancia', 'Empresarial, transversal, dudosa o ninguna. La relevancia transversal no identifica al autor como empresa'],
-        ['NPS de reseñas', MARKETS_DEFAULT_REVIEW_SEGMENTS.map(group => group.label + ': ' + group.stars.join(', ')).join(' · ')]
-      ]);
+    case 'relevance': {
+      const { rows } = marketsAudienceCatalog_(ss);
+      const groups = {
+        businessUse: 'Uso empresarial explícito', personalUse: 'Uso personal explícito',
+        operation: 'Operación bancaria compartida', issue: 'Incidencia', direct: 'Actividad empresarial directa',
+        context: 'Contexto empresarial con acción y operación bancaria', banking: 'Operación bancaria',
+        action: 'Acción del autor', pension: 'Pensión', personalContext: 'Contexto personal',
+        retail: 'Producto o uso personal', salaryReceived: 'Nómina recibida',
+        turkishSalaryCustomer: 'Cliente de nómina (turco)', negatedBusiness: 'Negación de contexto empresarial'
+      };
+      return { ...table(['Identificador', 'Grupo', 'Frase literal', 'Activa'], rows, 'relevance'), groups,
+        nps: MARKETS_DEFAULT_REVIEW_SEGMENTS.map(group => [group.label, group.stars.join('–')]) };
+    }
     case 'storage':
       return table(['Conjunto', 'Hoja'], [...Object.entries(config.sheets),
         ['Reseñas', 'MARKET_REVIEWS'], ['Catálogo funcional', 'FUNCTIONAL_CATALOG'],
-        ['Equivalencias', MARKETS_FUNCTIONAL_ALIASES], ['Traducciones del catálogo', MARKETS_FUNCTIONAL_TRANSLATIONS],
+        ['Equivalencias', MARKETS_FUNCTIONAL_ALIASES], ['Traducciones del catálogo', MARKETS_FUNCTIONAL_TRANSLATIONS], ['Relevancia y audiencia', MARKETS_AUDIENCE_SHEET],
         ['Interacciones newsletter', MARKETS_NEWSLETTER_INTERACTIONS]]);
     case 'schedule': {
       const clock = (hour, minute) => [hour, minute].map(value => String(value).padStart(2, '0')).join(':');
@@ -434,6 +439,10 @@ function saveMarketsBusinessCatalogEntry(input) {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(5000)) throw new Error('Configuración ocupada. Inténtalo de nuevo.');
   try {
+    if (section === 'relevance') {
+      writeMarketsAudienceRule_(ss, { key, value, expected });
+      return { saved: true };
+    }
     if (section === 'retention' && key === MARKETS_LOG_RETENTION) {
       const days = Number(value);
       if (!Number.isInteger(days) || days < 1 || days > 3650) throw new Error('Introduce un número de días entre 1 y 3650.');
