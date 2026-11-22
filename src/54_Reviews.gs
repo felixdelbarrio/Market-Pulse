@@ -460,6 +460,9 @@ function queryMarketsReviews_(ss, filters, window, includeTranslations = false, 
   const classification = filters.classificationOverride || (((window && !filters.deferBlocks) || filters.includeTopics || filters.audience || topic)
     ? marketsReviewClassification_(ss) : null);
   const rules = classification?.rules;
+  const audienceRules = filters.includeAudience || filters.audience
+    ? (filters.audienceCatalog || marketsAudienceCatalog_(ss)) : null;
+  const audienceVersion = classification && marketsAudienceIndexVersion_(classification.version, audienceRules?.revision);
   const knownBlocks = window ? classification?.knownBlocks : null;
   const languageColumn = { es: 11, en: 12, tr: 13 }[filters.language] || 11;
   const androidListings = new Map(apps.filter(app => app.platform === 'Android')
@@ -585,7 +588,8 @@ function queryMarketsReviews_(ss, filters, window, includeTranslations = false, 
   if (classification?.library && !filters.npsOnly) {
     const missing = candidates.filter(candidate => {
       const saved = derivedRows[candidate.rowNumber - 2];
-      return !saved || saved[0] !== candidate.row[0] || saved[2] !== classification.version ||
+      return !saved || !saved[7] || saved[0] !== candidate.row[0] ||
+        !marketsAudienceMatchesFunctionalVersion_(saved[2], classification.version) ||
         saved[1] !== marketsReviewTextDigest_(candidate.row);
     });
     if (missing.length > (filters.interactive ? 250 : MARKETS_REVIEW_INDEX_BATCH)) {
@@ -601,21 +605,22 @@ function queryMarketsReviews_(ss, filters, window, includeTranslations = false, 
     const original = marketsReviewOriginalText_(row);
     if (search && !normalizeReviewEvidence_(original).includes(search)) return false;
     const saved = derivedRows[candidate.rowNumber - 2];
-    const indexed = saved && saved[0] === row[0] && saved[2] === classification.version &&
+    const indexed = saved && classification && saved[0] === row[0] &&
+      marketsAudienceMatchesFunctionalVersion_(saved[2], classification.version) &&
       saved[1] === marketsReviewTextDigest_(row) && Boolean(saved[7]);
-    if (filters.includeAudience) candidate.relevance = indexed ? saved[7] : classifyMarketsReviewAudience_(original).relevance;
-    if (!indexed && (rules || filters.audience)) {
+    const indexedAudience = audienceRules && indexed && saved[2] === audienceVersion;
+    const indexedEvidence = filters.audience && indexedAudience && safeJsonParse_(saved[8]);
+    if ((!indexed && rules) || (filters.audience && !indexedEvidence)) {
       classified++;
       if (filters.interactive && classified > 250) {
         throw new Error('La clasificación de reseñas se está actualizando. Vuelve a consultar en unos minutos.');
       }
     }
-    const classifyStarted = filters.timing && !indexed ? Date.now() : 0;
-    const indexedEvidence = filters.audience && indexed && safeJsonParse_(saved[8]);
-    const decision = filters.audience && (indexedEvidence ? { audience: saved[4], sharedOperation: saved[5] === true, reason: saved[6],
-      relevance: saved[7], evidence: indexedEvidence }
-      : classifyMarketsReviewAudience_(original));
-    if (decision && !matchesMarketsReviewAudience_(filters.audience, decision)) {
+    const needsAudience = audienceRules && (filters.audience ? !indexedEvidence : !indexedAudience);
+    const classifyStarted = filters.timing && (!indexed || needsAudience) ? Date.now() : 0;
+    const relevance = needsAudience ? classifyMarketsReviewAudience_(original, audienceRules.rules).relevance : saved?.[7];
+    if (filters.includeAudience) candidate.relevance = relevance;
+    if (filters.audience && !matchesMarketsReviewAudience_(filters.audience, { relevance })) {
       if (classifyStarted) classificationMs += Date.now() - classifyStarted;
       return false;
     }

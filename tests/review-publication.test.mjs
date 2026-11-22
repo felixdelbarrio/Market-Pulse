@@ -2,11 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import { reviewSource } from './review-insights-source.mjs';
 
 function runtime(extra = {}) {
   const context = vm.createContext({ console: { log() {}, warn() {} }, ...extra });
   for (const file of ['54_Reviews.gs', '52_ReviewInsights.gs']) {
-    vm.runInContext(fs.readFileSync(new URL('../src/' + file, import.meta.url), 'utf8'), context);
+    vm.runInContext(reviewSource(file), context);
   }
   return context;
 }
@@ -29,6 +30,12 @@ test('snapshot freshness follows publication and compatible revisions with a bou
   assert.equal(check(['11', 'rules', 'catalog'], {}, { MARKETS_REVIEW_STALE_MAX_SECONDS: '1799' }), null);
   assert.equal(check(['11', 'rules', 'catalog'], { end: '2026-11-20' }), null);
   assert.equal(api.marketsReviewSnapshotState_(snapshot, 'nps', {}, {}, snapshot.npsVersions, {}, now).freshness, 'fresh');
+  const edited = { ...snapshot, audienceRevision: 'new-rules' };
+  const filteredVersions = [...snapshot.npsVersions, ['RELEVANCE_RULES', 'new-rules']];
+  assert.equal(api.marketsReviewSnapshotState_(snapshot, 'nps', { audience: 'BEI' }, {}, filteredVersions, {}, now), null);
+  assert.equal(api.marketsReviewSnapshotState_(edited, 'nps', { audience: 'BEI' }, {}, filteredVersions, {}, now).freshness, 'fresh');
+  assert.equal(api.marketsReviewSnapshotState_(edited, 'nps', {}, {}, snapshot.npsVersions, {}, now).freshness, 'fresh');
+
 });
 
 function publication({ failShard = false, changed = false, competing = false, corrupt = false } = {}) {
@@ -110,7 +117,7 @@ test('an L1 eviction falls back to the same compatible snapshot without reading 
       'analytics:ES:2026-11:2026-10-01:2026-11-21': { total: 7, window: { start: '2026-10-01', end: '2026-11-21' } }
     }; }
   });
-  const ss = { getSheetByName: () => ({ getLastRow: () => 98920 }) };
+  const ss = { getSheetByName: name => name === "MARKET_REVIEWS" ? { getLastRow: () => 98920 } : null };
   const filters = { country: 'ES', platform: 'ALL', analysisMonth: '2026-11', segment: 'DETRACTOR', entity: 'BBVA Empresas' };
   const window = { start: '2026-10-01', end: '2026-11-21' };
   const read = timing => api.readMarketsReviewCache_(ss, 'analytics', filters, window, () => {

@@ -130,7 +130,7 @@ El supervisor conserva su cadencia configurada. Una publicación vencida compart
 
 ### Migración funcional supervisada
 
-El manifiesto fija **EDCCatalogClassifier v1**, Script ID `17WXA8vGqYUgQUKDquUXRe_vvPBWbcBuX-Nj1TTLDGtM9WNq5a4UPIT1s`. La audiencia BEI sigue utilizando sus criterios existentes. Sin asignaciones, la reseña continúa en Generalista.
+El manifiesto fija **EDCCatalogClassifier v5**, Script ID `17WXA8vGqYUgQUKDquUXRe_vvPBWbcBuX-Nj1TTLDGtM9WNq5a4UPIT1s`. La audiencia BEI sigue utilizando sus criterios existentes. Sin asignaciones, la reseña continúa en Generalista.
 
 1. Con autorización operativa, el propietario ejecuta `startMarketsFunctionalMigration()` en el editor. Verifica preflight de la biblioteca, las cuatro revisiones, unicidad de claves, una muestra por país/plataforma y un backup íntegro verificable del índice. Crea `REVIEW_INDEX_BACKUP_*` y `REVIEW_INDEX_EDC_*`; no escribe `MARKET_REVIEWS`.
 2. El worker `index` llama a `advanceMarketsFunctionalMigration_()`; `advanceMarketsFunctionalMigration()` permite ejecutar un lote autorizado desde el editor. Cada lote es idempotente, fija revisiones y valida la escritura. Un cambio de fuente reinicia la sombra, con límite de reintentos. Una segunda pasada comprueba claves, huellas y versiones. Los contadores incluyen distribución anterior/nueva y Generalista.
@@ -141,3 +141,5 @@ El manifiesto fija **EDCCatalogClassifier v1**, Script ID `17WXA8vGqYUgQUKDquUXR
 La autorización de una migración o un despliegue no equivale a su ejecución: registrar versión Apps Script, SHA, objetivo/procesadas/verificadas/errores y resultado de `/exec`. No declarar completada la migración únicamente por crear la sombra o publicar código.
 
 En **Administración → Salud → Recuperación selectiva de reseñas**, el propietario puede consultar el recuento de un escaparate y mes, junto al mes anterior y siguiente. Un mes vacío entre dos meses con reseñas se señala como posible hueco: el recuento local por sí solo no confirma una discontinuidad. La recuperación consulta una página por acción y solo incorpora reseñas del mes seleccionado. Usa un cursor independiente, con un máximo de 20 páginas de Google Play o 10 de App Store, y respeta las pausas por cuota. Cerrar la recuperación descarta su cursor, sin borrar reseñas. Una página o un mes ausente en la fuente consultada no prueba que nunca hubiera reseñas.
+
+Consulta [Clasificación de reseñas y contratos de operación](docs/clasificacion-resenas.md) para administrar audiencia y verificar compatibilidad del índice.

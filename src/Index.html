@@ -253,7 +253,7 @@
             <div class="panel-header"><div><p class="eyebrow">Catálogos y operación</p><h3>Configuración de negocio</h3><p class="muted">Consulta y edita los catálogos operativos de Google Sheets.</p></div>
               <button id="admin-business-reload" class="button" type="button">Descartar y recargar</button></div>
             <div class="panel-body"><label class="select-field">Catálogo <select class="select-control" id="admin-business-section" aria-describedby="admin-business-description">
-<option value="functional">Catálogo global de funcionalidades</option><option value="operation">Operación y selección inicial</option><option value="geography">Geografías</option><option value="relevance">Criterios de relevancia</option><option value="aliases">Equivalencias funcionales</option><option value="storage">Almacenamiento y archivo</option><option value="system">Estado y configuración de la aplicación</option><option value="schedule">Programación de procesos</option><option value="retention">Conservación</option><option value="markets">Markets consultados</option><option value="languages">Reglas de idioma</option></select></label><p id="admin-business-description" class="small muted"></p></div>
+<option value="functional">Catálogo global de funcionalidades</option><option value="operation">Operación y selección inicial</option><option value="geography">Geografías</option><option value="relevance">Relevancia y audiencia multilenguaje</option><option value="aliases">Equivalencias funcionales</option><option value="storage">Almacenamiento y archivo</option><option value="system">Estado y configuración de la aplicación</option><option value="schedule">Programación de procesos</option><option value="retention">Conservación</option><option value="markets">Markets consultados</option><option value="languages">Reglas de idioma</option></select></label><p id="admin-business-description" class="small muted"></p></div>
             <section id="admin-business-system" class="panel-body hidden"><p id="admin-generated-at">—</p><div id="admin-system" class="admin-system-grid"></div></section><div class="radar-filters record-toolbar" id="admin-business-filters"><form class="record-filters" hidden>
               <label>Buscar en el catálogo <input type="search" name="query"></label>
             </form><button id="admin-business-export" class="button" type="button" disabled>Exportar selección</button></div>
@@ -263,7 +263,13 @@
             <dialog id="admin-business-dialog"><form id="admin-business-form" class="panel">
               <div class="panel-header"><h3 id="admin-business-editor-title">Editar entrada</h3></div>
               <div class="panel-body"><label>Identificador <input id="admin-business-key" required></label>
-              <label>Valor <textarea id="admin-business-value" rows="5" maxlength="1500" required></textarea></label>
+              <label id="admin-business-value-label">Valor <textarea id="admin-business-value" rows="5" maxlength="1500" required></textarea></label>
+              <div id="admin-business-audience" class="hidden">
+                <label>Grupo <select id="admin-business-audience-group" class="select-control"></select></label>
+                <label id="admin-business-phrase-label">Frase literal <input id="admin-business-phrase" maxlength="96"></label>
+                <label><input id="admin-business-enabled" type="checkbox"> Activa</label>
+                <p class="small">Las frases complementan la detección del grupo. El cambio se aplicará a las consultas y a la siguiente publicación de vistas. Guardar conserva las reseñas originales.</p>
+              </div>
               <p id="admin-business-error" role="alert"></p>
               <button type="button" id="admin-business-cancel" class="button">Cancelar</button>
               <button type="submit" class="button primary">Guardar</button></div>

@@ -513,7 +513,8 @@ function loadMarketsNewsletterFeatured_(ss, catalog, period, historical = false)
   const key = marketsReviewCacheKey_(ss, 'newsletter-featured', scope, {}, versions);
   return readMarketsWebCache_(key, () => {
     const snapshot = safeJsonParse_(captured[MARKETS_REVIEW_SNAPSHOT_POINTER] || 'null');
-    if (snapshot?.schema === MARKETS_REVIEW_SNAPSHOT_SCHEMA && JSON.stringify(snapshot.versions) === JSON.stringify(versions)) {
+    if (snapshot?.schema === MARKETS_REVIEW_SNAPSHOT_SCHEMA && Array.isArray(snapshot.versions) &&
+        JSON.stringify(marketsReviewVersionsWithoutAudience_(snapshot.versions)) === JSON.stringify(versions)) {
       const rows = readMarketsReviewSnapshotShard_(snapshot, 'ALL')?.['featured:ALL:' + scope.period];
       if (rows && (!historical || rows.length)) return rows;
     }
