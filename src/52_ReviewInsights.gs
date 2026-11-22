@@ -290,7 +290,7 @@ function classifyNormalizedReviewEvidence_(normalized, index) {
 
 // Evidence is evaluated in the original text. An app name or storefront is not evidence.
 // Mantener sincronizada con la versión numerada del manifiesto.
-const MARKETS_REVIEW_LIBRARY_VERSION = '1';
+const MARKETS_REVIEW_LIBRARY_VERSION = '5';
 const MARKETS_REVIEW_AUDIENCE_VERSION = 2;
 const MARKETS_REVIEW_AUDIENCE_RULES = {
   businessUse: /\b(?:ticari faaliyet goster\w*|(?:operamos|opero) como empresa|(?:soy|somos) (?:autonom[oa]s?|comerciantes?|una empresa)|remesa salarial|(?:pago|pagos|remesas|transferencias) masiv[oa]s|(?:firmas?|permisos?) (?:corporativas?|mancomunadas?|de apoderados)|(?:emision|cobro) (?:masiv[oa] )?de recibos|(?:cartas? de credito|financiacion (?:para pymes|comercial)|conciliacion bancaria|gestion de tesoreria|declaracion (?:de iva|de aduanas)|pagos? (?:aduaneros?|de comercio exterior)|domiciliaciones? empresariales?|cuentas? de comercio exterior)|(?:mi|nuestro|nuestra|uso|utilizo|integro|no puedo (?:usar|conectar|subir|cargar)) (?:el |la |los |las )?(?:tpv|pos|datafono|h2h|erp|api(?: bancaria)?|ficheros? (?:bancarios?|de remesas)|confirming|factoring)|(?:sanal posum|pos cihazim|kurumsal kartim)\w*)\b/u,
@@ -804,9 +804,11 @@ function cleanupMarketsReviewSnapshots_(properties, now = Date.now()) {
     const manifest = safeJsonParse_(properties.getProperty(key) || 'null');
     for (const id of Object.values(manifest?.files || {})) keep.add(id);
   }
-  const migration = safeJsonParse_(properties.getProperty('MARKETS_FUNCTIONAL_MIGRATION') || 'null');
-  const rollback = safeJsonParse_(migration?.previousSnapshot || 'null');
-  for (const id of Object.values(rollback?.files || {})) keep.add(id);
+  for (const key of ['MARKETS_FUNCTIONAL_MIGRATION', MARKETS_FUNCTIONAL_MIGRATION_PREVIOUS]) {
+    const migration = safeJsonParse_(properties.getProperty(key) || 'null');
+    const rollback = safeJsonParse_(migration?.previousSnapshot || 'null');
+    for (const id of Object.values(rollback?.files || {})) keep.add(id);
+  }
   const before = new Date(now - 86400000).toISOString();
   const files = DriveApp.searchFiles("trashed = false and title contains 'market-pulse-review-snapshot-' and createdDate < '" + before + "'");
   let visited = 0, removed = 0;
@@ -850,7 +852,7 @@ function publishMarketsReviewSnapshot_() {
   const migration = safeJsonParse_(current.MARKETS_FUNCTIONAL_MIGRATION || 'null');
   const activeEngine = marketsFunctionalEngine_(current);
   const pending = migration?.ready && !migration.complete && activeEngine?.sheet !== migration.sheet ? migration : null;
-  const engine = pending ? { engine: 'EDCCatalogClassifier', libraryVersion: MARKETS_REVIEW_LIBRARY_VERSION, pins: pending.pins, sheet: pending.sheet } : activeEngine;
+  const engine = pending ? { engine: 'EDCCatalogClassifier', libraryVersion: pending.libraryVersion || '1', pins: pending.pins, sheet: pending.sheet } : activeEngine;
   const inputVersions = marketsReviewVersions_(current, catalogVersion);
   const versions = marketsReviewVersions_(current, catalogVersion, engine);
   const npsVersions = marketsReviewNpsVersions_(current, catalogVersion);
@@ -863,6 +865,7 @@ function publishMarketsReviewSnapshot_() {
     console.log(JSON.stringify({ operation: 'review-publish', reason }));
     return { complete: false, published: 0 };
   };
+  if (engine?.libraryVersion && engine.libraryVersion !== MARKETS_REVIEW_LIBRARY_VERSION) return deferred('migration-library');
   if (pending && pending.sourceGeneration !== (current.MARKETS_REVIEW_SOURCE_GENERATION || '')) return deferred('migration-source');
   const requestedScopes = marketsReviewRequestedScopes_(current);
   const { end } = marketsReviewWindow_();
