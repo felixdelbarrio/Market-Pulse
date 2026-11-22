@@ -758,7 +758,7 @@
       $("newsletter-test-form").addEventListener("submit",testAdminNewsletter);
       syncViewControls();
     }
-    function activateView(view){if(view==="admin"&&!state.userContext?.isAdmin)return;const changed=state.view!==view;if(changed){
+    function activateView(view){if(view==="admin"&&!state.userContext?.isAdmin)return;const changed=state.view!==view;if(changed){hideChartTooltip();
       radarFilters[state.view]?.close();
     }state.view=view;document.querySelectorAll(".nav-button").forEach(item=>{const active=item.dataset.view===view;item.classList.toggle("active",active);if(active)item.setAttribute("aria-current","page");else item.removeAttribute("aria-current")});document.querySelectorAll(".view").forEach(item=>item.classList.toggle("hidden",item.id!==`view-${view}`));syncViewControls();if(changed)trackUsage("VIEW",view,"OPEN_VIEW");if(view==="benchmark")renderBenchmark();if(view==="evolution")loadTrends();if(view==="alerts")loadAlerts();if(view==="admin")loadAdmin();if(view==="reviews")loadReviews(reviewPage);if(view==="analytics")loadAnalytics()}
     function syncViewControls(){
@@ -782,7 +782,7 @@
       $("incident-button").addEventListener("click",()=>$("incident-dialog").showModal());$("dialog-close").addEventListener("click",()=>$("incident-dialog").close());$("report-button").addEventListener("click",downloadReport);
       $("alert-form").addEventListener("submit",saveAlerts);$("alert-reset-button").addEventListener("click",resetAlerts);$("alert-country-scope").addEventListener("change",handleAlertScopeChange);$("alert-platform-scope").addEventListener("change",handleAlertScopeChange);$("alert-active").addEventListener("change",markAlertsDirty);$("newsletter-enabled").addEventListener("change",markAlertsDirty);["daily","mtd","ytd"].forEach(period=>$(period+"-enabled").addEventListener("change",()=>{syncAlertRuleInputs();markAlertsDirty()}));$("repeat-enabled").addEventListener("change",markAlertsDirty);$("crossover-enabled").addEventListener("change",()=>{syncAlertRuleInputs();markAlertsDirty()});$("alert-form").addEventListener("input",event=>{if(event.target.matches("input,select"))markAlertsDirty()});
       document.addEventListener("error",event=>{if(event.target.matches?.(".app-logo img"))event.target.parentElement.classList.add("logo-error")},true);
-      document.addEventListener("pointerover",event=>{const point=event.target.closest?.("#annual-chart .chart-point");if(point)showChartTooltip(point,event)});document.addEventListener("pointermove",event=>{if(!$("chart-tooltip").classList.contains("hidden"))positionTooltip(event.clientX,event.clientY)});document.addEventListener("pointerout",event=>{if(event.target.closest?.("#annual-chart .chart-point"))hideChartTooltip()});document.addEventListener("focusin",event=>{const point=event.target.closest?.("#annual-chart .chart-point");if(point){const box=point.getBoundingClientRect();showChartTooltip(point,{clientX:box.left+box.width/2,clientY:box.top})}});document.addEventListener("focusout",event=>{if(event.target.closest?.("#annual-chart .chart-point"))hideChartTooltip()});
+      bindAnnualChartTooltips();
     }
     function configureAdminNavigation(){$("admin-nav").classList.toggle("hidden",!state.userContext?.isAdmin)}
     function browserMarket(){
@@ -1324,6 +1324,7 @@
     const annualNpsScope=scope=>({country:scope.country,year:scope.year,audience:scope.audience,inferGeography:scope.inferGeography});
     let pendingAnalyticsKey="",renderedAnalyticsKey="";
     async function loadAnalytics(localOnly=false, heatmapOnly=false){
+      hideChartTooltip();
       const started=performance.now(), scope=annualScope(), dates=annualDates(scope.year);
       const key=JSON.stringify([annualReviewRequest(scope),dates.end]);
       if(pendingAnalyticsKey===key)return;
@@ -1395,11 +1396,13 @@
           entityControl.innerHTML=options.map(name=>U.option(name,name===defaultAnalyticsEntity?"BBVA":annualEntityLabel(name),name===analyticsEntity)).join("");
           annualAppControl.refresh();
           renderAnnualReviews($("review-annual"),data,scope);
+          appendReviewFreshness($("review-annual"),data.timing);
         }
         renderedAnalyticsKey=key;
         trackReady("analytics",heatmapOnly?"Mostrar mapa de calor":"Mostrar análisis anual",started);
       }catch(error){
-        if(token!==analyticsRequest||sameView)return;
+        if(token!==analyticsRequest)return;
+        renderedAnalyticsKey="";
         if(!localOnly)renderReviewRetry(target.querySelector("[data-matrix]")||target,error,()=>loadAnalytics());
         if(!heatmapOnly&&$("annual-chart").querySelector(".loading-state"))$("annual-chart").textContent=error.message;
         if(!heatmapOnly)renderReviewRetry($("review-annual"),error,()=>loadAnalytics())
@@ -1422,6 +1425,7 @@
     const isAnnualCountry=country=>country!=="ALL"&&country!=="UNKNOWN";
     const annualEntityLabel=app=>app==="ALL"?"Todas las aplicaciones del país":app;
     function renderAnnualChart(scope,dates,app){
+      hideChartTooltip();
       if(scope.country==="UNKNOWN"){
         $("annual-chart").textContent=translate("Sin datos de ratings para esta geografía");
         $("annual-series").replaceChildren();
@@ -1449,7 +1453,8 @@
       const key=JSON.stringify(request), token=++annualNpsRequest, started=performance.now();
       const target=$("annual-nps-chart");
       $("review-balance-period").textContent=`${dateLabel(dates.start)} – ${dateLabel(dates.end)}`;
-      if(key!==annualNpsKey||!annualNpsData){
+      const reusable=key===annualNpsKey&&annualNpsData&&hasReviewResponse("review:nps",request);
+      if(!reusable){
         resizeReviewBalance=null;
         exportSheets.analytics.delete("Evolución del NPS de reseñas");
         if(!hasReviewResponse("review:nps",request))target.innerHTML=U.loading(translate("Cargando NPS de reseñas"));
@@ -1458,13 +1463,13 @@
       try{
         const data=await fetchReviewData("review:nps",request);
         if(token!==annualNpsRequest)return;
-        if(key!==annualNpsKey||data!==annualNpsData)renderAnnualNps(scope,dates,data,analyticsEntity);
+        if(!reusable||data!==annualNpsData)renderAnnualNps(scope,dates,data,analyticsEntity);
         annualNpsKey=key;
         annualNpsData=data;
         trackReady("analytics","Mostrar gráfico anual de NPS",started);
       }catch(error){
         if(token!==annualNpsRequest)return;
-        if(key!==annualNpsKey||!annualNpsData)renderReviewRetry(target,error,()=>loadAnnualNps(scope,dates));
+        if(!reusable)renderReviewRetry(target,error,()=>loadAnnualNps(scope,dates));
       }finally{
         if(token===annualNpsRequest)target.setAttribute("aria-busy","false");
       }
@@ -1476,6 +1481,7 @@
       const monthlyEntityOptions=[...new Set(filtered.map(point=>point.entity))]
         .sort((a,b)=>Number(b===defaultAnalyticsEntity)-Number(a===defaultAnalyticsEntity)||a.localeCompare(b,locale()));
       resizeReviewBalance=renderReviewBalance(target,{monthly:filtered,monthlyEntityOptions},dates,compare);
+      appendReviewFreshness(target,data.timing);
       const name="Evolución del NPS de reseñas";
       exportSheets.analytics.delete(name);
       if(!monthlyEntityOptions.length)return;
@@ -1682,29 +1688,12 @@
     function renderReviewBalance(target,data,scope,compare){
       target.innerHTML='<p class="review-chart-note">NPS en puntos sobre todas las reseñas válidas del mes. Una línea interrumpida indica un mes sin datos.</p>';
       if(!data.monthly.length){target.append("Sin observaciones para este intervalo.");return null}
-      const plot=document.createElement("div"), tooltip=document.createElement("div");
+      const plot=document.createElement("div");
       plot.className="trend-chart";
       const layout=document.createElement("div"), legend=document.createElement("aside");
       layout.className="map-layout";
       legend.className="geo-list";
       layout.append(plot,legend);
-      tooltip.className="chart-tooltip";
-      tooltip.hidden=true;
-      tooltip.setAttribute("aria-hidden","true");
-      function highlight(event){
-        const point=event.target.closest("[data-point],[data-bucket]"), index=point?.dataset.point??point?.dataset.bucket;
-        const band=index==null?null:plot.querySelector(`[data-bucket="${index}"]`);
-        plot.querySelector(".chart-band.is-highlighted")?.classList.remove("is-highlighted");
-        tooltip.hidden=!band;
-        if(!band)return;
-        band.classList.add("is-highlighted");
-        tooltip.textContent=band.getAttribute("aria-label");
-        const panel=target.closest(".trend-panel").getBoundingClientRect(), anchor=point.getBoundingClientRect();
-        tooltip.style.left=Math.max(0,Math.min((event.clientX||anchor.x+anchor.width/2)-panel.x+12,panel.width-tooltip.offsetWidth))+"px";
-        tooltip.style.top=Math.max(0,Math.min((event.clientY||anchor.y)-panel.y+16,panel.height-tooltip.offsetHeight))+"px";
-      }
-      for(const event of ["pointerover","pointermove","focusin"])plot.addEventListener(event,highlight);
-      for(const event of ["pointerout","focusout"])plot.addEventListener(event,e=>highlight({target:plot.contains(e.relatedTarget)?e.relatedTarget:plot}));
       const months=[];
       const cursor=new Date(scope.start.slice(0,7)+"-01T00:00:00Z");
       while(cursor.toISOString().slice(0,7)<=scope.end.slice(0,7)){
@@ -1716,15 +1705,15 @@
         points.set(JSON.stringify([point.entity,point.month]),point);
       }
       const entities=data.monthlyEntityOptions;
-      target.append(layout,tooltip);
+      target.append(layout);
 
       const series=entities.map(entity=>{
         const samples=months.map(month=>points.get(JSON.stringify([entity,month])));
         return {entity,values:samples.map(point=>point?.balance??null),samples};
       });
       const render=()=>{
-        tooltip.hidden=true;
-        plot.innerHTML=C.reviewBalance(months,series,{fmt,monthLabel,width:plot.clientWidth,shade:!compare,sampleLabel:reviewNpsSample});
+        hideChartTooltip();
+        plot.innerHTML=C.reviewBalance(months,series,{fmt,monthLabel,width:plot.clientWidth,shade:!compare});
       };
       render();
       legend.innerHTML=series.map(({entity,samples})=>{
@@ -2002,7 +1991,7 @@
       operation:"Parámetros del cálculo de ratings y del monitor de salud.",
       geography:"Geografías definidas en el catálogo de aplicaciones.",
       relevance:"Criterios de audiencia y agrupaciones que se aplican al analizar reseñas.",
-      aliases:"Equivalencias que complementan las reglas de clasificación.",
+      aliases:"Equivalencias locales del clasificador anterior.",
       storage:"Hojas que utiliza la aplicación y carpetas operativas.",
       system:"Estado del despliegue, remitente y administradores.",
       schedule:"Programación de capturas, comprobaciones de salud y newsletters.",
@@ -2626,7 +2615,45 @@
     }
     function renderAdminAlerts(rows){if(!rows.length){$("admin-alerts").innerHTML=U.empty("Sin eventos recientes","ALERT_LOG todavía no contiene señales.");return}$("admin-alerts").innerHTML=`<table class="admin-table"><thead><tr><th>Fecha</th><th>Señal</th><th>Ámbito</th><th>Destinatario</th><th>Detalle</th></tr></thead><tbody>${rows.map(row=>`<tr><td>${U.esc(dateTimeLabel(row.timestamp))}</td><td>${statusBadge(row.severity)}<small>${U.esc(row.type)}</small></td><td>${U.esc(`${row.countryCode} · ${row.platform}`)}</td><td>${U.esc(row.userEmail)}</td><td>${U.esc(row.detail)}</td></tr>`).join("")}</tbody></table>`}
 
-    function showChartTooltip(point,event){const tooltip=$("chart-tooltip");tooltip.innerHTML=`<strong>${U.esc(point.dataset.label)}</strong>${U.esc(point.dataset.month)} · ${U.esc(point.dataset.value)}${state.country==="ALL"?" · BBVA Empresas":""}`;tooltip.classList.remove("hidden");positionTooltip(event.clientX,event.clientY)}
+    function bindAnnualChartTooltips(){
+      const rating=$("annual-chart"),nps=$("annual-nps-chart");
+      const show=(point,event)=>{
+        if(point)showChartTooltip(point,event);else hideChartTooltip();
+      };
+      const pointAt=event=>event.target.closest?.(".chart-point");
+      function inspectNps(event){
+        const svg=nps.querySelector("svg"),matrix=svg?.getScreenCTM();
+        if(!matrix){hideChartTooltip();return}
+        const series=Array.from(svg.querySelectorAll(".chart-line"),line=>
+          Array.from(line.parentElement.querySelectorAll(".chart-point"),node=>{
+            const point=new DOMPoint(Number(node.getAttribute("cx")),Number(node.getAttribute("cy"))).matrixTransform(matrix);
+            return {node,index:Number(node.dataset.point),x:point.x,y:point.y};
+          }));
+        show(C.closestReviewPoint(series,event.clientX,event.clientY)?.node,event);
+      }
+      rating.addEventListener("pointermove",event=>{if(event.pointerType!=="touch")show(pointAt(event),event)});
+      rating.addEventListener("pointerup",event=>{if(event.pointerType==="touch")show(pointAt(event),event)});
+      nps.addEventListener("pointermove",event=>{if(event.pointerType!=="touch")inspectNps(event)});
+      nps.addEventListener("pointerup",event=>{if(event.pointerType==="touch")inspectNps(event)});
+      for(const chart of [rating,nps]){
+        for(const name of ["pointerleave","pointercancel","touchcancel","focusout"])chart.addEventListener(name,hideChartTooltip);
+        chart.addEventListener("focusin",event=>{
+          const point=pointAt(event);
+          if(!point)return;
+          const box=point.getBoundingClientRect();
+          show(point,{clientX:box.left+box.width/2,clientY:box.top});
+        });
+      }
+      window.addEventListener("blur",hideChartTooltip);
+      document.addEventListener("visibilitychange",hideChartTooltip);
+      document.addEventListener("keydown",event=>{if(event.key==="Escape")hideChartTooltip()});
+      document.addEventListener("pointerdown",event=>{
+        if(!rating.contains(event.target)&&!nps.contains(event.target))hideChartTooltip();
+      });
+      const observer=new MutationObserver(hideChartTooltip);
+      for(const chart of [rating,nps])observer.observe(chart,{childList:true,subtree:true});
+    }
+    function showChartTooltip(point,event){const tooltip=$("chart-tooltip");tooltip.innerHTML=`<strong>${U.esc(point.dataset.label)}</strong>${U.esc(point.dataset.month)} · ${U.esc(point.dataset.value)}${!point.dataset.point&&state.country==="ALL"?" · BBVA Empresas":""}`;tooltip.classList.remove("hidden");positionTooltip(event.clientX,event.clientY)}
     function positionTooltip(x,y){const tooltip=$("chart-tooltip"),left=Math.min(window.innerWidth-tooltip.offsetWidth-12,x+13),top=Math.max(10,y-tooltip.offsetHeight-14);tooltip.style.left=`${left}px`;tooltip.style.top=`${top}px`}
     function hideChartTooltip(){$("chart-tooltip").classList.add("hidden")}
     const exportDates=({start,end})=>[["Desde",start],["Hasta",end]];

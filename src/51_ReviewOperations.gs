@@ -233,8 +233,13 @@ function advanceMarketsReviewPipeline_() {
     if (!job || job.status === 'Revisar') {
       catalogIdle = true;
     }
-    const priority = catalogIdle ? (capturesPending ? 2 : Infinity) : settings[job.id]?.priority || job.priority;
-    auxiliary = marketsReviewAuxiliaryTasks_(properties, settings, now, priority);
+    const priority = catalogIdle ? Infinity : settings[job.id]?.priority || job.priority;
+    const recoverySlot = capturesPending && !pipeline.leaseUntil &&
+      now.getTime() - Number(properties.getProperty('MARKETS_REVIEW_CAPTURE_RECOVERY_AT') || 0) >= 15 * 60000;
+    auxiliary = marketsReviewAuxiliaryTasks_(properties, settings, now, priority, capturesPending, recoverySlot);
+    if (capturesPending && auxiliary.some(task => task.id === 'publish')) {
+      properties.setProperty('MARKETS_REVIEW_CAPTURE_RECOVERY_AT', String(now.getTime()));
+    }
     if (auxiliary.length && !pipeline.leaseUntil) catalogIdle = true;
     if (catalogIdle && pipeline.leaseUntil) {
       delete pipeline.leaseUntil;
@@ -600,6 +605,7 @@ const MARKETS_REVIEW_MANUAL_IDS = ['index', 'geography', 'taxonomy', 'taxonomyTr
 function marketsReviewSnapshotRefreshDue_(properties, now) {
   if (typeof MARKETS_REVIEW_SNAPSHOT_POINTER !== 'string') return false;
   const published = safeJsonParse_(properties.getProperty(MARKETS_REVIEW_SNAPSHOT_POINTER));
+  if (properties.getProperty('MARKETS_REVIEW_SNAPSHOT_REPAIR')) return true;
   const migration = safeJsonParse_(properties.getProperty('MARKETS_FUNCTIONAL_MIGRATION') || 'null');
   if (migration?.ready && !migration.complete && published?.engine?.sheet !== migration.sheet) return true;
   if (!Array.isArray(published?.versions) || !published.hasAnnualNps || !published.hasNpsAttribution || !published.hasAllSentimentGaps || !published.hasReviewRanking || !published.hasFeaturedReviews || published.schema !== MARKETS_REVIEW_SNAPSHOT_SCHEMA ||
@@ -610,11 +616,13 @@ function marketsReviewSnapshotRefreshDue_(properties, now) {
   return JSON.stringify(published.versions) !== JSON.stringify(marketsReviewVersions_(properties.getProperties(), marketsReviewCatalogVersion_(catalog)));
 }
 
-function marketsReviewAuxiliaryTasks_(properties, settings, now, priority) {
+function marketsReviewAuxiliaryTasks_(properties, settings, now, priority, capturesPending = false, recoverySlot = false) {
   const snapshot = safeJsonParse_(properties.getProperty('MARKETS_REVIEW_SNAPSHOT_POINTER') || 'null');
   const maxStale = Number(properties.getProperty('MARKETS_REVIEW_STALE_MAX_SECONDS') || 3600);
   const migration = safeJsonParse_(properties.getProperty('MARKETS_FUNCTIONAL_MIGRATION') || 'null');
-  const publishOverdue = (migration?.ready && !migration.complete) || !snapshot?.publishedAt ||
+  const repair = properties.getProperty('MARKETS_REVIEW_SNAPSHOT_REPAIR');
+  const publishOverdue = repair || (migration?.ready && !migration.complete) || !snapshot?.publishedAt ||
+    snapshot.end !== Utilities.formatDate(now, MARKETS_CONFIG.timeZone, 'yyyy-MM-dd') ||
     now.getTime() - Date.parse(snapshot.publishedAt) > Math.max(0, maxStale) * 500;
   const tasks = [
     { id: 'index', priority: 3, run: () => {
@@ -634,10 +642,11 @@ function marketsReviewAuxiliaryTasks_(properties, settings, now, priority) {
   ];
   const previous = properties.getProperty('MARKETS_REVIEW_LAST_AUX');
   return tasks.map(task => ({
-    ...task, priority: task.id === 'publish' && publishOverdue ? 3 : settings[task.id]?.priority || task.priority,
+    ...task, priority: task.id === 'publish' && publishOverdue ? (capturesPending ? 0 : 3) : settings[task.id]?.priority || task.priority,
     request: properties.getProperty(MARKETS_REVIEW_MANUAL + task.id),
     retry: safeJsonParse_(properties.getProperty(MARKETS_REVIEW_AUX_RETRY + task.id) || 'null')
-  })).filter(task => task.priority < priority && (!task.manualOnly || task.request) &&
+  })).filter(task => (!capturesPending || (task.id === 'publish' && recoverySlot && publishOverdue)) &&
+    task.priority < priority && (!task.manualOnly || task.request) &&
     marketsReviewJobReady_(settings, task.id, now) && (!task.retry || task.retry.next <= now.getTime()))
     .sort((a, b) => a.priority - b.priority || Number(a.id === previous) - Number(b.id === previous));
 }

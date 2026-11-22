@@ -105,7 +105,8 @@ function collectMarketsPlayReviews_(limit = Infinity) {
     const deadline = Date.now() + 235000;
     const start = Math.max(0, keys.indexOf(properties.getProperty(indexKey)));
     const summary = { added: 0, updated: 0, failures: 0, pages: 0, processed: 0, eligible: keys.length };
-    // Bound the recent scan separately so it leaves room for historical progress.
+    // Reserva una página por escaparate para el histórico y limita el turno reciente.
+    const recentPagesPerListing = 8;
     for (let step = 0; step < Math.min(keys.length, limit) && Date.now() < deadline && summary.pages < 100; step++) {
       const index = (start + step) % keys.length, key = keys[index], listing = listings.get(key);
       const stateKey = 'MARKETS_PLAY_REVIEW|' + key;
@@ -115,14 +116,14 @@ function collectMarketsPlayReviews_(limit = Infinity) {
       try {
         let token = properties.getProperty(refreshKey) || '';
         const visited = new Set();
-        for (let step = 0; step < 3 && summary.pages < 99 && Date.now() < deadline; step++) {
+        for (let pageNumber = 0; pageNumber < recentPagesPerListing && summary.pages < 99 && Date.now() < deadline; pageNumber++) {
           const page = fetchPlayReviewPage_(listing, token);
           const overlap = page.rows.length > 0 && page.rows.every(review => {
             const stored = known.get(JSON.stringify(['Android', listing.packageName, review.id]))?.row;
             return stored && String(stored[2]).split(',').includes(listing.countryCode) && Date.parse(stored[6]) >= Date.parse(review.date);
           });
           storePlayReviews_(sheet, properties, known, listing, page.rows, summary, width);
-          if (history === null && step === 0 && !token) properties.setProperty(stateKey, page.next || 'DONE');
+          if (history === null && pageNumber === 0 && !token) properties.setProperty(stateKey, page.next || 'DONE');
           summary.pages++;
           visited.add(token);
           if (!page.next || overlap || visited.has(page.next)) {
