@@ -528,9 +528,9 @@ function getMarketsReviewHeatmap(filters) {
     }
     if (active?.pins) {
       for (const [, id, blockId, blockName, name] of marketsFunctionalLabelRows_(ss, active.pins)) {
-        topics[id] ??= name;
-        topics[blockId] ??= blockName;
-        topics[blockId + '.xx'] ??= blockName + ' · Sin suboperativa identificada';
+        if (topics[id] == null) topics[id] = name;
+        if (topics[blockId] == null) topics[blockId] = blockName;
+        if (topics[blockId + '.xx'] == null) topics[blockId + '.xx'] = blockName + ' · Sin suboperativa identificada';
       }
     }
     if (!Object.keys(topics).length) return { configured: false, functions: [] };
@@ -1406,7 +1406,7 @@ function marketsReviewTopics_(ss, engine) {
   }
   if (engine?.pins) {
     for (const [, , blockId, blockName] of marketsFunctionalLabelRows_(ss, engine.pins)) {
-      topics[blockId] ??= blockName;
+      if (topics[blockId] == null) topics[blockId] = blockName;
     }
   }
   return topics;
