@@ -474,7 +474,7 @@ function queryMarketsReviews_(ss, filters, window, includeTranslations = false, 
     if (!byPackage.has(app.packageName)) byPackage.set(app.packageName, []);
     byPackage.get(app.packageName).push(app);
   }
-  const derived = Boolean(classification?.version) && (filters.indexSheetName ? ss.getSheetByName(filters.indexSheetName)
+  const derived = Boolean(classification?.version) && (filters.migrationIndex ? marketsFunctionalIndexSheet_(ss, filters.migrationIndex)
     : typeof marketsReviewIndexSheet_ === 'function' && marketsReviewIndexSheet_(ss));
   const derivedCount = derived ? Math.max(0, Math.min(stored.length, derived.getLastRow() - 1)) : 0;
   const derivedRows = derivedCount ? derived.getRange(2, 1, derivedCount, derived.getLastColumn()).getValues() : [];

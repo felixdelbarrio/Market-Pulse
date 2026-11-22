@@ -300,6 +300,27 @@ test('a numbered upgrade stages a new index, retains rollback and reuses verifie
   assert.equal(f.properties.get('MARKETS_REVIEW_SNAPSHOT_POINTER'), pointer);
 });
 
+test('a full production workbook keeps the shadow in a separate index workbook', () => {
+  const f = migrationFixture();
+  const old = { complete: true, sheet: 'MARKET_REVIEW_INDEX', libraryVersion: '1' };
+  f.properties.set('MARKETS_FUNCTIONAL_MIGRATION', JSON.stringify(old));
+  f.properties.set('MARKETS_REVIEW_SNAPSHOT_POINTER', JSON.stringify({ engine: old }));
+  f.source.getMaxRows = () => 1000000;
+  f.source.getMaxColumns = () => 10;
+  const other = new Map();
+  const target = { getId: () => 'isolated-id', getSheets: () => [draft], getSheetByName: name => other.get(name) };
+  const draft = f.api.openMarketsSpreadsheet_().insertSheet('unassigned');
+  f.sheets.delete('unassigned');
+  draft.setName = name => { other.set(name, draft); draft.getName = () => name; return draft; };
+  f.api.SpreadsheetApp.create = (_title, rows, width) => { assert.equal(rows, 1000); assert.equal(width, 9); return target; };
+  f.api.SpreadsheetApp.openById = id => { assert.equal(id, 'isolated-id'); return target; };
+  const migration = f.api.startMarketsFunctionalMigration();
+  assert.equal(migration.indexSpreadsheetId, 'isolated-id');
+  assert.equal(migration.backup, old.sheet);
+  assert.ok(!f.sheets.has(migration.sheet));
+  assert.equal(f.api.advanceMarketsFunctionalMigration_().done, 2);
+});
+
 test('monthly windows contain exactly six calendar months across years and leap days', () => {
   const api = runtime({ Utilities: { formatDate: () => '2026-11-21' }, MARKETS_CONFIG: { timeZone: 'Europe/Madrid' } });
   for (const [month, start, end] of [['2026-11', '2026-06-01', '2026-11-21'],

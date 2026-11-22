@@ -8,8 +8,13 @@ const MARKETS_FUNCTIONAL_MIGRATION_PREVIOUS = 'MARKETS_FUNCTIONAL_MIGRATION_PREV
 
 function marketsReviewIndexSheet_(ss, extend = false) {
   const active = marketsFunctionalEngine_(PropertiesService.getScriptProperties());
-  const sheet = ss.getSheetByName(active?.sheet || MARKETS_REVIEW_INDEX);
+  const sheet = marketsFunctionalIndexSheet_(ss, active || { sheet: MARKETS_REVIEW_INDEX });
   return sheet && marketsAppendSheetHeaders_(sheet, MARKETS_REVIEW_INDEX_HEADERS, [7], extend)?.sheet;
+}
+
+function marketsFunctionalIndexSheet_(ss, target) {
+  const workbook = target.indexSpreadsheetId ? SpreadsheetApp.openById(target.indexSpreadsheetId) : ss;
+  return workbook.getSheetByName(target.sheet);
 }
 
 function initializeMarketsReviewIndex() {
@@ -163,12 +168,9 @@ function startMarketsFunctionalMigration() {
     classifyMarketsFunctionalBatch_(sample, pins);
     const sampleMs = Date.now() - started;
     const suffix = String(Date.now());
-    if (existing) {
-      const allocated = ss.getSheets().reduce((cells, sheet) => cells + sheet.getMaxRows() * sheet.getMaxColumns(), 0);
-      if (allocated + (total + 1001) * MARKETS_REVIEW_INDEX_HEADERS.length > 10000000) {
-        throw new Error('La hoja de cálculo no tiene capacidad para el índice de sombra.');
-      }
-    }
+    const width = MARKETS_REVIEW_INDEX_HEADERS.length;
+    const allocated = existing && ss.getSheets().reduce((cells, sheet) => cells + sheet.getMaxRows() * sheet.getMaxColumns(), 0);
+    const separate = existing && allocated + (total + 1001) * width > 10000000;
     // El índice anterior queda inmóvil: el worker dirige la clasificación a la sombra.
     const backup = existing ? index : index.copyTo(ss).setName('REVIEW_INDEX_BACKUP_' + suffix);
     const backupDigest = marketsReviewDigest_(backup.getRange(1, 1, backup.getLastRow(), MARKETS_REVIEW_INDEX_HEADERS.length).getValues());
@@ -176,13 +178,18 @@ function startMarketsFunctionalMigration() {
         marketsReviewDigest_(index.getRange(1, 1, index.getLastRow(), MARKETS_REVIEW_INDEX_HEADERS.length).getValues())) {
       throw new Error('No se pudo verificar el respaldo del índice.');
     }
-    const shadow = ss.insertSheet('REVIEW_INDEX_EDC_' + suffix);
-    if (existing && shadow.getMaxColumns() > MARKETS_REVIEW_INDEX_HEADERS.length) {
-      shadow.deleteColumns(MARKETS_REVIEW_INDEX_HEADERS.length + 1, shadow.getMaxColumns() - MARKETS_REVIEW_INDEX_HEADERS.length);
+    const shadowName = 'REVIEW_INDEX_EDC_' + suffix;
+    const isolated = separate ? SpreadsheetApp.create('Market Pulse · Índice funcional ' + suffix, 1000, width) : null;
+    const shadow = isolated ? isolated.getSheets()[0].setName(shadowName) : ss.insertSheet(shadowName);
+    if (existing && shadow.getMaxColumns() > width) {
+      shadow.deleteColumns(width + 1, shadow.getMaxColumns() - width);
     }
     shadow.getRange(1, 1, 1, MARKETS_REVIEW_INDEX_HEADERS.length).setValues([MARKETS_REVIEW_INDEX_HEADERS]);
     shadow.setFrozenRows(1);
-    const state = { pins, libraryVersion: MARKETS_REVIEW_LIBRARY_VERSION, sheet: shadow.getName(), backup: backup.getName(), backupDigest, next: 2,
+    const state = { pins, libraryVersion: MARKETS_REVIEW_LIBRARY_VERSION, sheet: shadow.getName(),
+      ...(isolated ? { indexSpreadsheetId: isolated.getId() } : {}),
+      ...(existing && active?.indexSpreadsheetId ? { backupSpreadsheetId: active.indexSpreadsheetId } : {}),
+      backup: backup.getName(), backupDigest, next: 2,
       previousSnapshot: properties.getProperty(MARKETS_REVIEW_SNAPSHOT_POINTER), eligibleTotal: keys.length, processedEligible: 0,
       sourceGeneration: properties.getProperty('MARKETS_REVIEW_SOURCE_GENERATION') || '',
       total, done: 0, complete: false,
@@ -202,7 +209,7 @@ function advanceMarketsFunctionalMigration_() {
   try {
     const state = safeJsonParse_(properties.getProperty('MARKETS_FUNCTIONAL_MIGRATION') || 'null');
     if (!state || state.complete) return state || { complete: true };
-    const ss = openMarketsSpreadsheet_(), source = marketsReviewSheet_(ss), shadow = ss.getSheetByName(state.sheet);
+    const ss = openMarketsSpreadsheet_(), source = marketsReviewSheet_(ss), shadow = marketsFunctionalIndexSheet_(ss, state);
     if (!shadow) throw new Error('No existe el índice de migración.');
     const generation = properties.getProperty('MARKETS_REVIEW_SOURCE_GENERATION') || '';
     const active = marketsFunctionalEngine_(properties);
@@ -328,7 +335,7 @@ function rollbackMarketsFunctionalMigration() {
   try {
     const state = safeJsonParse_(properties.getProperty('MARKETS_FUNCTIONAL_MIGRATION') || 'null');
     if (!state || marketsFunctionalEngine_(properties)?.sheet !== state.sheet || state.rolledBackAt) throw new Error('No hay una migración activada que revertir.');
-    const backup = ss.getSheetByName(state.backup);
+    const backup = marketsFunctionalIndexSheet_(ss, { sheet: state.backup, indexSpreadsheetId: state.backupSpreadsheetId });
     if (!backup || marketsReviewDigest_(backup.getRange(1, 1, backup.getLastRow(), MARKETS_REVIEW_INDEX_HEADERS.length).getValues()) !== state.backupDigest) {
       throw new Error('El respaldo no coincide con el verificado antes de migrar.');
     }

@@ -852,7 +852,8 @@ function publishMarketsReviewSnapshot_() {
   const migration = safeJsonParse_(current.MARKETS_FUNCTIONAL_MIGRATION || 'null');
   const activeEngine = marketsFunctionalEngine_(current);
   const pending = migration?.ready && !migration.complete && activeEngine?.sheet !== migration.sheet ? migration : null;
-  const engine = pending ? { engine: 'EDCCatalogClassifier', libraryVersion: pending.libraryVersion || '1', pins: pending.pins, sheet: pending.sheet } : activeEngine;
+  const engine = pending ? { engine: 'EDCCatalogClassifier', libraryVersion: pending.libraryVersion || '1', pins: pending.pins, sheet: pending.sheet,
+    ...(pending.indexSpreadsheetId ? { indexSpreadsheetId: pending.indexSpreadsheetId } : {}) } : activeEngine;
   const inputVersions = marketsReviewVersions_(current, catalogVersion);
   const versions = marketsReviewVersions_(current, catalogVersion, engine);
   const npsVersions = marketsReviewNpsVersions_(current, catalogVersion);
@@ -890,7 +891,7 @@ function publishMarketsReviewSnapshot_() {
     version: marketsReviewDigest_([MARKETS_REVIEW_CLASSIFIER_SCHEMA, MARKETS_REVIEW_AUDIENCE_VERSION, engine.pins]) } : null;
   const queryStarted = Date.now();
   const allRows = queryMarketsReviews_(ss, { country: 'ALL', platform: 'ALL', includeAudience: true,
-    ...(pending ? { classificationOverride: classification, indexSheetName: engine.sheet } : {}) },
+    ...(pending ? { classificationOverride: classification, migrationIndex: engine } : {}) },
     { ...analyticsWindow, start: earliest }, true, catalog);
   const queryMs = Date.now() - queryStarted;
   const rows = allRows.filter(row => row.date >= analyticsWindow.start);
