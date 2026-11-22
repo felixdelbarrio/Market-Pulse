@@ -125,6 +125,25 @@
       "Mejorable":["Needs improvement","Geliştirilebilir"],
       "Mensual":["Monthly","Aylık"],
       "Movimientos":["Changes","Değişiklikler"],
+      "Relevancia y audiencia multilenguaje":["Multilingual relevance and audience","Çok dilli ilgi ve hedef kitle"],
+      "Grupo":["Group","Grup"],
+      "Frase literal":["Literal phrase","Tam ifade"],
+      "Grupos de evidencia en el título y texto originales. BEI incluye relevancia empresarial y transversal.":["Evidence groups use the original title and text. B&I includes business and shared banking relevance.","Kanıt grupları özgün başlığı ve metni kullanır. ŞKB, ticari ve ortak bankacılık ilgisini kapsar."],
+      "Las frases complementan la detección del grupo. El cambio se aplicará a las consultas y a la siguiente publicación de vistas. Guardar conserva las reseñas originales.":["Phrases extend detection for the selected group. The change applies to queries and the next published views. Saving preserves the original reviews.","İfadeler seçilen grubun algılanmasını genişletir. Değişiklik sorgularda ve sonraki görünüm yayımında geçerli olur. Kaydetmek özgün yorumları korur."],
+      "Uso empresarial explícito":["Explicit business use","Açık ticari kullanım"],
+      "Uso personal explícito":["Explicit personal use","Açık kişisel kullanım"],
+      "Operación bancaria compartida":["Shared banking operation","Ortak bankacılık işlemi"],
+      "Incidencia":["Issue","Sorun"],
+      "Actividad empresarial directa":["Direct business activity","Doğrudan ticari faaliyet"],
+      "Contexto empresarial con acción y operación bancaria":["Business context with an action and a banking operation","Eylem ve bankacılık işlemi içeren ticari bağlam"],
+      "Operación bancaria":["Banking operation","Bankacılık işlemi"],
+      "Acción del autor":["Author’s action","Yazarın eylemi"],
+      "Pensión":["Pension","Emekli maaşı"],
+      "Contexto personal":["Personal context","Kişisel bağlam"],
+      "Producto o uso personal":["Personal product or use","Kişisel ürün veya kullanım"],
+      "Nómina recibida":["Salary received","Alınan maaş"],
+      "Cliente de nómina (turco)":["Salary customer (Turkish)","Maaş müşterisi (Türkçe)"],
+      "Negación de contexto empresarial":["Negated business context","Olumsuzlanan ticari bağlam"],
       "Movimientos que quieres recibir":["Changes you want to hear about","Bildirim almak istediğiniz değişiklikler"],
       "Muestras de las últimas 3.000 filas de telemetría":["Samples from the last 3,000 telemetry rows","Son 3.000 telemetri satırından örnekler"],
       "NPS de reseñas: diferencia entre el porcentaje de promotoras y detractoras, sobre todas las reseñas válidas del mes.":["Review NPS is the difference between promoter and detractor percentages across all valid reviews that month.","Yorum NPS'si, ayın geçerli yorumları arasındaki destekleyen ve eleştiren yorum yüzdelerinin farkıdır."],
@@ -1990,7 +2009,7 @@
       functional:"Bloques y funcionalidades que se usan para clasificar las reseñas.",
       operation:"Parámetros del cálculo de ratings y del monitor de salud.",
       geography:"Geografías definidas en el catálogo de aplicaciones.",
-      relevance:"Criterios de audiencia y agrupaciones que se aplican al analizar reseñas.",
+      relevance:"Grupos de evidencia en el título y texto originales. BEI incluye relevancia empresarial y transversal.",
       aliases:"Equivalencias locales del clasificador anterior.",
       storage:"Hojas que utiliza la aplicación y carpetas operativas.",
       system:"Estado del despliegue, remitente y administradores.",
@@ -2009,9 +2028,13 @@
       download.disabled=!rows.length;
       download.onclick=()=>exportAdminRows("Catálogo",data.columns,rows);
       businessCatalog.visibleRows=rows;
-      target.innerHTML=(section==="functional"?'<p><button class="button" type="button" data-sync>Sincronizar desde el catálogo maestro</button></p>':"")+
-        (data.edit==="aliases"?'<p><button type="button" class="button primary" data-entry="-1">Añadir equivalencia</button></p>':'')+
-        (rows.length?adminDataTable(data.columns,rows,Boolean(data.edit)):U.empty("Sin entradas","No hay coincidencias para la selección."));
+      target.innerHTML=(data.nps?'<p class="small">'+U.esc(translate("NPS de reseñas"))+' · '+
+        data.nps.map(([label,stars])=>U.esc(translate(label)+" "+stars)).join(" · ")+'</p>':'')+
+        (section==="functional"?'<p><button class="button" type="button" data-sync>Sincronizar desde el catálogo maestro</button></p>':"")+
+        (["aliases","relevance"].includes(data.edit)?'<p><button type="button" class="button primary" data-entry="-1">'+
+          translate(data.edit==="relevance"?"Añadir regla":"Añadir equivalencia")+'</button></p>':'')+
+        (rows.length?adminDataTable(data.columns,rows,Boolean(data.edit),data.groups ? (value,column)=>
+          column===1 ? U.esc(translate(data.groups[value])) : column===3 ? U.esc(translate(value?"Sí":"No")) : null : null):U.empty("Sin entradas","No hay coincidencias para la selección."));
     }
     function adminMetricCards(cards){
       return cards.map(card=>`<article class="metric"><span>${U.esc(card.label)}</span><strong>${U.esc(card.value)}</strong>${card.foot?`<span class="small">${U.esc(card.foot)}</span>`:""}</article>`).join("");
@@ -2047,12 +2070,26 @@
           }
           const entry=event.target.closest("[data-entry]");
           if(!entry||!data.edit)return;
-          const row=businessCatalog.visibleRows[Number(entry.dataset.entry)]||["",""];
-          businessDraft={section,expected:String(row[1])};
+          const selected=businessCatalog.visibleRows[Number(entry.dataset.entry)];
+          const row=selected||["",""];
+          const relevance=section==="relevance", seed=relevance&&row[0].startsWith("base-");
+          businessDraft={section,expected:relevance?(selected?JSON.stringify(selected):""):String(row[1])};
+          $("admin-business-value-label").classList.toggle("hidden",relevance);
+          $("admin-business-audience").classList.toggle("hidden",!relevance);
+          if(relevance){
+            const group=$("admin-business-audience-group");
+            group.replaceChildren(...Object.entries(data.groups).map(([id,label])=>new Option(translate(label),id)));
+            if(selected)group.value=row[1];
+            group.disabled=seed;
+            $("admin-business-phrase-label").classList.toggle("hidden",seed);
+            $("admin-business-phrase").value=row[2]||"";
+            $("admin-business-enabled").checked=selected?row[3]:true;
+          }
+          $("admin-business-phrase").required=relevance&&!seed;
           $("admin-business-key").value=row[0];
           $("admin-business-key").readOnly=Boolean(row[0]);
           $("admin-business-value").value=row[1];
-          $("admin-business-value").required=section!=="aliases";
+          $("admin-business-value").required=!relevance&&section!=="aliases";
           $("admin-business-error").textContent="";
           $("admin-business-dialog").showModal();
         };
@@ -2064,7 +2101,12 @@
       const button=event.submitter;
       if(button)button.disabled=true;
       try{
-        await callServer("admin:business:save",{...businessDraft,key:$("admin-business-key").value.trim(),value:$("admin-business-value").value});
+        const relevance=businessDraft.section==="relevance";
+        const id=$("admin-business-key").value.trim();
+        const key=relevance&&!businessDraft.expected?"phrase-"+id:id;
+        const value=relevance?{group:$("admin-business-audience-group").value,
+          phrase:$("admin-business-phrase").value,enabled:$("admin-business-enabled").checked}:$("admin-business-value").value;
+        await callServer("admin:business:save",{...businessDraft,key,value});
         $("admin-business-dialog").close();
         if(state.adminTab==="business")loadAdminBusiness();
       }catch(error){$("admin-business-error").textContent=error.message}

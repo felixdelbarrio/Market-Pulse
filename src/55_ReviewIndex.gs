@@ -59,7 +59,9 @@ function advanceMarketsReviewIndex_() {
   try {
     marketsReviewIndexSheet_(ss, true);
     const source = marketsReviewSheet_(ss);
-    const { rules, version, library } = marketsReviewClassification_(ss);
+    const { rules, version: functionalVersion, library } = marketsReviewClassification_(ss);
+    const audience = marketsAudienceCatalog_(ss);
+    const version = marketsAudienceIndexVersion_(functionalVersion, audience.revision);
     const previous = safeJsonParse_(properties.getProperty(MARKETS_REVIEW_INDEX_CURSOR));
     const last = source.getLastRow(), total = Math.max(0, last - 1);
     const start = previous?.version === version && Number.isInteger(previous.next) && previous.next >= 2 && previous.next <= last + 1 ? previous.next : 2;
@@ -73,8 +75,10 @@ function advanceMarketsReviewIndex_() {
     const old = range.getValues();
     let updated = 0;
     const sourceRows = source.getRange(start, 1, count, 11).getValues();
-    const missing = sourceRows.filter((row, i) => row[0] &&
-      !(old[i][0] === row[0] && old[i][1] === marketsReviewTextDigest_(row) && old[i][2] === version && old[i][7]));
+    const sameFunctionalRow = (row, i, hash) => old[i][0] === row[0] && old[i][1] === hash &&
+      marketsAudienceMatchesFunctionalVersion_(old[i][2], functionalVersion) && old[i][7];
+    const missing = library ? sourceRows.filter((row, i) => row[0] &&
+      !sameFunctionalRow(row, i, marketsReviewTextDigest_(row))) : [];
     const predictions = library && missing.length ? classifyMarketsFunctionalBatch_(missing, library.pins) : [];
     const idsByKey = new Map(missing.map((row, i) => [row[0], predictions[i]]));
     const values = sourceRows.map((row, i) => {
@@ -82,10 +86,12 @@ function advanceMarketsReviewIndex_() {
       const hash = marketsReviewTextDigest_(row);
       if (old[i][0] === row[0] && old[i][1] === hash && old[i][2] === version && old[i][7]) return old[i];
       const original = marketsReviewOriginalText_(row);
-      const { audience, sharedOperation, reason, relevance, evidence } = classifyMarketsReviewAudience_(original);
+      const decision = classifyMarketsReviewAudience_(original, audience.rules);
+      const topics = sameFunctionalRow(row, i, hash) ? old[i][3]
+        : JSON.stringify(library ? idsByKey.get(row[0]) : classifyReviewEvidence_(original, rules));
       updated++;
-      return [marketsReviewLiteral_(row[0]), hash, version, JSON.stringify(library ? idsByKey.get(row[0]) : classifyReviewEvidence_(original, rules)),
-        audience, sharedOperation, reason, relevance, JSON.stringify(evidence)];
+      return [marketsReviewLiteral_(row[0]), hash, version, topics,
+        decision.audience, decision.sharedOperation, decision.reason, decision.relevance, JSON.stringify(decision.evidence)];
     });
     if (updated || old.some((row, i) => row[0] && !values[i][0])) {
       range.setValues(values);

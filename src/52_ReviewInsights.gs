@@ -288,87 +288,8 @@ function classifyNormalizedReviewEvidence_(normalized, index) {
   return [...matches].sort();
 }
 
-// Evidence is evaluated in the original text. An app name or storefront is not evidence.
 // Mantener sincronizada con la versión numerada del manifiesto.
 const MARKETS_REVIEW_LIBRARY_VERSION = '5';
-const MARKETS_REVIEW_AUDIENCE_VERSION = 2;
-const MARKETS_REVIEW_AUDIENCE_RULES = {
-  businessUse: /\b(?:ticari faaliyet goster\w*|(?:operamos|opero) como empresa|(?:soy|somos) (?:autonom[oa]s?|comerciantes?|una empresa)|remesa salarial|(?:pago|pagos|remesas|transferencias) masiv[oa]s|(?:firmas?|permisos?) (?:corporativas?|mancomunadas?|de apoderados)|(?:emision|cobro) (?:masiv[oa] )?de recibos|(?:cartas? de credito|financiacion (?:para pymes|comercial)|conciliacion bancaria|gestion de tesoreria|declaracion (?:de iva|de aduanas)|pagos? (?:aduaneros?|de comercio exterior)|domiciliaciones? empresariales?|cuentas? de comercio exterior)|(?:mi|nuestro|nuestra|uso|utilizo|integro|no puedo (?:usar|conectar|subir|cargar)) (?:el |la |los |las )?(?:tpv|pos|datafono|h2h|erp|api(?: bancaria)?|ficheros? (?:bancarios?|de remesas)|confirming|factoring)|(?:sanal posum|pos cihazim|kurumsal kartim)\w*)\b/u,
-  personalUse: /\b(?:aile kart\w*|kendi maas\w*|(?:bireysel|kisisel) (?:hesa[bp]\w*|kart\w*)|bireysel olarak|ticari degil\w*|(?:mi|nuestra|una|la) (?:tarjeta familiar|cuenta personal|cuenta universitaria|pension)|soy (?:estudiante|pensionista|jubilad[oa])|(?:ben )?ogrenciyim|alquiler de mi casa)\b/u,
-  operation: /\b(?:login|iniciar sesion|entrar|acceder|registrarme|contrasena|clave|otp|mfa|biometr\w*|huella|softtoken|sesion|giris\w*|sifre\w*|parmak izi|oturum\w*|extractos?|movimientos?|saldos?|recibos?|comprobantes?|domicili\w*|notifica\w*|adeudos?|dekont\w*|bildirim\w*|bakiye\w*|hesap hareket\w*|ekstre\w*|actualiza\w*|guncelle\w*|menu\w*|buscador|accesibilidad|pantalla\w*|ekran\w*|destinatari\w*|beneficiari\w*|atencion al cliente|soporte tecnico|servicio al cliente|randevu\w*|sube\w*|musteri hizmet\w*|canli destek|iban|sepa|bizum|pse|yape|plin)\b/u,
-  issue: /\b(?:no (?:me |se |nos )?(?:puedo|puede|funciona|abre|carga|llega|muestra\w*|aparece\w*|deja|reconoce|recibo|encuentro)|falla\w*|error\w*|no sale\w*|no he podido|no deja\w*|rechaza\w*|falta\w*|no disponible|bloque\w*|no consigo|entra en bucle|(?:se|me) (?:cierra|cuelga|congela|queda en blanco)|muy lent[oa]|tarda\w*|crash\w*|keeps closing|unable to|cannot|acilmiyor|girmiyor|giremiyorum|yapamiyorum|olmuyor|calismiyor|gelmiyor|goremiyorum|gorunmuyor|donuyor|kapaniyor|atiyor|cok yavas|bekletiyor|hata\w*|basarisiz|ulasilamiyor|baglanamiyorum)\b/u,
-  direct: [
-    /\b(?:cuentas? (?:de (?:mi |nuestra |la )?empresas?|de negocios?|empresarial(?:es)?|comercial(?:es)?|pyme)|(?:tarjeta|banca) (?:de (?:mi |nuestra )?empresas?|corporativa|para empresas)|(?:pago|pagos|pagar|transferencias) a (?:mis |nuestros )?(?:empleados|proveedores)|(?:facturas? a|cobrar a) mis clientes|(?:nominas? de (?:mi |nuestra )?empresa|nominas? de mis empleados)|(?:seguro|alquiler|iva) de (?:mi|nuestro) (?:comercio|negocio|empresa)|suscripcion de software de mi empresa|gestion de tesoreria|conciliacion de cobros|terminal de cobro)\b/u,
-    /\b(?:(?:business|corporate|merchant) (?:bank account|account|card|loan)|payroll processing|paying (?:my |our )?employees|supplier payments|merchant settlement|cash pooling|invoic\w* (?:my|our) (?:customers|clients))\b/u,
-    /\b(?:conta (?:empresarial|pj)|folha de pagamento|pag\w* (?:aos |meus )?(?:funcionarios|fornecedores)|emit\w* nota fiscal)\b/u,
-    /\b(?:ticari (?:hesa[bp]\w*|kredi\w*|kart\w*)|(?:sirket|isletme) (?:hesab\w*|kredi\w*)|(?:esnaf|kobi) kred\w*|(?:sirket\w*|isletme\w*) (?:yurtdisindan |duzenli olarak )?tahsilat\w*|sirket(?:im|imiz)\w* (?:\w+ ){0,6}(?:tahsilat\w*|tedarikci\w*|ihracat\w*)|tedarikci\w* (?:\w+ ){0,2}ode\w*|ihracat finansman\w*|e fatura (?:kes\w*|entegrasyon\w*)|(?:sanal pos|pos cihaz\w*) (?:basvur\w*|kurulum\w*|entegrasyon\w*|odeme al\w*))\b/u
-  ],
-  context: /\b(?:(?:mi|nuestro|nuestra) (?:empresa|negocio|comercio|pyme)|(?:soy|como) (?:autonom[oa]|comerciante|profesional independiente)|(?:my|our) (?:business|company)|self employed|(?:minha|nossa) empresa|(?:sirketim|isletmem)\w*|isletme sahib\w*|(?:esnaf|kobi)(?:yim|yiz|nin|m|im|imiz)?|ticari)\b/u,
-  banking: /\b(?:transfer\w*|traspas\w*|enviar dinero|spei|eft|havale\w*|swift|fast odeme\w*|(?:para|havale) gonder\w*|pix|pag[oa]\w*|cobr[oa]\w*|odeme\w*|hesa[bp]\w*|cuentas?|accounts?|contas?|tarjetas?|cards?|cartao|kart\w*|impuestos?|iva|tax(?:es)?|vergi\w*|factur\w*|fatura\w*|credit\w*|kredi\w*|prestam\w*|loans?|emprest\w*)\b/u,
-  action: /\b(?:no puedo|no (?:abre|funciona|llega|deja)|puedo|falla\w*|error\w*|comisi\w*|cobr\w*|pag\w*|envi\w*|hac\w*|abr\w*|bloque\w*|gestion\w*|emit\w*|recib\w*|deposit\w*|fail\w*|can(?:not| t)|unable|charge\w*|fee\w*|pay\w*|send\w*|receiv\w*|open\w*|block\w*|yap\w*|gonder\w*|acil\w*|ac(?:am|mak|tim)\w*|al(?:am|in|iyor)\w*|ucret\w*|komisyon\w*|masraf\w*|kes\w*|od[ea]\w*|basvur\w*|limit\w*)\b/u,
-  pension: /\b(?:(?:soy|estoy) (?:jubilad[oa]|pensionista)|mi (?:jubilacion|pension)|emekli (?:maasim\w*|olmama|musterinizim)|emekliyim|(?:minha|recebo) aposentadoria|i am (?:retired|a pensioner)|my pension)\b/u,
-  personalContext: /\b(?:(?:a |para )mi (?:hij[oa]|madre|padre|familia|espos[oa])|(?:to|for) my (?:family|son|daughter|mother|father|wife|husband)|(?:mi|nuestra) (?:casa|vivienda)|(?:my|our) (?:home mortgage|mortgage|rent)|(?:minha|nossa) (?:casa|familia)|konut kred\w*|alisveris\w*|pago de mi nomina)\b/u,
-  retail: /\b(?:cuentas? (?:de (?:la )?)?nominas?|cuentas? sueldo|conta salario|salary account|maas hesab\w*|prestamos? personal(?:es)?|creditos? (?:personal(?:es)?|al consumo)|personal loans?|consumer credit|ihtiyac kredisi|bireysel kredi|kisisel kredi|cuentas? (?:infantil(?:es)?|personal(?:es)?)|para uso personal|(?:uso|utilizo) (?:la app )?personal y|tarjeta (?:personal|de estudiante)|student card|seguro de (?:mi )?hogar|home insurance|alquiler de (?:mi|nuestra) vivienda|(?:transferir|enviar dinero) a mi hij[oa]|(?:recibo|factura) (?:de (?:luz|gas|internet) de mi casa|del hogar)|(?:hipoteca|prestamo) (?:de|para) (?:mi|nuestra) vivienda|(?:ahorrar|ahorro) para (?:mi jubilacion|mis vacaciones)|(?:credito|prestamo) (?:para|de) (?:estudios|mi boda|mis vacaciones)|gastos (?:domesticos|familiares|personales)|(?:vacaciones|viaje personal) (?:de mi familia|en familia)|(?:netflix|spotify) (?:me cobra|subscription|abonelig\w*)|(?:cobro|pago|pagar|planes) (?:a |de )?(?:netflix|spotify)|suscripcion (?:personal|de netflix|de spotify)|ev kira(?:si|m)\w*|ogrenci kart\w*|ogrenci (?:hesa[bp]\w*|kred\w*|burs\w*)|(?:ogrenciyim|universite ogrencisi) (?:\w+ ){0,5}(?:burs\w*|harc\w*|kartim\w*)|(?:mi|para mi) (?:beca|prestamo estudiantil)|cuenta (?:para |de )?estudiantes|student (?:loan|bank account))\b/u,
-  salaryReceived: /\b(?:mi nomina|mi salario|mi sueldo|my (?:paycheck|salary|wages)|meu salario|maasim\w*|maas musterisi\w*|maasli musteriyim|(?:recib\w*|cobr\w*|deposit\w*|ingres\w*|acredit\w*) (?:\w+ ){0,4}(?:la nomina|nomina|(?:el )?pago de (?:mi |la )?nomina))\b/u,
-  turkishSalaryCustomer: /\b(?:maas (?:musterisi\w*|bankam\w*|kartim\w*|promosyonum\w*|aldigim|aldigimiz|aliyorum|aliyoruz|almakta(?:yim|yiz)|odememi (?:al\w*|bekliyorum))|maasli (?:musteri\w*|calisanim|calisiyorum|personelim)|bordrolu (?:calisanim|calisiyorum|personelim)|(?:hesabima|hesabimiza) (?:\w+ ){0,3}maas (?:yat\w*|gel\w*))\b/u,
-  negatedBusiness: /\b(?:no (?:soy|somos|tengo|tenemos|poseo|uso|utilizo|es) (?:una? )?(?:empresa|autonom[oa]|negocio|cuenta comercial|tarjeta corporativa)|not (?:a business|self employed|for (?:my |our )?business)|(?:sirket|esnaf|kobi) degilim|(?:ticari (?:hesabim|kartim) yok)|(?:ticari|sirket hesab\w*) degil)\b/u
-};
-
-function classifyMarketsReviewAudience_(original) {
-  const rules = MARKETS_REVIEW_AUDIENCE_RULES;
-  const evidence = {};
-  const clauses = String(original || '').split(/[.!?;\n]+|\b(?:pero|sin embargo|but|however|mas|porem|ama|ancak|fakat)\b/iu);
-  const normalized = normalizeReviewEvidence_(original);
-  evidence.retail = (rules.retail.exec(normalized) || rules.salaryReceived.exec(normalized) || rules.turkishSalaryCustomer.exec(normalized) ||
-    rules.personalUse.exec(normalized) || rules.pension.exec(normalized) || rules.personalContext.exec(normalized))?.[0] || '';
-  const salaryCustomer = rules.turkishSalaryCustomer.test(normalized) || /\bmaas (?:hesab\w*|musterisi\w*)\b|\bmaasim\w*\b/u.test(normalized);
-  for (const text of clauses) {
-    const clause = normalizeReviewEvidence_(text);
-    if (!clause) continue;
-    const banking = rules.banking.exec(clause)?.[0] || '';
-    const feature = rules.operation.exec(clause)?.[0] || banking;
-    const issue = rules.issue.exec(clause)?.[0];
-    const action = rules.action.exec(clause)?.[0];
-    const authorOperation = /\b(?:puedo|pagar|pago|pagamos|pague|envie|recibi|cobre|abri|yapamadim|gonderdim|gonderiyorum|gonderemiyorum|yaptim|al(?:am|in|iyor)\w*)\b/u.test(clause);
-    const performance = /\b(?:app|aplicacion|movil|uygulama\w*)\b.*\b(lent[oa]|tarda\w*|cierra|bloque\w*|yavas|donuyor|kapaniyor)\b/u.exec(clause);
-    if (!evidence.shared && ((feature && (issue || (authorOperation && banking && action !== banking))) ||
-        (issue && /\b(?:entrar|acceder|giremiyorum|giris\w*)\b/u.test(clause)) || performance)) {
-      evidence.shared = feature || performance?.[1] || issue;
-    }
-
-    if (evidence.business || rules.negatedBusiness.test(clause)) continue;
-    const strong = rules.direct.map(pattern => pattern.exec(clause)?.[0]).find(Boolean);
-    const personal = rules.retail.test(clause) || rules.salaryReceived.test(clause) || rules.turkishSalaryCustomer.test(clause) || rules.personalUse.test(clause) ||
-      rules.pension.test(clause) || rules.personalContext.test(clause);
-    const context = !personal && rules.context.exec(clause)?.[0];
-    const bankStaff = /\b(?:calisanlariniz\w*|(?:banka|sube) (?:personel|calisan)\w*)\b/u.test(clause);
-    const payrollMatch = MARKETS_REVIEW_PAYROLL.exec(clause)?.[0];
-    // A generic reference to staff payroll can be the employee's complaint, including in the title.
-    const employeePayroll = salaryCustomer && /^(?:personel|calisanlar\w*)\b/.test(payrollMatch || '') &&
-      !/\b(?:personelimin|personelimizin|calisanlarimin|calisanlarimizin|oduyorum|oduyoruz|odeyemiyorum|odeyemiyoruz)\b/u.test(clause);
-    const payroll = !personal && !bankStaff && !employeePayroll && payrollMatch;
-    const fileOperation = issue && /\b(?:ficheros? (?:bancarios?|de remesas)|archivos? de remesas)\b/u.exec(clause)?.[0];
-    const business = rules.businessUse.exec(clause)?.[0] || strong || payroll || fileOperation ||
-      (context && action && banking && context !== 'ticari' ? context : '');
-    if (business) evidence.business = business;
-  }
-  const sharedOperation = Boolean(evidence.shared);
-  const mixedAccounts = evidence.retail && /\bbireysel olarak\b.*\bticari olarak (?:hesa[bp]\w*|ac\w*)\b/u.test(normalized);
-  const audience = evidence.retail && (evidence.business || mixedAccounts) ? 'MIXED' : evidence.business ? 'BEI_CONFIRMED'
-    : evidence.retail ? 'RETAIL' : 'UNDETERMINED';
-  const relevance = evidence.business ? 'BUSINESS' : evidence.retail ? 'NONE'
-    : sharedOperation ? 'TRANSVERSAL' : rules.operation.test(normalized) || rules.banking.test(normalized) ? 'UNCERTAIN' : 'NONE';
-  const reason = audience === 'MIXED' ? (evidence.business ? 'explicit_business_with_retail' : 'mixed_account_context') : ({
-    BUSINESS: 'business', TRANSVERSAL: 'shared_banking', UNCERTAIN: 'insufficient_context',
-    NONE: evidence.retail ? 'personal_use' : 'insufficient_evidence'
-  })[relevance];
-  return { audience, relevance, sharedOperation, reason, evidence };
-}
-
-function matchesMarketsReviewAudience_(filter, decision) {
-  if (!['BEI', 'BEI_ONLY', 'BEI_EXTENDED'].includes(filter)) return true;
-  return decision.relevance === 'BUSINESS' || decision.relevance === 'TRANSVERSAL';
-}
 
 function syncMarketsFunctionalCatalog_() {
   const lock = LockService.getUserLock();
@@ -672,16 +593,22 @@ function marketsFunctionalEngine_(properties) {
   return safeJsonParse_(pointer || 'null')?.engine || null;
 }
 
-function marketsReviewVersions_(properties, catalogVersion, engine = marketsFunctionalEngine_(properties)) {
+function marketsReviewVersions_(properties, catalogVersion, engine = marketsFunctionalEngine_(properties), audienceRevision = '') {
   const revisions = engine ? ['MARKETS_REVIEW_GEOGRAPHY_REVISION']
     : ['MARKETS_FUNCTIONAL_ALIASES_REVISION', 'MARKETS_REVIEW_GEOGRAPHY_REVISION', 'MARKETS_FUNCTIONAL_TRANSLATIONS_REVISION'];
   return [properties.MARKETS_REVIEWS_GENERATION || '', properties.MARKETS_FUNCTIONAL_REVISION || '', catalogVersion,
     ...revisions.flatMap(key =>
-      properties[key] ? [[key, properties[key]]] : []), ...(engine ? [['MARKETS_FUNCTIONAL_ENGINE', JSON.stringify(engine)]] : [])];
+      properties[key] ? [[key, properties[key]]] : []), ...(engine ? [['MARKETS_FUNCTIONAL_ENGINE', JSON.stringify(engine)]] : []),
+    ...(audienceRevision ? [[MARKETS_AUDIENCE_SHEET, audienceRevision]] : [])];
 }
 
-function marketsReviewNpsVersions_(properties, catalogVersion) {
-  return [properties.MARKETS_REVIEW_SOURCE_GENERATION || '', properties.MARKETS_REVIEW_GEOGRAPHY_REVISION || '', catalogVersion];
+function marketsReviewVersionsWithoutAudience_(versions) {
+  return versions.filter(value => !Array.isArray(value) || value[0] !== MARKETS_AUDIENCE_SHEET);
+}
+
+function marketsReviewNpsVersions_(properties, catalogVersion, audienceRevision = '') {
+  return [properties.MARKETS_REVIEW_SOURCE_GENERATION || '', properties.MARKETS_REVIEW_GEOGRAPHY_REVISION || '', catalogVersion,
+    ...(audienceRevision ? [[MARKETS_AUDIENCE_SHEET, audienceRevision]] : [])];
 }
 
 function marketsReviewSnapshotScope_(operation, filters, window) {
@@ -854,12 +781,14 @@ function publishMarketsReviewSnapshot_(force = false) {
   const pending = migration?.ready && !migration.complete && activeEngine?.sheet !== migration.sheet ? migration : null;
   const engine = pending ? { engine: 'EDCCatalogClassifier', libraryVersion: pending.libraryVersion || '1', pins: pending.pins, sheet: pending.sheet,
     ...(pending.indexSpreadsheetId ? { indexSpreadsheetId: pending.indexSpreadsheetId } : {}) } : activeEngine;
-  const inputVersions = marketsReviewVersions_(current, catalogVersion);
-  const versions = marketsReviewVersions_(current, catalogVersion, engine);
+  const audienceCatalog = marketsAudienceCatalog_(ss);
+  const inputVersions = marketsReviewVersions_(current, catalogVersion, activeEngine, audienceCatalog.revision);
+  const versions = marketsReviewVersions_(current, catalogVersion, engine, audienceCatalog.revision);
   const npsVersions = marketsReviewNpsVersions_(current, catalogVersion);
   const stillCurrent = (currentCatalog = catalogVersion) => {
     const latest = properties.getProperties();
-    return JSON.stringify(marketsReviewVersions_(latest, currentCatalog)) === JSON.stringify(inputVersions) &&
+    const revision = marketsAudienceCatalog_(ss, true).revision;
+    return JSON.stringify(marketsReviewVersions_(latest, currentCatalog, undefined, revision)) === JSON.stringify(inputVersions) &&
       JSON.stringify(marketsReviewNpsVersions_(latest, currentCatalog)) === JSON.stringify(npsVersions);
   };
   const deferred = reason => {
@@ -890,7 +819,7 @@ function publishMarketsReviewSnapshot_(force = false) {
   const classification = pending ? { library: engine, knownBlocks: marketsReviewClassification_(ss).knownBlocks,
     version: marketsReviewDigest_([MARKETS_REVIEW_CLASSIFIER_SCHEMA, MARKETS_REVIEW_AUDIENCE_VERSION, engine.pins]) } : null;
   const queryStarted = Date.now();
-  const allRows = queryMarketsReviews_(ss, { country: 'ALL', platform: 'ALL', includeAudience: true,
+  const allRows = queryMarketsReviews_(ss, { country: 'ALL', platform: 'ALL', includeAudience: true, audienceCatalog,
     ...(pending ? { classificationOverride: classification, migrationIndex: engine } : {}) },
     { ...analyticsWindow, start: earliest }, true, catalog);
   const queryMs = Date.now() - queryStarted;
@@ -1001,7 +930,8 @@ function publishMarketsReviewSnapshot_(force = false) {
   const buildMs = Date.now() - queryStarted - queryMs;
   const publishStarted = Date.now();
   const complete = writeMarketsReviewSnapshot_(properties, { end, versions, npsVersions, count, ...(engine ? { engine } : {}),
-    audienceVersion: MARKETS_REVIEW_AUDIENCE_VERSION, requestedScopes: requestedScopes.map(entry => entry.id),
+    audienceVersion: MARKETS_REVIEW_AUDIENCE_VERSION,
+    ...(audienceCatalog.revision ? { audienceRevision: audienceCatalog.revision } : {}), requestedScopes: requestedScopes.map(entry => entry.id),
     hasReviewRanking: true, hasFeaturedReviews: true, hasAnnualNps: true, hasNpsAttribution: true, hasAllSentimentGaps: true, schema: MARKETS_REVIEW_SNAPSHOT_SCHEMA }, values,
     () => end === marketsReviewWindow_().end && stillCurrent(marketsReviewCatalogVersion_(readAppCatalog_(ss))), previousPointer);
   if (complete && current.MARKETS_REVIEW_SNAPSHOT_REPAIR) properties.deleteProperty('MARKETS_REVIEW_SNAPSHOT_REPAIR');
@@ -1299,7 +1229,10 @@ function readMarketsReviewCache_(ss, operation, filters, window, builder, timing
   const catalog = readAppCatalog_(ss);
   const catalogVersion = marketsReviewCatalogVersion_(catalog);
   const isNps = operation === 'nps' || operation === 'ranking';
-  const versions = isNps ? marketsReviewNpsVersions_(properties, catalogVersion) : marketsReviewVersions_(properties, catalogVersion);
+  const usesAudience = operation === 'analytics' || operation === 'analytics-source-compact' || Boolean(filters.audience);
+  const audienceRevision = usesAudience ? marketsAudienceCatalog_(ss).revision : '';
+  const versions = isNps ? marketsReviewNpsVersions_(properties, catalogVersion, audienceRevision)
+    : marketsReviewVersions_(properties, catalogVersion, undefined, audienceRevision);
   const snapshotScope = marketsReviewSnapshotScope_(operation, filters, window);
   const maxParts = operation === 'analytics' || operation === 'page' ? 6 : operation === 'nps' ? 2 : 1;
   const attempts = [];
@@ -1363,7 +1296,9 @@ function readMarketsReviewCache_(ss, operation, filters, window, builder, timing
     const built = builder(catalog, versions);
     const after = PropertiesService.getScriptProperties().getProperties();
     const currentCatalog = marketsReviewCatalogVersion_(readAppCatalog_(ss));
-    const afterVersions = isNps ? marketsReviewNpsVersions_(after, currentCatalog) : marketsReviewVersions_(after, currentCatalog);
+    const afterRevision = usesAudience ? marketsAudienceCatalog_(ss, true).revision : '';
+    const afterVersions = isNps ? marketsReviewNpsVersions_(after, currentCatalog, afterRevision)
+      : marketsReviewVersions_(after, currentCatalog, undefined, afterRevision);
     if (JSON.stringify(afterVersions) !== JSON.stringify(versions)) {
       throw new Error('Las reseñas cambiaron durante la consulta. Reintenta la selección.');
     }
@@ -1412,9 +1347,13 @@ function marketsReviewSnapshotState_(snapshot, operation, filters, window, versi
       !snapshot.hasAllSentimentGaps) return reject('sentiment');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(snapshot.end) || snapshot.end < window.end) return reject('date-coverage');
   const published = nps ? snapshot.npsVersions : snapshot.versions;
-  if (!Array.isArray(published) || JSON.stringify(published.slice(1)) !== JSON.stringify(versions.slice(1))) return reject('versions');
+  if (!Array.isArray(published)) return reject('versions');
+  const scopedVersions = nps && filters.audience && snapshot.audienceRevision
+    ? [...published, [MARKETS_AUDIENCE_SHEET, snapshot.audienceRevision]]
+    : !filters.audience && operation !== 'analytics' ? marketsReviewVersionsWithoutAudience_(published) : published;
+  if (JSON.stringify(scopedVersions.slice(1)) !== JSON.stringify(versions.slice(1))) return reject('versions');
   const today = marketsReviewWindow_().end;
-  const sameVersion = JSON.stringify(published) === JSON.stringify(versions);
+  const sameVersion = JSON.stringify(scopedVersions) === JSON.stringify(versions);
   const exactWindow = (operation === 'analytics' && (filters.analysisMonth || filters.year)) || operation === 'nps';
   if (!isPrevious && snapshot.end === today && (exactWindow || snapshot.end === window.end) && sameVersion) {
     return { freshness: 'fresh', publishedAt: snapshot.publishedAt || null, asOf: snapshot.end,

@@ -612,8 +612,9 @@ function marketsReviewSnapshotRefreshDue_(properties, now) {
       published.end !== Utilities.formatDate(now, MARKETS_CONFIG.timeZone, 'yyyy-MM-dd')) return true;
   if (published.audienceVersion !== MARKETS_REVIEW_AUDIENCE_VERSION ||
       marketsReviewRequestedScopes_(properties, now.getTime()).some(entry => !published.requestedScopes?.includes(entry.id))) return true;
-  const catalog = readAppCatalog_(openMarketsSpreadsheet_());
-  return JSON.stringify(published.versions) !== JSON.stringify(marketsReviewVersions_(properties.getProperties(), marketsReviewCatalogVersion_(catalog)));
+  const ss = openMarketsSpreadsheet_(), catalog = readAppCatalog_(ss);
+  return JSON.stringify(published.versions) !== JSON.stringify(marketsReviewVersions_(properties.getProperties(),
+    marketsReviewCatalogVersion_(catalog), undefined, marketsAudienceCatalog_(ss).revision));
 }
 
 function marketsReviewAuxiliaryTasks_(properties, settings, now, priority, capturesPending = false, recoverySlot = false) {
