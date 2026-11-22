@@ -729,20 +729,24 @@ test("alert alternatives use the saved recipient locale for immediate alerts and
     const en = context.marketsNewsletterLanguageFor_("english@bbva.com");
     assert.equal(context.marketsNewsletterLanguageFor_("spain@bbva.com"), "es");
     assert.equal(context.marketsNewsletterLanguageFor_("unknown@bbva.com"), "es");
+    const unsubscribe = new URL("https://example.com/unsubscribe");
     for (const [lang, label, daily, changes] of [
       [tr, "Puan uyarıları", "Günlük puan düşüşü", "Yıl başından bu yana puan düşüşü"],
       [en, "Rating alerts", "Daily rating drop", "Rating drop since the start of the year"]
     ]) {
       const message = context.renderLocalizedMarketsAlert_(events, "reader@bbva.com", {
-        unsubscribe: "https://example.com/unsubscribe"
+        unsubscribe: unsubscribe.href
       }, lang);
       assert.ok(message.subject.includes(label));
       assert.ok(message.html.includes('<html lang="' + lang + '"'));
+      const htmlLinks = Array.from(message.html.matchAll(/href="([^"]+)"/g), match => new URL(match[1]).href);
+      const plainLinks = Array.from(message.plain.matchAll(/https:\/\/[^\s]+/g), match => new URL(match[0]).href);
+      assert.ok(htmlLinks.some(link => link === unsubscribe.href));
+      assert.ok(plainLinks.some(link => link === unsubscribe.href));
       for (const body of [message.html, message.plain]) {
         assert.ok(body.includes(daily));
         assert.ok(body.includes(changes));
         assert.ok(body.includes("BBVA Empresas"));
-        assert.ok(body.includes("https://example.com/unsubscribe"));
         assert.doesNotMatch(body, /Alerta por cambios|Umbral configurado/);
       }
     }
