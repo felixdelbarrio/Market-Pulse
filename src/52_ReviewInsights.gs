@@ -1328,7 +1328,7 @@ function readMarketsReviewCache_(ss, operation, filters, window, builder, timing
       if (!entry || !coversWindow) {
         diagnostic.reason = !shard ? 'shard-unavailable' : !entry ? 'scope-unavailable' : 'scope-coverage';
         const requestId = marketsReviewRequestedScope_(operation, filters, window);
-        repair ||= !isPrevious && (!shard || !requestId || snapshot.requestedScopes?.includes(requestId) === true);
+        if (!isPrevious && (!shard || !requestId || snapshot.requestedScopes?.includes(requestId))) repair = true;
         return undefined;
       }
       source = 'snapshot';
