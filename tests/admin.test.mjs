@@ -425,3 +425,21 @@ test("overdue snapshot recovery has one slot during capture and respects publica
   state.set("MARKETS_REVIEW_AUX_RETRY:publish", JSON.stringify({ next: now.getTime() + 60000 }));
   assert.deepEqual(eligible(true), []);
 });
+
+test("local functional aliases are read-only while the shared classifier is active", () => {
+  const local = vm.createContext({
+    MARKETS_CONFIG: {}, MARKETS_REVIEW_RULES: { "03.13": [["transferencia internacional"]] },
+    marketsBusinessAliases_: () => ({ "03.13": ["pago internacional"] }),
+    PropertiesService: { getScriptProperties: () => ({}) },
+    LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock() {} }) },
+    marketsFunctionalEngine_: () => ({ engine: "EDCCatalogClassifier" })
+  });
+  vm.runInContext(fs.readFileSync(new URL("../src/58_Admin.gs", import.meta.url), "utf8"), local);
+  local.requireMarketsAdministrator_ = () => ({ ss: {} });
+  assert.equal(local.getMarketsBusinessCatalog("aliases").edit, "");
+  assert.throws(() => local.saveMarketsBusinessCatalogEntry({
+    section: "aliases", key: "03.13", value: "transferencia urgente", expected: "pago internacional"
+  }), /modo de consulta/);
+  local.marketsFunctionalEngine_ = () => null;
+  assert.equal(local.getMarketsBusinessCatalog("aliases").edit, "aliases");
+});

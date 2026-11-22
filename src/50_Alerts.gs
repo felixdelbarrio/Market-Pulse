@@ -618,13 +618,15 @@ function sendAlertEmails_(events, ss, onProgress) {
 
 function marketsAlertEmailMessage_(recipient, events, inlineImages, sender) {
   const normalizedRecipient = normalizeMarketsAlertEmail_(recipient);
-  const subject = marketsAlertEmailSubject_(events);
+  const language = marketsNewsletterLanguageFor_(normalizedRecipient);
   const token = Utilities.getUuid().replace(/-/g, '');
   let feedback = null;
   try { feedback = marketsAlertFeedbackLinks_(normalizedRecipient, token); }
   catch (error) { console.warn('No se pudo preparar la valoración de alertas. ' + error.message); }
-  const plainText = renderMarketsAlertPlainText_(events, normalizedRecipient, feedback?.open);
-  const html = renderMarketsAlertEmail_(events, normalizedRecipient, feedback);
+  const localized = language === 'es' ? null : renderLocalizedMarketsAlert_(events, normalizedRecipient, feedback, language);
+  const subject = localized?.subject || marketsAlertEmailSubject_(events);
+  const plainText = localized?.plain || renderMarketsAlertPlainText_(events, normalizedRecipient, feedback?.open);
+  const html = localized?.html || renderMarketsAlertEmail_(events, normalizedRecipient, feedback);
   const image = inlineImages && inlineImages.bbvaLogo;
   if (!image || typeof image.getBytes !== 'function') {
     throw new Error('No se ha podido incorporar el logotipo oficial de BBVA al correo.');
@@ -758,6 +760,93 @@ function marketsAlertEmailSubject_(events) {
   if (marketsAlertIsReviewShare_(events)) return prefix + 'Alertas de reseñas';
   return prefix + events.length + ' cambio' +
     (events.length === 1 ? '' : 's') + ' en ratings ';
+}
+
+/** Render both MIME alternatives from the same recipient-specific alert copy. */
+function renderLocalizedMarketsAlert_(events, recipient, feedback, language) {
+  const copy = {
+    en: {
+      title: 'Rating alerts', shareTitle: 'Review alerts', test: 'TEST', preview: 'Preview using the latest available data and saved preferences.',
+      below: 'Below threshold', quiet: 'No thresholds reached', critical: 'Critical', warning: 'Warning', positive: 'Positive',
+      daily: 'Daily rating drop', mtd: 'Rating drop from the 15th to the 15th', ytd: 'Rating drop since the start of the year',
+      crossover: 'Competitive ranking change', share: 'Share of one- and two-star reviews',
+      before: 'Previous rating', current: 'Current rating', movement: 'Change', threshold: 'Threshold',
+      competitor: 'Competitor rating', data: 'Data date', open: 'Open EDC Market Pulse', manage: 'Manage your alerts',
+      privacy: 'This email contains signals configured for your account.', unsubscribe: 'Unsubscribe'
+    },
+    tr: {
+      title: 'Puan uyarıları', shareTitle: 'Yorum uyarıları', test: 'TEST', preview: 'Son mevcut veriler ve kayıtlı tercihlerle hazırlanan önizleme.',
+      below: 'Eşik altında', quiet: 'Hiçbir eşik aşılmadı', critical: 'Kritik', warning: 'Uyarı', positive: 'Olumlu',
+      daily: 'Günlük puan düşüşü', mtd: 'Ayın 15’inden sonraki ayın 15’ine puan düşüşü', ytd: 'Yıl başından bu yana puan düşüşü',
+      crossover: 'Rekabet sıralamasında değişim', share: 'Bir ve iki yıldızlı yorumların oranı',
+      before: 'Önceki puan', current: 'Güncel puan', movement: 'Değişim', threshold: 'Eşik',
+      competitor: 'Rakip puanı', data: 'Veri tarihi', open: 'EDC Market Pulse’u aç', manage: 'Uyarılarını yönet',
+      privacy: 'Bu e-posta, hesabın için yapılandırılan uyarıları içerir.', unsubscribe: 'Abonelikten çık'
+    }
+  }[language];
+  const locale = language === 'tr' ? 'tr-TR' : 'en-GB';
+  const number = value => {
+    const formatted = Number(value).toFixed(2);
+    return language === 'tr' ? formatted.replace('.', ',') : formatted;
+  };
+  const esc = escapeMarketsAlertHtml_;
+  const regions = typeof Intl !== 'undefined' && typeof Intl.DisplayNames === 'function'
+    ? new Intl.DisplayNames([locale], { type: 'region' }) : null;
+  const isTest = marketsAlertIsTest_(events);
+  const title = marketsAlertIsReviewShare_(events) ? copy.shareTitle : copy.title;
+  const loginUrl = marketsWebAppLoginUrl_(feedback?.open ? '' : recipient, feedback?.open);
+  const manageUrl = marketsWebAppUrl_() + '?view=alerts';
+  const date = value => {
+    const parsed = value && new Date(value);
+    return parsed && Number.isFinite(parsed.getTime())
+      ? Utilities.formatDate(parsed, MARKETS_CONFIG.timeZone, language === 'tr' ? 'dd.MM.yyyy' : 'dd/MM/yyyy') : '';
+  };
+  const ruleKeys = { RATING_DROP_DAILY: 'daily', RATING_DROP_MTD: 'mtd', RATING_DROP_YTD: 'ytd',
+    COMPETITIVE_CROSSOVER: 'crossover', REVIEW_LOW_SHARE: 'share' };
+  const cards = events.map(event => {
+    const severity = { CRITICAL: 'critical', WARNING: 'warning', POSITIVE: 'positive' }[event.severity];
+    const status = event.type === 'TEST_SNAPSHOT' ? copy.quiet : event.isBelowThresholdPreview ? copy.below : copy[severity] || '';
+    const geography = event.countryCode && /^[A-Z]{2}$/.test(event.countryCode) ?
+      regions?.of(event.countryCode) || event.countryCode : event.country;
+    const market = [geography, event.platform, event.appName].filter(Boolean).join(' · ');
+    const metrics = [];
+    const metric = (label, value, suffix = '') => {
+      if (value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value))) {
+        metrics.push([label, number(value) + suffix]);
+      }
+    };
+    if (event.type === 'COMPETITIVE_CROSSOVER') {
+      metric('BBVA', event.bbvaRating);
+      metric(event.competitorName || copy.competitor, event.competitorRating);
+    } else {
+      metric(copy.before, event.baselineRating);
+      metric(copy.current, event.currentRating);
+    }
+    metric(copy.movement, event.metricValue, event.type === 'REVIEW_LOW_SHARE' ? '%' : '');
+    metric(copy.threshold, event.threshold, event.type === 'REVIEW_LOW_SHARE' ? '%' : '');
+    const observed = date(event.currentDate || event.referenceDate);
+    if (observed) metrics.push([copy.data, observed]);
+    return { label: [status, copy[ruleKeys[event.type]]].filter(Boolean).join(' · ') || title, market, metrics };
+  });
+  const preheader = isTest ? copy.preview : copy.privacy;
+  const subject = (isTest ? '[' + copy.test + '] ' : '') + '[bIA] 🚀[EDC Market Pulse] · ' + title + ' · ' + events.length;
+  const plain = ['EDC MARKET PULSE', title, preheader, ...cards.map(card =>
+    [card.label, card.market, ...card.metrics.map(([label, value]) => label + ': ' + value)].filter(Boolean).join('\n')),
+    copy.open + ': ' + loginUrl, copy.manage + ': ' + manageUrl,
+    feedback?.unsubscribe ? copy.unsubscribe + ': ' + feedback.unsubscribe : ''].filter(Boolean).join('\n\n');
+  const body = cards.map(card =>
+    '<tr><td style="padding:10px 24px"><div style="padding:16px;border-radius:8px;background:#EAFBFA;color:#070E46">' +
+    '<strong>' + esc(card.label) + '</strong><p>' + esc(card.market) + '</p>' +
+    card.metrics.map(([label, value]) => '<div>' + esc(label) + ': <b>' + esc(value) + '</b></div>').join('') +
+    '</div></td></tr>').join('');
+  const html = protectMarketsEmailColors_(marketsLightEmailDocument_(language) +
+    '<table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td align="center" style="padding:24px 12px">' +
+    '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;background:#FFFFFF;color:#070E46">' +
+    '<tr><td bgcolor="#001391" style="padding:24px;color:#FFFFFF"><img src="cid:bbvaLogo" width="156" alt="BBVA">' +
+    '<h1>' + esc(title) + '</h1><p>' + esc(preheader) + '</p></td></tr>' + body +
+    '<tr><td style="padding:18px 24px;text-align:center"><a href="' + esc(loginUrl) + '">' + esc(copy.open) + '</a>' +
+    renderMarketsEmailFooter_(feedback, language) + '</td></tr></table></td></tr></table></body></html>');
+  return { subject, plain, html };
 }
 
 function renderMarketsAlertPlainText_(events, recipient, destination) {

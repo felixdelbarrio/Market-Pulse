@@ -148,14 +148,25 @@ function collectMarketsReviews_(limit = Infinity) {
     const start = Math.max(0, apps.findIndex(app => app.appKey === cursor));
     const deadline = Date.now() + 240000;
     let added = 0, updated = 0, failures = 0, processed = 0;
+    const retryPrefix = 'MARKETS_IOS_REVIEW_RETRY|';
+    const scheduled = new Map(apps.map(app => [app.appKey,
+      JSON.parse(properties.getProperty(retryPrefix + app.appKey) || 'null')]));
+    const priority = cursorPage === 1 && limit > 0 ? apps.filter(app => {
+      const retry = scheduled.get(app.appKey);
+      return app !== apps[start] && retry?.page > 1 && retry.after <= Date.now();
+    }).sort((a, b) => scheduled.get(a.appKey).after - scheduled.get(b.appKey).after)[0] : null;
+    let priorityPending = Boolean(priority);
     while (processed < Math.min(apps.length, limit) && Date.now() < deadline) {
-      const app = apps[(start + processed) % apps.length];
-      const retryKey = 'MARKETS_IOS_REVIEW_RETRY|' + app.appKey;
-      const retry = JSON.parse(properties.getProperty(retryKey) || 'null');
+      const bonus = priorityPending;
+      priorityPending = false;
+      const app = bonus ? priority : apps[(start + processed) % apps.length];
+      const retryKey = retryPrefix + app.appKey;
+      const retry = scheduled.get(app.appKey);
       let page = retry?.page || (app.appKey === cursor ? cursorPage : 1);
       try {
         for (; page <= 10 && !(retry?.after > Date.now()); page++) {
           if (Date.now() >= deadline) {
+            if (bonus) break;
             if (retry) properties.setProperty(retryKey, JSON.stringify({ ...retry, page }));
             properties.setProperty(cursorKey, JSON.stringify([app.appKey, page]));
             const summary = { added, updated, failures, processed, eligible: apps.length, deferred: true };
@@ -167,15 +178,26 @@ function collectMarketsReviews_(limit = Infinity) {
           storeMarketsIosReviews_(sheet, properties, known, result.rows, summary, width);
           added += summary.added;
           updated += summary.updated;
+          if (bonus) {
+            const next = result.more && page < 10 ? { ...retry, page: page + 1 } : null;
+            if (next) properties.setProperty(retryKey, JSON.stringify(next));
+            else properties.deleteProperty(retryKey);
+            // Regular rotation will count the listing on its own turn.
+            scheduled.set(app.appKey, next || { after: Infinity });
+            break;
+          }
           if (!result.more) break;
         }
-        if (retry && !(retry.after > Date.now())) properties.deleteProperty(retryKey);
+        if (!bonus && retry && !(retry.after > Date.now())) properties.deleteProperty(retryKey);
       } catch (error) {
         const attempts = Math.min((retry?.attempts || 0) + 1, 6);
-        properties.setProperty(retryKey, JSON.stringify({ page, attempts, after: Date.now() + 60000 * 2 ** attempts }));
+        const next = { page, attempts, after: Date.now() + 60000 * 2 ** attempts };
+        properties.setProperty(retryKey, JSON.stringify(next));
+        scheduled.set(app.appKey, next);
         failures++;
         console.warn(app.appKey + ': ' + error.message);
       }
+      if (bonus) continue;
       processed++;
       properties.setProperty(cursorKey, JSON.stringify([apps[(start + processed) % apps.length].appKey, 1]));
     }

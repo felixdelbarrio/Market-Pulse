@@ -711,3 +711,42 @@ test("alert envelopes materialize the light palette for operational and preview 
     assert.match(html, /cid:feedbackPositive/);
   }
 });
+
+test("alert alternatives use the saved recipient locale for immediate alerts and period summaries", () => {
+  const stored = new Map([
+    [context.marketsNewsletterLanguageKey_("turkey@bbva.com"), "tr-TR"],
+    [context.marketsNewsletterLanguageKey_("english@bbva.com"), "en"],
+    [context.marketsNewsletterLanguageKey_("spain@bbva.com"), "es"]
+  ]);
+  const previous = context.PropertiesService;
+  context.PropertiesService = { getScriptProperties: () => ({ getProperty: key => stored.get(key) }) };
+  try {
+    const events = ["RATING_DROP_DAILY", "RATING_DROP_MTD", "RATING_DROP_YTD"].map(type => ({
+      type, severity: "WARNING", countryCode: "TR", platform: "iOS", appName: "BBVA Empresas",
+      metricValue: 0.25, threshold: 0.20, currentDate: "2026-11-22"
+    }));
+    const tr = context.marketsNewsletterLanguageFor_("turkey@bbva.com");
+    const en = context.marketsNewsletterLanguageFor_("english@bbva.com");
+    assert.equal(context.marketsNewsletterLanguageFor_("spain@bbva.com"), "es");
+    assert.equal(context.marketsNewsletterLanguageFor_("unknown@bbva.com"), "es");
+    for (const [lang, label, daily, changes] of [
+      [tr, "Puan uyarıları", "Günlük puan düşüşü", "Yıl başından bu yana puan düşüşü"],
+      [en, "Rating alerts", "Daily rating drop", "Rating drop since the start of the year"]
+    ]) {
+      const message = context.renderLocalizedMarketsAlert_(events, "reader@bbva.com", {
+        unsubscribe: "https://example.com/unsubscribe"
+      }, lang);
+      assert.ok(message.subject.includes(label));
+      assert.ok(message.html.includes('<html lang="' + lang + '"'));
+      for (const body of [message.html, message.plain]) {
+        assert.ok(body.includes(daily));
+        assert.ok(body.includes(changes));
+        assert.ok(body.includes("BBVA Empresas"));
+        assert.ok(body.includes("https://example.com/unsubscribe"));
+        assert.doesNotMatch(body, /Alerta por cambios|Umbral configurado/);
+      }
+    }
+  } finally {
+    context.PropertiesService = previous;
+  }
+});

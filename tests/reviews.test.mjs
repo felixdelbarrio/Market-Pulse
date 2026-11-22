@@ -88,9 +88,13 @@ test("App Store retries the failed page without blocking the next listing", () =
   const retry = JSON.parse(props.get(retryKey));
   assert.equal(retry.page,3);
   props.set(retryKey,JSON.stringify({...retry,after:0}));
+  props.set("MARKETS_REVIEWS_CURSOR", JSON.stringify(["456", 1]));
   fail = false;
-  assert.equal(runtime.collectMarketsReviews_().failures,0);
+  const resumed = runtime.collectMarketsReviews_(1);
+  assert.equal(resumed.failures,0);
+  assert.equal(resumed.processed,1);
   assert.deepEqual(calls.slice(-2),["123:3","456:1"]);
+  assert.deepEqual(JSON.parse(props.get("MARKETS_REVIEWS_CURSOR")), ["123", 1]);
   assert.equal(props.has(retryKey),false);
 });
 
