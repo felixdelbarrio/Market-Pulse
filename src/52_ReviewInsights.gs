@@ -289,6 +289,8 @@ function classifyNormalizedReviewEvidence_(normalized, index) {
 }
 
 // Evidence is evaluated in the original text. An app name or storefront is not evidence.
+// Mantener sincronizada con la versión numerada del manifiesto.
+const MARKETS_REVIEW_LIBRARY_VERSION = '5';
 const MARKETS_REVIEW_AUDIENCE_VERSION = 2;
 const MARKETS_REVIEW_AUDIENCE_RULES = {
   businessUse: /\b(?:ticari faaliyet goster\w*|(?:operamos|opero) como empresa|(?:soy|somos) (?:autonom[oa]s?|comerciantes?|una empresa)|remesa salarial|(?:pago|pagos|remesas|transferencias) masiv[oa]s|(?:firmas?|permisos?) (?:corporativas?|mancomunadas?|de apoderados)|(?:emision|cobro) (?:masiv[oa] )?de recibos|(?:cartas? de credito|financiacion (?:para pymes|comercial)|conciliacion bancaria|gestion de tesoreria|declaracion (?:de iva|de aduanas)|pagos? (?:aduaneros?|de comercio exterior)|domiciliaciones? empresariales?|cuentas? de comercio exterior)|(?:mi|nuestro|nuestra|uso|utilizo|integro|no puedo (?:usar|conectar|subir|cargar)) (?:el |la |los |las )?(?:tpv|pos|datafono|h2h|erp|api(?: bancaria)?|ficheros? (?:bancarios?|de remesas)|confirming|factoring)|(?:sanal posum|pos cihazim|kurumsal kartim)\w*)\b/u,
@@ -714,9 +716,9 @@ function marketsReviewSnapshotScope_(operation, filters, window) {
 function marketsReviewRequestedScope_(operation, filters, window) {
   if (!['analytics', 'nps'].includes(operation) || !(filters.year || filters.analysisMonth) ||
       filters.year && filters.analysisMonth) return '';
-  const allowed = new Set(['country', 'platform', 'year', 'analysisMonth', 'entity', 'segment', 'audience', 'inferGeography', 'page']);
+  const allowed = new Set(['country', 'platform', 'year', 'analysisMonth', 'entity', 'segment', 'audience', 'inferGeography', 'page', 'strictFreshness']);
   if (Object.keys(filters).some(key => !allowed.has(key) && filters[key])) return '';
-  const selected = Object.keys(filters).filter(key => filters[key] !== undefined && filters[key] !== '' && key !== 'page')
+  const selected = Object.keys(filters).filter(key => filters[key] !== undefined && filters[key] !== '' && key !== 'page' && key !== 'strictFreshness')
     .sort().map(key => [key, filters[key]]);
   return [operation, filters.country, 'requested', marketsReviewDigest_([selected, window.start, window.end, window.recent])].join(':');
 }
@@ -729,7 +731,8 @@ function marketsReviewRequestedScopes_(properties, now = Date.now()) {
 }
 
 /** Keep large review payloads outside ScriptProperties. Only their manifest is published there. */
-function writeMarketsReviewSnapshot_(properties, manifest, values, isCurrent) {
+function writeMarketsReviewSnapshot_(properties, manifest, values, isCurrent,
+    previousPointer = properties.getProperty(MARKETS_REVIEW_SNAPSHOT_POINTER)) {
   const files = {};
   const shards = new Map();
   for (const [scope, value] of Object.entries(values)) {
@@ -737,32 +740,51 @@ function writeMarketsReviewSnapshot_(properties, manifest, values, isCurrent) {
     if (!shards.has(country)) shards.set(country, {});
     shards.get(country)[scope] = value;
   }
-  const previousPointer = properties.getProperty(MARKETS_REVIEW_SNAPSHOT_POINTER);
-  let published = false;
+  let published = false, serializedCharacters = 0, uploadMs = 0, readbackMs = 0;
   const lock = LockService.getUserLock();
   let locked = false;
   try {
     for (const [country, shard] of shards) {
-      const blob = Utilities.newBlob(JSON.stringify(shard), 'application/json');
+      const text = JSON.stringify(shard);
+      serializedCharacters += text.length;
+      const blob = Utilities.newBlob(text, 'application/json');
       const filename = 'market-pulse-review-snapshot-' + manifest.end + '-' + country + '.json.gz';
+      const uploadStarted = Date.now();
       files[country] = DriveApp.createFile(Utilities.gzip(blob, filename)).getId();
+      uploadMs += Date.now() - uploadStarted;
+      const readbackStarted = Date.now();
       const readback = readMarketsReviewSnapshotShard_({ files }, country);
-      if (!readback || JSON.stringify(readback) !== JSON.stringify(shard)) {
+      const verified = readback && JSON.stringify(readback) === text;
+      readbackMs += Date.now() - readbackStarted;
+      if (!verified) {
         throw new Error('No se pudo validar el shard publicado: ' + country);
       }
     }
     locked = lock.tryLock(1000);
-    if (!locked) return false;
-    if (!isCurrent()) return false;
+    if (!locked) {
+      console.log(JSON.stringify({ operation: 'review-publish', reason: 'lock' }));
+      return false;
+    }
+    if (!isCurrent()) {
+      console.log(JSON.stringify({ operation: 'review-publish', reason: 'versions-before-commit' }));
+      return false;
+    }
     // CAS del puntero bajo el mismo lock usado por las escrituras de reseñas.
-    if (properties.getProperty(MARKETS_REVIEW_SNAPSHOT_POINTER) !== previousPointer) return false;
+    if (properties.getProperty(MARKETS_REVIEW_SNAPSHOT_POINTER) !== previousPointer) {
+      console.log(JSON.stringify({ operation: 'review-publish', reason: 'pointer-cas' }));
+      return false;
+    }
     const publishedAt = new Date().toISOString();
-    if (previousPointer) properties.setProperty('MARKETS_REVIEW_SNAPSHOT_PREVIOUS', previousPointer);
+    if (previousPointer && !properties.getProperty('MARKETS_REVIEW_SNAPSHOT_REPAIR')) {
+      properties.setProperty('MARKETS_REVIEW_SNAPSHOT_PREVIOUS', previousPointer);
+    }
     properties.setProperty(MARKETS_REVIEW_SNAPSHOT_POINTER, JSON.stringify({ ...manifest, files, publishedAt }));
     published = true;
     return true;
   } finally {
     if (locked) lock.releaseLock();
+    console.log(JSON.stringify({ operation: 'review-publish-drive', published, shards: shards.size,
+      serializedCharacters, uploadMs, readbackMs }));
     if (published) {
       try { cleanupMarketsReviewSnapshots_(properties); }
       catch (error) { console.warn('Limpieza diferida de snapshots: ' + errorToString_(error)); }
@@ -782,9 +804,11 @@ function cleanupMarketsReviewSnapshots_(properties, now = Date.now()) {
     const manifest = safeJsonParse_(properties.getProperty(key) || 'null');
     for (const id of Object.values(manifest?.files || {})) keep.add(id);
   }
-  const migration = safeJsonParse_(properties.getProperty('MARKETS_FUNCTIONAL_MIGRATION') || 'null');
-  const rollback = safeJsonParse_(migration?.previousSnapshot || 'null');
-  for (const id of Object.values(rollback?.files || {})) keep.add(id);
+  for (const key of ['MARKETS_FUNCTIONAL_MIGRATION', MARKETS_FUNCTIONAL_MIGRATION_PREVIOUS]) {
+    const migration = safeJsonParse_(properties.getProperty(key) || 'null');
+    const rollback = safeJsonParse_(migration?.previousSnapshot || 'null');
+    for (const id of Object.values(rollback?.files || {})) keep.add(id);
+  }
   const before = new Date(now - 86400000).toISOString();
   const files = DriveApp.searchFiles("trashed = false and title contains 'market-pulse-review-snapshot-' and createdDate < '" + before + "'");
   let visited = 0, removed = 0;
@@ -820,7 +844,7 @@ function publishMarketsReviewSnapshot() {
   return result;
 }
 
-function publishMarketsReviewSnapshot_() {
+function publishMarketsReviewSnapshot_(force = false) {
   const ss = openMarketsSpreadsheet_();
   const properties = PropertiesService.getScriptProperties();
   const catalog = readAppCatalog_(ss), catalogVersion = marketsReviewCatalogVersion_(catalog);
@@ -828,15 +852,28 @@ function publishMarketsReviewSnapshot_() {
   const migration = safeJsonParse_(current.MARKETS_FUNCTIONAL_MIGRATION || 'null');
   const activeEngine = marketsFunctionalEngine_(current);
   const pending = migration?.ready && !migration.complete && activeEngine?.sheet !== migration.sheet ? migration : null;
-  if (pending && pending.sourceGeneration !== (current.MARKETS_REVIEW_SOURCE_GENERATION || '')) return { complete: false, published: 0 };
-  const engine = pending ? { engine: 'EDCCatalogClassifier', libraryVersion: '1', pins: pending.pins, sheet: pending.sheet } : activeEngine;
+  const engine = pending ? { engine: 'EDCCatalogClassifier', libraryVersion: pending.libraryVersion || '1', pins: pending.pins, sheet: pending.sheet,
+    ...(pending.indexSpreadsheetId ? { indexSpreadsheetId: pending.indexSpreadsheetId } : {}) } : activeEngine;
   const inputVersions = marketsReviewVersions_(current, catalogVersion);
   const versions = marketsReviewVersions_(current, catalogVersion, engine);
   const npsVersions = marketsReviewNpsVersions_(current, catalogVersion);
+  const stillCurrent = (currentCatalog = catalogVersion) => {
+    const latest = properties.getProperties();
+    return JSON.stringify(marketsReviewVersions_(latest, currentCatalog)) === JSON.stringify(inputVersions) &&
+      JSON.stringify(marketsReviewNpsVersions_(latest, currentCatalog)) === JSON.stringify(npsVersions);
+  };
+  const deferred = reason => {
+    console.log(JSON.stringify({ operation: 'review-publish', reason }));
+    return { complete: false, published: 0 };
+  };
+  if (engine?.libraryVersion && engine.libraryVersion !== MARKETS_REVIEW_LIBRARY_VERSION) return deferred('migration-library');
+  if (pending && pending.sourceGeneration !== (current.MARKETS_REVIEW_SOURCE_GENERATION || '')) return deferred('migration-source');
   const requestedScopes = marketsReviewRequestedScopes_(current);
   const { end } = marketsReviewWindow_();
-  const previous = safeJsonParse_(properties.getProperty(MARKETS_REVIEW_SNAPSHOT_POINTER) || 'null');
-  if (previous?.schema === MARKETS_REVIEW_SNAPSHOT_SCHEMA && previous.hasAnnualNps && previous.hasNpsAttribution && previous.hasAllSentimentGaps && previous.hasReviewRanking && previous.hasFeaturedReviews && previous.audienceVersion === MARKETS_REVIEW_AUDIENCE_VERSION && previous.end === end && JSON.stringify(previous.versions) === JSON.stringify(versions) &&
+  const previousPointer = current[MARKETS_REVIEW_SNAPSHOT_POINTER] ?? null;
+  const previous = safeJsonParse_(previousPointer || 'null');
+  if (!force && !current.MARKETS_REVIEW_SNAPSHOT_REPAIR && previous?.schema === MARKETS_REVIEW_SNAPSHOT_SCHEMA && previous.hasAnnualNps && previous.hasNpsAttribution && previous.hasAllSentimentGaps && previous.hasReviewRanking && previous.hasFeaturedReviews && previous.audienceVersion === MARKETS_REVIEW_AUDIENCE_VERSION && previous.end === end && JSON.stringify(previous.versions) === JSON.stringify(versions) &&
+      JSON.stringify(previous.npsVersions) === JSON.stringify(npsVersions) &&
       requestedScopes.every(entry => previous.requestedScopes?.includes(entry.id))) {
     return { complete: true, published: previous.count };
   }
@@ -852,9 +889,11 @@ function publishMarketsReviewSnapshot_() {
     ...requestedScopes.flatMap(entry => [entry.window.start, (Number(entry.window.end.slice(0, 4)) - 1) + '-01-01'])].sort()[0];
   const classification = pending ? { library: engine, knownBlocks: marketsReviewClassification_(ss).knownBlocks,
     version: marketsReviewDigest_([MARKETS_REVIEW_CLASSIFIER_SCHEMA, MARKETS_REVIEW_AUDIENCE_VERSION, engine.pins]) } : null;
+  const queryStarted = Date.now();
   const allRows = queryMarketsReviews_(ss, { country: 'ALL', platform: 'ALL', includeAudience: true,
-    ...(pending ? { classificationOverride: classification, indexSheetName: engine.sheet } : {}) },
+    ...(pending ? { classificationOverride: classification, migrationIndex: engine } : {}) },
     { ...analyticsWindow, start: earliest }, true, catalog);
+  const queryMs = Date.now() - queryStarted;
   const rows = allRows.filter(row => row.date >= analyticsWindow.start);
   const byCountry = new Map(), commentRows = new Map(), counts = Object.create(null), reassigned = [];
   for (const row of allRows) {
@@ -901,9 +940,7 @@ function publishMarketsReviewSnapshot_() {
   for (const period of [analysisMonth, previousMonth, 'history']) {
     values['featured:ALL:' + period] = MARKETS_WEB.countryCodes.flatMap(country => values['featured:' + country + ':' + period]);
   }
-  if (JSON.stringify(marketsReviewVersions_(properties.getProperties(), catalogVersion)) !== JSON.stringify(inputVersions)) {
-    return { complete: false, published: 0 };
-  }
+  if (!stillCurrent()) return deferred('versions-during-build');
 
   // Materializa los scopes esenciales en Drive. L1 se llena al leer el snapshot;
   // su precalentamiento nunca debe retrasar ni cancelar la publicación.
@@ -943,9 +980,7 @@ function publishMarketsReviewSnapshot_() {
       }
     }
   }
-  if (JSON.stringify(marketsReviewVersions_(properties.getProperties(), catalogVersion)) !== JSON.stringify(inputVersions)) {
-    return { complete: false, published: 0 };
-  }
+  if (!stillCurrent()) return deferred('versions-during-build');
   for (const entry of requestedScopes) {
     if (Object.hasOwn(values, entry.scope)) continue;
     const filters = entry.filters, window = entry.window;
@@ -963,10 +998,15 @@ function publishMarketsReviewSnapshot_() {
     }
   }
   const count = Object.keys(values).length;
+  const buildMs = Date.now() - queryStarted - queryMs;
+  const publishStarted = Date.now();
   const complete = writeMarketsReviewSnapshot_(properties, { end, versions, npsVersions, count, ...(engine ? { engine } : {}),
     audienceVersion: MARKETS_REVIEW_AUDIENCE_VERSION, requestedScopes: requestedScopes.map(entry => entry.id),
     hasReviewRanking: true, hasFeaturedReviews: true, hasAnnualNps: true, hasNpsAttribution: true, hasAllSentimentGaps: true, schema: MARKETS_REVIEW_SNAPSHOT_SCHEMA }, values,
-    () => JSON.stringify(marketsReviewVersions_(properties.getProperties(), marketsReviewCatalogVersion_(readAppCatalog_(ss)))) === JSON.stringify(inputVersions));
+    () => end === marketsReviewWindow_().end && stillCurrent(marketsReviewCatalogVersion_(readAppCatalog_(ss))), previousPointer);
+  if (complete && current.MARKETS_REVIEW_SNAPSHOT_REPAIR) properties.deleteProperty('MARKETS_REVIEW_SNAPSHOT_REPAIR');
+  console.log(JSON.stringify({ operation: 'review-publish', complete, count, end, queryMs, buildMs,
+    publishMs: Date.now() - publishStarted }));
   return { complete, published: complete ? count : 0 };
 }
 
@@ -1054,6 +1094,7 @@ function normalizeMarketsReviewFilters_(filters) {
   if (filters.audience && filters.audience !== 'ALL') normalized.audience = 'BEI';
   if (filters.rating) normalized.rating = String(filters.rating);
   if (filters.sort === 'HELPFUL') normalized.sort = 'HELPFUL';
+  if (filters.strictFreshness === true) normalized.strictFreshness = true;
   if (['es', 'en', 'tr'].includes(filters.language)) normalized.language = filters.language;
   return normalized;
 }
@@ -1078,9 +1119,9 @@ function paginateMarketsReviews_(rows, filters, window) {
 function getMarketsReviewNps(filters, snapshotOnly = false) {
   const started = Date.now();
   currentMarketsUserEmail_();
-  const { country, audience, inferGeography, year } = normalizeMarketsReviewFilters_(filters);
+  const { country, audience, inferGeography, year, strictFreshness } = normalizeMarketsReviewFilters_(filters);
   if (!year) throw new Error('Selecciona un año para consultar el NPS.');
-  const scope = { country, audience, inferGeography, year, platform: 'ALL' };
+  const scope = { country, audience, inferGeography, year, strictFreshness, platform: 'ALL' };
   const window = marketsReviewAnalyticsWindow_(scope, marketsReviewWindow_().end);
   const timing = {};
   if (window.end < window.start) return { monthly: [] };
@@ -1102,7 +1143,7 @@ function getMarketsReviewRanking(filters) {
   currentMarketsUserEmail_();
   const normalized = normalizeMarketsReviewFilters_(filters);
   const month = normalized.analysisMonth || marketsReviewWindow_().end.slice(0, 7);
-  const scope = { country: normalized.country, platform: 'ALL', analysisMonth: month };
+  const scope = { country: normalized.country, platform: 'ALL', analysisMonth: month, strictFreshness: normalized.strictFreshness };
   const window = marketsReviewAnalyticsWindow_(scope, marketsReviewWindow_().end), timing = {};
   const ss = openMarketsSpreadsheet_();
   const value = readMarketsReviewCache_(ss, 'ranking', scope, window, () => {
@@ -1259,29 +1300,63 @@ function readMarketsReviewCache_(ss, operation, filters, window, builder, timing
   const catalogVersion = marketsReviewCatalogVersion_(catalog);
   const isNps = operation === 'nps' || operation === 'ranking';
   const versions = isNps ? marketsReviewNpsVersions_(properties, catalogVersion) : marketsReviewVersions_(properties, catalogVersion);
-  const snapshot = safeJsonParse_(properties[MARKETS_REVIEW_SNAPSHOT_POINTER] || 'null');
   const snapshotScope = marketsReviewSnapshotScope_(operation, filters, window);
-  const state = snapshotScope && marketsReviewSnapshotState_(snapshot, operation, filters, window, versions, properties);
-  if (!snapshotOnly && state?.refreshDue) {
-    timing.refreshQueued = queueMarketsReviewSnapshotRefresh_();
+  const maxParts = operation === 'analytics' || operation === 'page' ? 6 : operation === 'nps' ? 2 : 1;
+  const attempts = [];
+  const log = () => {
+    timing.durationMs = Date.now() - started;
+    console.log(JSON.stringify({ operation: 'review-' + operation, ...timing, snapshotScope, attempts }));
+  };
+  let repair = false;
+  if (snapshotScope) for (const pointer of [MARKETS_REVIEW_SNAPSHOT_POINTER, 'MARKETS_REVIEW_SNAPSHOT_PREVIOUS']) {
+    const snapshot = safeJsonParse_(properties[pointer] || 'null');
+    const diagnostic = { pointer, end: snapshot?.end, publishedAt: snapshot?.publishedAt,
+      flags: snapshot && { annualNps: snapshot.hasAnnualNps, attribution: snapshot.hasNpsAttribution,
+        allSentimentGaps: snapshot.hasAllSentimentGaps, ranking: snapshot.hasReviewRanking },
+      shards: Object.keys(snapshot?.files || {}).length };
+    attempts.push(diagnostic);
+    const isPrevious = pointer !== MARKETS_REVIEW_SNAPSHOT_POINTER;
+    const state = marketsReviewSnapshotState_(snapshot, operation, filters, window, versions, properties, Date.now(), diagnostic, isPrevious);
+    if (!state) continue;
+    const key = marketsReviewCacheKey_(ss, operation, filters, window,
+      [isNps ? snapshot.npsVersions : snapshot.versions, snapshot.end, snapshot.publishedAt, snapshot.files?.[filters.country]]);
+    let source = 'L1';
+    const value = readMarketsWebCache_(key, () => {
+      const readStarted = Date.now();
+      const shard = readMarketsReviewSnapshotShard_(snapshot, filters.country);
+      diagnostic.driveMs = Date.now() - readStarted;
+      const entry = shard?.[snapshotScope];
+      const coversWindow = operation === 'nps'
+        ? Array.isArray(entry?.monthly) && entry.start <= window.start && entry.end >= window.end
+        : operation !== 'analytics' || (entry?.window?.start === window.start && entry?.window?.end === window.end);
+      if (!entry || !coversWindow) {
+        diagnostic.reason = !shard ? 'shard-unavailable' : !entry ? 'scope-unavailable' : 'scope-coverage';
+        const requestId = marketsReviewRequestedScope_(operation, filters, window);
+        if (!isPrevious && (!shard || !requestId || snapshot.requestedScopes?.includes(requestId))) repair = true;
+        return undefined;
+      }
+      source = 'snapshot';
+      return operation === 'nps' ? { monthly: entry.monthly.filter(point => point.month.startsWith(filters.year + '-')) } : entry;
+    }, maxParts, timing);
+    if (value === undefined) continue;
+    if (!snapshotOnly && (state.refreshDue || isPrevious)) {
+      timing.refreshQueued = isPrevious ? queueMarketsReviewSnapshotRefresh_(filters, window, operation, repair)
+        : queueMarketsReviewSnapshotRefresh_();
+    }
+    Object.assign(timing, state, { source: source === 'L1' ? 'cache' : 'snapshot',
+      cacheSource: source === 'L1' ? source : 'snapshot ' + state.freshness });
+    log();
+    return value;
   }
-  // Una expiración de L1 conserva la identidad de la publicación, aun durante
-  // una ingesta parcial. Los scopes nunca se comparten entre filtros distintos.
-  const key = marketsReviewCacheKey_(ss, operation, filters, window,
-    state ? [isNps ? snapshot.npsVersions : snapshot.versions, snapshot.end] : versions);
+  const key = marketsReviewCacheKey_(ss, operation, filters, window, versions);
   let source = 'cache';
   const value = readMarketsWebCache_(key, () => {
     source = 'sheet';
-    if (state) {
-        const value = readMarketsReviewSnapshotShard_(snapshot, filters.country)?.[snapshotScope];
-        if (value && (operation !== 'nps' || (value.start <= window.start && value.end >= window.end))) {
-          source = 'snapshot';
-          return operation === 'nps' ? { monthly: value.monthly.filter(point => point.month.startsWith(filters.year + '-')) } : value;
-        }
-    }
-    if (!snapshotOnly && ['analytics', 'nps', 'ranking'].includes(operation) && snapshotScope &&
+    if (!snapshotOnly && ['analytics', 'nps', 'ranking'].includes(operation) &&
         (ss.getSheetByName('MARKET_REVIEWS')?.getLastRow() || 0) > 251) {
-      timing.refreshQueued = queueMarketsReviewSnapshotRefresh_(filters, window, operation);
+      timing.refreshQueued = Boolean(snapshotScope && queueMarketsReviewSnapshotRefresh_(filters, window, operation, repair));
+      log();
+      if (!snapshotScope) throw new Error('La consulta de reseñas supera el límite interactivo. Reduce los filtros.');
       throw new Error('La vista de reseñas se está publicando. Reintenta en unos minutos.');
     }
     if (snapshotOnly) return undefined;
@@ -1293,22 +1368,15 @@ function readMarketsReviewCache_(ss, operation, filters, window, builder, timing
       throw new Error('Las reseñas cambiaron durante la consulta. Reintenta la selección.');
     }
     return built;
-  }, operation === 'analytics' || operation === 'page' ? 6 : operation === 'nps' ? 2 : 1, timing);
-  if (value === undefined) return null;
+  }, maxParts, timing);
   timing.source = timing.source || source;
-  if (state && source !== 'sheet') Object.assign(timing, state, {
-    cacheSource: source === 'cache' ? 'L1' : 'snapshot ' + state.freshness,
-    snapshot_generation: (isNps ? snapshot.npsVersions : snapshot.versions)?.[0],
-    generation_source: properties.MARKETS_REVIEW_SOURCE_GENERATION || '',
-    generation_derived: properties.MARKETS_REVIEWS_GENERATION || ''
-  });
-  timing.durationMs = Date.now() - started;
-  console.log(JSON.stringify({ operation: 'review-' + operation, ...timing, key }));
+  log();
+  if (value === undefined) return null;
   return value;
 }
 
 /** Solicitud deduplicada al supervisor existente: sin triggers ni trabajo en RPC. */
-function queueMarketsReviewSnapshotRefresh_(filters, window, operation = 'analytics') {
+function queueMarketsReviewSnapshotRefresh_(filters, window, operation = 'analytics', repair = false) {
   const properties = PropertiesService.getScriptProperties();
   const key = 'MARKETS_REVIEW_MANUAL:publish';
   const lock = LockService.getScriptLock();
@@ -1323,22 +1391,32 @@ function queueMarketsReviewSnapshotRefresh_(filters, window, operation = 'analyt
         properties.setProperty('MARKETS_REVIEW_REQUESTED_SCOPES', JSON.stringify(requests.slice(-8)));
       }
     }
+    if (repair) properties.setProperty('MARKETS_REVIEW_SNAPSHOT_REPAIR', '1');
     if (!properties.getProperty(key)) properties.setProperty(key, String(Date.now()));
     return true;
   } finally { lock.releaseLock(); }
 }
 
 /** La TTL física de L1 no determina la vigencia de una publicación. */
-function marketsReviewSnapshotState_(snapshot, operation, filters, window, versions, properties, now = Date.now()) {
+function marketsReviewSnapshotState_(snapshot, operation, filters, window, versions, properties, now = Date.now(), diagnostic = {}, isPrevious = false) {
+  const reject = reason => { diagnostic.reason = reason; return null; };
   const nps = operation === 'nps' || operation === 'ranking';
-  if (snapshot?.schema !== MARKETS_REVIEW_SNAPSHOT_SCHEMA ||
-      ((nps || filters.analysisMonth || filters.inferGeography === 'NO') && !snapshot.hasNpsAttribution)) return null;
-  if (filters.audience && snapshot.audienceVersion !== MARKETS_REVIEW_AUDIENCE_VERSION) return null;
+  if (!snapshot) return reject('missing');
+  if (snapshot.schema !== MARKETS_REVIEW_SNAPSHOT_SCHEMA) return reject('schema');
+  if ((nps || filters.analysisMonth || filters.inferGeography === 'NO') && !snapshot.hasNpsAttribution) return reject('attribution');
+  if (operation === 'nps' && !snapshot.hasAnnualNps) return reject('annual-nps');
+  if (operation === 'ranking' && !snapshot.hasReviewRanking) return reject('ranking');
+  if ((filters.audience || operation === 'analytics' || operation === 'nps') &&
+      snapshot.audienceVersion !== MARKETS_REVIEW_AUDIENCE_VERSION) return reject('audience');
+  if (operation === 'analytics' && filters.analysisMonth && !filters.segment &&
+      !snapshot.hasAllSentimentGaps) return reject('sentiment');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(snapshot.end) || snapshot.end < window.end) return reject('date-coverage');
   const published = nps ? snapshot.npsVersions : snapshot.versions;
-  if (!Array.isArray(published) || JSON.stringify(published.slice(1)) !== JSON.stringify(versions.slice(1))) return null;
+  if (!Array.isArray(published) || JSON.stringify(published.slice(1)) !== JSON.stringify(versions.slice(1))) return reject('versions');
   const today = marketsReviewWindow_().end;
   const sameVersion = JSON.stringify(published) === JSON.stringify(versions);
-  if (snapshot.end === today && (nps || filters.analysisMonth || snapshot.end === window.end) && sameVersion) {
+  const exactWindow = (operation === 'analytics' && (filters.analysisMonth || filters.year)) || operation === 'nps';
+  if (!isPrevious && snapshot.end === today && (exactWindow || snapshot.end === window.end) && sameVersion) {
     return { freshness: 'fresh', publishedAt: snapshot.publishedAt || null, asOf: snapshot.end,
       ageSeconds: snapshot.publishedAt ? Math.max(0, (now - Date.parse(snapshot.publishedAt)) / 1000) : null, refreshDue: false };
   }
@@ -1347,10 +1425,11 @@ function marketsReviewSnapshotState_(snapshot, operation, filters, window, versi
   const configured = Number(properties.MARKETS_REVIEW_STALE_MAX_SECONDS);
   const maxAge = Number.isFinite(configured) && configured >= 0 ? Math.min(configured, 86400) : 3600;
   const ageSeconds = (now - Date.parse(snapshot.publishedAt)) / 1000;
-  if (!Number.isFinite(ageSeconds) || ageSeconds < 0 || ageSeconds > maxAge || !sameVersion && filters.strictFreshness) return null;
+  if (filters.strictFreshness) return reject('strict-freshness');
+  if (!Number.isFinite(ageSeconds) || ageSeconds < 0 || ageSeconds > maxAge) return reject('age');
   // Las ventanas exactas del análisis mensual/anual no cambian al cruzar el día.
   // Las páginas móviles del día anterior se consideran un scope distinto.
-  if (snapshot.end !== today && !(operation === 'analytics' && (filters.analysisMonth || filters.year) && window.end <= snapshot.end)) return null;
+  if (snapshot.end !== today && !(exactWindow && window.end <= snapshot.end)) return reject('date');
   return { freshness: 'stale', publishedAt: snapshot.publishedAt, asOf: snapshot.end, ageSeconds, staleMaxSeconds: maxAge, refreshDue: true };
 }
 

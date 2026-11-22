@@ -410,3 +410,36 @@ test("manual ratings are queued after the daily capture and run through the unif
   assert.equal(calls,2);
   assert.equal(runtime.advanceMarketsScheduledOperations_(),false);
 });
+
+test("overdue snapshot recovery has one slot during capture and respects publication backoff", () => {
+  const now = new Date("2026-11-22T10:00:00Z");
+  const state = new Map([["MARKETS_REVIEW_MANUAL:publish", "queued"]]);
+  const props = { getProperty: key => state.get(key) || null };
+  const local = vm.createContext({ safeJsonParse_: JSON.parse });
+  vm.runInContext(fs.readFileSync(new URL("../src/51_ReviewOperations.gs", import.meta.url), "utf8"), local);
+  const eligible = (slot, settings = {}) =>
+    Array.from(local.marketsReviewAuxiliaryTasks_(props, settings, now, 2, true, slot), task => task.id);
+  assert.deepEqual(eligible(true), ["publish"]);
+  assert.deepEqual(eligible(false), []);
+  assert.deepEqual(eligible(true, { publish: { enabled: false } }), []);
+  state.set("MARKETS_REVIEW_AUX_RETRY:publish", JSON.stringify({ next: now.getTime() + 60000 }));
+  assert.deepEqual(eligible(true), []);
+});
+
+test("local functional aliases are read-only while the shared classifier is active", () => {
+  const local = vm.createContext({
+    MARKETS_CONFIG: {}, MARKETS_REVIEW_RULES: { "03.13": [["transferencia internacional"]] },
+    marketsBusinessAliases_: () => ({ "03.13": ["pago internacional"] }),
+    PropertiesService: { getScriptProperties: () => ({}) },
+    LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock() {} }) },
+    marketsFunctionalEngine_: () => ({ engine: "EDCCatalogClassifier" })
+  });
+  vm.runInContext(fs.readFileSync(new URL("../src/58_Admin.gs", import.meta.url), "utf8"), local);
+  local.requireMarketsAdministrator_ = () => ({ ss: {} });
+  assert.equal(local.getMarketsBusinessCatalog("aliases").edit, "");
+  assert.throws(() => local.saveMarketsBusinessCatalogEntry({
+    section: "aliases", key: "03.13", value: "transferencia urgente", expected: "pago internacional"
+  }), /modo de consulta/);
+  local.marketsFunctionalEngine_ = () => null;
+  assert.equal(local.getMarketsBusinessCatalog("aliases").edit, "aliases");
+});

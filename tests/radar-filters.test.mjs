@@ -154,7 +154,8 @@ test('monthly balance does not bridge missing months and the legend matches the 
   const [, path, color] = chart.match(/<path d="([^"]+)" stroke="([^"]+)" class="chart-line"/);
   assert.equal(path.split('M').length - 1,2);
   assert.doesNotMatch(path,/L/);
-  assert.match(chart,/2026-08 · Sin datos/);
+  assert.doesNotMatch(chart,/data-month="2026-08"/);
+  assert.match(chart,/data-month="2026-09" data-value="40 pp"/);
   const legend = reviewBalanceLegend([{entity:'Banco Central',total:19}],String);
   assert.ok(legend.includes('background:' + color));
   assert.doesNotMatch(legend,/<button/);
@@ -226,4 +227,69 @@ test('monthly audience and inference are applied and reset independently of annu
   monthly.commit(monthly.all());
   assert.equal(monthly.applied().inferGeography,'YES');
   assert.equal(monthly.applied().audience,'');
+});
+
+
+test('NPS tooltip chooses the nearest series, respects gaps and breaks ties in series order', () => {
+  const window = {};
+  vm.runInNewContext(clientScript(read('Charts')), { window });
+  const { closestReviewPoint } = window.MarketsCharts;
+  const a = { index: 0, x: 10, y: 10 };
+  const b = { index: 0, x: 10, y: 20 };
+  const next = { index: 1, x: 50, y: 10 };
+  const afterGap = { index: 2, x: 50, y: 10 };
+  assert.equal(closestReviewPoint([[a], [b]], 10, 19), b);
+  assert.equal(closestReviewPoint([[a], [b]], 10, 15), a);
+  assert.equal(closestReviewPoint([[a, next]], 30, 11), a);
+  assert.equal(closestReviewPoint([[a, afterGap]], 30, 11), null);
+  assert.equal(closestReviewPoint([[a], [b]], 10, 40), null);
+});
+
+test('annual tooltips share one set of dismissal handlers across chart redraws', () => {
+  function surface() {
+    const listeners = new Map();
+    return {
+      listeners,
+      addEventListener(name, handler) {
+        assert.ok(!listeners.has(name), 'duplicate ' + name);
+        listeners.set(name, handler);
+      },
+      contains: () => false,
+      emit(name, event = {}) { listeners.get(name)(event); }
+    };
+  }
+  const rating = surface(), nps = surface(), window = surface(), document = surface();
+  const observed = [];
+  let dismiss, visible = false;
+  const node = { getBoundingClientRect: () => ({ left: 4, width: 4, top: 10 }) };
+  const target = { closest: () => node };
+  const app = clientScript(read('App'));
+  const source = app.slice(app.indexOf('    function bindAnnualChartTooltips'), app.indexOf('    function showChartTooltip'));
+  vm.runInNewContext(source + '\nbindAnnualChartTooltips();', {
+    window, document, $: id => id === 'annual-chart' ? rating : nps,
+    showChartTooltip: point => { assert.equal(point, node); visible = true; },
+    hideChartTooltip: () => { visible = false; },
+    MutationObserver: class {
+      constructor(handler) { dismiss = handler; }
+      observe(chart) { observed.push(chart); }
+    }
+  });
+  assert.deepEqual(observed, [rating, nps]);
+  for (const chart of [rating, nps]) {
+    for (const event of ['pointerleave', 'pointercancel', 'touchcancel', 'focusout']) {
+      chart.emit('focusin', { target });
+      assert.equal(visible, true);
+      chart.emit(event);
+      assert.equal(visible, false);
+    }
+  }
+  for (const close of [
+    () => window.emit('blur'), () => document.emit('visibilitychange'),
+    () => document.emit('keydown', { key: 'Escape' }), dismiss
+  ]) {
+    rating.emit('pointermove', { target, pointerType: 'mouse' });
+    assert.equal(visible, true);
+    close();
+    assert.equal(visible, false);
+  }
 });

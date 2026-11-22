@@ -17,7 +17,7 @@ test('snapshot freshness follows publication and compatible revisions with a bou
   api.marketsReviewWindow_ = () => ({ end: '2026-11-21' });
   const now = Date.parse('2026-11-21T10:00:00Z');
   const snapshot = { schema: 15, end: '2026-11-21', publishedAt: '2026-11-21T09:30:00Z',
-    hasNpsAttribution: true, versions: ['10', 'rules', 'catalog'], npsVersions: ['5', 'geo', 'catalog'] };
+    hasNpsAttribution: true, hasAnnualNps: true, hasAllSentimentGaps: true, audienceVersion: 2, versions: ['10', 'rules', 'catalog'], npsVersions: ['5', 'geo', 'catalog'] };
   const check = (versions, changes = {}, properties = {}) => api.marketsReviewSnapshotState_(
     { ...snapshot, ...changes }, 'analytics', { analysisMonth: '2026-11' }, {}, versions, properties, now);
   assert.equal(check(snapshot.versions).freshness, 'fresh');
@@ -95,7 +95,7 @@ test('helpful ordering is numeric and stable across page boundaries, zero and ab
 test('an L1 eviction falls back to the same compatible snapshot without reading Sheets', () => {
   const properties = { MARKETS_REVIEWS_GENERATION: '2', MARKETS_FUNCTIONAL_REVISION: 'rules' };
   const manifest = { schema: 15, end: '2026-11-21', publishedAt: new Date().toISOString(),
-    hasNpsAttribution: true, versions: ['1', 'rules', 'catalog'] };
+    hasNpsAttribution: true, hasAnnualNps: true, hasAllSentimentGaps: true, audienceVersion: 2, versions: ['1', 'rules', 'catalog'] };
   properties.MARKETS_REVIEW_SNAPSHOT_POINTER = JSON.stringify(manifest);
   const cache = new Map();
   let reads = 0;
@@ -103,11 +103,11 @@ test('an L1 eviction falls back to the same compatible snapshot without reading 
     PropertiesService: { getScriptProperties: () => ({ getProperties: () => properties }) } });
   Object.assign(api, {
     marketsReviewWindow_: () => ({ end: '2026-11-21' }), readAppCatalog_: () => [],
-    marketsReviewCatalogVersion_: () => 'catalog', queueMarketsReviewSnapshotRefresh_: () => true,
+    marketsReviewCatalogVersion_: () => 'catalog', marketsReviewDigest_: JSON.stringify, queueMarketsReviewSnapshotRefresh_: () => true,
     marketsReviewCacheKey_: (_ss, operation, filters, window, versions) => JSON.stringify([operation, filters, window, versions]),
     readMarketsWebCache_: (key, builder) => { if (!cache.has(key)) cache.set(key, builder()); return cache.get(key); },
     readMarketsReviewSnapshotShard_: () => { reads++; return {
-      'analytics:ES:2026-11:2026-10-01:2026-11-21': { total: 7 }
+      'analytics:ES:2026-11:2026-10-01:2026-11-21': { total: 7, window: { start: '2026-10-01', end: '2026-11-21' } }
     }; }
   });
   const ss = { getSheetByName: () => ({ getLastRow: () => 98920 }) };
@@ -125,6 +125,18 @@ test('an L1 eviction falls back to the same compatible snapshot without reading 
   cache.clear();
   assert.equal(read({}).total, 7);
   assert.equal(reads, 2);
+  properties.MARKETS_REVIEW_SNAPSHOT_PREVIOUS = JSON.stringify(manifest);
+  properties.MARKETS_REVIEW_SNAPSHOT_POINTER = JSON.stringify({ ...manifest, files: { ES: 'missing' } });
+  const readShard = api.readMarketsReviewSnapshotShard_;
+  api.readMarketsReviewSnapshotShard_ = (snapshot, country) => snapshot.files ? null : readShard(snapshot, country);
+  const queued = [];
+  api.queueMarketsReviewSnapshotRefresh_ = (...args) => queued.push(args);
+  timing = {};
+  assert.equal(read(timing).total, 7);
+  assert.equal(timing.freshness, 'stale');
+  assert.equal(queued.at(-1)[3], true);
+  assert.throws(() => api.readMarketsReviewCache_(ss, 'analytics', { ...filters, strictFreshness: true }, window,
+    () => assert.fail('Strict queries cannot scan the dataset')), /se está publicando/);
   properties.MARKETS_FUNCTIONAL_REVISION = 'incompatible';
   assert.throws(() => read({}), /se está publicando/);
 });
@@ -192,7 +204,8 @@ test('NPS ranking keeps zero and negative scores, deterministic ties and absent 
 
 function migrationFixture() {
   const properties = new Map([['MARKETS_REVIEW_SOURCE_GENERATION', 'source-1']]);
-  const props = { getProperty: key => properties.get(key) ?? null, setProperty: (key, value) => properties.set(key, value) };
+  const props = { getProperty: key => properties.get(key) ?? null, setProperty: (key, value) => properties.set(key, value),
+    deleteProperty: key => properties.delete(key) };
   const sheets = new Map();
   function sheet(name, rows) {
     const value = { rows, getName: () => name, getLastRow: () => rows.length,
@@ -201,7 +214,8 @@ function migrationFixture() {
         setValues: values => values.forEach((row, i) => { rows[start - 1 + i] = [...row]; })
       }),
       setName: next => { sheets.delete(name); name = next; sheets.set(name, value); return value; },
-      copyTo: () => sheet('copy', JSON.parse(JSON.stringify(rows))), setFrozenRows() {}
+      copyTo: () => sheet('copy', JSON.parse(JSON.stringify(rows))), setFrozenRows() {},
+      getMaxRows: () => rows.length, getMaxColumns: () => 9
     };
     sheets.set(name, value);
     return value;
@@ -209,8 +223,8 @@ function migrationFixture() {
   const source = sheet('MARKET_REVIEWS', [Array(11).fill('header'), ...['a', 'b'].map((key, i) =>
     [key, 'app', 'ES', 'iOS', '123', key, '2026-10-01', i + 1, '', '', 'original ' + key])]);
   sheet('MARKET_REVIEW_INDEX', [Array(9).fill('header'), ['a', 'old', 'old', '[]'], ['b', 'old', 'old', '[]']]);
-  const ss = { getSheetByName: name => sheets.get(name), insertSheet: name => sheet(name, []) };
-  let failFlush = false, locked = true;
+  const ss = { getSheetByName: name => sheets.get(name), insertSheet: name => sheet(name, []), getSheets: () => [...sheets.values()] };
+  let failFlush = false, locked = true, classifyCalls = 0;
   const pins = { expectedRevision: 'catalog', expectedAlgorithmVersion: 'algorithm',
     expectedRulesRevision: 'rules', expectedTranslationsRevision: 'translations' };
   const api = runtime({ safeJsonParse_: JSON.parse, errorToString_: String,
@@ -218,8 +232,11 @@ function migrationFixture() {
     LockService: { getUserLock: () => ({ tryLock: () => locked, releaseLock() {} }) },
     SpreadsheetApp: { flush: () => { if (failFlush) throw Error('transient'); } },
     EDCCatalogClassifier: { fcPreflight: () => ({ ok: true }), getClassifierRevisions: () => pins,
-      classifyBatch: records => ({ revision: 'catalog', algorithmVersion: 'algorithm', rulesRevision: 'rules', translationsRevision: 'translations',
-        results: records.map(row => ({ id: row.id, assignments: row.id === 'a' ? [] : [{ id: '03.13' }] })) }) }
+      classifyBatch: records => {
+        classifyCalls++;
+        return { revision: 'catalog', algorithmVersion: 'algorithm', rulesRevision: 'rules', translationsRevision: 'translations',
+          results: records.map(row => ({ id: row.id, assignments: row.id === 'a' ? [] : [{ id: '03.13' }] })) };
+      } }
   });
   vm.runInContext(fs.readFileSync(new URL('../src/55_ReviewIndex.gs', import.meta.url), 'utf8'), api);
   Object.assign(api, { requireMarketsReviewOwner_: () => ({ ss }), openMarketsSpreadsheet_: () => ss,
@@ -228,7 +245,7 @@ function migrationFixture() {
     marketsReviewLiteral_: String, ensureSheetCapacity_() {},
     classifyMarketsReviewAudience_: () => ({ audience: 'BUSINESS', sharedOperation: false, relevance: 'BUSINESS', reason: 'evidence', evidence: [] })
   });
-  return { api, properties, source, sheets, setFail: value => { failFlush = value; }, setLock: value => { locked = value; } };
+  return { api, properties, source, sheets, classifyCalls: () => classifyCalls, setFail: value => { failFlush = value; }, setLock: value => { locked = value; } };
 }
 
 test('historical migration retries a failed chunk and activates only after complete verification', () => {
@@ -252,7 +269,7 @@ test('historical migration retries a failed chunk and activates only after compl
   assert.equal(ready.complete, false);
   assert.ok(!f.properties.has('MARKETS_REVIEW_SNAPSHOT_POINTER'));
   f.properties.set('MARKETS_REVIEW_SNAPSHOT_POINTER', JSON.stringify({ publishedAt: new Date().toISOString(),
-    engine: { engine: 'EDCCatalogClassifier', sheet: started.sheet, pins: started.pins, libraryVersion: '1' } }));
+    engine: { engine: 'EDCCatalogClassifier', sheet: started.sheet, pins: started.pins, libraryVersion: started.libraryVersion } }));
   const done = f.api.advanceMarketsFunctionalMigration_();
   assert.equal(done.complete, true);
   assert.equal(done.after.general, 1);
@@ -260,6 +277,76 @@ test('historical migration retries a failed chunk and activates only after compl
   assert.equal(f.api.marketsFunctionalEngine_({ MARKETS_REVIEW_SNAPSHOT_POINTER: f.properties.get('MARKETS_REVIEW_SNAPSHOT_POINTER') }).sheet, started.sheet);
   assert.equal(JSON.stringify(f.source.rows), original);
   assert.equal(f.properties.get('MARKETS_REVIEW_SOURCE_GENERATION'), 'source-1');
+});
+
+test('a numbered upgrade stages a new index, retains rollback and reuses verified classifications', () => {
+  const f = migrationFixture();
+  const old = { complete: true, sheet: 'MARKET_REVIEW_INDEX', libraryVersion: '1' };
+  const pointer = JSON.stringify({ engine: { sheet: old.sheet, libraryVersion: old.libraryVersion } });
+  f.properties.set('MARKETS_FUNCTIONAL_MIGRATION', JSON.stringify(old));
+  f.properties.set('MARKETS_REVIEW_SNAPSHOT_POINTER', pointer);
+  const started = f.api.startMarketsFunctionalMigration();
+  assert.equal(started.libraryVersion, '5');
+  assert.equal(started.backup, old.sheet);
+  assert.notEqual(started.sheet, old.sheet);
+  assert.equal(f.properties.get('MARKETS_FUNCTIONAL_MIGRATION_PREVIOUS'), JSON.stringify(old));
+  assert.equal(f.properties.get('MARKETS_REVIEW_SNAPSHOT_POINTER'), pointer);
+  assert.equal(f.api.startMarketsFunctionalMigration().sheet, started.sheet);
+  assert.equal(f.api.advanceMarketsFunctionalMigration_().processedEligible, 2);
+  const calls = f.classifyCalls();
+  f.properties.set('MARKETS_REVIEW_SOURCE_GENERATION', 'source-2');
+  assert.equal(f.api.advanceMarketsFunctionalMigration_().next, 2);
+  assert.equal(f.api.advanceMarketsFunctionalMigration_().processedEligible, 2);
+  assert.equal(f.classifyCalls(), calls);
+  assert.equal(f.properties.get('MARKETS_REVIEW_SNAPSHOT_POINTER'), pointer);
+});
+
+test('a full production workbook keeps the shadow in a separate index workbook', () => {
+  const f = migrationFixture();
+  const old = { complete: true, sheet: 'MARKET_REVIEW_INDEX', libraryVersion: '1' };
+  f.properties.set('MARKETS_FUNCTIONAL_MIGRATION', JSON.stringify(old));
+  f.properties.set('MARKETS_REVIEW_SNAPSHOT_POINTER', JSON.stringify({ engine: old }));
+  f.source.getMaxRows = () => 1000000;
+  f.source.getMaxColumns = () => 10;
+  const other = new Map();
+  const target = { getId: () => 'isolated-id', getSheets: () => [draft], getSheetByName: name => other.get(name) };
+  const draft = f.api.openMarketsSpreadsheet_().insertSheet('unassigned');
+  f.sheets.delete('unassigned');
+  draft.setName = name => { other.set(name, draft); draft.getName = () => name; return draft; };
+  f.api.SpreadsheetApp.create = (_title, rows, width) => { assert.equal(rows, 1000); assert.equal(width, 9); return target; };
+  f.api.SpreadsheetApp.openById = id => { assert.equal(id, 'isolated-id'); return target; };
+  const migration = f.api.startMarketsFunctionalMigration();
+  assert.equal(migration.indexSpreadsheetId, 'isolated-id');
+  assert.equal(migration.backup, old.sheet);
+  assert.ok(!f.sheets.has(migration.sheet));
+  assert.equal(f.api.advanceMarketsFunctionalMigration_().done, 2);
+});
+
+test('the operator advances several checkpoints and stops before activation', () => {
+  const f = migrationFixture();
+  f.api.startMarketsFunctionalMigration();
+  const result = f.api.advanceMarketsFunctionalMigration();
+  assert.equal(result.ready, true);
+  assert.equal(result.complete, false);
+  assert.ok(!f.properties.has('MARKETS_REVIEW_SNAPSHOT_POINTER'));
+});
+
+test('retirement preserves rollback metadata until both live snapshots use v5', () => {
+  const f = migrationFixture();
+  const sheet = 'MARKET_REVIEW_INDEX', indexSpreadsheetId = 'isolated';
+  const state = { complete: true, sheet, indexSpreadsheetId, libraryVersion: '5', backup: 'index-v1', previousSnapshot: '{}' };
+  f.api.SpreadsheetApp.openById = () => f.api.openMarketsSpreadsheet_();
+  f.properties.set('MARKETS_FUNCTIONAL_MIGRATION', JSON.stringify(state));
+  f.properties.set('MARKETS_FUNCTIONAL_MIGRATION_PREVIOUS', JSON.stringify({ sheet: 'index-v1', backup: 'pre-v1' }));
+  const snapshot = { engine: { libraryVersion: '5', sheet, indexSpreadsheetId }, files: { ES: 'shard' } };
+  f.properties.set('MARKETS_REVIEW_SNAPSHOT_POINTER', JSON.stringify(snapshot));
+  assert.throws(() => f.api.retireMarketsFunctionalV1References(), /dos punteros/);
+  assert.equal(JSON.parse(f.properties.get('MARKETS_FUNCTIONAL_MIGRATION')).backup, 'index-v1');
+  f.properties.set('MARKETS_REVIEW_SNAPSHOT_PREVIOUS', JSON.stringify(snapshot));
+  assert.deepEqual(Array.from(f.api.retireMarketsFunctionalV1References().retired), ['index-v1', 'pre-v1']);
+  assert.equal(f.properties.has('MARKETS_FUNCTIONAL_MIGRATION_PREVIOUS'), false);
+  assert.ok(JSON.parse(f.properties.get('MARKETS_FUNCTIONAL_MIGRATION')).retiredLegacyAt);
+  assert.throws(() => f.api.rollbackMarketsFunctionalMigration(), /No hay una migración/);
 });
 
 test('monthly windows contain exactly six calendar months across years and leap days', () => {
@@ -340,4 +427,11 @@ test('manual email acceptance survives a later failure and retries do not send a
   assert.equal(sends, 1);
   assert.throws(() => run('request-2'), /un minuto/);
   assert.equal(sends, 1);
+});
+
+test('library metadata uses the numbered version pinned in the manifest', () => {
+  const manifest = JSON.parse(fs.readFileSync(new URL('../src/appsscript.json', import.meta.url), 'utf8'));
+  const library = manifest.dependencies.libraries.find(entry => entry.userSymbol === 'EDCCatalogClassifier');
+  assert.equal(vm.runInContext('MARKETS_REVIEW_LIBRARY_VERSION', runtime()), library.version);
+  assert.equal(library.developmentMode, false);
 });

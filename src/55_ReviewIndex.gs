@@ -4,11 +4,17 @@ const MARKETS_REVIEW_INDEX_HEADERS = ['review_key', 'text_digest', 'classifier_v
 const MARKETS_REVIEW_INDEX_CURSOR = 'MARKETS_REVIEW_INDEX_CURSOR';
 const MARKETS_REVIEW_INDEX_BATCH = 3000;
 const MARKETS_REVIEW_INDEX_STATUS = 'MARKETS_REVIEW_INDEX_STATUS';
+const MARKETS_FUNCTIONAL_MIGRATION_PREVIOUS = 'MARKETS_FUNCTIONAL_MIGRATION_PREVIOUS';
 
 function marketsReviewIndexSheet_(ss, extend = false) {
   const active = marketsFunctionalEngine_(PropertiesService.getScriptProperties());
-  const sheet = ss.getSheetByName(active?.sheet || MARKETS_REVIEW_INDEX);
+  const sheet = marketsFunctionalIndexSheet_(ss, active || { sheet: MARKETS_REVIEW_INDEX });
   return sheet && marketsAppendSheetHeaders_(sheet, MARKETS_REVIEW_INDEX_HEADERS, [7], extend)?.sheet;
+}
+
+function marketsFunctionalIndexSheet_(ss, target) {
+  const workbook = target.indexSpreadsheetId ? SpreadsheetApp.openById(target.indexSpreadsheetId) : ss;
+  return workbook.getSheetByName(target.sheet);
 }
 
 function initializeMarketsReviewIndex() {
@@ -37,6 +43,8 @@ function advanceMarketsReviewIndex_() {
   const ss = openMarketsSpreadsheet_();
   const index = marketsReviewIndexSheet_(ss);
   if (!index) return { complete: true, done: 0, total: 0, updated: 0 };
+  const active = marketsFunctionalEngine_(PropertiesService.getScriptProperties());
+  if (active?.libraryVersion && active.libraryVersion !== MARKETS_REVIEW_LIBRARY_VERSION) return { deferred: true };
   const lock = LockService.getUserLock();
   if (!lock.tryLock(1000)) return { deferred: true };
   const properties = PropertiesService.getScriptProperties();
@@ -134,8 +142,11 @@ function startMarketsFunctionalMigration() {
   const properties = PropertiesService.getScriptProperties(), lock = LockService.getUserLock();
   if (!lock.tryLock(1000)) throw new Error('Hay otra operación de reseñas en curso.');
   try {
-    const existing = safeJsonParse_(properties.getProperty('MARKETS_FUNCTIONAL_MIGRATION') || 'null');
-    if (existing) return existing;
+    const previousMigration = properties.getProperty('MARKETS_FUNCTIONAL_MIGRATION');
+    const existing = safeJsonParse_(previousMigration || 'null');
+    if (existing && (!existing.complete || (existing.libraryVersion || '1') === MARKETS_REVIEW_LIBRARY_VERSION)) return existing;
+    const active = marketsFunctionalEngine_(properties);
+    if (existing && active?.sheet !== existing.sheet) throw new Error('El índice activo no coincide con la migración anterior.');
     if (!EDCCatalogClassifier.fcPreflight()?.ok) throw new Error('La biblioteca no supera su preflight.');
     const pins = EDCCatalogClassifier.getClassifierRevisions();
     for (const field of ['expectedRevision', 'expectedAlgorithmVersion', 'expectedRulesRevision', 'expectedTranslationsRevision']) {
@@ -157,23 +168,36 @@ function startMarketsFunctionalMigration() {
     classifyMarketsFunctionalBatch_(sample, pins);
     const sampleMs = Date.now() - started;
     const suffix = String(Date.now());
-    const backup = index.copyTo(ss).setName('REVIEW_INDEX_BACKUP_' + suffix);
+    const width = MARKETS_REVIEW_INDEX_HEADERS.length;
+    const allocated = existing && ss.getSheets().reduce((cells, sheet) => cells + sheet.getMaxRows() * sheet.getMaxColumns(), 0);
+    const separate = existing && allocated + (total + 1001) * width > 10000000;
+    // El índice anterior queda inmóvil: el worker dirige la clasificación a la sombra.
+    const backup = existing ? index : index.copyTo(ss).setName('REVIEW_INDEX_BACKUP_' + suffix);
     const backupDigest = marketsReviewDigest_(backup.getRange(1, 1, backup.getLastRow(), MARKETS_REVIEW_INDEX_HEADERS.length).getValues());
     if (backup.getLastRow() !== index.getLastRow() || backupDigest !==
         marketsReviewDigest_(index.getRange(1, 1, index.getLastRow(), MARKETS_REVIEW_INDEX_HEADERS.length).getValues())) {
       throw new Error('No se pudo verificar el respaldo del índice.');
     }
-    const shadow = ss.insertSheet('REVIEW_INDEX_EDC_' + suffix);
+    const shadowName = 'REVIEW_INDEX_EDC_' + suffix;
+    const isolated = separate ? SpreadsheetApp.create('Market Pulse · Índice funcional ' + suffix, 1000, width) : null;
+    const shadow = isolated ? isolated.getSheets()[0].setName(shadowName) : ss.insertSheet(shadowName);
+    if (existing && shadow.getMaxColumns() > width) {
+      shadow.deleteColumns(width + 1, shadow.getMaxColumns() - width);
+    }
     shadow.getRange(1, 1, 1, MARKETS_REVIEW_INDEX_HEADERS.length).setValues([MARKETS_REVIEW_INDEX_HEADERS]);
     shadow.setFrozenRows(1);
-    const state = { pins, sheet: shadow.getName(), backup: backup.getName(), backupDigest, next: 2,
+    const state = { pins, libraryVersion: MARKETS_REVIEW_LIBRARY_VERSION, sheet: shadow.getName(),
+      ...(isolated ? { indexSpreadsheetId: isolated.getId() } : {}),
+      ...(existing && active?.indexSpreadsheetId ? { backupSpreadsheetId: active.indexSpreadsheetId } : {}),
+      backup: backup.getName(), backupDigest, next: 2,
       previousSnapshot: properties.getProperty(MARKETS_REVIEW_SNAPSHOT_POINTER), eligibleTotal: keys.length, processedEligible: 0,
       sourceGeneration: properties.getProperty('MARKETS_REVIEW_SOURCE_GENERATION') || '',
       total, done: 0, complete: false,
       before: {}, after: {}, errors: 0, sampleMs, sampleSize: sample.length, startedAt: new Date().toISOString() };
+    if (existing) properties.setProperty(MARKETS_FUNCTIONAL_MIGRATION_PREVIOUS, previousMigration);
     properties.setProperty('MARKETS_FUNCTIONAL_MIGRATION', JSON.stringify(state));
     console.log(JSON.stringify({ operation: 'functional-migration-preflight', total, eligibleTotal: keys.length,
-      backup: state.backup, sampleMs, sampleSize: sample.length, libraryVersion: '1', pins }));
+      backup: state.backup, sampleMs, sampleSize: sample.length, libraryVersion: MARKETS_REVIEW_LIBRARY_VERSION, pins }));
     return state;
   } finally { lock.releaseLock(); }
 }
@@ -185,7 +209,7 @@ function advanceMarketsFunctionalMigration_() {
   try {
     const state = safeJsonParse_(properties.getProperty('MARKETS_FUNCTIONAL_MIGRATION') || 'null');
     if (!state || state.complete) return state || { complete: true };
-    const ss = openMarketsSpreadsheet_(), source = marketsReviewSheet_(ss), shadow = ss.getSheetByName(state.sheet);
+    const ss = openMarketsSpreadsheet_(), source = marketsReviewSheet_(ss), shadow = marketsFunctionalIndexSheet_(ss, state);
     if (!shadow) throw new Error('No existe el índice de migración.');
     const generation = properties.getProperty('MARKETS_REVIEW_SOURCE_GENERATION') || '';
     const active = marketsFunctionalEngine_(properties);
@@ -202,7 +226,6 @@ function advanceMarketsFunctionalMigration_() {
     }
     if (generation !== state.sourceGeneration || source.getLastRow() - 1 !== state.total) {
       state.restarts = (state.restarts || 0) + 1;
-      if (state.restarts > 3) throw new Error('La fuente cambia repetidamente durante la migración. Requiere revisión.');
       Object.assign(state, { sourceGeneration: generation, total: source.getLastRow() - 1, next: 2, done: 0, processedEligible: 0, before: {}, after: {} });
       const keys = state.total ? source.getRange(2, 1, state.total, 1).getValues().flat().filter(Boolean) : [];
       if (new Set(keys).size !== keys.length) throw new Error('Hay claves duplicadas en la fuente modificada.');
@@ -220,19 +243,31 @@ function advanceMarketsFunctionalMigration_() {
       const count = Math.min(MARKETS_REVIEW_INDEX_BATCH, remaining, Math.max(1, Math.floor(120000 / perRow)));
       const rows = source.getRange(state.next, 1, count, 11).getValues();
       const eligible = rows.filter(row => row[0]);
-      const predictions = classifyMarketsFunctionalBatch_(eligible, state.pins);
-      const byKey = new Map(eligible.map((row, i) => [row[0], predictions[i]]));
-      const values = rows.map(row => {
-        if (!row[0]) return Array(MARKETS_REVIEW_INDEX_HEADERS.length).fill('');
+      const width = MARKETS_REVIEW_INDEX_HEADERS.length;
+      ensureSheetCapacity_(shadow, state.next + count - 1, width);
+      const range = shadow.getRange(state.next, 1, count, width);
+      const existingRows = range.getValues();
+      const matches = (row, i) => existingRows[i][0] === row[0] && existingRows[i][2] === version &&
+        existingRows[i][1] === marketsReviewTextDigest_(row) && existingRows[i][7];
+      const missing = rows.filter((row, i) => row[0] && !matches(row, i));
+      const predictions = classifyMarketsFunctionalBatch_(missing, state.pins);
+      const byKey = new Map(missing.map((row, i) => [row[0], predictions[i]]));
+      const values = rows.map((row, i) => {
+        if (!row[0]) return Array(width).fill('');
+        if (matches(row, i)) {
+          byKey.set(row[0], safeJsonParse_(existingRows[i][3]));
+          return existingRows[i];
+        }
         const { audience, sharedOperation, reason, relevance, evidence } = classifyMarketsReviewAudience_(marketsReviewOriginalText_(row));
         return [marketsReviewLiteral_(row[0]), marketsReviewTextDigest_(row), version, JSON.stringify(byKey.get(row[0])),
           audience, sharedOperation, reason, relevance, JSON.stringify(evidence)];
       });
-      ensureSheetCapacity_(shadow, state.next + count - 1, MARKETS_REVIEW_INDEX_HEADERS.length);
-      shadow.getRange(state.next, 1, count, MARKETS_REVIEW_INDEX_HEADERS.length).setValues(values);
-      SpreadsheetApp.flush();
-      const verified = shadow.getRange(state.next, 1, count, MARKETS_REVIEW_INDEX_HEADERS.length).getValues();
-      if (JSON.stringify(verified) !== JSON.stringify(values)) throw new Error('No se pudo verificar el lote funcional.');
+      if (JSON.stringify(existingRows) !== JSON.stringify(values)) {
+        range.setValues(values);
+        SpreadsheetApp.flush();
+        const verified = range.getValues();
+        if (JSON.stringify(verified) !== JSON.stringify(values)) throw new Error('No se pudo verificar el lote funcional.');
+      }
       const original = marketsReviewIndexSheet_(ss), available = Math.max(0, Math.min(count, original.getLastRow() - state.next + 1));
       const old = available ? original.getRange(state.next, 1, available, MARKETS_REVIEW_INDEX_HEADERS.length).getValues() : [];
       for (const [index, row] of rows.entries()) {
@@ -285,11 +320,60 @@ function advanceMarketsFunctionalMigration_() {
 
 function advanceMarketsFunctionalMigration() {
   requireMarketsReviewOwner_();
-  const result = advanceMarketsFunctionalMigration_();
+  const deadline = Date.now() + 235000;
+  let result, longest = 0;
+  for (let step = 0; step < 12 && Date.now() + 2 * longest < deadline; step++) {
+    const started = Date.now();
+    result = advanceMarketsFunctionalMigration_();
+    longest = Math.max(longest, Date.now() - started);
+    if (result.deferred || result.ready || result.complete) break;
+  }
   console.log(JSON.stringify({ operation: 'functional-migration', done: result.done, total: result.total,
     verified: Math.max(0, (result.verifyNext || 2) - 2), complete: result.complete, errors: result.errors,
-    before: result.before, after: result.after }));
+    ready: Boolean(result.ready), deferred: Boolean(result.deferred), before: result.before, after: result.after }));
   return result;
+}
+
+/** Owner-only rotation before retiring legacy migration metadata. */
+function rotateMarketsFunctionalV5Snapshot() {
+  requireMarketsReviewOwner_();
+  const properties = PropertiesService.getScriptProperties();
+  const state = safeJsonParse_(properties.getProperty('MARKETS_FUNCTIONAL_MIGRATION') || 'null');
+  const engine = marketsFunctionalEngine_(properties);
+  if (!state?.complete || state.rolledBackAt || state.libraryVersion !== '5' ||
+      engine?.libraryVersion !== '5' || engine.sheet !== state.sheet || engine.indexSpreadsheetId !== state.indexSpreadsheetId) {
+    throw new Error('El clasificador v5 no está activo y verificado.');
+  }
+  const result = publishMarketsReviewSnapshot_(true);
+  console.log(JSON.stringify(result));
+  return result;
+}
+
+/** Retira la reversión a v1 solo cuando ambos snapshots usan el índice v5. */
+function retireMarketsFunctionalV1References() {
+  const { ss } = requireMarketsReviewOwner_();
+  const properties = PropertiesService.getScriptProperties(), lock = LockService.getUserLock();
+  if (!lock.tryLock(1000)) throw new Error('Hay otra operación de reseñas en curso.');
+  try {
+    const state = safeJsonParse_(properties.getProperty('MARKETS_FUNCTIONAL_MIGRATION') || 'null');
+    const snapshots = [MARKETS_REVIEW_SNAPSHOT_POINTER, 'MARKETS_REVIEW_SNAPSHOT_PREVIOUS']
+      .map(key => safeJsonParse_(properties.getProperty(key) || 'null'));
+    if (!state?.complete || state.rolledBackAt || state.libraryVersion !== '5' || !state.indexSpreadsheetId ||
+        snapshots.some(item => item?.engine?.libraryVersion !== '5' || item.engine.sheet !== state.sheet ||
+          item.engine.indexSpreadsheetId !== state.indexSpreadsheetId || !Object.keys(item.files || {}).length) ||
+        !marketsReviewIndexSheet_(ss)) {
+      throw new Error('Los dos punteros y el índice activo deben estar verificados en v5.');
+    }
+    const old = safeJsonParse_(properties.getProperty(MARKETS_FUNCTIONAL_MIGRATION_PREVIOUS) || 'null');
+    const retired = [state.backup, old?.sheet, old?.backup].filter(Boolean);
+    for (const field of ['backup', 'backupDigest', 'backupSpreadsheetId', 'previousSnapshot']) delete state[field];
+    state.retiredLegacyAt = new Date().toISOString();
+    properties.setProperty('MARKETS_FUNCTIONAL_MIGRATION', JSON.stringify(state));
+    properties.deleteProperty(MARKETS_FUNCTIONAL_MIGRATION_PREVIOUS);
+    const result = { active: state.sheet, retired: [...new Set(retired)] };
+    console.log(JSON.stringify(result));
+    return result;
+  } finally { lock.releaseLock(); }
 }
 
 /** Reversión de punteros y derivados: conserva fuente, backup e índice de sombra. */
@@ -299,8 +383,8 @@ function rollbackMarketsFunctionalMigration() {
   if (!lock.tryLock(1000)) throw new Error('Hay otra operación de reseñas en curso.');
   try {
     const state = safeJsonParse_(properties.getProperty('MARKETS_FUNCTIONAL_MIGRATION') || 'null');
-    if (!state || marketsFunctionalEngine_(properties)?.sheet !== state.sheet || state.rolledBackAt) throw new Error('No hay una migración activada que revertir.');
-    const backup = ss.getSheetByName(state.backup);
+    if (!state || state.retiredLegacyAt || marketsFunctionalEngine_(properties)?.sheet !== state.sheet || state.rolledBackAt) throw new Error('No hay una migración activada que revertir.');
+    const backup = marketsFunctionalIndexSheet_(ss, { sheet: state.backup, indexSpreadsheetId: state.backupSpreadsheetId });
     if (!backup || marketsReviewDigest_(backup.getRange(1, 1, backup.getLastRow(), MARKETS_REVIEW_INDEX_HEADERS.length).getValues()) !== state.backupDigest) {
       throw new Error('El respaldo no coincide con el verificado antes de migrar.');
     }

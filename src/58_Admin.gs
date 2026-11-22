@@ -386,10 +386,11 @@ function getMarketsBusinessCatalog(section, language) {
           .map(([id, block, feature, description]) => [id, names.get(block) || block, names.get(feature) || feature, description]) : []);
     }
     case 'aliases': {
+      const sharedEngine = marketsFunctionalEngine_(PropertiesService.getScriptProperties())?.engine === 'EDCCatalogClassifier';
       const overrides = marketsBusinessAliases_(ss);
       return table(['ID funcional', 'Equivalencias adicionales (una por línea)', 'Equivalencias de base'],
         [...new Set([...Object.keys(MARKETS_REVIEW_RULES), ...Object.keys(overrides)])].sort()
-          .map(id => [id, (overrides[id] || []).join('\n'), (MARKETS_REVIEW_RULES[id]?.[0] || []).join(' · ')]), 'aliases');
+          .map(id => [id, (overrides[id] || []).join('\n'), (MARKETS_REVIEW_RULES[id]?.[0] || []).join(' · ')]), sharedEngine ? '' : 'aliases');
     }
     case 'markets':
       return table(['Clave', 'Orden', 'Geografía', 'Tienda', 'Aplicación', 'Activa'], readAppCatalog_(ss, true)
@@ -465,6 +466,9 @@ function saveMarketsBusinessCatalogEntry(input) {
       cell.setValue(Number(value));
       SpreadsheetApp.flush();
     } else if (section === 'aliases' && /^\d{2}\.\d{2}$/.test(key) && typeof value === 'string' && value.length <= 1500) {
+      if (marketsFunctionalEngine_(PropertiesService.getScriptProperties())?.engine === 'EDCCatalogClassifier') {
+        throw new Error('Las equivalencias locales están en modo de consulta con el clasificador compartido.');
+      }
       const sheet = requireCurrentSheetContract_(ss, 'FUNCTIONAL_CATALOG', MARKETS_FUNCTIONAL_HEADERS);
       if (sheet.getLastRow() < 2 || !sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).createTextFinder(key).matchEntireCell(true).findNext()) {
         throw new Error('La funcionalidad no existe en el catálogo global.');
