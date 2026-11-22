@@ -79,7 +79,8 @@ function advanceMarketsReviewIndex_() {
       marketsAudienceMatchesFunctionalVersion_(old[i][2], functionalVersion) && old[i][7];
     const missing = library ? sourceRows.filter((row, i) => row[0] &&
       !sameFunctionalRow(row, i, marketsReviewTextDigest_(row))) : [];
-    const predictions = library && missing.length ? classifyMarketsFunctionalBatch_(missing, library.pins) : [];
+    const predictions = library && missing.length ? classifyMarketsFunctionalBatch_(missing, library.pins,
+      assignments => persistMarketsFunctionalLabels_(ss, library.pins, assignments)) : [];
     const idsByKey = new Map(missing.map((row, i) => [row[0], predictions[i]]));
     const values = sourceRows.map((row, i) => {
       if (!row[0]) return Array(width).fill('');
@@ -122,8 +123,62 @@ function invalidateMarketsReviewIndexFrom_(properties, rowNumber) {
   }
 }
 
+const MARKETS_FUNCTIONAL_LABELS = 'FUNCTIONAL_LABELS_BY_REVISION';
+const MARKETS_FUNCTIONAL_LABEL_HEADERS = ['revision_key', 'id', 'block_id', 'block_name', 'suboperation_name'];
+
+function marketsFunctionalLabelRevision_(pins) {
+  return marketsReviewDigest_([pins.expectedRevision, pins.expectedAlgorithmVersion,
+    pins.expectedRulesRevision, pins.expectedTranslationsRevision]);
+}
+
+function marketsFunctionalLabelRows_(ss, pins) {
+  const sheet = ss.getSheetByName(MARKETS_FUNCTIONAL_LABELS);
+  if (!sheet) return [];
+  if (sheet.getLastRow() === 0) return [];
+  requireCurrentSheetContract_(ss, MARKETS_FUNCTIONAL_LABELS, MARKETS_FUNCTIONAL_LABEL_HEADERS);
+  const count = sheet.getLastRow() - 1;
+  if (!count) return [];
+  const revision = marketsFunctionalLabelRevision_(pins);
+  return sheet.getRange(2, 1, count, MARKETS_FUNCTIONAL_LABEL_HEADERS.length).getDisplayValues()
+    .filter(row => row[0] === revision);
+}
+
+/** Called under the index worker lock, before writing rows or advancing the cursor. */
+function persistMarketsFunctionalLabels_(ss, pins, assignments) {
+  const revision = marketsFunctionalLabelRevision_(pins);
+  const existing = new Map(marketsFunctionalLabelRows_(ss, pins).map(row => [row[1], row]));
+  const additions = [];
+  for (const { id, blockId, blockName, suboperationName } of assignments) {
+    // Older responses can contain IDs alone. Preserve their passive label fallback.
+    if (blockName == null && suboperationName == null) continue;
+    if (blockId !== id.slice(0, 2) || typeof blockName !== 'string' || !blockName.trim() ||
+        blockName.length > 500 || typeof suboperationName !== 'string' || !suboperationName.trim() ||
+        suboperationName.length > 500) throw new Error('Etiqueta funcional inválida: ' + id);
+    const row = [revision, id, blockId, blockName, suboperationName];
+    const saved = existing.get(id);
+    if (saved && JSON.stringify(saved) !== JSON.stringify(row)) {
+      throw new Error('Etiqueta funcional incompatible con la revisión fijada: ' + id);
+    }
+    if (!saved) {
+      existing.set(id, row);
+      additions.push(row);
+    }
+  }
+  if (!additions.length) return;
+  let sheet = ss.getSheetByName(MARKETS_FUNCTIONAL_LABELS);
+  if (!sheet) sheet = ss.insertSheet(MARKETS_FUNCTIONAL_LABELS);
+  const start = sheet.getLastRow() + 1;
+  if (start === 1) additions.unshift(MARKETS_FUNCTIONAL_LABEL_HEADERS);
+  const width = MARKETS_FUNCTIONAL_LABEL_HEADERS.length;
+  ensureSheetCapacity_(sheet, start + additions.length - 1, width);
+  sheet.getRange(start, 1, additions.length, width).setNumberFormat('@')
+    .setValues(additions.map(row => row.map(marketsReviewLiteral_)));
+  SpreadsheetApp.flush();
+  advanceMarketsReviewGeneration_(PropertiesService.getScriptProperties());
+}
+
 /** Motor funcional compartido; la audiencia BEI conserva su contrato independiente. */
-function classifyMarketsFunctionalBatch_(rows, pins) {
+function classifyMarketsFunctionalBatch_(rows, pins, onAssignments) {
   if (!rows.length) return [];
   const records = rows.map(row => ({ id: String(row[0]), text: marketsReviewOriginalText_(row) }));
   const batch = EDCCatalogClassifier.classifyBatch(records, { ...pins, caller: 'MarketPulse',
@@ -134,12 +189,14 @@ function classifyMarketsFunctionalBatch_(rows, pins) {
     if (batch[field] !== expected) throw new Error('La biblioteca cambió de revisión: ' + field);
   }
   if (!Array.isArray(batch.results) || batch.results.length !== records.length) throw new Error('Lote funcional incompleto.');
-  return batch.results.map((result, index) => {
+  const idsByRecord = batch.results.map((result, index) => {
     if (result.error || result.id !== records[index].id || !Array.isArray(result.assignments)) throw new Error('Respuesta funcional inválida.');
     const ids = result.assignments.map(item => item.id);
     if (ids.some(id => typeof id !== 'string' || !/^\d{2}\.(?:\d{2}|xx)$/.test(id))) throw new Error('ID funcional inválido.');
     return [...new Set(ids)];
   });
+  if (onAssignments) onAssignments(batch.results.flatMap(result => result.assignments));
+  return idsByRecord;
 }
 
 /** Preflight + backup de derivados. No modifica las reseñas ni activa el motor. */
@@ -256,7 +313,8 @@ function advanceMarketsFunctionalMigration_() {
       const matches = (row, i) => existingRows[i][0] === row[0] && existingRows[i][2] === version &&
         existingRows[i][1] === marketsReviewTextDigest_(row) && existingRows[i][7];
       const missing = rows.filter((row, i) => row[0] && !matches(row, i));
-      const predictions = classifyMarketsFunctionalBatch_(missing, state.pins);
+      const predictions = classifyMarketsFunctionalBatch_(missing, state.pins,
+        assignments => persistMarketsFunctionalLabels_(ss, state.pins, assignments));
       const byKey = new Map(missing.map((row, i) => [row[0], predictions[i]]));
       const values = rows.map((row, i) => {
         if (!row[0]) return Array(width).fill('');
