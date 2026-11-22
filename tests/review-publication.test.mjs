@@ -17,7 +17,7 @@ test('snapshot freshness follows publication and compatible revisions with a bou
   api.marketsReviewWindow_ = () => ({ end: '2026-11-21' });
   const now = Date.parse('2026-11-21T10:00:00Z');
   const snapshot = { schema: 15, end: '2026-11-21', publishedAt: '2026-11-21T09:30:00Z',
-    hasNpsAttribution: true, versions: ['10', 'rules', 'catalog'], npsVersions: ['5', 'geo', 'catalog'] };
+    hasNpsAttribution: true, hasAnnualNps: true, hasAllSentimentGaps: true, audienceVersion: 2, versions: ['10', 'rules', 'catalog'], npsVersions: ['5', 'geo', 'catalog'] };
   const check = (versions, changes = {}, properties = {}) => api.marketsReviewSnapshotState_(
     { ...snapshot, ...changes }, 'analytics', { analysisMonth: '2026-11' }, {}, versions, properties, now);
   assert.equal(check(snapshot.versions).freshness, 'fresh');
@@ -95,7 +95,7 @@ test('helpful ordering is numeric and stable across page boundaries, zero and ab
 test('an L1 eviction falls back to the same compatible snapshot without reading Sheets', () => {
   const properties = { MARKETS_REVIEWS_GENERATION: '2', MARKETS_FUNCTIONAL_REVISION: 'rules' };
   const manifest = { schema: 15, end: '2026-11-21', publishedAt: new Date().toISOString(),
-    hasNpsAttribution: true, versions: ['1', 'rules', 'catalog'] };
+    hasNpsAttribution: true, hasAnnualNps: true, hasAllSentimentGaps: true, audienceVersion: 2, versions: ['1', 'rules', 'catalog'] };
   properties.MARKETS_REVIEW_SNAPSHOT_POINTER = JSON.stringify(manifest);
   const cache = new Map();
   let reads = 0;
@@ -103,11 +103,11 @@ test('an L1 eviction falls back to the same compatible snapshot without reading 
     PropertiesService: { getScriptProperties: () => ({ getProperties: () => properties }) } });
   Object.assign(api, {
     marketsReviewWindow_: () => ({ end: '2026-11-21' }), readAppCatalog_: () => [],
-    marketsReviewCatalogVersion_: () => 'catalog', queueMarketsReviewSnapshotRefresh_: () => true,
+    marketsReviewCatalogVersion_: () => 'catalog', marketsReviewDigest_: JSON.stringify, queueMarketsReviewSnapshotRefresh_: () => true,
     marketsReviewCacheKey_: (_ss, operation, filters, window, versions) => JSON.stringify([operation, filters, window, versions]),
     readMarketsWebCache_: (key, builder) => { if (!cache.has(key)) cache.set(key, builder()); return cache.get(key); },
     readMarketsReviewSnapshotShard_: () => { reads++; return {
-      'analytics:ES:2026-11:2026-10-01:2026-11-21': { total: 7 }
+      'analytics:ES:2026-11:2026-10-01:2026-11-21': { total: 7, window: { start: '2026-10-01', end: '2026-11-21' } }
     }; }
   });
   const ss = { getSheetByName: () => ({ getLastRow: () => 98920 }) };
@@ -125,6 +125,18 @@ test('an L1 eviction falls back to the same compatible snapshot without reading 
   cache.clear();
   assert.equal(read({}).total, 7);
   assert.equal(reads, 2);
+  properties.MARKETS_REVIEW_SNAPSHOT_PREVIOUS = JSON.stringify(manifest);
+  properties.MARKETS_REVIEW_SNAPSHOT_POINTER = JSON.stringify({ ...manifest, files: { ES: 'missing' } });
+  const readShard = api.readMarketsReviewSnapshotShard_;
+  api.readMarketsReviewSnapshotShard_ = (snapshot, country) => snapshot.files ? null : readShard(snapshot, country);
+  const queued = [];
+  api.queueMarketsReviewSnapshotRefresh_ = (...args) => queued.push(args);
+  timing = {};
+  assert.equal(read(timing).total, 7);
+  assert.equal(timing.freshness, 'stale');
+  assert.equal(queued.at(-1)[3], true);
+  assert.throws(() => api.readMarketsReviewCache_(ss, 'analytics', { ...filters, strictFreshness: true }, window,
+    () => assert.fail('Strict queries cannot scan the dataset')), /se está publicando/);
   properties.MARKETS_FUNCTIONAL_REVISION = 'incompatible';
   assert.throws(() => read({}), /se está publicando/);
 });
@@ -340,4 +352,11 @@ test('manual email acceptance survives a later failure and retries do not send a
   assert.equal(sends, 1);
   assert.throws(() => run('request-2'), /un minuto/);
   assert.equal(sends, 1);
+});
+
+test('library metadata uses the numbered version pinned in the manifest', () => {
+  const manifest = JSON.parse(fs.readFileSync(new URL('../src/appsscript.json', import.meta.url), 'utf8'));
+  const library = manifest.dependencies.libraries.find(entry => entry.userSymbol === 'EDCCatalogClassifier');
+  assert.equal(vm.runInContext('MARKETS_REVIEW_LIBRARY_VERSION', runtime()), library.version);
+  assert.equal(library.developmentMode, false);
 });

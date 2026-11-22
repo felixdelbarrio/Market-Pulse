@@ -151,19 +151,19 @@ test("Play recent scans resume after the page budget and preserve the historical
       if (limited) throw Object.assign(new Error("Google Play HTTP 429"), {rateLimited:true});
       if (token === "history") return {rows:[],next:"older"};
       if (token === "older") return {rows:[],next:""};
-      return {rows:Array.from({length:150},(_,i)=>({id:token+i})),next:token === "3" ? "3" : String(Number(token)+1)};
+      return {rows:Array.from({length:150},(_,i)=>({id:token+i})),next:token === "8" ? "8" : String(Number(token)+1)};
     }
   });
   const round = runtime.collectMarketsPlayReviews_();
-  assert.equal(round.added,450);
-  assert.deepEqual(calls,["","1","2","history"]);
-  assert.equal(props.get(recent),"3");
+  assert.equal(round.added,1200);
+  assert.deepEqual(calls,["","1","2","3","4","5","6","7","history"]);
+  assert.equal(props.get(recent),"8");
   assert.equal(props.get(history),"older");
   limited = true;
   assert.equal(runtime.collectMarketsPlayReviews_().rateLimited,true);
-  assert.equal(calls.at(-1),"3");
+  assert.equal(calls.at(-1),"8");
   assert.equal(props.get(history),"older");
-  assert.equal(props.get(recent),"3");
+  assert.equal(props.get(recent),"8");
   props.delete("MARKETS_PLAY_REVIEW_PAUSE");
   limited = false;
   assert.equal(runtime.collectMarketsPlayReviews_().failures,1);
@@ -1311,7 +1311,7 @@ test("annual NPS materialization reuses valid counts after a translation and rej
   const props = { MARKETS_REVIEW_SOURCE_GENERATION: "a", MARKETS_REVIEW_GEOGRAPHY_REVISION: "b", MARKETS_REVIEWS_GENERATION: "translated" };
   const version = local.marketsReviewCatalogVersion_([]);
   props.MARKETS_REVIEW_SNAPSHOT_POINTER = JSON.stringify({
-    schema: 15, end: "2026-11-16", hasNpsAttribution: true, versions: ["prior"], npsVersions: ["a", "b", version]
+    schema: 15, end: "2026-11-16", hasNpsAttribution: true, hasAnnualNps: true, audienceVersion: 2, versions: ["prior"], npsVersions: ["a", "b", version]
   });
   local.PropertiesService = { getScriptProperties: () => ({ getProperties: () => props }) };
   local.readMarketsReviewSnapshotShard_ = () => ({

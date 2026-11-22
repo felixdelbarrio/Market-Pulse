@@ -64,27 +64,39 @@
         let segment=null;
         const points=[], paths=[];
         values.forEach((value,i)=>{
-          if(value===null){segment=null;return}
+          if(!Number.isFinite(value)){segment=null;return}
           const px=x(i), py=y(value);
           if(!segment){segment=[];paths.push(segment)}
           segment.push([px,py]);
-          points.push(`<circle class="chart-point" data-point="${i}" cx="${px}" cy="${py}" r="4" fill="${reviewSeriesColor(entity)}"/>`);
+          const period=monthLabel(months[i]), label=fmt(value,1)+" pp";
+          points.push(`<circle class="chart-point" tabindex="0" aria-label="${esc(entity+" · "+period+" · "+label)}" data-point="${i}" data-label="${esc(entity)}" data-month="${esc(period)}" data-value="${esc(label)}" cx="${px}" cy="${py}" r="4" fill="${reviewSeriesColor(entity)}"/>`);
         });
         const path=group=>group.map(([px,py],i)=>`${i?"L":"M"}${px.toFixed(1)},${py.toFixed(1)}`).join(" ");
         const areas=options.shade!==false&&series.length===1?paths.filter(group=>group.length>1).map(group=>
           `<path class="chart-area" d="${path(group)} L${group.at(-1)[0]},${y(0)} L${group[0][0]},${y(0)} Z"/>`).join(""):"";
         return `<g>${areas}<path d="${paths.map(path).join(" ")}" stroke="${reviewSeriesColor(entity)}" class="chart-line"/>${points.join("")}</g>`;
       }).join("");
-      const bands=months.map((month,i)=>{
-        const start=i?(x(i-1)+x(i))/2:left, end=i<months.length-1?(x(i)+x(i+1))/2:width-right;
-        const observations=series.filter(row=>row.values[i]!==null).map(row=>{
-          const sample=row.samples?.[i], detail=sample&&options.sampleLabel? ` (${options.sampleLabel(sample)})`:"";
-          return `${row.entity}: ${fmt(row.values[i],1)} pp${detail}`;
-        });
-        const label=`${monthLabel(month)} · ${observations.join(" · ")||"Sin datos"}`;
-        return `<rect class="chart-band" data-bucket="${i}" tabindex="0" aria-label="${esc(label)}" x="${start}" y="${top}" width="${end-start}" height="${height-top-bottom}"/>`;
-      }).join("");
-      return `<svg viewBox="0 0 ${width} ${height}" role="group" aria-label="NPS mensual de reseñas por entidad, de menos cien a cien puntos porcentuales">${ticks}${labels}${bands}${lines}</svg>`;
+      return `<svg viewBox="0 0 ${width} ${height}" role="group" aria-label="NPS mensual de reseñas por entidad, de menos cien a cien puntos porcentuales">${ticks}${labels}${lines}</svg>`;
+    }
+    function closestReviewPoint(series,x,y,threshold=12){
+      let best=null, distance=threshold**2;
+      for(const points of series){
+        for(let i=0;i<points.length;i++){
+          const point=points[i], previous=points[i-1];
+          let candidate=point, dx=x-point.x, dy=y-point.y;
+          if(previous?.index===point.index-1){
+            const sx=previous.x-point.x, sy=previous.y-point.y, length=sx*sx+sy*sy;
+            if(length){
+              const fraction=Math.max(0,Math.min(1,(dx*sx+dy*sy)/length));
+              dx-=fraction*sx;dy-=fraction*sy;
+              if(fraction>=.5)candidate=previous;
+            }
+          }
+          const squared=dx*dx+dy*dy;
+          if(squared<distance){best=candidate;distance=squared}
+        }
+      }
+      return best;
     }
     function reviewSeriesColor(entity){
       let hash=0;
@@ -116,6 +128,6 @@
       const mobile=rows.map(row=>`<div class="review-gap-mobile-row"><strong>${esc(row.label)}</strong><span>${row.gap===null?"N/D":fmt(row.gap,1)+" pp"}</span><svg viewBox="0 0 320 28" role="img" aria-label="${esc(row.label)}: ${row.gap===null?"N/D":fmt(row.gap,1)+" pp"}"><rect class="gap-background" x="20" y="4" width="280" height="20"/><path class="gap-zero" d="M${mobileX(0)} 0V28"/>${row.gap===null?"":`<rect class="${row.gap<0?"gap-negative":"gap-positive"}" x="${Math.min(mobileX(0),mobileX(row.gap))}" y="4" width="${Math.abs(mobileX(row.gap)-mobileX(0))}" height="20"/>`}</svg></div>`).join("");
       return `<div class="review-gap-mobile">${mobile}<div class="review-gap-mobile-axis"><span>${fmt(low,0)}</span><span>${fmt(high,0)}</span></div><p>${esc(translate("Brecha de NPS vs. mes anterior (pp)"))}</p></div><div class="review-gap-plot"><svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${esc(translate("Brecha de NPS por bloque"))}"><rect class="gap-background" x="${left}" y="${top}" width="${width-left-right}" height="${bottom-top}"/>${grid}${bars}<text x="${(left+width-right)/2}" y="${height-8}" text-anchor="middle">${esc(translate("Brecha de NPS vs. mes anterior (pp)"))}</text></svg></div>`;
     }
-    window.MarketsCharts=Object.freeze({lineChart,ratingBars,monthlyMatrix,newReviewImpact,reviewBalance,reviewBalanceLegend,reviewSeriesColor,reviewGaps});
+    window.MarketsCharts=Object.freeze({closestReviewPoint,lineChart,ratingBars,monthlyMatrix,newReviewImpact,reviewBalance,reviewBalanceLegend,reviewSeriesColor,reviewGaps});
   })();
 </script>

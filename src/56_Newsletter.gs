@@ -1050,7 +1050,8 @@ function marketsNewsletterLanguageKey_(email) {
 function marketsNewsletterLanguageFor_(email) {
   const language = typeof PropertiesService === 'undefined' ? '' :
     PropertiesService.getScriptProperties().getProperty(marketsNewsletterLanguageKey_(email));
-  return language === 'en' || language === 'tr' ? language : 'es';
+  const code = String(language || '').trim().toLowerCase().split('-')[0];
+  return code === 'en' || code === 'tr' ? code : 'es';
 }
 
 function localizedMarketsNewsletter_(model) {

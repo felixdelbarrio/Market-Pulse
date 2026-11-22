@@ -173,7 +173,7 @@ function startMarketsFunctionalMigration() {
       before: {}, after: {}, errors: 0, sampleMs, sampleSize: sample.length, startedAt: new Date().toISOString() };
     properties.setProperty('MARKETS_FUNCTIONAL_MIGRATION', JSON.stringify(state));
     console.log(JSON.stringify({ operation: 'functional-migration-preflight', total, eligibleTotal: keys.length,
-      backup: state.backup, sampleMs, sampleSize: sample.length, libraryVersion: '1', pins }));
+      backup: state.backup, sampleMs, sampleSize: sample.length, libraryVersion: MARKETS_REVIEW_LIBRARY_VERSION, pins }));
     return state;
   } finally { lock.releaseLock(); }
 }

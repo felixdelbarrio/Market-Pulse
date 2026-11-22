@@ -434,6 +434,21 @@ test("an accepted admin newsletter retry is idempotent and does not rebuild or r
 
 test("localized newsletter renders subject, plain text and HTML in the chosen language", () => {
   const model = { period: "2026-10", items: [{ countryCode: "TR", platform: "iOS", endRating: 4.2 }] };
+  const properties = new Map([
+    [context.marketsNewsletterLanguageKey_("uk@bbva.com"), "en"],
+    [context.marketsNewsletterLanguageKey_("turkey@bbva.com"), "tr-TR"],
+    [context.marketsNewsletterLanguageKey_("spain@bbva.com"), "es-ES"]
+  ]);
+  const previous = context.PropertiesService;
+  context.PropertiesService = { getScriptProperties: () => ({ getProperty: key => properties.get(key) }) };
+  try {
+    assert.equal(context.marketsNewsletterLanguageFor_("spain@bbva.com"), "es");
+    assert.equal(context.marketsNewsletterLanguageFor_("absent@bbva.com"), "es");
+    assert.equal(context.marketsNewsletterLanguageFor_("turkey@bbva.com"), "tr");
+    assert.equal(context.marketsNewsletterLanguageFor_("uk@bbva.com"), "en");
+  } finally {
+    context.PropertiesService = previous;
+  }
   for (const [language, title] of [["en", "Monthly review"], ["tr", "Aylık değerlendirme"]]) {
     const rendered = context.localizedMarketsNewsletter_({ ...model, language });
     assert.match(rendered.subject, /^\[bIA\]🚀🚀🚀 \[EDC Market Pulse\] · /u);
