@@ -172,6 +172,50 @@ test('library adapter pins all revisions, preserves Generalista and refuses part
   assert.throws(() => api.classifyMarketsFunctionalBatch_(rows, pins), /cambió/);
 });
 
+test('functional labels are immutable per pinned revision and historical versions remain readable', () => {
+  const cells = [];
+  let created = false, writes = 0, invalidations = 0;
+  const api = runtime({
+    PropertiesService: { getScriptProperties: () => ({}) },
+    SpreadsheetApp: { flush() {} },
+    ensureSheetCapacity_() {}, requireCurrentSheetContract_() {}
+  });
+  vm.runInContext(reviewSource('55_ReviewIndex'), api);
+  api.marketsReviewDigest_ = JSON.stringify;
+  api.advanceMarketsReviewGeneration_ = () => invalidations++;
+  const sheet = {
+    getLastRow: () => cells.length,
+    getRange: (row, _col, count) => ({
+      getDisplayValues: () => cells.slice(row - 1, row - 1 + count),
+      setNumberFormat: () => ({
+        setValues(values) {
+          assert.equal(row, cells.length + 1);
+          cells.push(...values);
+          writes++;
+        }
+      })
+    })
+  };
+  const ss = {
+    getSheetByName: () => created ? sheet : null,
+    insertSheet: () => { created = true; return sheet; }
+  };
+  const pins = { expectedRevision: 'catalog', expectedAlgorithmVersion: 'algorithm',
+    expectedRulesRevision: 'rules', expectedTranslationsRevision: 'translations' };
+  const assignment = { id: '03.13', blockId: '03', blockName: 'Pagos', suboperationName: 'Transferencias' };
+  api.persistMarketsFunctionalLabels_(ss, pins, [{ id: '03.13' }]);
+  assert.equal(created, false);
+  api.persistMarketsFunctionalLabels_(ss, pins, [assignment, assignment]);
+  api.persistMarketsFunctionalLabels_(ss, pins, [assignment]);
+  assert.deepEqual([writes, invalidations], [1, 1]);
+  assert.throws(() => api.persistMarketsFunctionalLabels_(ss, pins, [{ ...assignment, blockName: 'Distinto' }]), /incompatible/);
+  const newer = { ...pins, expectedRulesRevision: 'rules-2' };
+  api.persistMarketsFunctionalLabels_(ss, newer, [{ ...assignment, suboperationName: 'Nueva etiqueta' }]);
+  assert.equal(api.marketsFunctionalLabelRows_(ss, pins)[0][4], 'Transferencias');
+  assert.equal(api.marketsFunctionalLabelRows_(ss, newer)[0][4], 'Nueva etiqueta');
+  assert.equal(cells.length, 3);
+});
+
 test('featured newsletter reviews share exact scopes, deduplicate keys and escape replies', () => {
   const api = runtime({ trimString_: value => String(value ?? '').trim(), escapeMarketsAlertHtml_: value =>
     String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;'),

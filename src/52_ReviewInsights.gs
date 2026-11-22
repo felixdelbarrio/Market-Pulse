@@ -508,7 +508,8 @@ function getMarketsReviewHeatmap(filters) {
   currentMarketsUserEmail_();
   const ss = openMarketsSpreadsheet_();
   const catalog = ss.getSheetByName('FUNCTIONAL_CATALOG');
-  if (!catalog || catalog.getLastRow() < 2) return { configured: false, functions: [] };
+  const active = marketsFunctionalEngine_(PropertiesService.getScriptProperties());
+  if ((!catalog || catalog.getLastRow() < 2) && !active?.pins) return { configured: false, functions: [] };
   const period = /^\d{4}-\d{2}$/.test(filters?.period) ? filters.period : '';
   const country = /^(UNKNOWN|[A-Z]{2})$/.test(filters?.country) ? filters.country : '';
   const platform = ['Android', 'iOS'].includes(filters?.platform) ? filters.platform : '';
@@ -516,7 +517,8 @@ function getMarketsReviewHeatmap(filters) {
   const { audience } = normalizeMarketsReviewFilters_({ audience: filters?.audience });
   const scope = { audience, period, country: country || 'ALL', platform: platform || 'ALL', app: appName, maxRating: 3, includeTopics: true };
   return readMarketsReviewCache_(ss, 'heatmap', scope, {}, apps => {
-    const taxonomy = catalog.getRange(2, 1, catalog.getLastRow() - 1, 4).getDisplayValues();
+    const count = (catalog?.getLastRow() || 0) - 1;
+    const taxonomy = count > 0 ? catalog.getRange(2, 1, count, 4).getDisplayValues() : [];
     const topics = {};
     const groups = { entities: new Map(), markets: new Map() };
     for (const [id, block, name] of taxonomy) {
@@ -524,6 +526,14 @@ function getMarketsReviewHeatmap(filters) {
       topics[id.slice(0, 2)] = block;
       topics[id.slice(0, 2) + '.xx'] = block + ' · Sin suboperativa identificada';
     }
+    if (active?.pins) {
+      for (const [, id, blockId, blockName, name] of marketsFunctionalLabelRows_(ss, active.pins)) {
+        topics[id] ??= name;
+        topics[blockId] ??= blockName;
+        topics[blockId + '.xx'] ??= blockName + ' · Sin suboperativa identificada';
+      }
+    }
+    if (!Object.keys(topics).length) return { configured: false, functions: [] };
     const rows = queryMarketsReviews_(ss, scope, null, false, apps);
     let classified = 0;
     for (const row of rows) {
@@ -809,14 +819,16 @@ function publishMarketsReviewSnapshot_(force = false) {
   const analyticsWindow = marketsReviewWindow_();
   const annualWindow = marketsAnnualReviewWindow_(analyticsWindow);
   const commentWindow = marketsReviewWindow_({ start: marketsDefaultCommentStart_(end) });
-  const topics = marketsReviewTopics_(ss);
+  const topics = marketsReviewTopics_(ss, engine);
   const year = end.slice(0, 4), analysisMonth = end.slice(0, 7);
   const previousMonth = shiftReviewDay_(analysisMonth + '-01', -1).slice(0, 7);
   const previousWindow = marketsReviewAnalyticsWindow_({ analysisMonth: previousMonth }, end);
   const earliest = [analyticsWindow.start, marketsAnnualReviewWindow_(previousWindow).start,
     previousWindow.start, (Number(previousMonth.slice(0, 4)) - 1) + '-01-01', (Number(year) - 1) + '-01-01',
     ...requestedScopes.flatMap(entry => [entry.window.start, (Number(entry.window.end.slice(0, 4)) - 1) + '-01-01'])].sort()[0];
-  const classification = pending ? { library: engine, knownBlocks: marketsReviewClassification_(ss).knownBlocks,
+  const classification = pending ? { library: engine, knownBlocks: new Set([
+    ...marketsReviewClassification_(ss).knownBlocks, ...marketsFunctionalLabelRows_(ss, engine.pins).map(row => row[2])
+  ]),
     version: marketsReviewDigest_([MARKETS_REVIEW_CLASSIFIER_SCHEMA, MARKETS_REVIEW_AUDIENCE_VERSION, engine.pins]) } : null;
   const queryStarted = Date.now();
   const allRows = queryMarketsReviews_(ss, { country: 'ALL', platform: 'ALL', includeAudience: true, audienceCatalog,
@@ -1381,12 +1393,20 @@ function advanceMarketsReviewGeneration_(properties, sourceChanged = false) {
   catch (error) { console.warn('No se pudo invalidar la caché de reseñas. ' + error.message); }
 }
 
-function marketsReviewTopics_(ss) {
+function marketsReviewTopics_(ss, engine) {
   const catalog = ss.getSheetByName('FUNCTIONAL_CATALOG');
   const topics = { general: 'Generalista' };
   if (catalog && catalog.getLastRow() > 1) {
     for (const [id, label] of catalog.getRange(2, 1, catalog.getLastRow() - 1, 2).getDisplayValues()) {
       if (/^\d{2}\./.test(id) && label) topics[id.slice(0, 2)] = label;
+    }
+  }
+  if (engine === undefined && typeof PropertiesService === 'object') {
+    engine = marketsFunctionalEngine_(PropertiesService.getScriptProperties());
+  }
+  if (engine?.pins) {
+    for (const [, , blockId, blockName] of marketsFunctionalLabelRows_(ss, engine.pins)) {
+      topics[blockId] ??= blockName;
     }
   }
   return topics;

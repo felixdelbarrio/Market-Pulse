@@ -430,8 +430,11 @@ function marketsReviewClassification_(ss) {
     ? taxonomy.getRange(2, 1, taxonomy.getLastRow() - 1, 4).getDisplayValues() : [];
   const knownBlocks = new Set(entries.filter(([id, label]) => /^\d{2}\./.test(id) && label).map(([id]) => id.slice(0, 2)));
   const active = typeof PropertiesService === 'object' && marketsFunctionalEngine_(PropertiesService.getScriptProperties());
-  if (active?.engine === 'EDCCatalogClassifier') return { library: active, knownBlocks,
-    version: marketsReviewDigest_([MARKETS_REVIEW_CLASSIFIER_SCHEMA, MARKETS_REVIEW_AUDIENCE_VERSION, active.pins]) };
+  if (active?.engine === 'EDCCatalogClassifier') {
+    for (const [, , blockId] of marketsFunctionalLabelRows_(ss, active.pins)) knownBlocks.add(blockId);
+    return { library: active, knownBlocks,
+      version: marketsReviewDigest_([MARKETS_REVIEW_CLASSIFIER_SCHEMA, MARKETS_REVIEW_AUDIENCE_VERSION, active.pins]) };
+  }
   const aliases = marketsBusinessAliases_(ss);
   const translations = ['en', 'tr'].map(language => marketsFunctionalTranslations_(ss, language));
   for (const [id, , name] of entries) {
