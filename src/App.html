@@ -714,6 +714,7 @@
       exportSheets.evolution.delete("Pulso mensual");
       resetMonthlyReviews();evolutionRender=null;
       analyticsRequest++;analyticsLoading=false;pendingAnalyticsKey=renderedAnalyticsKey="";
+      heatmapRequest++;heatmapLoading=false;pendingHeatmapKey=renderedHeatmapKey="";
       $("review-heatmap").setAttribute("aria-busy","false");
       hideChartTooltip();
       if(rerender&&state.meta)queueMicrotask(()=>{
@@ -1116,7 +1117,7 @@
           const analysisMonth=period.period||reviewDates().end.slice(0,7);
           return fetchReviewData("review:analytics",monthlyReviewScope(analysisMonth),true);
         },
-        ()=>fetchReviewData("review:analytics",annualReviewRequest(annualScope()),true)
+        ()=>fetchReviewData("review:analytics",annualIndicatorsRequest(annualScope()),true)
       ];
       function schedule(){
         if(!steps.length)return;
@@ -1388,100 +1389,112 @@
         <div class="review-blocks radar-filters">${row.attributionMethod?.startsWith("review_evidence_")?'<span class="filter-chip">Inferido</span>':""}${blocks.map(block=>`<span class="filter-chip">Bloque funcional · ${U.esc(block)}</span>`).join("")}</div>
         ${row.reply?`<blockquote><strong>${U.esc(row.replyAuthor||entity)}</strong> ${row.replyDate?`<time datetime="${U.esc(row.replyDate)}">${U.esc(dateLabel(row.replyDate.slice(0,10)))}</time>`:""}<p>${U.esc(row.reply)}</p></blockquote>`:""}</article>`;
     }
-    const annualReviewRequest=(scope,entity=analyticsEntity)=>({...scope,segment:heatmapSegment,entity,language:appLanguage});
+    const annualReviewRequest=(scope,entity=analyticsEntity,segment=heatmapSegment)=>({...scope,segment,entity,language:appLanguage});
+    // The server's annual summary ignores segment (all valid stars). Use the already
+    // materialized DETRACTOR heatmap scope as a stable transport, never the selected sentiment.
+    const annualIndicatorsRequest=scope=>annualReviewRequest(scope,analyticsEntity,"DETRACTOR");
     const annualNpsScope=scope=>({country:scope.country,year:scope.year,audience:scope.audience,inferGeography:scope.inferGeography});
     let pendingAnalyticsKey="",renderedAnalyticsKey="";
+    let heatmapRequest=0,heatmapLoading=false,pendingHeatmapKey="",renderedHeatmapKey="";
+    async function loadAnnualHeatmap(scope,dates){
+      // Matrix totals include every entity; the KPI app selector is not a matrix filter.
+      const request=annualReviewRequest(scope,defaultAnalyticsEntity);
+      const key=JSON.stringify([request,dates.end]);
+      if(pendingHeatmapKey===key)return;
+      if(renderedHeatmapKey===key&&hasReviewResponse("review:analytics",request))return;
+      const token=++heatmapRequest,target=$("review-heatmap"),started=performance.now();
+      pendingHeatmapKey=key;renderedHeatmapKey="";heatmapLoading=true;
+      exportSheets.analytics.delete("Mapa de calor");
+      if(!hasReviewResponse("review:analytics",request)){
+        target.setAttribute("aria-busy","true");
+        const matrix=target.querySelector("[data-matrix]");
+        if(matrix){matrix.innerHTML=U.loading(translate("Cargando el mapa de calor"));target.querySelector("[data-pages]")?.replaceChildren()}
+        else target.innerHTML=U.loading(translate("Cargando el mapa de calor"));
+      }
+      try{
+        const data=await fetchReviewData("review:analytics",request);
+        if(token!==heatmapRequest||!data)return;
+        renderReviewMatrix(target,data,{...dates,end:data.window?.end||dates.end,country:scope.country,platform:"ALL",segment:request.segment,audience:scope.audience,inferGeography:scope.inferGeography});
+        appendReviewFreshness(target,data.timing);
+        renderedHeatmapKey=key;
+        trackReady("analytics","Mostrar mapa de calor",started);
+      }catch(error){
+        if(token!==heatmapRequest)return;
+        renderReviewRetry(target.querySelector("[data-matrix]")||target,error,()=>loadAnalytics(false,true),{key:"heatmap:"+key,current:()=>state.view==="analytics"&&token===heatmapRequest});
+      }finally{
+        if(token===heatmapRequest){target.setAttribute("aria-busy","false");pendingHeatmapKey="";heatmapLoading=false}
+      }
+    }
     async function loadAnalytics(localOnly=false, heatmapOnly=false){
       hideChartTooltip();
       const started=performance.now(), scope=annualScope(), dates=annualDates(scope.year);
-      const key=JSON.stringify([annualReviewRequest(scope),dates.end]);
+      // A sentiment change cannot supersede an in-flight indicators request or
+      // replace its content, exports, ratings, entity selector or retry state.
+      if(heatmapOnly)return loadAnnualHeatmap(scope,dates);
+      if(!localOnly)loadAnnualHeatmap(scope,dates);
+      const request=annualIndicatorsRequest(scope);
+      const key=JSON.stringify([request,dates.end]);
       if(pendingAnalyticsKey===key)return;
       const sameView=renderedAnalyticsKey===key;
-      if(!localOnly&&!heatmapOnly&&sameView&&hasReviewResponse("review:analytics",annualReviewRequest(scope))){
+      if(!localOnly&&sameView&&hasReviewResponse("review:analytics",request)){
         trackReady("analytics","Mostrar análisis anual",started);return;
       }
-      // A changed scope must replace all panels still waiting for a superseded request.
-      if(analyticsLoading){localOnly=false;heatmapOnly=false}
-      const request=annualReviewRequest(scope,heatmapOnly?defaultAnalyticsEntity:analyticsEntity);
-      const cached=hasReviewResponse("review:analytics",request);
-      const showLoading=!sameView&&!cached;
+      const showLoading=!sameView&&!hasReviewResponse("review:analytics",request);
       if(!sameView)renderedAnalyticsKey="";
-      pendingAnalyticsKey=key;
-      analyticsLoading=true;
+      pendingAnalyticsKey=key;analyticsLoading=true;
       const sheets=exportSheets.analytics;
-      if(!sameView&&!localOnly)sheets.delete("Mapa de calor");
-      if(!sameView&&!heatmapOnly){sheets.delete("Rating al cierre del mes");sheets.delete("Indicadores del periodo");sheets.delete("Reseñas más útiles");sheets.delete("Personas con más reseñas")}
-      const token=++analyticsRequest, target=$("review-heatmap"), entityControl=$("analytics-entity");
+      if(!sameView){sheets.delete("Rating al cierre del mes");sheets.delete("Indicadores del periodo");sheets.delete("Reseñas más útiles");sheets.delete("Personas con más reseñas")}
+      const token=++analyticsRequest, target=$("review-annual"), entityControl=$("analytics-entity");
       const period=annualPeriodLabel(scope.year);
       $("annual-rating-title").textContent=translate("Evolución del rating {period}",{period});
       $("annual-nps-title").textContent=translate("Evolución del NPS de reseñas {period}",{period});
       $("annual-indicators-title").textContent=scope.year===reviewDates().end.slice(0,4)
         ?translate("Indicadores del acumulado del año hasta la fecha"):translate("Indicadores de {year}",{year:scope.year});
       radarFilters.analytics.render();
-      if(!localOnly&&showLoading){
-        target.setAttribute("aria-busy","true");
-        const matrix=target.querySelector("[data-matrix]");
-        if(matrix){matrix.innerHTML=U.loading(translate("Cargando el mapa de calor"));target.querySelector("[data-pages]").replaceChildren()}
-        else target.innerHTML=U.loading(translate("Cargando el mapa de calor"));
+      const trends=annualTrendRequest(scope);
+      if(!sameView&&scope.country!=="UNKNOWN"&&!cachedTrendRows(trends)){
+        $("annual-chart").innerHTML=U.loading(translate("Cargando el histórico de ratings"));
+        $("annual-series").replaceChildren();
       }
-      if(!heatmapOnly){
-        const trends=annualTrendRequest(scope);
-        if(!sameView&&scope.country!=="UNKNOWN"&&!cachedTrendRows(trends)){
-          $("annual-chart").innerHTML=U.loading(translate("Cargando el histórico de ratings"));
-          $("annual-series").replaceChildren();
-        }
-        if(showLoading)$("review-annual").innerHTML=U.loading(translate("Cargando indicadores de reseñas"));
-        if(reviewNpsEnabled)loadAnnualNps(scope,dates);
-      }
+      if(showLoading)target.innerHTML=U.loading(translate("Cargando indicadores de reseñas"));
+      if(reviewNpsEnabled)loadAnnualNps(scope,dates);
       try{
-        const trends=heatmapOnly||scope.country==="UNKNOWN"?[]:fetchTrends(annualTrendRequest(scope));
-        const chartReady=Promise.resolve(trends).then(rows=>{
-          if(token!==analyticsRequest||heatmapOnly)return;
+        const chartReady=Promise.resolve(scope.country==="UNKNOWN"?[]:fetchTrends(trends)).then(rows=>{
+          if(token!==analyticsRequest)return;
           annualTrends=scope.country==="UNKNOWN"?[]:withPublishedRatings(rows,{country:scope.country,platform:"ALL"});
           renderAnnualChart(scope,dates,analyticsEntity);
           trackReady("analytics","Mostrar histórico de ratings",started);
         }).catch(error=>{
-          if(token!==analyticsRequest||heatmapOnly)return;
+          if(token!==analyticsRequest)return;
           annualTrends=[];
-          renderReviewRetry($("annual-chart"),error,()=>loadAnalytics());
+          renderReviewRetry($("annual-chart"),error,()=>loadAnalytics(true));
         });
-        const [data]=await Promise.all([
-          fetchReviewData("review:analytics",request),
-          chartReady
-        ]);
-        if(token!==analyticsRequest)return;
-        if(!localOnly)renderReviewMatrix(target,data,{...dates,end:data.window?.end||dates.end,country:scope.country,platform:"ALL",segment:heatmapSegment,audience:scope.audience,inferGeography:scope.inferGeography});
-        if(!localOnly)appendReviewFreshness(target,data.timing);
-        if(!heatmapOnly){
-          if(scope.country!=="UNKNOWN")annualYears=[...new Set(annualTrends.filter(row=>D.finite(row.ratingEom)).map(row=>row.month.slice(0,4)))].sort().reverse();
-          const apps=new Set(data.entityOptions);
-          for(const row of annualTrends)if(row.month.startsWith(scope.year)&&D.finite(row.ratingEom))apps.add(D.appName(row));
-          apps.delete(defaultAnalyticsEntity);
-          const compareCountry=isAnnualCountry(scope.country);
-          const options=[...(compareCountry?["ALL"]:[]),defaultAnalyticsEntity,...[...apps].sort((a,b)=>a.localeCompare(b,locale()))];
-          if(!options.includes(analyticsEntity)){
-            analyticsEntity=defaultAnalyticsEntity;
-            analyticsLoading=false;
-            pendingAnalyticsKey="";
-            return loadAnalytics(true);
-          }
-          entityControl.innerHTML=options.map(name=>U.option(name,name===defaultAnalyticsEntity?"BBVA":annualEntityLabel(name),name===analyticsEntity)).join("");
-          annualAppControl.refresh();
-          renderAnnualReviews($("review-annual"),data,scope);
-          appendReviewFreshness($("review-annual"),data.timing);
+        const [data]=await Promise.all([fetchReviewData("review:analytics",request),chartReady]);
+        if(token!==analyticsRequest||!data)return;
+        if(scope.country!=="UNKNOWN")annualYears=[...new Set(annualTrends.filter(row=>D.finite(row.ratingEom)).map(row=>row.month.slice(0,4)))].sort().reverse();
+        const apps=new Set(data.entityOptions);
+        for(const row of annualTrends)if(row.month.startsWith(scope.year)&&D.finite(row.ratingEom))apps.add(D.appName(row));
+        apps.delete(defaultAnalyticsEntity);
+        const compareCountry=isAnnualCountry(scope.country);
+        const options=[...(compareCountry?["ALL"]:[]),defaultAnalyticsEntity,...[...apps].sort((a,b)=>a.localeCompare(b,locale()))];
+        if(!options.includes(analyticsEntity)){
+          analyticsEntity=defaultAnalyticsEntity;analyticsLoading=false;pendingAnalyticsKey="";
+          return loadAnalytics(true);
         }
+        entityControl.innerHTML=options.map(name=>U.option(name,name===defaultAnalyticsEntity?"BBVA":annualEntityLabel(name),name===analyticsEntity)).join("");
+        annualAppControl.refresh();
+        renderAnnualReviews(target,data,scope);
+        appendReviewFreshness(target,data.timing);
         renderedAnalyticsKey=key;
-        trackReady("analytics",heatmapOnly?"Mostrar mapa de calor":"Mostrar análisis anual",started);
+        trackReady("analytics","Mostrar análisis anual",started);
       }catch(error){
         if(token!==analyticsRequest)return;
         renderedAnalyticsKey="";
-        if(!localOnly)renderReviewRetry(target.querySelector("[data-matrix]")||target,error,()=>loadAnalytics(),{key:"annual:"+key,current:()=>state.view==="analytics"&&token===analyticsRequest});
-        if(!heatmapOnly)renderReviewRetry($("review-annual"),error,()=>loadAnalytics(),localOnly?{key:"annual:"+key,current:()=>state.view==="analytics"&&token===analyticsRequest}:null)
+        for(const name of ["Indicadores del periodo","Reseñas más útiles","Personas con más reseñas"])sheets.delete(name);
+        renderReviewRetry(target,error,()=>loadAnalytics(true),{key:"annual:"+key,current:()=>state.view==="analytics"&&token===analyticsRequest});
       }finally{
         if(token===analyticsRequest){
-          target.setAttribute("aria-busy","false");
-          analyticsLoading=false;
-          pendingAnalyticsKey="";
+          analyticsLoading=false;pendingAnalyticsKey="";
           annualAppControl.enable(Boolean(entityControl.options.length));
         }
       }
@@ -2793,7 +2806,7 @@
       try{
         const country=view==="reviews"?reviewScope().country:view==="analytics"?annualScope().country:state.country;
         if(!country||country==="ALL")throw new Error("Selecciona una geografía para descargar Excel.");
-        if((view==="analytics"&&analyticsLoading)||(view==="evolution"&&(state.trendsLoading||monthlyReviewsLoading))){
+        if((view==="analytics"&&(analyticsLoading||heatmapLoading))||(view==="evolution"&&(state.trendsLoading||monthlyReviewsLoading))){
           throw new Error("Espera a que termine de cargar la selección.");
         }
         let sheets;

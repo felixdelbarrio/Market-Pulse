@@ -224,7 +224,7 @@ test('Prefetch mensual y carga interactiva comparten ámbito sin sentimiento; An
       fetchTrends:()=>Promise.resolve([]),trendRequest:()=>({}),cachedTrendRows:()=>[{}],withPublishedRatings:rows=>rows,D:{trendRows:rows=>rows,periodModel:()=>({period:'2026-11'})},
       reviewDates:()=>({end:'2026-11-25'}),reviewScope:()=>({country:'MX',segment:'PROMOTER'}),reviewPage:0,annualScope:()=>({country:'ES',year:'2026'}),analyticsEntity:'BBVA Empresas',heatmapSegment:'DETRACTOR',annualNpsScope:scope=>scope,
       fetchReviewData:(method,scope,prefetch)=>{calls.push([method,clone(scope),prefetch]);return Promise.resolve(null)}};
-    vm.runInNewContext(section('    function monthlyReviewScope(','    function renderMonthlyMatrix(')+section('    function warmViewsAfterBootstrap(','    function validateReviewDates(')+app.match(/    const annualReviewRequest=.*?;\n/)[0]+'\nwarmViewsAfterBootstrap();',sandbox);
+    vm.runInNewContext(section('    function monthlyReviewScope(','    function renderMonthlyMatrix(')+section('    function warmViewsAfterBootstrap(','    function validateReviewDates(')+app.match(/    const annualReviewRequest=.*?;\n/)[0]+app.match(/    const annualIndicatorsRequest=.*?;\n/)[0]+'\nwarmViewsAfterBootstrap();',sandbox);
     for(let i=0;timers.length&&i<10;i++){timers.shift()();await new Promise(resolve=>setImmediate(resolve));}
     assert.equal(timers.length,0);
     const monthly=calls.find(([method,scope])=>method==='review:analytics'&&scope.analysisMonth);
