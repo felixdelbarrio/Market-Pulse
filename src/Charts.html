@@ -9,11 +9,16 @@
       const monthIndex=new Map(months.map((month,index)=>[month,index]));
       const values=visible.flatMap(item=>item.points.map(point=>point.value)).filter(finite);
       let min=Math.max(1,Math.floor((Math.min(...values)-.12)*10)/10),max=Math.min(5,Math.ceil((Math.max(...values)+.12)*10)/10);if(max-min<.4){min=Math.max(1,min-.2);max=Math.min(5,max+.2)}
-      const width=theme.width,height=theme.height,left=theme.left,right=theme.right,top=theme.top,bottom=theme.bottom,plotW=width-left-right,plotH=height-top-bottom;
+      const compact=options.compact===true;
+      // A mobile viewBox uses actual-sized text and a smaller plot, not a desktop SVG forced into a scroll container.
+      const width=compact?Math.max(260,Math.min(780,Number(options.width)||360)):theme.width,height=compact?244:theme.height,
+        left=compact?38:theme.left,right=compact?30:theme.right,top=compact?16:theme.top,bottom=compact?36:theme.bottom,
+        fontSize=compact?11:theme.fontSize,plotW=width-left-right,plotH=height-top-bottom;
       const x=month=>left+(months.length===1?plotW/2:monthIndex.get(month)/(months.length-1)*plotW);const y=value=>top+(max-value)/(max-min)*plotH;
-      const ticks=Array.from({length:5},(_,index)=>min+(max-min)*index/4);const step=Math.max(1,Math.ceil(months.length/8));
-      const grid=ticks.map(value=>`<g><line x1="${left}" y1="${y(value)}" x2="${width-right}" y2="${y(value)}" stroke="${theme.grid}"/><text x="${left-12}" y="${y(value)+4}" text-anchor="end" fill="${theme.axis}" font-size="${theme.fontSize}">${options.format(value,1)}</text></g>`).join("");
-      const labels=months.map((month,index)=>index%step===0||index===months.length-1?`<text x="${x(month)}" y="${height-16}" text-anchor="middle" fill="${theme.axis}" font-size="${theme.fontSize}">${ui.esc(options.monthLabel(month))}</text>`:"").join("");
+      const ticks=Array.from({length:5},(_,index)=>min+(max-min)*index/4);
+      const step=compact?Math.max(1,Math.ceil((months.length-1)/Math.max(1,Math.floor(plotW/66)))):Math.max(1,Math.ceil(months.length/8));
+      const grid=ticks.map(value=>`<g><line x1="${left}" y1="${y(value)}" x2="${width-right}" y2="${y(value)}" stroke="${theme.grid}"/><text x="${left-12}" y="${y(value)+4}" text-anchor="end" fill="${theme.axis}" font-size="${fontSize}">${options.format(value,1)}</text></g>`).join("");
+      const labels=months.map((month,index)=>index===0||index===months.length-1||(index%step===0&&(!compact||x(months.at(-1))-x(month)>=48))?`<text x="${x(month)}" y="${height-16}" text-anchor="middle" fill="${theme.axis}" font-size="${fontSize}">${ui.esc(options.monthLabel(month))}</text>`:"").join("");
       const lines=visible.map((item,index)=>{const color=theme.palette[index%theme.palette.length];const points=item.points.filter(point=>finite(point.value)).sort((a,b)=>a.month.localeCompare(b.month));const path=points.map((point,position)=>`${position?"L":"M"}${x(point.month).toFixed(1)},${y(point.value).toFixed(1)}`).join(" ");const circles=points.map(point=>`<circle class="chart-point" tabindex="0" cx="${x(point.month)}" cy="${y(point.value)}" r="${theme.pointRadius}" fill="${color}" stroke="${theme.surface}" stroke-width="${theme.pointStroke}" data-label="${ui.esc(item.label)}" data-month="${ui.esc(options.monthLabel(point.month))}" data-value="${options.format(point.value,2)}"></circle>`).join("");return`<path d="${path}" fill="none" stroke="${color}" stroke-width="${item.isBbva?theme.focusLineWidth:theme.lineWidth}" stroke-linejoin="round" stroke-linecap="round" opacity="${item.isBbva?1:.82}"/>${circles}`}).join("");
       const scope=options.context,idPrefix=options.idPrefix||"markets";
       const svg=`<svg viewBox="0 0 ${width} ${height}" role="img" aria-labelledby="${idPrefix}-chart-title ${idPrefix}-chart-desc"><title id="${idPrefix}-chart-title">Evolución mensual de ratings</title><desc id="${idPrefix}-chart-desc">${ui.esc(scope)}. Periodo hasta ${ui.esc(options.monthLabel(months.at(-1)))}</desc>${grid}<line x1="${left}" y1="${top}" x2="${left}" y2="${height-bottom}" stroke="${theme.axis}"/>${labels}${lines}</svg>`;
@@ -130,11 +135,14 @@
       return `<div class="review-gap-mobile">${mobile}<div class="review-gap-mobile-axis"><span>${fmt(low,0)}</span><span>${fmt(high,0)}</span></div><p>${esc(translate("Brecha de NPS vs. mes anterior (pp)"))}</p></div><div class="review-gap-plot"><svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${esc(translate("Brecha de NPS por bloque"))}"><rect class="gap-background" x="${left}" y="${top}" width="${width-left-right}" height="${bottom-top}"/>${grid}${bars}<text x="${(left+width-right)/2}" y="${height-8}" text-anchor="middle">${esc(translate("Brecha de NPS vs. mes anterior (pp)"))}</text></svg></div>`;
     }
     // Diverging count chart: the sign is a visual convention only. Source counts,
-    // table and export stay nonnegative; neutral retains its actual count at zero.
+    // table and export stay nonnegative; neutral counts are not plotted.
     function reviewBlockCounts(rows,integer,translate){
       if(!rows.length)return "";
       const {esc}=window.MarketsUI;
-      const labels=[translate("Promotores"),translate("Detractores"),translate("Neutros")];
+      const labels=[translate("Promotores"),translate("Detractores")];
+      // Keep the full data in the table/exports, but omit blocks with no visible series from the plot.
+      rows=rows.filter(row=>row.promoters>0||row.detractors>0);
+      if(!rows.length)return `<p class="review-chart-note">${esc(translate("No hay reseñas promotoras o detractoras en el periodo."))}</p>`;
       const max=Math.max(1,...rows.flatMap(row=>[row.promoters,row.detractors]));
       const step=Math.max(1,Math.ceil(max/4)),high=step*4;
       const width=960,left=260,right=35,top=12;
@@ -149,7 +157,7 @@
           if(lines.length&&(lines.at(-1)+" "+word).length<=30)lines[lines.length-1]+=" "+word;
           else lines.push(word);
         }
-        const rowHeight=Math.max(48,lines.length*15+8),y=bottom;
+        const rowHeight=Math.max(28,lines.length*15+8),y=bottom;
         bottom+=rowHeight;
         return {row,lines,y,rowHeight};
       });
@@ -159,16 +167,16 @@
       }).join("");
       const bars=(row,y,origin,pixelWidth)=>{
         const rect=(value,direction,tone,label)=>value>0?`<rect class="${tone}" x="${origin+(direction<0?-pixelWidth(value):0)}" y="${y}" width="${pixelWidth(value)}" height="18"><title>${esc(label+": "+integer(value))}</title></rect>`:"";
-        return rect(row.detractors,-1,"gap-negative",labels[1])+rect(row.promoters,1,"gap-positive",labels[0])+(row.neutral?`<circle class="gap-neutral" cx="${origin}" cy="${y+26}" r="4"><title>${esc(labels[2]+": "+integer(row.neutral))}</title></circle>`:"");
+        return rect(row.detractors,-1,"gap-negative",labels[1])+rect(row.promoters,1,"gap-positive",labels[0]);
       };
-      const detail=row=>labels.map((label,i)=>label+": "+integer([row.promoters,row.detractors,row.neutral][i])).join(" · ");
-      const legend=`<p class="review-block-count-legend"><span><i class="count-promoter"></i>${esc(labels[0])} (+)</span><span><i class="count-detractor"></i>${esc(labels[1])} (−)</span><span><i class="count-neutral"></i>${esc(labels[2])} (0)</span></p>`;
+      const detail=row=>labels.map((label,i)=>label+": "+integer([row.promoters,row.detractors][i])).join(" · ");
+      const legend=`<p class="review-block-count-legend"><span><i class="count-promoter"></i>${esc(labels[0])} (+)</span><span><i class="count-detractor"></i>${esc(labels[1])} (−)</span></p>`;
       const desktop=positioned.map(({row,lines,y,rowHeight})=>{
-        const mid=y+rowHeight/2, barY=mid-15;
+        const mid=y+rowHeight/2, barY=mid-9;
         const name=lines.map((line,i)=>`<tspan x="${left-8}" dy="${i?15:0}">${esc(line)}</tspan>`).join("");
-        return `<g role="group" aria-label="${esc(row.label+" · "+detail(row))}"><text x="${left-8}" y="${mid-3-(lines.length-1)*7.5}" text-anchor="end">${name}</text>${bars(row,barY,zero,scale)}${row.neutral?`<text x="${zero+9}" y="${barY+30}">${esc(labels[2]+": "+integer(row.neutral))}</text>`:""}</g>`;
+        return `<g role="group" aria-label="${esc(row.label+" · "+detail(row))}"><text x="${left-8}" y="${mid+4-(lines.length-1)*7.5}" text-anchor="end">${name}</text>${bars(row,barY,zero,scale)}</g>`;
       }).join("");
-      const mobile=rows.map(row=>`<div class="review-gap-mobile-row"><strong>${esc(row.label)}</strong><svg viewBox="0 0 320 38" role="img" aria-label="${esc(row.label+" · "+detail(row))}"><rect class="gap-background" x="20" y="2" width="280" height="34"/><line class="gap-zero" x1="160" x2="160" y1="0" y2="38"/>${bars(row,4,160,v=>140*v/high)}</svg><small>${esc(detail(row))}</small></div>`).join("");
+      const mobile=rows.map(row=>`<div class="review-gap-mobile-row"><strong>${esc(row.label)}</strong><svg viewBox="0 0 320 24" role="img" aria-label="${esc(row.label+" · "+detail(row))}"><rect class="gap-background" x="20" y="2" width="280" height="20"/><line class="gap-zero" x1="160" x2="160" y1="0" y2="24"/>${bars(row,3,160,v=>140*v/high)}</svg><small>${esc(detail(row))}</small></div>`).join("");
       const axis=esc(translate("N.º de reseñas"));
       return legend+`<div class="review-gap-mobile review-block-count-mobile">${mobile}<div class="review-block-count-axis"><div class="review-gap-mobile-axis"><span>${integer(-high)}</span><span>0</span><span>${integer(high)}</span></div></div><p>${axis}</p></div><div class="review-gap-plot"><svg viewBox="0 0 ${width} ${bottom+48}" role="group" aria-label="${esc(translate("Deltas de bloques funcionales en el periodo"))}"><rect class="gap-background" x="${left}" y="${top}" width="${plotWidth}" height="${bottom-top}"/>${ticks}${desktop}<text x="${(left+width-right)/2}" y="${bottom+40}" text-anchor="middle">${axis}</text></svg></div>`;
     }

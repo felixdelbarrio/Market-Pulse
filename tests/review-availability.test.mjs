@@ -91,14 +91,25 @@ test('empty verified partition is real zero; absent partition and older unmateri
   const source=f.manifest();delete source.analyticsSources.partitions['TR:2026'];source.analyticsSources.complete=false;f.store.set(SOURCE,JSON.stringify(source));f.cache.clear();assert.equal(f.api.getMarketsReviewAnalytics({...monthly,country:'TR'}).reviewPending,true);
 });
 
-test('browser pending state provides bounded retries, cancels after navigation and displays the true cutoff',()=>{
+test('browser pending state keeps the loading line, backs off past two attempts, pauses hidden tabs and cancels after navigation',async()=>{
   const app=clientScript(fs.readFileSync(new URL('../src/App.html',import.meta.url),'utf8'));
+  const predicates=app.slice(app.indexOf('    const isReviewPublicationPending='),app.indexOf('    // The mode and epoch'));
   const code=app.slice(app.indexOf('    const reviewRetryBudgets='),app.indexOf('    function renderReviewBalance('));
-  const timers=[];let attempts=0,current=true;
+  const timers=new Map();let next=0,attempts=0,current=true;
   const target={isConnected:true,children:[],replaceChildren(...nodes){this.children=nodes;},contains(node){return this.children.includes(node);},prepend(node){this.children.unshift(node);}};
-  const sandbox={target,window:{setTimeout:(fn,ms)=>timers.push({fn,ms})},document:{visibilityState:'visible',createElement:()=>({setAttribute(){}})},translate:String,dateLabel:String,dateTimeLabel:String,context:{key:'a',current:()=>current},retry:()=>{attempts++;}};
-  vm.runInNewContext(code+'\n globalThis.render=()=>renderReviewRetry(target,{reviewPending:true},retry,context);globalThis.fresh=()=>appendReviewFreshness(target,{freshness:"stale",asOf:"2026-11-25",publishedAt:"2026-11-25T10:00:00Z"});',sandbox);
-  sandbox.render();assert.equal(timers[0].ms,30000);timers[0].fn();assert.equal(attempts,1);sandbox.render();assert.equal(timers[1].ms,60000);current=false;timers[1].fn();assert.equal(attempts,1);sandbox.render();assert.equal(timers.length,2);sandbox.fresh();assert.match(target.children[0].textContent,/Datos hasta.*2026-11-25/);
+  const doc={visibilityState:'visible',createElement:tag=>({tag,setAttribute(){}})};
+  const math=Object.create(Math);math.random=()=>0;
+  const sandbox={target,Math:math,activeRpc:0,window:{setTimeout:(fn,ms)=>{timers.set(++next,{fn,ms});return next},clearTimeout:id=>timers.delete(id)},document:doc,U:{loading:(label,copy)=>`<div class="loading-state">${label}${copy}</div>`},translate:String,dateLabel:String,dateTimeLabel:String,context:{key:'a',loading:'Cargando indicadores de reseñas',current:()=>current},retry:()=>{attempts++;sandbox.render();}};
+  vm.runInNewContext(predicates+code+'\n globalThis.render=(error={reviewPending:true})=>renderReviewRetry(target,error,retry,context);globalThis.fresh=()=>appendReviewFreshness(target,{freshness:"stale",asOf:"2026-11-25",publishedAt:"2026-11-25T10:00:00Z"});globalThis.cancel=cancelReviewRetries;',sandbox);
+  const fire=async ms=>{assert.equal(timers.size,1);const [id,timer]=timers.entries().next().value;assert.equal(timer.ms,ms);timers.delete(id);timer.fn();await Promise.resolve();await Promise.resolve()};
+  sandbox.render();assert.equal(target.children.length,1);assert.match(target.children[0].innerHTML,/loading-state.*Cargando indicadores/);assert.doesNotMatch(target.children[0].innerHTML,/Reintentar/);
+  await fire(30000);assert.equal(attempts,1);await fire(60000);assert.equal(attempts,2);
+  doc.visibilityState='hidden';await fire(120000);assert.equal(attempts,2);doc.visibilityState='visible';await fire(15000);assert.equal(attempts,3);
+  sandbox.activeRpc=2;await fire(120000);assert.equal(attempts,3);sandbox.activeRpc=0;await fire(15000);assert.equal(attempts,4);
+  current=false;await fire(120000);assert.equal(attempts,4);assert.equal(timers.size,0);
+  current=true;sandbox.render({reviewPending:true,retryAfterMs:250000});assert.equal([...timers.values()][0].ms,250000);sandbox.cancel();assert.equal(timers.size,0);
+  sandbox.render(new Error('Acceso no autorizado'));assert.equal(timers.size,0);assert.equal(target.children[0],'Acceso no autorizado');assert.equal(target.children[1].tag,'button');
+  sandbox.fresh();assert.match(target.children[0].textContent,/Datos hasta.*2026-11-25/);
 });
 
 test('geographic inference is reversible without double counting and global ranking retains the known-country scope',()=>{
@@ -126,4 +137,44 @@ test('annual indicators, useful reviews and repeat authors ignore heatmap sentim
     assert.deepEqual(plain(d.annual),plain(p.annual));assert.deepEqual(plain(d.annual),plain(n.annual));
     assert.deepEqual(plain(d.annual.topHelpful.map(row=>row.rating)),[1,5,4]);assert.equal(d.annual.topAuthors[0].count,2);
   }
+});
+
+test('pending analytical requests prioritize their reusable country and prior-year partitions; partial progress resumes sooner',()=>{
+  const f=fixture(), selected={country:'TR',year:'2026',entity:'BBVA Empresas',segment:'DETRACTOR',platform:'ALL'};
+  const window=f.api.marketsReviewAnalyticsWindow_(selected,'2026-11-25');
+  assert.equal(f.api.queueMarketsReviewSnapshotRefresh_(selected,window,'analytics',false,false),true);
+  const payload=rows.concat(mk('tr-old','2025-05-01',4,'TR'),mk('tr-new','2026-11-07',5,'TR'));
+  const writes=[];f.fail(name=>{writes.push(name);return name.includes('source-ES-2026')});
+  const now=Date.parse('2026-11-25T10:00:00Z');
+  const advance=()=>f.api.advanceMarketsReviewSources_(f.props,payload,topics,'2025-01-01','2026-11-25',f.versions(),false,now+100000,()=>true);
+  assert.equal(advance(),false);assert.match(writes[0],/source-TR-2026/);assert.match(writes[1],/source-TR-2025/);
+  assert.equal(f.api.getMarketsReviewAnalytics(selected).annual.total,1);assert.equal(f.api.getMarketsReviewAnalytics(selected).annual.previousTotal,1);
+  const key='MARKETS_REVIEW_ANALYTICS_SOURCE_RETRY';assert.equal(f.manifest(key).failures,0);assert.equal(f.manifest(key).next,now+60000);
+  assert.equal(advance(),false);assert.equal(f.manifest(key).failures,1);assert.equal(f.manifest(key).next,now+15*60000);
+  f.fail(()=>false);assert.equal(advance(),true);assert.equal(f.store.has(key),false);
+});
+
+test('pending responses communicate supervisor backoff without delaying compatible data',()=>{
+  const f=fixture(), now=Date.parse('2026-11-25T10:00:00Z');
+  f.store.set('MARKETS_REVIEW_AUX_RETRY:publish',JSON.stringify({next:now+360000}));
+  const first=f.api.getMarketsReviewAnalytics(monthly);assert.equal(first.reviewPending,true);assert.equal(first.retryAfterMs,300000);
+  f.publish();assert.equal(f.api.getMarketsReviewAnalytics(monthly).recentTotal,3);
+});
+
+test('explicit pending scope is shared and cooled down; successful data, prefetch and other scopes remain independent',async()=>{
+  const app=clientScript(fs.readFileSync(new URL('../src/App.html',import.meta.url),'utf8'));
+  const helper=app.slice(app.indexOf('    const reviewRequests='),app.indexOf('    function trackReady('));
+  let now=0;const calls=[];
+  const sandbox={Date:class extends Date{static now(){return now}},state:{view:'analytics'},trackUsage(){},callServer:(method,scope,prefetch)=>new Promise(resolve=>calls.push({method,scope,prefetch,resolve}))};
+  vm.runInNewContext(helper+'\nthis.api={fetchReviewData,hasReviewResponse};',sandbox);
+  const {fetchReviewData,hasReviewResponse}=sandbox.api,scope={country:'ES',year:'2026'},other={...scope,country:'MX'};
+  const one=fetchReviewData('review:analytics',scope),two=fetchReviewData('review:analytics',{year:'2026',country:'ES'});
+  assert.equal(calls.length,1);calls[0].resolve({reviewPending:true,retryAfterMs:45000});
+  for(const result of await Promise.allSettled([one,two])){assert.equal(result.status,'rejected');assert.equal(result.reason.retryAfterMs,45000)}
+  assert.equal(hasReviewResponse('review:analytics',scope),false);now=10000;
+  await assert.rejects(fetchReviewData('review:analytics',scope),error=>error.reviewPending&&error.retryAfterMs===35000);
+  assert.equal(await fetchReviewData('review:analytics',scope,true),null);assert.equal(calls.length,1);
+  const separate=fetchReviewData('review:analytics',other);calls[1].resolve({annual:{total:4}});assert.equal((await separate).annual.total,4);
+  now=45000;const recovered=fetchReviewData('review:analytics',scope);assert.equal(calls.length,3);calls[2].resolve({annual:{total:7}});assert.equal((await recovered).annual.total,7);
+  assert.equal(hasReviewResponse('review:analytics',scope),true);assert.equal((await fetchReviewData('review:analytics',scope)).annual.total,7);assert.equal(calls.length,3);
 });

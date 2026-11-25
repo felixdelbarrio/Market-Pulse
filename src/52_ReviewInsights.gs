@@ -884,7 +884,8 @@ function publishMarketsReviewSnapshot_(force = false) {
   }
   const oldSource = safeJsonParse_(current[MARKETS_REVIEW_ANALYTICS_SOURCE_POINTER] || 'null');
   if (!pending && (!Array.isArray(oldSource?.versions) || JSON.stringify(oldSource.versions.slice(1)) !== JSON.stringify(versions.slice(1)) ||
-      !Number.isFinite(Date.parse(oldSource.publishedAt)) || Date.now() - Date.parse(oldSource.publishedAt) > 3600000 * 24)) {
+      !Number.isFinite(Date.parse(oldSource.publishedAt)) || Date.now() - Date.parse(oldSource.publishedAt) > 3600000 * 24 ||
+      (sourceDue && requestedScopes.length && !oldSource.analyticsSources?.complete))) {
     publishSource(Math.min(publicationStarted + 250000, Date.now() + 45000));
   }
   const viewBuildStarted = Date.now();
@@ -1363,12 +1364,12 @@ function advanceMarketsReviewSources_(properties, rows, topics, start, end, vers
   if (complete) properties.deleteProperty(MARKETS_REVIEW_ANALYTICS_SOURCE_RETRY);
   else {
     const after = safeJsonParse_(properties.getProperty(MARKETS_REVIEW_ANALYTICS_SOURCE_POINTER) || 'null');
-    const progress = JSON.stringify(before?.versions) !== JSON.stringify(after?.versions) ||
+    const progress = Boolean(after && before?.publishedAt !== after.publishedAt) || JSON.stringify(before?.versions) !== JSON.stringify(after?.versions) ||
       Object.keys(after?.analyticsSources?.partitions || {}).length > Object.keys(before?.analyticsSources?.partitions || {}).length;
     const sameRetry = previousRetry?.end === end && previousRetry?.revisions === JSON.stringify(versions);
     const failures = progress ? 0 : (sameRetry ? previousRetry.failures || 0 : 0) + 1;
     properties.setProperty(MARKETS_REVIEW_ANALYTICS_SOURCE_RETRY, JSON.stringify({ end, generation: versions[0], revisions: JSON.stringify(versions), failures,
-      next: Date.now() + (failures >= 3 ? 360 : 15) * 60000 }));
+      next: Date.now() + (progress ? 1 : failures >= 3 ? 360 : 15) * 60000 }));
   }
   return complete;
 }
@@ -1407,8 +1408,21 @@ function publishMarketsReviewSources_(properties, rows, topics, start, end, vers
   let committed = false, written = 0, characters = 0;
   const discard = id => { try { DriveApp.getFileById(id).setTrashed(true); } catch (_) {} };
   try {
-    // Current year for every country first; older years are best-effort in the same budget.
-    const ordered = [...groups].sort(([a], [b]) => b.slice(-4).localeCompare(a.slice(-4)) || a.localeCompare(b));
+    // Prioritize complete coverage for the oldest pending structured selections, then current-year coverage.
+    // A country/year partition is reusable across entities, sentiments and audiences; do not materialize every combination.
+    const priority = new Map();
+    for (const entry of marketsReviewRequestedScopes_(properties, Date.now(), mode)) {
+      if (!entry.filters || !entry.window) continue;
+      const from = entry.operation === 'analytics' ? marketsReviewAnalyticsInputStart_(entry.filters, entry.window, mode) : entry.window.start;
+      if (!from || from < start || entry.window.end > end) continue;
+      const selected = entry.filters.country === 'ALL' || (entry.filters.country === 'UNKNOWN' && entry.filters.inferGeography === 'NO')
+        ? countries : [entry.filters.country];
+      for (const country of selected) for (let year = Math.max(firstYear, Number(from?.slice(0, 4))); year <= Math.min(lastYear, Number(entry.window.end?.slice(0, 4))); year++) {
+        const key = country + ':' + year;
+        if (groups.has(key) && !priority.has(key)) priority.set(key, entry.requestedAt);
+      }
+    }
+    const ordered = [...groups].sort(([a], [b]) => (priority.get(a) ?? Infinity) - (priority.get(b) ?? Infinity) || b.slice(-4).localeCompare(a.slice(-4)) || a.localeCompare(b));
     for (const [partition, group] of ordered) {
       if (Date.now() >= deadline) break;
       if (Object.hasOwn(partitions, partition)) continue;
@@ -1728,7 +1742,10 @@ function readMarketsReviewCache_(ss, operation, filters, window, builder, timing
     timing.source = 'pending';
     timing.freshness = 'pending';
     log();
-    return { reviewPending: true, retryAfterMs: 30000, reviewNpsEnabled, timing: { ...timing } };
+    // Honor the existing supervisor backoff instead of prompting all clients to poll at the same fixed interval.
+    const retry = safeJsonParse_(properties['MARKETS_REVIEW_AUX_RETRY:publish'] || 'null');
+    const retryAfterMs = Math.max(30000, Math.min(300000, Number(retry?.next) - Date.now() || 0));
+    return { reviewPending: true, retryAfterMs, reviewNpsEnabled, timing: { ...timing } };
   }
   timing.source = timing.source || source;
   log();
