@@ -588,9 +588,16 @@ function marketsAdminReviewOperations_(email) {
     snapshot: (() => {
       const manifest = safeJsonParse_(properties.getProperty('MARKETS_REVIEW_SNAPSHOT_POINTER') || 'null');
       const source = safeJsonParse_(properties.getProperty('MARKETS_REVIEW_ANALYTICS_SOURCE_POINTER') || 'null');
+      const sourceYears = Number(String(source?.end || '').slice(0, 4)) - Number(String(source?.analyticsSources?.start || '').slice(0, 4)) + 1;
+      const sourceExpected = sourceYears >= 1 && sourceYears <= 3 && Array.isArray(source?.analyticsSources?.countries)
+        ? source.analyticsSources.countries.length * sourceYears : null;
       return { publishedAt: manifest?.publishedAt || null, asOf: manifest?.end || null,
         generation: manifest?.versions?.[0] || '',
         analyticsSourcePartitions: Object.keys(source?.analyticsSources?.partitions || {}).length,
+        analyticsSourceExpected: sourceExpected,
+        analyticsSourcePublishedAt: source?.publishedAt || null,
+        analyticsSourceRepair: Boolean(properties.getProperty('MARKETS_REVIEW_ANALYTICS_SOURCE_REPAIR')),
+        requestedScopesCount: typeof marketsReviewRequestedScopes_ === 'function' ? marketsReviewRequestedScopes_(properties, now).length : 0,
         analyticsSourceStart: source?.analyticsSources?.start || null,
         analyticsSourceEnd: source?.end || null, analyticsSourceComplete: source?.analyticsSources?.complete === true,
         analyticsSourceRetry: safeJsonParse_(properties.getProperty('MARKETS_REVIEW_ANALYTICS_SOURCE_RETRY') || 'null'),
@@ -617,13 +624,17 @@ function marketsReviewSnapshotRefreshDue_(properties, now) {
   if (!Array.isArray(published?.versions) || !marketsReviewSnapshotCapabilitiesMatch_(published, reviewNpsEnabled) || published.schema !== MARKETS_REVIEW_SNAPSHOT_SCHEMA ||
       published.analyticsSourceVersion !== MARKETS_REVIEW_SOURCE_SCHEMA ||
       published.end !== Utilities.formatDate(now, MARKETS_CONFIG.timeZone, 'yyyy-MM-dd')) return true;
-  if (published.audienceVersion !== MARKETS_REVIEW_AUDIENCE_VERSION ||
-      marketsReviewRequestedScopes_(properties, now.getTime(), reviewNpsEnabled).some(entry => !published.requestedScopes?.includes(entry.id))) return true;
+  if (published.audienceVersion !== MARKETS_REVIEW_AUDIENCE_VERSION) return true;
   const catalog = readAppCatalog_(ss);
   const versions = marketsReviewVersions_(properties.getProperties(), marketsReviewCatalogVersion_(catalog), undefined,
     marketsAudienceCatalog_(ss).revision);
-  return JSON.stringify(published.versions) !== JSON.stringify(versions) ||
-    marketsReviewSourceRefreshDue_(properties, now.getTime(), published.end, versions);
+  const source = safeJsonParse_(properties.getProperty('MARKETS_REVIEW_ANALYTICS_SOURCE_POINTER') || 'null');
+  const repair = properties.getProperty('MARKETS_REVIEW_ANALYTICS_SOURCE_REPAIR');
+  const uncovered = marketsReviewRequestedScopes_(properties, now.getTime(), reviewNpsEnabled).some(entry =>
+    !published.requestedScopes?.includes(entry.id) && (source?.publishedAt === repair ||
+      !marketsReviewSourceCoversRequest_(source, entry, published.end, versions, reviewNpsEnabled)));
+  return uncovered || JSON.stringify(published.versions) !== JSON.stringify(versions) ||
+    marketsReviewSourceRefreshDue_(properties, now.getTime(), published.end, versions, reviewNpsEnabled);
 }
 
 function marketsReviewAuxiliaryTasks_(properties, settings, now, priority, capturesPending = false, recoverySlot = false) {
