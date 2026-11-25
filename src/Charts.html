@@ -29,12 +29,13 @@
       if(!model?.periods?.length||!model?.rows?.length)return ui.empty("Sin cierres mensuales","Aún no hay histórico suficiente para esta selección.");
       const header=model.periods.map((month,index)=>`<th scope="col" class="${index===model.periods.length-1?"latest":""}"><span>${ui.esc(options.monthLabel(month))}</span>${index===model.periods.length-1?'<small><i></i>Actual</small>':""}</th>`).join("");
       const nps=cell=>{
+        if(options.reviewNpsEnabled===false)return "";
         if(!options.npsReady)return '<div class="monthly-nps"><span>NPS</span><span aria-label="Cargando NPS">…</span></div>';
         const delta=finite(cell.npsDelta)&&Math.abs(cell.npsDelta)>=.05;
         return `<div class="monthly-nps"${cell.npsSample?` title="${ui.esc(cell.npsSample)}"`:""}><span>NPS</span><strong>${finite(cell.nps)?options.format(cell.nps,1):"N/D"}</strong>${delta?`<em class="${cell.npsDelta>0?"delta-up":"delta-down"}">${ui.esc(options.signed(cell.npsDelta,1))} pp</em>`:""}</div>`;
       };
       const body=model.rows.map(row=>`${options.showScopes?`<tr class="monthly-scope"><th scope="rowgroup" colspan="${model.periods.length}">${ui.esc(row.country)}</th></tr>`:""}<tr>${row.cells.map((cell,index)=>{const hasDelta=finite(cell.delta)&&Math.abs(cell.delta)>=.005,tone=cell.delta>0?"delta-up":"delta-down";const reviews=cell.platforms.map(item=>{const detail=item.unavailable?"N/D: Google Play no permite desagregar esta ficha por geografía.":`${options.integer(item.value)} reseñas`;return`<span class="monthly-review${item.unavailable?" unavailable":""}" title="${ui.esc(detail)}"><span>${ui.esc(item.platform)}</span><b>${item.unavailable?"N/D":options.compactInteger(item.value)}</b></span>`}).join("");return`<td class="${index===row.cells.length-1?"latest":""}"><div class="monthly-rating"><strong>${options.format(cell.rating,2)}</strong>${hasDelta?`<em class="${tone}">${ui.esc(options.signed(cell.delta))}</em>`:""}</div><div class="monthly-reviews">${reviews}</div>${nps(cell)}</td>`}).join("")}</tr>`).join("");
-      return`<div class="monthly-matrix-scroll"><table class="monthly-matrix"><caption>Evolución mensual del rating, volumen de valoraciones y NPS de reseñas</caption><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table></div>`;
+      return`<div class="monthly-matrix-scroll"><table class="monthly-matrix"><caption>${ui.esc(options.reviewNpsEnabled===false?"Evolución mensual del rating y volumen de valoraciones":"Evolución mensual del rating, volumen de valoraciones y NPS de reseñas")}</caption><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table></div>`;
     }
     function newReviewImpact(model,options){
       const ui=window.MarketsUI,{finite,monthlyVoiceScope,monthlyVoiceVolumeDetail}=window.MarketsDomain,translate=options.translate||String,summary=model?.summary||{};
@@ -128,6 +129,49 @@
       const mobile=rows.map(row=>`<div class="review-gap-mobile-row"><strong>${esc(row.label)}</strong><span>${row.gap===null?"N/D":fmt(row.gap,1)+" pp"}</span><svg viewBox="0 0 320 28" role="img" aria-label="${esc(row.label)}: ${row.gap===null?"N/D":fmt(row.gap,1)+" pp"}"><rect class="gap-background" x="20" y="4" width="280" height="20"/><path class="gap-zero" d="M${mobileX(0)} 0V28"/>${row.gap===null?"":`<rect class="${row.gap<0?"gap-negative":"gap-positive"}" x="${Math.min(mobileX(0),mobileX(row.gap))}" y="4" width="${Math.abs(mobileX(row.gap)-mobileX(0))}" height="20"/>`}</svg></div>`).join("");
       return `<div class="review-gap-mobile">${mobile}<div class="review-gap-mobile-axis"><span>${fmt(low,0)}</span><span>${fmt(high,0)}</span></div><p>${esc(translate("Brecha de NPS vs. mes anterior (pp)"))}</p></div><div class="review-gap-plot"><svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${esc(translate("Brecha de NPS por bloque"))}"><rect class="gap-background" x="${left}" y="${top}" width="${width-left-right}" height="${bottom-top}"/>${grid}${bars}<text x="${(left+width-right)/2}" y="${height-8}" text-anchor="middle">${esc(translate("Brecha de NPS vs. mes anterior (pp)"))}</text></svg></div>`;
     }
-    window.MarketsCharts=Object.freeze({closestReviewPoint,lineChart,ratingBars,monthlyMatrix,newReviewImpact,reviewBalance,reviewBalanceLegend,reviewSeriesColor,reviewGaps});
+    // Diverging count chart: the sign is a visual convention only. Source counts,
+    // table and export stay nonnegative; neutral retains its actual count at zero.
+    function reviewBlockCounts(rows,integer,translate){
+      if(!rows.length)return "";
+      const {esc}=window.MarketsUI;
+      const labels=[translate("Promotores"),translate("Detractores"),translate("Neutros")];
+      const max=Math.max(1,...rows.flatMap(row=>[row.promoters,row.detractors]));
+      const step=Math.max(1,Math.ceil(max/4)),high=step*4;
+      const width=960,left=260,right=35,top=12;
+      const plotWidth=width-left-right;
+      const x=value=>left+(value+high)/(2*high)*plotWidth;
+      const zero=x(0), scale=value=>value/(2*high)*plotWidth;
+      // Keep long catalog labels inside their own gutter, never over the bars.
+      let bottom=top;
+      const positioned=rows.map(row=>{
+        const lines=[];
+        for(const word of String(row.label).match(/\S{1,30}/gu)||[""]){
+          if(lines.length&&(lines.at(-1)+" "+word).length<=30)lines[lines.length-1]+=" "+word;
+          else lines.push(word);
+        }
+        const rowHeight=Math.max(48,lines.length*15+8),y=bottom;
+        bottom+=rowHeight;
+        return {row,lines,y,rowHeight};
+      });
+      const ticks=Array.from({length:9},(_,i)=>{
+        const value=(i-4)*step,px=x(value);
+        return `<line class="${value?"gap-grid":"gap-zero"}" x1="${px}" x2="${px}" y1="${top}" y2="${bottom}"/><text x="${px}" y="${bottom+19}" text-anchor="middle">${integer(value)}</text>`;
+      }).join("");
+      const bars=(row,y,origin,pixelWidth)=>{
+        const rect=(value,direction,tone,label)=>value>0?`<rect class="${tone}" x="${origin+(direction<0?-pixelWidth(value):0)}" y="${y}" width="${pixelWidth(value)}" height="18"><title>${esc(label+": "+integer(value))}</title></rect>`:"";
+        return rect(row.detractors,-1,"gap-negative",labels[1])+rect(row.promoters,1,"gap-positive",labels[0])+(row.neutral?`<circle class="gap-neutral" cx="${origin}" cy="${y+26}" r="4"><title>${esc(labels[2]+": "+integer(row.neutral))}</title></circle>`:"");
+      };
+      const detail=row=>labels.map((label,i)=>label+": "+integer([row.promoters,row.detractors,row.neutral][i])).join(" · ");
+      const legend=`<p class="review-block-count-legend"><span><i class="count-promoter"></i>${esc(labels[0])} (+)</span><span><i class="count-detractor"></i>${esc(labels[1])} (−)</span><span><i class="count-neutral"></i>${esc(labels[2])} (0)</span></p>`;
+      const desktop=positioned.map(({row,lines,y,rowHeight})=>{
+        const mid=y+rowHeight/2, barY=mid-15;
+        const name=lines.map((line,i)=>`<tspan x="${left-8}" dy="${i?15:0}">${esc(line)}</tspan>`).join("");
+        return `<g role="group" aria-label="${esc(row.label+" · "+detail(row))}"><text x="${left-8}" y="${mid-3-(lines.length-1)*7.5}" text-anchor="end">${name}</text>${bars(row,barY,zero,scale)}${row.neutral?`<text x="${zero+9}" y="${barY+30}">${esc(labels[2]+": "+integer(row.neutral))}</text>`:""}</g>`;
+      }).join("");
+      const mobile=rows.map(row=>`<div class="review-gap-mobile-row"><strong>${esc(row.label)}</strong><svg viewBox="0 0 320 38" role="img" aria-label="${esc(row.label+" · "+detail(row))}"><rect class="gap-background" x="20" y="2" width="280" height="34"/><line class="gap-zero" x1="160" x2="160" y1="0" y2="38"/>${bars(row,4,160,v=>140*v/high)}</svg><small>${esc(detail(row))}</small></div>`).join("");
+      const axis=esc(translate("N.º de reseñas"));
+      return legend+`<div class="review-gap-mobile review-block-count-mobile">${mobile}<div class="review-block-count-axis"><div class="review-gap-mobile-axis"><span>${integer(-high)}</span><span>0</span><span>${integer(high)}</span></div></div><p>${axis}</p></div><div class="review-gap-plot"><svg viewBox="0 0 ${width} ${bottom+48}" role="group" aria-label="${esc(translate("Deltas de bloques funcionales en el periodo"))}"><rect class="gap-background" x="${left}" y="${top}" width="${plotWidth}" height="${bottom-top}"/>${ticks}${desktop}<text x="${(left+width-right)/2}" y="${bottom+40}" text-anchor="middle">${axis}</text></svg></div>`;
+    }
+    window.MarketsCharts=Object.freeze({reviewBlockCounts,closestReviewPoint,lineChart,ratingBars,monthlyMatrix,newReviewImpact,reviewBalance,reviewBalanceLegend,reviewSeriesColor,reviewGaps});
   })();
 </script>

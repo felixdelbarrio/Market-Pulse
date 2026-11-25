@@ -372,8 +372,9 @@ test("modular client JavaScript compiles and Index composes every layer", () => 
   const evolutionMarkup = index.slice(index.indexOf('id="view-evolution"'), index.indexOf('id="view-alerts"'));
   const analyticsMarkup = index.slice(index.indexOf('id="view-analytics"'), index.indexOf('id="view-reviews"'));
   assert.doesNotMatch(evolutionMarkup + app, /evolution-kpis/);
-  assert.match(evolutionMarkup, /class="panel-body radar-filters review-gap-controls"[\s\S]*id="monthly-review-segment"/);
-  assert.match(app, /searchable\(\$\("monthly-review-segment"\)\)\.refresh\(\)/);
+  assert.doesNotMatch(evolutionMarkup, /monthly-review-segment|review-gap-controls/);
+  assert.doesNotMatch(app, /monthly-review-segment/);
+  assert.match(evolutionMarkup, /id="review-gap-panel"[\s\S]*id="review-gap-title"[\s\S]*id="review-deltas"/);
   assert.match(evolutionMarkup, /id="evolution-filters"[\s\S]*name="audience"[\s\S]*name="inferGeography"[\s\S]*<\/form>/);
   assert.match(evolutionMarkup, /id="monthly-matrix"[\s\S]*id="review-deltas"[\s\S]*id="review-examples"[\s\S]*id="new-review-impact"/);
   assert.match(analyticsMarkup, /class="annual-chart-layout">\s*<div id="annual-chart"[^>]*><\/div>\s*<aside id="annual-series"[^>]*><\/aside>/);

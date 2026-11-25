@@ -366,7 +366,7 @@ function getMarketsAdminUsage() {
   return readMarketsUsageAnalytics_(ss, trimString_(control.TIME_ZONE) || MARKETS_CONFIG.timeZone);
 }
 
-const MARKETS_BUSINESS_CONTROL = ['RATING_LOOKBACK_DAYS', 'MONITOR_HEALTH_ENABLED'];
+const MARKETS_BUSINESS_CONTROL = ['RATING_LOOKBACK_DAYS', 'MONITOR_HEALTH_ENABLED', 'REVIEW_NPS_ENABLED'];
 
 function getMarketsBusinessCatalog(section, language) {
   const { ss, control } = requireMarketsAdministrator_();
@@ -458,12 +458,34 @@ function saveMarketsBusinessCatalogEntry(input) {
       if (!valid) throw new Error(key === 'RATING_LOOKBACK_DAYS' ? 'Introduce un número de 1 a 365.' : 'Introduce true o false.');
       const sheet = requireCurrentSheetContract_(ss, MARKETS_CONFIG.sheets.control, MARKETS_CONFIG.headers.control);
       const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 2).getValues();
-      const index = rows.findIndex(row => row[0] === key);
-      if (index < 0 || String(rows[index][1]) !== String(expected) || rows.filter(row => row[0] === key).length !== 1) {
+      const index = rows.findIndex(row => trimString_(row[0]) === key);
+      const matches = rows.filter(row => trimString_(row[0]) === key).length;
+      const isNps = key === 'REVIEW_NPS_ENABLED';
+      const next = key === 'RATING_LOOKBACK_DAYS' ? Number(raw) : raw.toLowerCase() === 'true';
+      // Existing installations can save the new default without rerunning setup.
+      const previous = index < 0 && isNps ? true : rows[index]?.[1];
+      if (matches > 1 || (index < 0 && !isNps) || String(previous) !== String(expected)) {
         throw new Error('El parámetro cambió o no está configurado. Actualiza el catálogo.');
       }
-      sheet.getRange(index + 2, 2).setValue(key === 'RATING_LOOKBACK_DAYS' ? Number(raw) : raw.toLowerCase() === 'true');
+      if (index < 0) {
+        const row = sheet.getLastRow() + 1;
+        const description = MARKETS_CONFIG.controlDefaults.find(entry => entry[0] === key)[2];
+        ensureSheetCapacity_(sheet, row, 3);
+        sheet.getRange(row, 1, 1, 3).setValues([[key, next, description]]);
+      } else sheet.getRange(index + 2, 2).setValue(next);
       SpreadsheetApp.flush();
+      if (isNps) {
+        if (marketsReviewNpsEnabled_({ REVIEW_NPS_ENABLED: previous }) !== next) {
+          const properties = PropertiesService.getScriptProperties();
+          if (!next) {
+            const requests = marketsReviewRequestedScopes_(properties, Date.now(), false);
+            properties.setProperty('MARKETS_REVIEW_REQUESTED_SCOPES', JSON.stringify(requests));
+          }
+          // Already under ScriptLock: never acquire it again via the queue helper.
+          properties.setProperty('MARKETS_REVIEW_MANUAL:publish', String(Date.now()));
+        }
+        return { saved: true, reviewNpsEnabled: next };
+      }
     } else if (section === 'markets' && typeof key === 'string' && /^\d{1,4}$/.test(String(value).trim())) {
       const {catalog} = MARKETS_CONFIG.sheets, headers = MARKETS_CONFIG.headers.catalog;
       const sheet = requireCurrentSheetContract_(ss, catalog, headers);

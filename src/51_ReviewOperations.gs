@@ -587,8 +587,13 @@ function marketsAdminReviewOperations_(email) {
     index: safeJsonParse_(properties.getProperty('MARKETS_REVIEW_INDEX_STATUS')),
     snapshot: (() => {
       const manifest = safeJsonParse_(properties.getProperty('MARKETS_REVIEW_SNAPSHOT_POINTER') || 'null');
+      const source = safeJsonParse_(properties.getProperty('MARKETS_REVIEW_ANALYTICS_SOURCE_POINTER') || 'null');
       return { publishedAt: manifest?.publishedAt || null, asOf: manifest?.end || null,
         generation: manifest?.versions?.[0] || '',
+        analyticsSourcePartitions: Object.keys(source?.analyticsSources?.partitions || {}).length,
+        analyticsSourceStart: source?.analyticsSources?.start || null,
+        analyticsSourceEnd: source?.end || null, analyticsSourceComplete: source?.analyticsSources?.complete === true,
+        analyticsSourceRetry: safeJsonParse_(properties.getProperty('MARKETS_REVIEW_ANALYTICS_SOURCE_RETRY') || 'null'),
         ageSeconds: manifest?.publishedAt ? Math.max(0, (now - Date.parse(manifest.publishedAt)) / 1000) : null,
         publish: safeJsonParse_(properties.getProperty('MARKETS_REVIEW_PUBLISH_STATUS') || 'null') };
     })(),
@@ -608,23 +613,28 @@ function marketsReviewSnapshotRefreshDue_(properties, now) {
   if (properties.getProperty('MARKETS_REVIEW_SNAPSHOT_REPAIR')) return true;
   const migration = safeJsonParse_(properties.getProperty('MARKETS_FUNCTIONAL_MIGRATION') || 'null');
   if (migration?.ready && !migration.complete && published?.engine?.sheet !== migration.sheet) return true;
-  if (!Array.isArray(published?.versions) || !published.hasAnnualNps || !published.hasNpsAttribution || !published.hasAllSentimentGaps || !published.hasReviewRanking || !published.hasFeaturedReviews || published.schema !== MARKETS_REVIEW_SNAPSHOT_SCHEMA ||
+  const ss = openMarketsSpreadsheet_(), reviewNpsEnabled = readMarketsReviewNpsEnabled_(ss);
+  if (!Array.isArray(published?.versions) || !marketsReviewSnapshotCapabilitiesMatch_(published, reviewNpsEnabled) || published.schema !== MARKETS_REVIEW_SNAPSHOT_SCHEMA ||
+      published.analyticsSourceVersion !== MARKETS_REVIEW_SOURCE_SCHEMA ||
       published.end !== Utilities.formatDate(now, MARKETS_CONFIG.timeZone, 'yyyy-MM-dd')) return true;
   if (published.audienceVersion !== MARKETS_REVIEW_AUDIENCE_VERSION ||
-      marketsReviewRequestedScopes_(properties, now.getTime()).some(entry => !published.requestedScopes?.includes(entry.id))) return true;
-  const ss = openMarketsSpreadsheet_(), catalog = readAppCatalog_(ss);
-  return JSON.stringify(published.versions) !== JSON.stringify(marketsReviewVersions_(properties.getProperties(),
-    marketsReviewCatalogVersion_(catalog), undefined, marketsAudienceCatalog_(ss).revision));
+      marketsReviewRequestedScopes_(properties, now.getTime(), reviewNpsEnabled).some(entry => !published.requestedScopes?.includes(entry.id))) return true;
+  const catalog = readAppCatalog_(ss);
+  const versions = marketsReviewVersions_(properties.getProperties(), marketsReviewCatalogVersion_(catalog), undefined,
+    marketsAudienceCatalog_(ss).revision);
+  return JSON.stringify(published.versions) !== JSON.stringify(versions) ||
+    marketsReviewSourceRefreshDue_(properties, now.getTime(), published.end, versions);
 }
 
 function marketsReviewAuxiliaryTasks_(properties, settings, now, priority, capturesPending = false, recoverySlot = false) {
   const snapshot = safeJsonParse_(properties.getProperty('MARKETS_REVIEW_SNAPSHOT_POINTER') || 'null');
-  const maxStale = Number(properties.getProperty('MARKETS_REVIEW_STALE_MAX_SECONDS') || 3600);
+  const maxStale = typeof marketsReviewStaleMaxSeconds_ === 'function'
+    ? marketsReviewStaleMaxSeconds_(properties.getProperty('MARKETS_REVIEW_STALE_MAX_SECONDS')) : 3600;
   const migration = safeJsonParse_(properties.getProperty('MARKETS_FUNCTIONAL_MIGRATION') || 'null');
   const repair = properties.getProperty('MARKETS_REVIEW_SNAPSHOT_REPAIR');
   const publishOverdue = repair || (migration?.ready && !migration.complete) || !snapshot?.publishedAt ||
     snapshot.end !== Utilities.formatDate(now, MARKETS_CONFIG.timeZone, 'yyyy-MM-dd') ||
-    now.getTime() - Date.parse(snapshot.publishedAt) > Math.max(0, maxStale) * 500;
+    now.getTime() - Date.parse(snapshot.publishedAt) > Math.min(3600, Math.max(0, maxStale)) * 500;
   const tasks = [
     { id: 'index', priority: 3, run: () => {
       if (typeof advanceMarketsReviewIndex_ !== 'function') return false;

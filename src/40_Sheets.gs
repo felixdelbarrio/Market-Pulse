@@ -241,6 +241,15 @@ function readControl_(ss) {
   return control;
 }
 
+/** CONTROL is authoritative. Missing flag preserves the existing behaviour. */
+function marketsReviewNpsEnabled_(control) {
+  return String(control?.REVIEW_NPS_ENABLED ?? true).trim().toLowerCase() !== 'false';
+}
+
+function readMarketsReviewNpsEnabled_(ss) {
+  return marketsReviewNpsEnabled_(readControl_(ss));
+}
+
 function readAppCatalog_(ss, includeDisabled = false) {
   const sheet = ss.getSheetByName(MARKETS_CONFIG.sheets.catalog);
   if (sheet.getLastRow() <= 1) throw new Error('APP_CATALOG esta vacio. Importe el libro maestro antes de ejecutar.');
