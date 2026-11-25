@@ -15,7 +15,6 @@
       "Histórico hasta el mes seleccionado · rating consolidado y valoraciones por plataforma":["History up to the selected month · consolidated rating and ratings by platform","Seçilen aya kadarki geçmiş · konsolide puan ve platforma göre puanlar"],
       "Evolución mensual del rating y volumen de valoraciones":["Monthly rating trend and rating volume","Aylık puan seyri ve puanlama hacmi"],
       "Cargando bloques y ejemplos":["Loading blocks and examples","Gruplar ve örnekler yükleniyor"],
-      "Elige otro sentimiento para consultar los bloques y los ejemplos del mes.":["Choose another sentiment to see this month's blocks and examples.","Ayın gruplarını ve örneklerini görmek için başka bir duygu seçin."],
       "Activar el cálculo, publicación y visualización del NPS de reseñas":["Enable review NPS calculation, publishing and display","Yorum NPS hesaplama, yayım ve görüntülemeyi etkinleştir"],
       "Cargando NPS de reseñas":["Loading review NPS","Yorum NPS'si yükleniyor"],
       "Preparando Excel…":["Preparing Excel…","Excel hazırlanıyor…"],
@@ -241,8 +240,6 @@
       "Todas las aplicaciones del país":["All apps in this country","Ülkedeki tüm uygulamalar"],
       "Sin aplicaciones":["No apps","Uygulama yok"],
       "Cargando brechas y ejemplos":["Loading gaps and examples","Farklar ve örnekler yükleniyor"],
-      "Sin reseñas para este sentimiento":["No reviews for this sentiment","Bu duygu için yorum yok"],
-      "Elige otro sentimiento para consultar las brechas y los ejemplos del mes.":["Choose another sentiment to see this month's gaps and examples.","Ayın farklarını ve örneklerini görmek için başka bir duygu seçin."],
       "Volumen de reseñas":["Review volume","Yorum hacmi"],
       "Evolución del rating":["Rating trend","Puan eğilimi"],
       "Distribución por sentimiento":["Sentiment breakdown","Duygu dağılımı"],
@@ -938,7 +935,7 @@
     let monthlyPulse;
     function monthlyReviewScope(analysisMonth){
       return {...selection(),analysisMonth,audience:monthlyFilters.audience,
-        inferGeography:monthlyFilters.inferGeography,entity:state.evolutionApp,language:appLanguage};
+        inferGeography:monthlyFilters.inferGeography,entity:state.evolutionApp,language:appLanguage,segment:""};
     }
     function renderMonthlyMatrix(period,trends){
       if(state.trendsLoading){
@@ -1114,7 +1111,7 @@
           if(!app)return;
           const period=D.periodModel(D.trendRows(withPublishedRatings(rows,selection()),{...selection(),app}),state.periodYear,state.periodMonth);
           const analysisMonth=period.period||reviewDates().end.slice(0,7);
-          return fetchReviewData("review:analytics",{...monthlyReviewScope(analysisMonth),segment:$("monthly-review-segment").value},true);
+          return fetchReviewData("review:analytics",monthlyReviewScope(analysisMonth),true);
         },
         ()=>fetchReviewData("review:analytics",annualReviewRequest(annualScope()),true)
       ];
@@ -1570,10 +1567,9 @@
     async function loadMonthlyReviews(period){
       const started=performance.now(), current=reviewDates().end.slice(0,7);
       const analysisMonth=period||current;
-      const balanceScope=monthlyReviewScope(analysisMonth);
-      const balanceKey=JSON.stringify(balanceScope);
-      const scope={...balanceScope,segment:$("monthly-review-segment").value};
+      const scope=monthlyReviewScope(analysisMonth);
       const key=JSON.stringify(scope);
+      const balanceKey=key;
       if(key===monthlyReviewKey&&(monthlyReviewsLoading||Date.now()-monthlyReviewLoadedAt<reviewResponseTtl))return;
       monthlyReviewKey=key;
       monthlyReviewsLoading=true;
@@ -1610,7 +1606,7 @@
           monthlyBalanceKey=balanceKey;
         }
         if(data.deltas.length)renderReviewGaps(gaps,data,{...applied,app:scope.entity,segment:scope.segment});
-        else gaps.innerHTML=U.empty(translate("Sin reseñas para este sentimiento"),translate(reviewNpsEnabled?"Elige otro sentimiento para consultar las brechas y los ejemplos del mes.":"Elige otro sentimiento para consultar los bloques y los ejemplos del mes."));
+        else gaps.innerHTML=U.empty(translate("Sin reseñas en el periodo reciente."),translate("No hay reseñas para esta selección."));
         appendReviewFreshness(gaps,data.timing);
         $("review-examples-title").textContent=analysisMonth===current?"Ejemplos del mes en curso":"Ejemplos del mes seleccionado";
         $("review-examples-panel").classList.toggle("hidden",!data.examples.length);
@@ -1935,10 +1931,6 @@
       $("month-filter").innerHTML=model.months.map(month=>U.option(month,monthName(month),month===model.month)).join("");
     }
     function bindEvolutionFilters(){
-      window.MarketRadarFilters.searchable($("monthly-review-segment")).refresh();
-      $("monthly-review-segment").addEventListener("change",()=>{
-        if(state.evolutionApp)loadMonthlyReviews(evolutionPeriod(state.evolutionApp,state.periodYear,state.periodMonth).period);
-      });
       const current=()=>({app:state.evolutionApp,year:state.periodYear,month:state.periodMonth,...monthlyFilters});
       const reset=()=>({app:state.evolutionApp,year:"",month:"",...monthlyFilterDefaults});
       radarFilters.evolution=window.MarketRadarFilters.create($("evolution-filters"),{translate,
