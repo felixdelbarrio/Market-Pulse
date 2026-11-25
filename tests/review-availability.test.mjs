@@ -115,3 +115,15 @@ test('a failed refresh enqueue never suppresses a compatible stale result or tur
   const a=f.api.getMarketsReviewAnalytics(monthly);assert.equal(a.recentTotal,3);assert.equal(a.timing.freshness,'stale');assert.equal(a.timing.refreshQueued,false);
   f.store.delete(SOURCE);f.cache.clear();const p=f.api.getMarketsReviewAnalytics(monthly);assert.equal(p.reviewPending,true);assert.equal(p.timing.refreshQueued,false);
 });
+
+test('annual indicators, useful reviews and repeat authors ignore heatmap sentiment in both NPS modes',()=>{
+  const f=fixture();f.publish(rows.concat(mk('helpful-detractor','2026-11-09',1,'ES',{helpful:16,author:'Repeat'}),mk('helpful-promoter','2026-11-10',5,'ES',{helpful:12,author:'Repeat'}),mk('helpful-neutral','2026-11-11',4,'ES',{helpful:10})));
+  for(const enabled of [false,true]){
+    f.mode(enabled);
+    const results=['DETRACTOR','PROMOTER','NEUTRAL'].map(segment=>f.api.getMarketsReviewAnalytics({...annual,segment}));
+    assert.ok(results.every(data=>!data.reviewPending));
+    const [d,p,n]=results;assert.notDeepEqual(plain(d.entities),plain(p.entities));assert.notDeepEqual(plain(d.entities),plain(n.entities));
+    assert.deepEqual(plain(d.annual),plain(p.annual));assert.deepEqual(plain(d.annual),plain(n.annual));
+    assert.deepEqual(plain(d.annual.topHelpful.map(row=>row.rating)),[1,5,4]);assert.equal(d.annual.topAuthors[0].count,2);
+  }
+});
