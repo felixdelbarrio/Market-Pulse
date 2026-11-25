@@ -91,14 +91,25 @@ test('empty verified partition is real zero; absent partition and older unmateri
   const source=f.manifest();delete source.analyticsSources.partitions['TR:2026'];source.analyticsSources.complete=false;f.store.set(SOURCE,JSON.stringify(source));f.cache.clear();assert.equal(f.api.getMarketsReviewAnalytics({...monthly,country:'TR'}).reviewPending,true);
 });
 
-test('browser pending state provides bounded retries, cancels after navigation and displays the true cutoff',()=>{
+test('browser pending state keeps the loading line, backs off past two attempts, pauses hidden tabs and cancels after navigation',async()=>{
   const app=clientScript(fs.readFileSync(new URL('../src/App.html',import.meta.url),'utf8'));
+  const predicates=app.slice(app.indexOf('    const isReviewPublicationPending='),app.indexOf('    // The mode and epoch'));
   const code=app.slice(app.indexOf('    const reviewRetryBudgets='),app.indexOf('    function renderReviewBalance('));
-  const timers=[];let attempts=0,current=true;
+  const timers=new Map();let next=0,attempts=0,current=true;
   const target={isConnected:true,children:[],replaceChildren(...nodes){this.children=nodes;},contains(node){return this.children.includes(node);},prepend(node){this.children.unshift(node);}};
-  const sandbox={target,window:{setTimeout:(fn,ms)=>timers.push({fn,ms})},document:{visibilityState:'visible',createElement:()=>({setAttribute(){}})},translate:String,dateLabel:String,dateTimeLabel:String,context:{key:'a',current:()=>current},retry:()=>{attempts++;}};
-  vm.runInNewContext(code+'\n globalThis.render=()=>renderReviewRetry(target,{reviewPending:true},retry,context);globalThis.fresh=()=>appendReviewFreshness(target,{freshness:"stale",asOf:"2026-11-25",publishedAt:"2026-11-25T10:00:00Z"});',sandbox);
-  sandbox.render();assert.equal(timers[0].ms,30000);timers[0].fn();assert.equal(attempts,1);sandbox.render();assert.equal(timers[1].ms,60000);current=false;timers[1].fn();assert.equal(attempts,1);sandbox.render();assert.equal(timers.length,2);sandbox.fresh();assert.match(target.children[0].textContent,/Datos hasta.*2026-11-25/);
+  const doc={visibilityState:'visible',createElement:tag=>({tag,setAttribute(){}})};
+  const math=Object.create(Math);math.random=()=>0;
+  const sandbox={target,Math:math,activeRpc:0,window:{setTimeout:(fn,ms)=>{timers.set(++next,{fn,ms});return next},clearTimeout:id=>timers.delete(id)},document:doc,U:{loading:(label,copy)=>`<div class="loading-state">${label}${copy}</div>`},translate:String,dateLabel:String,dateTimeLabel:String,context:{key:'a',loading:'Cargando indicadores de reseñas',current:()=>current},retry:()=>{attempts++;sandbox.render();}};
+  vm.runInNewContext(predicates+code+'\n globalThis.render=(error={reviewPending:true})=>renderReviewRetry(target,error,retry,context);globalThis.fresh=()=>appendReviewFreshness(target,{freshness:"stale",asOf:"2026-11-25",publishedAt:"2026-11-25T10:00:00Z"});globalThis.cancel=cancelReviewRetries;',sandbox);
+  const fire=async ms=>{assert.equal(timers.size,1);const [id,timer]=timers.entries().next().value;assert.equal(timer.ms,ms);timers.delete(id);timer.fn();await Promise.resolve();await Promise.resolve()};
+  sandbox.render();assert.equal(target.children.length,1);assert.match(target.children[0].innerHTML,/loading-state.*Cargando indicadores/);assert.doesNotMatch(target.children[0].innerHTML,/Reintentar/);
+  await fire(30000);assert.equal(attempts,1);await fire(60000);assert.equal(attempts,2);
+  doc.visibilityState='hidden';await fire(120000);assert.equal(attempts,2);doc.visibilityState='visible';await fire(15000);assert.equal(attempts,3);
+  sandbox.activeRpc=2;await fire(120000);assert.equal(attempts,3);sandbox.activeRpc=0;await fire(15000);assert.equal(attempts,4);
+  current=false;await fire(120000);assert.equal(attempts,4);assert.equal(timers.size,0);
+  current=true;sandbox.render({reviewPending:true,retryAfterMs:250000});assert.equal([...timers.values()][0].ms,250000);sandbox.cancel();assert.equal(timers.size,0);
+  sandbox.render(new Error('Acceso no autorizado'));assert.equal(timers.size,0);assert.equal(target.children[0],'Acceso no autorizado');assert.equal(target.children[1].tag,'button');
+  sandbox.fresh();assert.match(target.children[0].textContent,/Datos hasta.*2026-11-25/);
 });
 
 test('geographic inference is reversible without double counting and global ranking retains the known-country scope',()=>{
@@ -126,4 +137,137 @@ test('annual indicators, useful reviews and repeat authors ignore heatmap sentim
     assert.deepEqual(plain(d.annual),plain(p.annual));assert.deepEqual(plain(d.annual),plain(n.annual));
     assert.deepEqual(plain(d.annual.topHelpful.map(row=>row.rating)),[1,5,4]);assert.equal(d.annual.topAuthors[0].count,2);
   }
+});
+
+test('pending analytical requests prioritize their reusable country and prior-year partitions; partial progress resumes sooner',()=>{
+  const f=fixture(), selected={country:'TR',year:'2026',entity:'BBVA Empresas',segment:'DETRACTOR',platform:'ALL'};
+  const window=f.api.marketsReviewAnalyticsWindow_(selected,'2026-11-25');
+  assert.equal(f.api.queueMarketsReviewSnapshotRefresh_(selected,window,'analytics',false,false),true);
+  const payload=rows.concat(mk('tr-old','2025-05-01',4,'TR'),mk('tr-new','2026-11-07',5,'TR'));
+  const writes=[];f.fail(name=>{writes.push(name);return name.includes('source-ES-2026')});
+  const now=Date.parse('2026-11-25T10:00:00Z');
+  const advance=()=>f.api.advanceMarketsReviewSources_(f.props,payload,topics,'2025-01-01','2026-11-25',f.versions(),false,now+100000,()=>true);
+  assert.equal(advance(),false);assert.match(writes[0],/source-TR-2026/);assert.match(writes[1],/source-TR-2025/);
+  assert.equal(f.api.getMarketsReviewAnalytics(selected).annual.total,1);assert.equal(f.api.getMarketsReviewAnalytics(selected).annual.previousTotal,1);
+  const key='MARKETS_REVIEW_ANALYTICS_SOURCE_RETRY';assert.equal(f.manifest(key).failures,0);assert.equal(f.manifest(key).next,now+60000);
+  assert.equal(advance(),false);assert.equal(f.manifest(key).failures,1);assert.equal(f.manifest(key).next,now+15*60000);
+  f.fail(()=>false);assert.equal(advance(),true);assert.equal(f.store.has(key),false);
+});
+
+test('pending responses communicate supervisor backoff without delaying compatible data',()=>{
+  const f=fixture(), now=Date.parse('2026-11-25T10:00:00Z');
+  f.store.set('MARKETS_REVIEW_AUX_RETRY:publish',JSON.stringify({next:now+360000}));
+  const first=f.api.getMarketsReviewAnalytics(monthly);assert.equal(first.reviewPending,true);assert.equal(first.retryAfterMs,300000);
+  f.publish();assert.equal(f.api.getMarketsReviewAnalytics(monthly).recentTotal,3);
+});
+
+test('explicit pending scope is shared and cooled down; successful data, prefetch and other scopes remain independent',async()=>{
+  const app=clientScript(fs.readFileSync(new URL('../src/App.html',import.meta.url),'utf8'));
+  const helper=app.slice(app.indexOf('    const reviewRequests='),app.indexOf('    function trackReady('));
+  let now=0;const calls=[];
+  const sandbox={Date:class extends Date{static now(){return now}},state:{view:'analytics'},trackUsage(){},callServer:(method,scope,prefetch)=>new Promise(resolve=>calls.push({method,scope,prefetch,resolve}))};
+  vm.runInNewContext(helper+'\nthis.api={fetchReviewData,hasReviewResponse};',sandbox);
+  const {fetchReviewData,hasReviewResponse}=sandbox.api,scope={country:'ES',year:'2026'},other={...scope,country:'MX'};
+  const one=fetchReviewData('review:analytics',scope),two=fetchReviewData('review:analytics',{year:'2026',country:'ES'});
+  assert.equal(calls.length,1);calls[0].resolve({reviewPending:true,retryAfterMs:45000});
+  for(const result of await Promise.allSettled([one,two])){assert.equal(result.status,'rejected');assert.equal(result.reason.retryAfterMs,45000)}
+  assert.equal(hasReviewResponse('review:analytics',scope),false);now=10000;
+  await assert.rejects(fetchReviewData('review:analytics',scope),error=>error.reviewPending&&error.retryAfterMs===35000);
+  assert.equal(await fetchReviewData('review:analytics',scope,true),null);assert.equal(calls.length,1);
+  const separate=fetchReviewData('review:analytics',other);calls[1].resolve({annual:{total:4}});assert.equal((await separate).annual.total,4);
+  now=45000;const recovered=fetchReviewData('review:analytics',scope);assert.equal(calls.length,3);calls[2].resolve({annual:{total:7}});assert.equal((await recovered).annual.total,7);
+  assert.equal(hasReviewResponse('review:analytics',scope),true);assert.equal((await fetchReviewData('review:analytics',scope)).annual.total,7);assert.equal(calls.length,3);
+});
+
+function coreManifest(f){
+  return {schema:15,analyticsSourceVersion:1,end:f.api.marketsReviewWindow_().end,publishedAt:new f.api.Date().toISOString(),versions:f.versions(),
+    npsVersions:f.api.marketsReviewNpsVersions_(f.props.getProperties(),'catalog'),audienceVersion:vm.runInContext('MARKETS_REVIEW_AUDIENCE_VERSION',f.api),
+    reviewNpsEnabled:false,hasFeaturedReviews:true,hasNpsAttribution:true,hasAllSentimentGaps:false,hasAnnualNps:false,hasReviewRanking:false,hasMonthlyBlockCounts:true,requestedScopes:[],count:1};
+}
+function writeCore(f){
+  const filters=f.api.normalizeMarketsReviewFilters_(monthly),window=f.api.marketsReviewAnalyticsWindow_(filters,'2026-11-25');
+  const scope=f.api.marketsReviewSnapshotScope_('analytics',filters,window);
+  const value=f.api.buildMarketsReviewAnalytics_(rows.filter(row=>row.countries[0]==='ES'),topics,filters,window,false,true);
+  assert.equal(f.api.writeMarketsReviewSnapshot_(f.props,coreManifest(f),{[scope]:value},()=>true),true);
+}
+
+test('fresh independent source supersedes a compatible but older exact view; contention retains the verified fallback',()=>{
+  const f=fixture();writeCore(f);
+  f.store.set('MARKETS_REVIEWS_GENERATION','g2');f.clock('2026-11-26T10:00:00Z');f.publish(rows.concat(mk('new','2026-11-26',5)));
+  const cached=f.api.readMarketsWebCache_;
+  f.api.readMarketsWebCache_=(key,build,maxParts,timing,coordinate)=>{
+    if(coordinate){timing.sharedBuildPending=true;return undefined}return cached(key,build);
+  };
+  const stale=f.api.getMarketsReviewAnalytics(monthly);assert.equal(stale.recentTotal,3);assert.equal(stale.timing.asOf,'2026-11-25');assert.equal(stale.timing.freshness,'stale');
+  f.api.readMarketsWebCache_=cached;
+  const fresh=f.api.getMarketsReviewAnalytics(monthly);assert.equal(fresh.recentTotal,4);assert.equal(fresh.timing.freshness,'fresh');assert.equal(fresh.timing.asOf,'2026-11-26');
+  assert.equal(fresh.timing.reviewContract,stale.timing.reviewContract);
+});
+
+test('server shared-build contention returns typed pending for analytics and comments without a second scan or publication request',()=>{
+  const f=fixture();f.publish();const read=f.api.readMarketsWebCache_;
+  f.api.readMarketsWebCache_=(key,builder,parts,timing,coordinate)=>{if(coordinate){timing.sharedBuildPending=true;return undefined}return read(key,builder)};
+  const p=f.api.getMarketsReviewAnalytics(monthly);assert.equal(p.reviewPending,true);assert.equal(p.pendingReason,'shared-build');assert.equal(p.retryAfterMs,5000);assert.ok(p.timing.reviewContract);
+  assert.equal(f.store.has('MARKETS_REVIEW_MANUAL:publish'),false);assert.equal(f.api.getMarketsReviewAnalytics(monthly,true),null);
+  assert.throws(()=>f.api.getMarketsReviewAnalytics({...monthly,strictFreshness:true}),/se está publicando/);
+  const page=f.api.getMarketsReviewPage({country:'ES',app:'BBVA Empresas'});assert.equal(page.pendingReason,'shared-build');assert.equal(page.rows,undefined);
+});
+
+test('current reusable coverage satisfies requested scopes without rebuilding the global snapshot; old years still need exact materialization',()=>{
+  const f=fixture();f.publish();f.store.set(BASE,JSON.stringify(coreManifest(f)));
+  const scope=f.api.normalizeMarketsReviewFilters_({...monthly,audience:'BEI'}),window=f.api.marketsReviewAnalyticsWindow_(scope,'2026-11-25');
+  assert.equal(f.api.queueMarketsReviewSnapshotRefresh_(scope,window,'analytics',false,false),true);
+  assert.equal(f.api.marketsReviewSnapshotRefreshDue_(f.props,new f.api.Date()),false);
+  assert.deepEqual(plain(f.api.publishMarketsReviewSnapshot_()),{complete:true,published:1}); // fixture rejects a sheet scan
+  const old=f.api.normalizeMarketsReviewFilters_({...annual,year:'2023'}),oldWindow=f.api.marketsReviewAnalyticsWindow_(old,'2026-11-25');
+  assert.equal(f.api.queueMarketsReviewSnapshotRefresh_(old,oldWindow,'analytics',false,false),true);
+  assert.equal(f.api.marketsReviewSnapshotRefreshDue_(f.props,new f.api.Date()),true);
+});
+
+test('source diagnostics distinguish verification failures, progress, coverage and retry time; no false completed partitions',()=>{
+  const f=fixture();f.fail(name=>name.includes('source-ES-2026'));
+  const advance=()=>f.api.advanceMarketsReviewSources_(f.props,rows,topics,'2025-01-01','2026-11-25',f.versions(),false,Date.parse('2026-11-25T10:02:00Z'),()=>true);
+  assert.equal(advance(),false);const retry=f.manifest('MARKETS_REVIEW_ANALYTICS_SOURCE_RETRY');
+  assert.equal(retry.reason,'drive-or-verification');assert.equal(retry.failedPartitions,1);assert.ok(retry.lastProgressAt);assert.equal(retry.failures,0);
+  f.api.Session={getEffectiveUser:()=>({getEmail:()=> 'owner@example.invalid'})};f.api.normalizeEmailForComparison_=String;
+  const status=f.api.marketsAdminReviewOperations_('owner@example.invalid').snapshot;
+  assert.equal(status.analyticsSourceExpected,8);assert.equal(status.analyticsSourcePartitions,7);assert.equal(status.analyticsSourceComplete,false);assert.equal(status.analyticsSourceRetry.reason,'drive-or-verification');
+  assert.equal(advance(),false);assert.equal(f.manifest('MARKETS_REVIEW_ANALYTICS_SOURCE_RETRY').failures,1);
+  f.fail(()=>false);assert.equal(advance(),true);assert.equal(f.api.marketsAdminReviewOperations_('owner@example.invalid').snapshot.analyticsSourceComplete,true);
+});
+
+test('pending compatibility stamp changes only when semantic revisions change, not on new ingestion',()=>{
+  const f=fixture();f.publish();const old=f.api.getMarketsReviewAnalytics(monthly);f.store.set('MARKETS_REVIEWS_GENERATION','g2');
+  const stale=f.api.getMarketsReviewAnalytics(monthly);assert.equal(stale.timing.reviewContract,old.timing.reviewContract);assert.equal(stale.timing.freshness,'stale');
+  f.store.set('MARKETS_FUNCTIONAL_REVISION','f2');const pending=f.api.getMarketsReviewAnalytics(monthly);assert.equal(pending.reviewPending,true);assert.notEqual(pending.timing.reviewContract,old.timing.reviewContract);
+});
+
+test('historical demand extends the reusable horizon to three calendar years without rebuilding the core; subsequent generations retain coverage',()=>{
+  const f=fixture();f.publish();f.store.set(BASE,JSON.stringify(coreManifest(f)));
+  const old=f.api.normalizeMarketsReviewFilters_({...annual,year:'2025'}),window=f.api.marketsReviewAnalyticsWindow_(old,'2026-11-25');
+  assert.equal(f.api.queueMarketsReviewSnapshotRefresh_(old,window,'analytics',false,false),true);
+  assert.equal(f.api.marketsReviewSnapshotRefreshDue_(f.props,new f.api.Date()),true);
+  let reads=0;
+  Object.assign(f.api,{marketsReviewTopics_:()=>topics,queryMarketsReviews_:(_ss,_scope,range)=>{reads++;assert.equal(range.start,'2024-01-01');return rows.concat(mk('old2024','2024-05-01',4));},writeMarketsReviewSnapshot_:()=>assert.fail('Global snapshot must not be rebuilt')});
+  assert.equal(f.api.publishMarketsReviewSnapshot_().complete,true);assert.equal(reads,1);
+  assert.equal(f.manifest().analyticsSources.start,'2024-01-01');assert.equal(f.manifest().analyticsSources.complete,true);
+  assert.equal(f.api.getMarketsReviewAnalytics(old).annual.previousTotal,1);
+  f.store.delete('MARKETS_REVIEW_REQUESTED_SCOPES');
+  assert.equal(f.api.marketsReviewSourceTargetStart_(f.manifest(),'2026-11-25',[],false),'2024-01-01');
+  assert.equal(f.api.marketsReviewSourceTargetStart_(f.manifest(),'2027-01-01',[],false),'2025-01-01');
+});
+
+test('closed-year shards are reused only after exact verification; a late edit or failed commit never corrupts a referenced generation',()=>{
+  const f=fixture();assert.equal(f.publish(),true);const first=f.manifest(),historic=first.files['source-ES-2025-0'];
+  f.store.set('MARKETS_REVIEWS_GENERATION','g2');f.clock('2026-11-26T10:00:00Z');
+  const next=rows.concat(mk('new','2026-11-26',5));assert.equal(f.publish(next),true);
+  const second=f.manifest();assert.equal(second.files['source-ES-2025-0'],historic);assert.notEqual(second.files['source-ES-2026-0'],first.files['source-ES-2026-0']);
+  f.store.set('MARKETS_REVIEWS_GENERATION','g3');f.clock('2026-11-27T10:00:00Z');
+  const edited=next.map(row=>row.key==='old'?{...row,helpful:25}:row);let checks=0;
+  const before=f.store.get(SOURCE),filesBefore=[...f.files.keys()].sort();
+  assert.equal(f.api.publishMarketsReviewSources_(f.props,edited,topics,'2025-01-01','2026-11-27',f.versions(),false,Date.parse('2026-11-27T10:02:00Z'),()=>++checks===1),false);
+  assert.equal(f.store.get(SOURCE),before);assert.deepEqual([...f.files.keys()].sort(),filesBefore);
+  assert.equal(f.publish(edited),true);assert.notEqual(f.manifest().files['source-ES-2025-0'],historic);assert.ok(f.files.has(historic));
+  assert.equal(f.api.getMarketsReviewAnalytics({...annual,year:'2025'}).reviewPending,true,'2024 not yet covered');
+  assert.equal(f.api.getMarketsReviewAnalytics(annual).annual.previousTotal,1);
 });
