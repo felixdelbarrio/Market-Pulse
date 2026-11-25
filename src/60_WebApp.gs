@@ -1,6 +1,6 @@
 /** Web app de lectura para el dashboard de ratings. */
 var MARKETS_WEB = Object.freeze({
-  version: '2026.11.25.94',
+  version: '2026.11.25.95',
   // Solo debe cambiar si cambia el formato serializado. Un cambio visual no
   // puede obligar al primer usuario a reconstruir la cache desde Sheets.
   cacheSchemaVersion: '2026.10.21.41',
@@ -506,9 +506,8 @@ function readRunFetchSummaryForWeb_(ss, runId, appsTotal) {
   };
 }
 
-function readMarketsWebCache_(key, builder, maxParts = 1, timing) {
-  const cache = CacheService.getScriptCache();
-  const cacheStarted = Date.now();
+/** Read-only cache lookup: undefined is a miss, never a published zero. */
+function readMarketsWebCacheValue_(cache, key, maxParts) {
   try {
     const cached = cache.get(key);
     if (cached?.startsWith('gzip-single:')) return decodeMarketsCache_(cached.slice(12));
@@ -521,13 +520,67 @@ function readMarketsWebCache_(key, builder, maxParts = 1, timing) {
         if (keys.every(part => chunks[part])) return decodeMarketsCache_(keys.map(part => chunks[part]).join(''));
       }
     } else if (cached) return JSON.parse(cached);
+  } catch (ignored) {}
+  return undefined;
+}
+
+/** Best-effort single-flight, shared by all users of this deployment. The lock
+ * protects only three short-lived cache leases, not Drive, Sheets or aggregation.
+ * A cache eviction is safe: results remain generation-keyed and reads are bounded.
+ */
+function claimMarketsReviewBuild_(cache, key) {
+  const slots = Array.from({ length: 3 }, (_, i) => 'markets-review-build:' + i);
+  let lock, locked = false;
+  try {
+    lock = LockService.getScriptLock();
+    locked = lock.tryLock(100);
+    if (!locked) return { busy: true };
+    const entries = cache.getAll(slots);
+    const leases = slots.map(slot => { try { return JSON.parse(entries[slot] || 'null'); } catch (_) { return null; } });
+    const now = Date.now();
+    if (leases.some(lease => lease?.until > now && lease.key === key)) return { busy: true };
+    const index = leases.findIndex(lease => !(lease?.until > now));
+    if (index < 0) return { busy: true };
+    const token = Utilities.getUuid(), slot = slots[index];
+    cache.put(slot, JSON.stringify({ key, token, until: now + 360000 }), 360);
+    return { slot, token };
   } catch (ignored) {
-  } finally {
-    if (timing) timing.cacheMs = Date.now() - cacheStarted;
+    return null; // Cache is an optimization, not a new availability dependency.
+  } finally { if (locked) lock.releaseLock(); }
+}
+
+function releaseMarketsReviewBuild_(cache, lease) {
+  if (!lease?.slot) return;
+  let lock, locked = false;
+  try {
+    lock = LockService.getScriptLock();
+    locked = lock.tryLock(100);
+    if (locked && JSON.parse(cache.get(lease.slot) || 'null')?.token === lease.token) cache.remove(lease.slot);
+  } catch (ignored) {} finally { if (locked) lock.releaseLock(); }
+}
+
+function readMarketsWebCache_(key, builder, maxParts = 1, timing, coordinateReview = false) {
+  let cache;
+  try { cache = CacheService.getScriptCache(); } catch (ignored) { return builder(); }
+  const cacheStarted = Date.now();
+  const cached = readMarketsWebCacheValue_(cache, key, maxParts);
+  if (timing) timing.cacheMs = Date.now() - cacheStarted;
+  if (cached !== undefined) return cached;
+  const lease = coordinateReview ? claimMarketsReviewBuild_(cache, key) : null;
+  if (lease?.busy) {
+    if (timing) timing.sharedBuildPending = true;
+    return undefined;
   }
-  const value = builder();
-  if (value !== undefined) writeMarketsWebCache_(cache, key, value, maxParts, timing);
-  return value;
+  try {
+    // A competing builder may have completed between our first lookup and claim.
+    if (lease) {
+      const shared = readMarketsWebCacheValue_(cache, key, maxParts);
+      if (shared !== undefined) return shared;
+    }
+    const value = builder();
+    if (value !== undefined) writeMarketsWebCache_(cache, key, value, maxParts, timing);
+    return value;
+  } finally { releaseMarketsReviewBuild_(cache, lease); }
 }
 
 function writeMarketsWebCache_(cache, key, value, maxParts = 1, timing) {

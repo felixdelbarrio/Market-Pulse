@@ -114,3 +114,12 @@ test('annual rating uses a compact responsive coordinate system but keeps every 
   }
   assert.match(read('ReviewChartStyles'),/#annual-chart svg\{[^}]*min-width:0/);
 });
+
+test('available review indicators render before a slow rating history and the rating does not reload the review cards',async()=>{
+  const f=fixture(false,true),initial=f.ui.load();assert.equal(f.calls.length,1);assert.equal(f.ratingCalls.length,1);
+  f.calls[0].resolve(response(19));await tick();
+  assert.equal(f.indicators.length,1);assert.equal(f.node('review-annual').innerHTML,'Indicadores 19');assert.equal(f.ratings.length,0);
+  const useful=f.ui.sheets.get('Reseñas más útiles');
+  f.ratingCalls[0].resolve([]);await initial;
+  assert.equal(f.ratings.length,1);assert.equal(f.calls.length,1);assert.equal(f.indicators.length,1);assert.equal(f.ui.sheets.get('Reseñas más útiles'),useful);
+});
