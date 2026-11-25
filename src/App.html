@@ -4,7 +4,6 @@
     const D=window.MarketsDomain,U=window.MarketsUI,C=window.MarketsCharts,T=window.MarketsTheme;
     const mobileViewport=window.matchMedia("(max-width:780px)");
     const state={meta:null,userContext:null,snapshot:[],trends:[],consolidated:null,country:"ALL",benchmarkSegment:"BANK",evolutionApp:"BBVA Empresas",benchmarkWeighted:false,view:"benchmark",periodYear:"",periodMonth:"",trendsLoading:true,trendToken:0,trendCache:new Map(),bootstrapLoading:false,alertCenter:null,alertDraft:null,alertsLoading:false,alertsLoaded:false,adminCenter:null,adminLoading:false,adminLoaded:false,adminTab:"health",adminEditingEmail:"",adminSubscriberFilters:{query:"",countries:["ANY"],platforms:["ANY"],status:"ALL"},usageQueue:[],usageTimer:0,usageStarted:false};
-    let reviewNpsEnabled=true, reviewModeEpoch=0;
     const exportSheets={benchmark:new Map(),evolution:new Map(),analytics:new Map()};
     const $=id=>document.getElementById(id);
     const bindOptional=(id,event,handler)=>$(id)?.addEventListener(event,handler);
@@ -685,6 +684,8 @@
     }
 
     const reviewRequests=new Map(), reviewResponses=new Map();
+    // The mode and epoch belong to the same lifecycle as the review cache.
+    let reviewNpsEnabled=true, reviewModeEpoch=0;
     const reviewResponseTtl=120000;
     let monthlyReviewLoadedAt=0;
     const isReviewNpsRequest=method=>method==="review:nps"||method==="review:ranking";
@@ -1616,9 +1617,9 @@
         examples.innerHTML=data.examples.map(({review})=>renderReviewCard(review,data.topics)).join("");
         const recentFilters=[...exportDates({start:data.window.recent,end:applied.end}),["Mes",analysisMonth],
           ["Aplicación",scope.entity],["Comentarios",reviewFilterLabel("audience",scope.audience)],["Inferir datos",scope.inferGeography==="NO"?"No":"Sí"],["Sentimiento",reviewFilterLabel("segment",scope.segment)]];
-        const columns=activeReviewGapColumns();
+        const reviewGapColumns=activeReviewGapColumns();
         setExportSheet("evolution",reviewNpsEnabled?"Brechas":"Deltas bloques funcionales",scope.country,recentFilters,
-          columns.map(column=>column.label),data.deltas.map(row=>columns.map(column=>column.value(row))));
+          reviewGapColumns.map(column=>column.label),data.deltas.map(row=>reviewGapColumns.map(column=>column.value(row))));
         setExportSheet("evolution","Ejemplos del mes",scope.country,recentFilters,reviewExportHeader,
           data.examples.map(({review})=>reviewExportRow(review,data.topics)));
         monthlyReviewLoadedAt=Date.now();
@@ -1737,9 +1738,9 @@
       target.insertAdjacentHTML("beforeend",reviewNpsEnabled?C.reviewGaps(deltas,fmt,translate):C.reviewBlockCounts(deltas,integer,translate));
       const table=document.createElement("div");
       table.className="admin-table-wrap review-gap-table";
-      const columns=activeReviewGapColumns();
-      const headers=columns.map(column=>`<th scope="col">${U.esc(translate(column.label))}</th>`).join("");
-      const metrics=columns.slice(1);
+      const reviewGapColumns=activeReviewGapColumns();
+      const headers=reviewGapColumns.map(column=>`<th scope="col">${U.esc(translate(column.label))}</th>`).join("");
+      const metrics=reviewGapColumns.slice(1);
       table.innerHTML=`<table class="admin-table"><caption>${U.esc(translate("Detalle del periodo reciente · {dates}",{dates:recent}))}</caption><thead><tr>${headers}</tr></thead><tbody>${deltas.map(row=>`<tr><th scope="row"></th>${metrics.map(column=>`<td>${U.esc(column.format(column.value(row)))}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
       table.querySelectorAll("tbody th").forEach((cell,index)=>{
         const row=deltas[index];

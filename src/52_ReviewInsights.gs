@@ -1105,7 +1105,7 @@ function getMarketsReviewRanking(filters) {
   const scope = { country: normalized.country, platform: 'ALL', analysisMonth: month, strictFreshness: normalized.strictFreshness };
   const window = marketsReviewAnalyticsWindow_(scope, marketsReviewWindow_().end), timing = {};
   const value = readMarketsReviewCache_(ss, 'ranking', scope, window, () => {
-    queueMarketsReviewSnapshotRefresh_(undefined, undefined, 'ranking');
+    queueMarketsReviewSnapshotRefresh_(undefined, undefined, 'ranking', false, true);
     throw new Error('El ranking de NPS se está publicando. Reintenta en unos minutos.');
   }, timing, false, true);
   if (!readMarketsReviewNpsEnabled_(ss)) return { reviewNpsEnabled: false, rows: [] };
@@ -1319,8 +1319,8 @@ function readMarketsReviewCache_(ss, operation, filters, window, builder, timing
     }, maxParts, timing);
     if (value === undefined) continue;
     if (!snapshotOnly && (state.refreshDue || isPrevious)) {
-      timing.refreshQueued = isPrevious ? queueMarketsReviewSnapshotRefresh_(filters, window, operation, repair)
-        : queueMarketsReviewSnapshotRefresh_(undefined, undefined, operation);
+      timing.refreshQueued = isPrevious ? queueMarketsReviewSnapshotRefresh_(filters, window, operation, repair, reviewNpsEnabled)
+        : queueMarketsReviewSnapshotRefresh_(undefined, undefined, operation, false, reviewNpsEnabled);
     }
     Object.assign(timing, state, { source: source === 'L1' ? 'cache' : 'snapshot',
       cacheSource: source === 'L1' ? source : 'snapshot ' + state.freshness });
@@ -1333,7 +1333,7 @@ function readMarketsReviewCache_(ss, operation, filters, window, builder, timing
     source = 'sheet';
     if (!snapshotOnly && ['analytics', 'nps', 'ranking'].includes(operation) &&
         (ss.getSheetByName('MARKET_REVIEWS')?.getLastRow() || 0) > 251) {
-      timing.refreshQueued = Boolean(snapshotScope && queueMarketsReviewSnapshotRefresh_(filters, window, operation, repair));
+      timing.refreshQueued = Boolean(snapshotScope && queueMarketsReviewSnapshotRefresh_(filters, window, operation, repair, reviewNpsEnabled));
       log();
       if (!snapshotScope) throw new Error('La consulta de reseñas supera el límite interactivo. Reduce los filtros.');
       throw new Error('La vista de reseñas se está publicando. Reintenta en unos minutos.');
@@ -1357,17 +1357,19 @@ function readMarketsReviewCache_(ss, operation, filters, window, builder, timing
 }
 
 /** Solicitud deduplicada al supervisor existente: sin triggers ni trabajo en RPC. */
-function queueMarketsReviewSnapshotRefresh_(filters, window, operation = 'analytics', repair = false) {
+function queueMarketsReviewSnapshotRefresh_(filters, window, operation = 'analytics', repair = false, reviewNpsEnabled = true) {
+  // The caller has already read CONTROL. Never open Sheets under this short lock.
+  // Publication validates the current mode again, including after a concurrent toggle.
+  if (!reviewNpsEnabled && ['nps', 'ranking'].includes(operation)) return false;
   const properties = PropertiesService.getScriptProperties();
   const key = 'MARKETS_REVIEW_MANUAL:publish';
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(100)) return false;
   try {
-    if (['nps', 'ranking'].includes(operation) && !readMarketsReviewNpsEnabled_(openMarketsSpreadsheet_())) return false;
     const scope = filters && window && marketsReviewSnapshotScope_(operation, filters, window);
     const id = filters && window && marketsReviewRequestedScope_(operation, filters, window);
     if (scope && id) {
-      const requests = marketsReviewRequestedScopes_(properties);
+      const requests = marketsReviewRequestedScopes_(properties, Date.now(), reviewNpsEnabled);
       if (!requests.some(entry => entry.id === id)) {
         requests.push({ id, scope, operation, filters, window, requestedAt: Date.now() });
         properties.setProperty('MARKETS_REVIEW_REQUESTED_SCOPES', JSON.stringify(requests.slice(-8)));
