@@ -4,7 +4,11 @@ import fs from "node:fs";
 import vm from "node:vm";
 import { reviewInsightsSource, reviewSource } from "./review-insights-source.mjs";
 
+// Load the real CONTROL reader, as Apps Script does. Legacy scenarios have a
+// CONTROL sheet with no REVIEW_NPS_ENABLED row (the default is true).
+const emptyControl = { getLastRow: () => 1 };
 const api = vm.createContext({ trimString_: value => String(value ?? "").trim(), safeJsonParse_: JSON.parse });
+vm.runInContext(reviewSource("40_Sheets.gs"), api);
 vm.runInContext(fs.readFileSync(new URL("../src/54_Reviews.gs", import.meta.url), "utf8"), api);
 
 vm.runInContext(reviewInsightsSource, api);
@@ -249,7 +253,7 @@ test("recent block statistics do not invent a historical baseline or sum duplica
 
 test("country pages and snapshots partition each review by its own storefront evidence", () => {
   const runtime = vm.createContext({ trimString_: value => String(value ?? "").trim() });
-  for (const file of ["54_Reviews.gs", "52_ReviewInsights.gs"]) {
+  for (const file of ["40_Sheets.gs", "54_Reviews.gs", "52_ReviewInsights.gs"]) {
     vm.runInContext(reviewSource(file), runtime);
   }
   const android = (packageName,countryCode) => ({
@@ -273,11 +277,11 @@ test("country pages and snapshots partition each review by its own storefront ev
   const sheet = {getLastRow:()=>rows.length+1,getRange:(start, _col, length, width)=>({
     getValues:()=>rows.slice(start-2,start-2+length).map(row=>row.slice(0,width))
   })};
-  const ss = {getSheetByName:name=>name==="MARKET_REVIEWS"?sheet:null,getId:()=>"test"};
+  const ss = {getSheetByName:name=>name==="MARKET_REVIEWS"?sheet:name==="CONTROL"?emptyControl:null,getId:()=>"test"};
   let snapshot;
   const cache = new Map();
   Object.assign(runtime,{
-    MARKETS_CONFIG:{timeZone:"Europe/Madrid"}, safeJsonParse_:JSON.parse,
+    MARKETS_CONFIG:{timeZone:"Europe/Madrid",sheets:{control:"CONTROL"}}, safeJsonParse_:JSON.parse,
     MARKETS_WEB:{countryCodes:["ES","CO","TR"]},
     Utilities:{
       formatDate:()=>"2026-11-11",DigestAlgorithm:{SHA_256:"SHA_256"},
@@ -334,7 +338,7 @@ test("country pages and snapshots partition each review by its own storefront ev
   // Same source, no translation required. A translation alone cannot create BEI evidence.
   const taxonomy = [["02.03","Cuentas","Estado de cuenta"],["03.13","Pagos","Transferencias internacionales"]];
   ss.getSheetByName = name => name === "MARKET_REVIEWS" ? sheet : name === "FUNCTIONAL_CATALOG"
-    ? {getLastRow:()=>taxonomy.length+1,getRange:()=>({getDisplayValues:()=>taxonomy})} : null;
+    ? {getLastRow:()=>taxonomy.length+1,getRange:()=>({getDisplayValues:()=>taxonomy})} : name === "CONTROL" ? emptyControl : null;
   rows[1][10] = "Mi cuenta de nómina cobra comisión";
   rows[2][10] = "No puedo hacer una transferencia";
   rows[2][12] = "My company has a problem";
@@ -485,9 +489,9 @@ test("review cache isolates scopes and invalidates when the data or catalog chan
 
 test("review endpoints accept corporate readers and reject anonymous users before reading data", () => {
   const opened = [];
-  const sheet = { getSheetByName: () => null, getId: () => "test" };
+  const sheet = { getSheetByName: name => name === "CONTROL" ? emptyControl : null, getId: () => "test" };
   Object.assign(api, {
-    MARKETS_CONFIG: { timeZone: "Europe/Madrid" },
+    MARKETS_CONFIG: { timeZone: "Europe/Madrid", sheets: { control: "CONTROL" } },
     openMarketsSpreadsheet_: () => { opened.push(1); return sheet; },
     currentMarketsUserEmail_: () => { throw new Error("Acceso denegado"); }
   });
@@ -531,7 +535,8 @@ test("calendar analytics reads a closed year and its predecessor independently o
     review("end","2025-12-31",5),review("after","2026-01-01",1)];
   Object.assign(api,{
     currentMarketsUserEmail_:()=> "reader@bbva.com",
-    openMarketsSpreadsheet_:()=>({getId:()=>"calendar"}),
+    MARKETS_CONFIG:{timeZone:"Europe/Madrid",sheets:{control:"CONTROL"}},
+    openMarketsSpreadsheet_:()=>({getId:()=>"calendar",getSheetByName:name=>name==="CONTROL"?emptyControl:null}),
     marketsReviewTopics_:()=>({"01":"Transferencias"}),
     readMarketsReviewCache_:(_ss,_op,_filters,_window,build)=>build(),
     readMarketsWebCache_:(key,build)=>{

@@ -79,7 +79,8 @@ var MARKETS_CONFIG = Object.freeze({
     ['MONITOR_HEALTH_ENABLED', true, 'Verificar cada manana que el proceso diario y su canal de alertas han finalizado'],
     ['MONITOR_ADMIN_EMAIL', 'voc-commercial.group@bbva.com', 'Destino operativo para incidencias del proceso diario'],
     ['ADMIN_EMAILS', '', 'Administradores autorizados, separados por coma; setupProject registra al propietario inicial'],
-    ['RATING_LOOKBACK_DAYS', 30, 'Ventana para DELTA_30D']
+    ['RATING_LOOKBACK_DAYS', 30, 'Ventana para DELTA_30D'],
+    ['REVIEW_NPS_ENABLED', true, 'Activar el cálculo, publicación y visualización del NPS de reseñas']
   ])
 });
 
