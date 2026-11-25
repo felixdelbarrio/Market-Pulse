@@ -75,20 +75,22 @@ test('Mapa de calor y distribucion anual identicos en ambos modos',()=>{
 test('RPC NPS y ranking desactivados antes de consultar cache o datos',()=>{
   const e=makeContext();e.setting(false);e.sandbox.readMarketsReviewCache_=()=>{throw Error('cache consulted')};assert.deepEqual(clone(e.sandbox.getMarketsReviewNps({year:'2026'})),{reviewNpsEnabled:false,monthly:[]});assert.deepEqual(clone(e.sandbox.getMarketsReviewRanking({})),{reviewNpsEnabled:false,rows:[]});assert.equal(e.sandbox.queueMarketsReviewSnapshotRefresh_({},window,'nps',false,false),false);assert.deepEqual(e.prop,{});
 });
-function fixtureManifest(e,enabled){return {schema:15,end:'2026-11-25',publishedAt:new Date().toISOString(),versions:['g','f','c'],npsVersions:['s','','c'],audienceVersion:'fixture-audience',reviewNpsEnabled:enabled,hasFeaturedReviews:true,hasNpsAttribution:true,hasAllSentimentGaps:enabled,hasAnnualNps:enabled,hasReviewRanking:enabled,hasMonthlyBlockCounts:!enabled,requestedScopes:[]};}
+function fixtureManifest(e,enabled){return {schema:15,analyticsSourceVersion:1,end:'2026-11-25',publishedAt:new Date().toISOString(),versions:['g','f','c'],npsVersions:['s','','c'],audienceVersion:'fixture-audience',reviewNpsEnabled:enabled,hasFeaturedReviews:true,hasNpsAttribution:true,hasAllSentimentGaps:enabled,hasAnnualNps:enabled,hasReviewRanking:enabled,hasMonthlyBlockCounts:!enabled,requestedScopes:[]};}
 test('Manifiesto y lector distinguen modos; paginas independientes compatibles',()=>{
   const e=makeContext(),off=fixtureManifest(e,false),on=fixtureManifest(e,true);const match=e.sandbox.marketsReviewSnapshotCapabilitiesMatch_;
   assert.equal(match(off,false),true);assert.equal(match(on,true),true);assert.equal(match(off,true),false);assert.equal(match(on,false),false);const legacy={...on};delete legacy.reviewNpsEnabled;assert.equal(match(legacy,true),true);
   const now=Date.now(),filters={country:'ES',analysisMonth:'2026-11'},read=e.sandbox.marketsReviewSnapshotState_;assert.equal(read(off,'analytics',filters,window,off.versions,{},now,{},false,false).freshness,'fresh');assert.equal(read(on,'analytics',filters,window,on.versions,{},now,{},false,false),null);assert.equal(read(off,'analytics',filters,window,off.versions,{},now,{},true,true),null);assert.equal(read(off,'nps',{year:'2026'},window,off.npsVersions,{},now,{},false,false),null);assert.equal(read(off,'page',{},window,off.versions,{},now,{},false,true).freshness,'fresh');
 });
 test('Supervisor acepta snapshot OFF completo y solicita publicar al reactivar',()=>{
-  const e=makeContext();e.setting(false);const off=fixtureManifest(e,false);e.prop.MARKETS_REVIEW_SNAPSHOT_POINTER=JSON.stringify(off);e.sandbox.readAppCatalog_=()=>[];e.sandbox.marketsReviewCatalogVersion_=()=> 'c';e.sandbox.marketsAudienceCatalog_=()=>({revision:''});e.sandbox.marketsReviewVersions_=()=>off.versions;
+  const e=makeContext();e.setting(false);const off=fixtureManifest(e,false);e.prop.MARKETS_REVIEW_SNAPSHOT_POINTER=JSON.stringify(off);e.prop.MARKETS_REVIEW_ANALYTICS_SOURCE_POINTER=JSON.stringify({...off,analyticsSources:{schema:1,complete:true,start:'2025-01-01'}});e.sandbox.readAppCatalog_=()=>[];e.sandbox.marketsReviewCatalogVersion_=()=> 'c';e.sandbox.marketsAudienceCatalog_=()=>({revision:''});e.sandbox.marketsReviewVersions_=()=>off.versions;
   assert.equal(e.sandbox.marketsReviewSnapshotRefreshDue_(e.properties,new Date()),false);e.setting(true);assert.equal(e.sandbox.marketsReviewSnapshotRefreshDue_(e.properties,new Date()),true);
 });
 test('Publicacion OFF omite scopes NPS y ranking, mantiene pages y featured; ON reversible',()=>{
   const e=makeContext();let captured;
   Object.assign(e.sandbox,{readAppCatalog_:()=>[],marketsReviewCatalogVersion_:()=> 'c',marketsAudienceCatalog_:()=>({revision:''}),marketsReviewTopics_:()=>topics,queryMarketsReviews_:()=>rows,compareMarketsHelpfulReviews_:(a,b)=>b.helpful-a.helpful,compareMarketsReviewRows_:(a,b)=>b.date.localeCompare(a.date),writeMarketsReviewSnapshot_:(_p,manifest,values,valid)=>{assert.equal(valid(),true);captured={manifest:clone(manifest),values:clone(values)};e.prop.MARKETS_REVIEW_SNAPSHOT_POINTER=JSON.stringify(manifest);return true;}});
-  e.setting(false);const original=e.sandbox.summarizeMarketsReviewNps_;e.sandbox.summarizeMarketsReviewNps_=()=>{throw Error('NPS aggregator called')};e.prop.MARKETS_REVIEW_REQUESTED_SCOPES=JSON.stringify([{id:'ignored',scope:'nps:ES:requested:ignored',operation:'nps',requestedAt:Date.now(),filters:{country:'ES'},window}]);assert.equal(e.sandbox.publishMarketsReviewSnapshot_().complete,true);assert.equal(captured.manifest.reviewNpsEnabled,false);assert.ok(!Object.keys(captured.values).some(k=>/^(nps|ranking):/.test(k)));assert.ok(Object.keys(captured.values).some(k=>k.startsWith('page:ES:')));assert.ok(Object.keys(captured.values).some(k=>k.startsWith('featured:')));const offCount=captured.manifest.count;assert.equal(e.sandbox.publishMarketsReviewSnapshot_().complete,true);e.setting(true);e.sandbox.summarizeMarketsReviewNps_=original;delete e.prop.MARKETS_REVIEW_REQUESTED_SCOPES;assert.equal(e.sandbox.publishMarketsReviewSnapshot_().complete,true);assert.ok(captured.manifest.count>offCount);assert.ok(Object.keys(captured.values).some(k=>k.startsWith('nps:')));assert.ok(Object.keys(captured.values).some(k=>k.startsWith('ranking:')));
+  e.setting(false);const original=e.sandbox.summarizeMarketsReviewNps_;e.sandbox.summarizeMarketsReviewNps_=()=>{throw Error('NPS aggregator called')};e.prop.MARKETS_REVIEW_REQUESTED_SCOPES=JSON.stringify([{id:'ignored',scope:'nps:ES:requested:ignored',operation:'nps',requestedAt:Date.now(),filters:{country:'ES'},window}]);assert.equal(e.sandbox.publishMarketsReviewSnapshot_().complete,true);assert.equal(captured.manifest.reviewNpsEnabled,false);assert.ok(!Object.keys(captured.values).some(k=>/^(nps|ranking):/.test(k)));assert.ok(Object.keys(captured.values).some(k=>k.startsWith('page:ES:')));assert.ok(Object.keys(captured.values).some(k=>k.startsWith('featured:')));const monthlyAllStars='analytics:ES:2026-11:2026-06-01:2026-11-25:all-stars';
+  const assertAllStars=()=>{const data=captured.values[monthlyAllStars];assert.ok(data,'La publicación debe incluir el ámbito mensual de todas las reseñas');assert.equal(data.recentTotal,6);assert.equal(data.deltas.find(row=>row.id==='03').total,4);assert.equal(data.deltas.find(row=>row.id==='03').promoters,1);assert.equal(data.deltas.find(row=>row.id==='03').detractors,2);assert.equal(data.deltas.find(row=>row.id==='03').total-data.deltas.find(row=>row.id==='03').promoters-data.deltas.find(row=>row.id==='03').detractors,1);};
+  assertAllStars();const offCount=captured.manifest.count;assert.equal(e.sandbox.publishMarketsReviewSnapshot_().complete,true);e.setting(true);e.sandbox.summarizeMarketsReviewNps_=original;delete e.prop.MARKETS_REVIEW_REQUESTED_SCOPES;assert.equal(e.sandbox.publishMarketsReviewSnapshot_().complete,true);assert.ok(captured.manifest.count>offCount);assert.ok(Object.keys(captured.values).some(k=>k.startsWith('nps:')));assert.ok(Object.keys(captured.values).some(k=>k.startsWith('ranking:')));assertAllStars();
 });
 test('Charts mensual OFF no contiene NPS; grafico de recuentos usa ambas barras y neutro',()=>{
   const ui={esc:value=>String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;'),empty:()=>''};const w={MarketsUI:ui,MarketsDomain:{finite:Number.isFinite}};const c=vm.createContext({window:w});vm.runInContext(fs.readFileSync(path.join(dir,'Charts.html'),'utf8').replace(/^<script>\s*|\s*<\/script>\s*$/g,''),c);
@@ -171,24 +173,67 @@ test('El bloque aislado de prefetch comparte una petición, reintenta sólo tras
   const count=calls.length;assert.equal(await t.fetchReviewData('review:nps',scope),null);assert.equal(await t.fetchReviewData('review:ranking',scope),null);assert.equal(calls.length,count);
 });
 
-test('Tabla y Excel mensuales consumen la misma definición activa: 9 columnas ON y 5 OFF',async()=>{
+test('Tabla, gráfico, ejemplos, detalle y Excel mensuales usan todas las reseñas: 9 columnas ON y 5 OFF',async()=>{
   const app=fs.readFileSync(path.join(dir,'App.html'),'utf8');
-  const a=app.indexOf('    async function loadMonthlyReviews('),b=app.indexOf('    function renderAnnualReviews',a),c=app.indexOf('    const reviewGapPercent='),d=app.indexOf('    const reviewNpsSample=',c);assert.ok(a>=0&&b>a&&c>=0&&d>c);
-  const headers=[];const node=()=>({classList:{add(){},remove(){},toggle(){}},setAttribute(){},replaceChildren(){},append(item){if(item.innerHTML?.startsWith('<table'))headers.push(item.innerHTML)},insertAdjacentHTML(){},querySelectorAll:()=>[]});
-  const nodes=new Map(),$=id=>{if(!nodes.has(id))nodes.set(id,node());return nodes.get(id)};$('monthly-review-segment').value='DETRACTOR';
-  const scope={country:'ES',platform:'ALL',entity:'BBVA Empresas',analysisMonth:'2026-11'},deltas=[{id:'03',label:'Pagos',weight:50,total:4,assignedGeography:2,detractors:2,promoters:1,neutral:1,balance:-25,gap:-10}];
-  const sheets={evolution:new Map()},data={window:{start:'2026-06-01',end:'2026-11-25',recent:'2026-11-01'},deltas,recentTotal:8,baseline:null,examples:[],topics:{}};
+  const a=app.indexOf('    async function loadMonthlyReviews('),b=app.indexOf('    function renderAnnualReviews',a),c=app.indexOf('    const reviewGapPercent='),d=app.indexOf('    const reviewNpsSample=',c);
+  const e=app.indexOf('    function monthlyReviewScope('),f=app.indexOf('    function renderMonthlyMatrix(',e);
+  assert.ok(a>=0&&b>a&&c>=0&&d>c&&e>=0&&f>e);
+  const headers=[],notes=[],cohorts=[],requests=[],charts=[];
+  const node=()=>({classList:{add(){},remove(){},toggle(){}},setAttribute(){},replaceChildren(){},append(item){if(item.innerHTML?.startsWith('<table'))headers.push(item.innerHTML);if(item.textContent)notes.push(item.textContent)},insertAdjacentHTML(){},querySelectorAll(){return this.innerHTML?.startsWith('<table')?[node()]:[]}});
+  const nodes=new Map(),$=id=>{assert.notEqual(id,'monthly-review-segment','El selector eliminado no puede consultarse');if(!nodes.has(id))nodes.set(id,node());return nodes.get(id)};
+  const scope={country:'ES',platform:'ALL',analysisMonth:'2026-11',audience:'BEI_ONLY',inferGeography:'NO',entity:'BBVA Empresas',language:'es',segment:''};
+  const deltas=[{id:'03',label:'Pagos',weight:50,total:4,assignedGeography:2,detractors:2,promoters:1,neutral:1,balance:-25,gap:-10}];
+  const sheets={evolution:new Map()},data={window:{start:'2026-06-01',end:'2026-11-25',recent:'2026-11-01'},deltas,recentTotal:8,baseline:null,examples:[{review:{key:'promoter',rating:5}}],topics:{}};
   const sandbox={reviewNpsEnabled:true,monthlyReviewKey:'',monthlyBalanceKey:JSON.stringify(scope),monthlyReviewsLoading:false,monthlyReviewLoadedAt:0,reviewResponseTtl:120000,monthlyRequest:0,
-    performance:{now:()=>0},reviewDates:()=>({end:'2026-11-25'}),monthlyReviewScope:()=>scope,$,exportSheets:sheets,hasReviewResponse:()=>true,fetchReviewData:async()=>data,
-    fmt:String,integer:String,signed:String,dateLabel:String,translate:s=>s,reviewFilterLabel:(_k,v)=>v,appendReviewCohort(){},appendReviewFreshness(){},exportDates:()=>[],reviewExportHeader:[],reviewExportRow:()=>[],trackReady(){},
-    document:{createElement:()=>node()},U:{esc:String,empty:()=>'',loading:()=>''},C:{reviewGaps:()=>'',reviewBlockCounts:()=>''},setExportSheet:(view,name,_country,_filters,header,rows)=>sheets[view].set(name,{header:clone(header),rows:clone(rows)}),renderReviewRetry:(_target,error)=>{throw error}};
-  vm.runInNewContext(app.slice(a,b)+app.slice(c,d),sandbox);
+    performance:{now:()=>0},reviewDates:()=>({end:'2026-11-25'}),selection:()=>({country:'ES',platform:'ALL'}),monthlyFilters:{audience:'BEI_ONLY',inferGeography:'NO'},state:{evolutionApp:'BBVA Empresas'},appLanguage:'es',
+    $,exportSheets:sheets,hasReviewResponse:(_method,request)=>{assert.deepEqual(clone(request),scope);return true},fetchReviewData:async(method,request)=>{requests.push([method,clone(request)]);return data},
+    fmt:String,integer:String,signed:String,dateLabel:String,translate:(s,values={})=>s.replace(/\{([^}]+)\}/g,(_match,key)=>values[key]),reviewFilterLabel:(key,value)=>key==='segment'&&!value?'Todas las reseñas':value,appendReviewCohort:(_target,_label,request)=>cohorts.push(clone(request)),appendReviewFreshness(){},exportDates:()=>[],reviewExportHeader:['Clave'],reviewExportRow:row=>[row.key],renderReviewCard:row=>row.key,trackReady(){},
+    document:{createElement:()=>node()},U:{esc:String,empty:(title,body)=>title+' '+body,loading:()=>''},C:{reviewGaps:rows=>{charts.push(['ON',clone(rows)]);return ''},reviewBlockCounts:rows=>{charts.push(['OFF',clone(rows)]);return ''}},setExportSheet:(view,name,_country,filters,header,rows)=>sheets[view].set(name,{filters:clone(filters),header:clone(header),rows:clone(rows)}),renderReviewRetry:(_target,error)=>{throw error}};
+  vm.runInNewContext(app.slice(e,f)+app.slice(a,b)+app.slice(c,d),sandbox);
   for(const enabled of [true,false]){
     sandbox.reviewNpsEnabled=enabled;sandbox.monthlyReviewKey='';sandbox.monthlyBalanceKey=JSON.stringify(scope);
     await sandbox.loadMonthlyReviews('2026-11');
+    assert.deepEqual(requests.at(-1),['review:analytics',scope]);
+    assert.deepEqual(charts.at(-1),[enabled?'ON':'OFF',deltas]);
+    assert.match(notes.at(-1),/Todas las reseñas/);
+    assert.equal(cohorts.at(-1).segment,'');assert.equal(cohorts.at(-1).topic,'03');assert.equal(cohorts.at(-1).audience,'BEI_ONLY');assert.equal(cohorts.at(-1).inferGeography,'NO');
     const tableHeader=[...headers.at(-1).matchAll(/<th scope="col">([^<]+)<\/th>/g)].map(match=>match[1]);
     const sheet=sheets.evolution.get(enabled?'Brechas':'Deltas bloques funcionales');assert.deepEqual(tableHeader,sheet.header);assert.equal(sheet.header.length,enabled?9:5);assert.equal(sheet.rows[0].length,sheet.header.length);
+    assert.deepEqual(sheet.filters.at(-1),['Sentimiento','Todas las reseñas']);
+    const examples=sheets.evolution.get('Ejemplos del mes');assert.deepEqual(examples.filters,sheet.filters);assert.deepEqual(examples.rows,[['promoter']]);assert.equal($('review-examples').innerHTML,'promoter');
     assert.equal(sheet.rows[0][4],2);if(enabled)assert.deepEqual(sheet.rows[0].slice(5),[25,50,-25,-10]);else assert.ok(!sheet.header.some(label=>/NPS|% Promotoras|% Detractoras/.test(label)));
+  }
+  // No hay un selector alternativo al que dirigir al usuario si no hay datos.
+  data.deltas=[];data.examples=[];
+  for(const enabled of [true,false]){
+    sandbox.reviewNpsEnabled=enabled;sandbox.monthlyReviewKey='';sandbox.monthlyBalanceKey=JSON.stringify(scope);
+    await sandbox.loadMonthlyReviews('2026-11');
+    assert.match($('review-deltas').innerHTML,/Sin reseñas en el periodo reciente/);
+    assert.doesNotMatch($('review-deltas').innerHTML,/Elige otro sentimiento/);
+  }
+});
+
+test('Prefetch mensual y carga interactiva comparten ámbito sin sentimiento; Analítica conserva el suyo',async()=>{
+  const app=fs.readFileSync(path.join(dir,'App.html'),'utf8');
+  const section=(start,end)=>{const a=app.indexOf(start),b=app.indexOf(end,a);assert.ok(a>=0&&b>a);return app.slice(a,b)};
+  for(const enabled of [true,false]){
+    const timers=[],calls=[];
+    const sandbox={reviewNpsEnabled:enabled,navigator:{},document:{visibilityState:'visible'},activeRpc:0,window:{setTimeout:fn=>timers.push(fn)},
+      state:{evolutionApp:'BBVA Empresas',periodYear:'2026',periodMonth:'11'},appLanguage:'tr',monthlyFilters:{audience:'BEI',inferGeography:'NO'},selection:()=>({country:'MX',platform:'ALL',segment:'NEUTRAL'}),
+      $:()=>assert.fail('El prefetch no depende de ningún selector de sentimiento'),
+      fetchTrends:()=>Promise.resolve([]),trendRequest:()=>({}),cachedTrendRows:()=>[{}],withPublishedRatings:rows=>rows,D:{trendRows:rows=>rows,periodModel:()=>({period:'2026-11'})},
+      reviewDates:()=>({end:'2026-11-25'}),reviewScope:()=>({country:'MX',segment:'PROMOTER'}),reviewPage:0,annualScope:()=>({country:'ES',year:'2026'}),analyticsEntity:'BBVA Empresas',heatmapSegment:'DETRACTOR',annualNpsScope:scope=>scope,
+      fetchReviewData:(method,scope,prefetch)=>{calls.push([method,clone(scope),prefetch]);return Promise.resolve(null)}};
+    vm.runInNewContext(section('    function monthlyReviewScope(','    function renderMonthlyMatrix(')+section('    function warmViewsAfterBootstrap(','    function validateReviewDates(')+app.match(/    const annualReviewRequest=.*?;\n/)[0]+'\nwarmViewsAfterBootstrap();',sandbox);
+    for(let i=0;timers.length&&i<10;i++){timers.shift()();await new Promise(resolve=>setImmediate(resolve));}
+    assert.equal(timers.length,0);
+    const monthly=calls.find(([method,scope])=>method==='review:analytics'&&scope.analysisMonth);
+    const interactive=clone(sandbox.monthlyReviewScope('2026-11'));
+    assert.deepEqual(monthly,['review:analytics',interactive,true]);
+    assert.deepEqual(interactive,{country:'MX',platform:'ALL',segment:'',analysisMonth:'2026-11',audience:'BEI',inferGeography:'NO',entity:'BBVA Empresas',language:'tr'});
+    assert.equal(calls.find(([method])=>method==='review:page')[1].segment,'PROMOTER');
+    assert.equal(calls.find(([method,scope])=>method==='review:analytics'&&scope.year)[1].segment,'DETRACTOR');
+    assert.equal(calls.some(([method])=>method==='review:nps'),enabled);
   }
 });
 
