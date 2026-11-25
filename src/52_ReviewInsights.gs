@@ -1533,7 +1533,10 @@ function publishMarketsReviewSources_(properties, rows, topics, start, end, vers
       }
     }
     const completed = Object.keys(partitions).length === groups.size;
-    if (Object.keys(partitions).length === initialPartitions) { diagnostic.reason ||= 'no-progress'; return false; }
+    if (Object.keys(partitions).length === initialPartitions) {
+      if (!diagnostic.reason) diagnostic.reason = 'no-progress';
+      return false;
+    }
     const next = JSON.stringify({ ...manifest, files,
       analyticsSources: { schema: MARKETS_REVIEW_SOURCE_SCHEMA, start, end, countries, partitions, topics, complete: completed } });
     // Independent ScriptProperties value: no extra bytes in the legacy pointer
