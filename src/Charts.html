@@ -29,12 +29,13 @@
       if(!model?.periods?.length||!model?.rows?.length)return ui.empty("Sin cierres mensuales","Aún no hay histórico suficiente para esta selección.");
       const header=model.periods.map((month,index)=>`<th scope="col" class="${index===model.periods.length-1?"latest":""}"><span>${ui.esc(options.monthLabel(month))}</span>${index===model.periods.length-1?'<small><i></i>Actual</small>':""}</th>`).join("");
       const nps=cell=>{
+        if(options.reviewNpsEnabled===false)return "";
         if(!options.npsReady)return '<div class="monthly-nps"><span>NPS</span><span aria-label="Cargando NPS">…</span></div>';
         const delta=finite(cell.npsDelta)&&Math.abs(cell.npsDelta)>=.05;
         return `<div class="monthly-nps"${cell.npsSample?` title="${ui.esc(cell.npsSample)}"`:""}><span>NPS</span><strong>${finite(cell.nps)?options.format(cell.nps,1):"N/D"}</strong>${delta?`<em class="${cell.npsDelta>0?"delta-up":"delta-down"}">${ui.esc(options.signed(cell.npsDelta,1))} pp</em>`:""}</div>`;
       };
       const body=model.rows.map(row=>`${options.showScopes?`<tr class="monthly-scope"><th scope="rowgroup" colspan="${model.periods.length}">${ui.esc(row.country)}</th></tr>`:""}<tr>${row.cells.map((cell,index)=>{const hasDelta=finite(cell.delta)&&Math.abs(cell.delta)>=.005,tone=cell.delta>0?"delta-up":"delta-down";const reviews=cell.platforms.map(item=>{const detail=item.unavailable?"N/D: Google Play no permite desagregar esta ficha por geografía.":`${options.integer(item.value)} reseñas`;return`<span class="monthly-review${item.unavailable?" unavailable":""}" title="${ui.esc(detail)}"><span>${ui.esc(item.platform)}</span><b>${item.unavailable?"N/D":options.compactInteger(item.value)}</b></span>`}).join("");return`<td class="${index===row.cells.length-1?"latest":""}"><div class="monthly-rating"><strong>${options.format(cell.rating,2)}</strong>${hasDelta?`<em class="${tone}">${ui.esc(options.signed(cell.delta))}</em>`:""}</div><div class="monthly-reviews">${reviews}</div>${nps(cell)}</td>`}).join("")}</tr>`).join("");
-      return`<div class="monthly-matrix-scroll"><table class="monthly-matrix"><caption>Evolución mensual del rating, volumen de valoraciones y NPS de reseñas</caption><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table></div>`;
+      return`<div class="monthly-matrix-scroll"><table class="monthly-matrix"><caption>${ui.esc(options.reviewNpsEnabled===false?"Evolución mensual del rating y volumen de valoraciones":"Evolución mensual del rating, volumen de valoraciones y NPS de reseñas")}</caption><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table></div>`;
     }
     function newReviewImpact(model,options){
       const ui=window.MarketsUI,{finite,monthlyVoiceScope,monthlyVoiceVolumeDetail}=window.MarketsDomain,translate=options.translate||String,summary=model?.summary||{};
@@ -128,6 +129,28 @@
       const mobile=rows.map(row=>`<div class="review-gap-mobile-row"><strong>${esc(row.label)}</strong><span>${row.gap===null?"N/D":fmt(row.gap,1)+" pp"}</span><svg viewBox="0 0 320 28" role="img" aria-label="${esc(row.label)}: ${row.gap===null?"N/D":fmt(row.gap,1)+" pp"}"><rect class="gap-background" x="20" y="4" width="280" height="20"/><path class="gap-zero" d="M${mobileX(0)} 0V28"/>${row.gap===null?"":`<rect class="${row.gap<0?"gap-negative":"gap-positive"}" x="${Math.min(mobileX(0),mobileX(row.gap))}" y="4" width="${Math.abs(mobileX(row.gap)-mobileX(0))}" height="20"/>`}</svg></div>`).join("");
       return `<div class="review-gap-mobile">${mobile}<div class="review-gap-mobile-axis"><span>${fmt(low,0)}</span><span>${fmt(high,0)}</span></div><p>${esc(translate("Brecha de NPS vs. mes anterior (pp)"))}</p></div><div class="review-gap-plot"><svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${esc(translate("Brecha de NPS por bloque"))}"><rect class="gap-background" x="${left}" y="${top}" width="${width-left-right}" height="${bottom-top}"/>${grid}${bars}<text x="${(left+width-right)/2}" y="${height-8}" text-anchor="middle">${esc(translate("Brecha de NPS vs. mes anterior (pp)"))}</text></svg></div>`;
     }
-    window.MarketsCharts=Object.freeze({closestReviewPoint,lineChart,ratingBars,monthlyMatrix,newReviewImpact,reviewBalance,reviewBalanceLegend,reviewSeriesColor,reviewGaps});
+    // Off mode: absolute counts, not percentage-point balances. Neutral is a
+    // marker at zero, with the actual count shown explicitly (never a fake zero count).
+    function reviewBlockCounts(rows,integer,translate){
+      if(!rows.length)return "";
+      const {esc}=window.MarketsUI;
+      const labels=[translate("Promotores"),translate("Detractores"),translate("Neutros")];
+      const max=Math.max(1,...rows.flatMap(row=>[row.promoters,row.detractors]));
+      const step=Math.max(1,Math.ceil(max/4)),high=step*4;
+      const width=960,left=260,right=35,top=12,rowHeight=50,bottom=top+rowHeight*rows.length;
+      const x=value=>left+value/high*(width-left-right);
+      const ticks=Array.from({length:5},(_,i)=>`<line class="${i?"gap-grid":"gap-zero"}" x1="${x(i*step)}" x2="${x(i*step)}" y1="${top}" y2="${bottom}"/><text x="${x(i*step)}" y="${bottom+19}" text-anchor="middle">${integer(i*step)}</text>`).join("");
+      const bars=(row,y,origin,scale)=>{
+        const rect=(value,offset,tone,label)=>value?`<rect class="${tone}" x="${origin}" y="${y+offset}" width="${scale(value)}" height="10"><title>${esc(label+": "+integer(value))}</title></rect>`:"";
+        return rect(row.promoters,2,"gap-positive",labels[0])+rect(row.detractors,15,"gap-negative",labels[1])+(row.neutral?`<circle class="gap-neutral" cx="${origin}" cy="${y+34}" r="4"><title>${esc(labels[2]+": "+integer(row.neutral))}</title></circle>`:"");
+      };
+      const detail=row=>labels.map((label,i)=>label+": "+integer([row.promoters,row.detractors,row.neutral][i])).join(" · ");
+      const legend=`<p class="review-block-count-legend"><span><i class="count-promoter"></i>${esc(labels[0])} (+)</span><span><i class="count-detractor"></i>${esc(labels[1])} (+)</span><span><i class="count-neutral"></i>${esc(labels[2])} (0)</span></p>`;
+      const desktop=rows.map((row,i)=>`<g role="group" aria-label="${esc(row.label+" · "+detail(row))}"><text x="${left-8}" y="${top+i*rowHeight+20}" text-anchor="end">${esc(row.label)}</text>${bars(row,top+i*rowHeight,left,v=>x(v)-left)}<text x="${left+8}" y="${top+i*rowHeight+39}">${row.neutral?esc(labels[2]+": "+integer(row.neutral)):""}</text></g>`).join("");
+      const mobile=rows.map(row=>`<div class="review-gap-mobile-row"><strong>${esc(row.label)}</strong><span>${integer(row.total)}</span><small>${esc(detail(row))}</small><svg viewBox="0 0 320 42" role="img" aria-label="${esc(row.label+" · "+detail(row))}"><line class="gap-zero" x1="20" x2="20" y1="0" y2="42"/>${bars(row,0,20,v=>280*v/high)}</svg></div>`).join("");
+      const axis=esc(translate("N.º de reseñas"));
+      return legend+`<div class="review-gap-mobile">${mobile}<div class="review-gap-mobile-axis"><span>0</span><span>${integer(high)}</span></div><p>${axis}</p></div><div class="review-gap-plot"><svg viewBox="0 0 ${width} ${bottom+48}" role="group" aria-label="${esc(translate("Deltas de bloques funcionales en el periodo"))}">${ticks}${desktop}<text x="${(left+width-right)/2}" y="${bottom+40}" text-anchor="middle">${axis}</text></svg></div>`;
+    }
+    window.MarketsCharts=Object.freeze({reviewBlockCounts,closestReviewPoint,lineChart,ratingBars,monthlyMatrix,newReviewImpact,reviewBalance,reviewBalanceLegend,reviewSeriesColor,reviewGaps});
   })();
 </script>

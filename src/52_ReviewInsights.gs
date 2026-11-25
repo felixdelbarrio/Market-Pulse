@@ -660,11 +660,19 @@ function marketsReviewRequestedScope_(operation, filters, window) {
   return [operation, filters.country, 'requested', marketsReviewDigest_([selected, window.start, window.end, window.recent])].join(':');
 }
 
-function marketsReviewRequestedScopes_(properties, now = Date.now()) {
+function marketsReviewRequestedScopes_(properties, now = Date.now(), reviewNpsEnabled = true) {
   const raw = typeof properties.getProperty === 'function'
     ? properties.getProperty('MARKETS_REVIEW_REQUESTED_SCOPES') : properties.MARKETS_REVIEW_REQUESTED_SCOPES;
   const entries = safeJsonParse_(raw || '[]');
-  return Array.isArray(entries) ? entries.filter(entry => now - entry.requestedAt >= 0 && now - entry.requestedAt < 21600000).slice(-8) : [];
+  return Array.isArray(entries) ? entries.filter(entry => (reviewNpsEnabled || !['nps', 'ranking'].includes(entry.operation)) && now - entry.requestedAt >= 0 && now - entry.requestedAt < 21600000).slice(-8) : [];
+}
+
+/** Legacy manifests are NPS-enabled. Geography and featured reviews remain independent. */
+function marketsReviewSnapshotCapabilitiesMatch_(manifest, enabled) {
+  return !!manifest && (manifest.reviewNpsEnabled !== false) === enabled &&
+    manifest.hasNpsAttribution && manifest.hasFeaturedReviews &&
+    (enabled ? manifest.hasAnnualNps && manifest.hasReviewRanking && manifest.hasAllSentimentGaps
+      : manifest.hasMonthlyBlockCounts && !manifest.hasAnnualNps && !manifest.hasReviewRanking && !manifest.hasAllSentimentGaps);
 }
 
 /** Keep large review payloads outside ScriptProperties. Only their manifest is published there. */
@@ -783,6 +791,7 @@ function publishMarketsReviewSnapshot() {
 
 function publishMarketsReviewSnapshot_(force = false) {
   const ss = openMarketsSpreadsheet_();
+  const reviewNpsEnabled = readMarketsReviewNpsEnabled_(ss);
   const properties = PropertiesService.getScriptProperties();
   const catalog = readAppCatalog_(ss), catalogVersion = marketsReviewCatalogVersion_(catalog);
   const current = properties.getProperties();
@@ -798,7 +807,8 @@ function publishMarketsReviewSnapshot_(force = false) {
   const stillCurrent = (currentCatalog = catalogVersion) => {
     const latest = properties.getProperties();
     const revision = marketsAudienceCatalog_(ss, true).revision;
-    return JSON.stringify(marketsReviewVersions_(latest, currentCatalog, undefined, revision)) === JSON.stringify(inputVersions) &&
+    return readMarketsReviewNpsEnabled_(ss) === reviewNpsEnabled &&
+      JSON.stringify(marketsReviewVersions_(latest, currentCatalog, undefined, revision)) === JSON.stringify(inputVersions) &&
       JSON.stringify(marketsReviewNpsVersions_(latest, currentCatalog)) === JSON.stringify(npsVersions);
   };
   const deferred = reason => {
@@ -807,11 +817,11 @@ function publishMarketsReviewSnapshot_(force = false) {
   };
   if (engine?.libraryVersion && engine.libraryVersion !== MARKETS_REVIEW_LIBRARY_VERSION) return deferred('migration-library');
   if (pending && pending.sourceGeneration !== (current.MARKETS_REVIEW_SOURCE_GENERATION || '')) return deferred('migration-source');
-  const requestedScopes = marketsReviewRequestedScopes_(current);
+  const requestedScopes = marketsReviewRequestedScopes_(current, Date.now(), reviewNpsEnabled);
   const { end } = marketsReviewWindow_();
   const previousPointer = current[MARKETS_REVIEW_SNAPSHOT_POINTER] ?? null;
   const previous = safeJsonParse_(previousPointer || 'null');
-  if (!force && !current.MARKETS_REVIEW_SNAPSHOT_REPAIR && previous?.schema === MARKETS_REVIEW_SNAPSHOT_SCHEMA && previous.hasAnnualNps && previous.hasNpsAttribution && previous.hasAllSentimentGaps && previous.hasReviewRanking && previous.hasFeaturedReviews && previous.audienceVersion === MARKETS_REVIEW_AUDIENCE_VERSION && previous.end === end && JSON.stringify(previous.versions) === JSON.stringify(versions) &&
+  if (!force && !current.MARKETS_REVIEW_SNAPSHOT_REPAIR && previous?.schema === MARKETS_REVIEW_SNAPSHOT_SCHEMA && marketsReviewSnapshotCapabilitiesMatch_(previous, reviewNpsEnabled) && previous.audienceVersion === MARKETS_REVIEW_AUDIENCE_VERSION && previous.end === end && JSON.stringify(previous.versions) === JSON.stringify(versions) &&
       JSON.stringify(previous.npsVersions) === JSON.stringify(npsVersions) &&
       requestedScopes.every(entry => previous.requestedScopes?.includes(entry.id))) {
     return { complete: true, published: previous.count };
@@ -860,11 +870,11 @@ function publishMarketsReviewSnapshot_(force = false) {
           Number.isInteger(row.helpful) && row.helpful > 0 && (period === 'history' || row.date.startsWith(period + '-')))
           .sort(compareMarketsHelpfulReviews_).slice(0, 3));
       }
-      values['ranking:' + country + ':' + analysisMonth] = { start: analysisMonth + '-01', end,
+      if (reviewNpsEnabled) values['ranking:' + country + ':' + analysisMonth] = { start: analysisMonth + '-01', end,
         rows: ['Android', 'iOS', 'Huawei'].flatMap(platform => summarizeMarketsReviewNps_(history.filter(row =>
           row.platform === platform && row.date.startsWith(analysisMonth + '-'))).map(point => ({ ...point, country, platform }))) };
     }
-    const analytics = summarizeMarketsReviewAnalytics_(scoped, topics, { segment: 'DETRACTOR', entity: MARKETS_REVIEW_ENTITY }, analyticsWindow, annualWindow);
+    const analytics = summarizeMarketsReviewAnalytics_(scoped, topics, { segment: 'DETRACTOR', entity: MARKETS_REVIEW_ENTITY }, analyticsWindow, annualWindow, reviewNpsEnabled);
     values['analytics:' + country] = analytics;
     if (country === 'ALL') continue;
     for (const language of ['es', 'en', 'tr']) {
@@ -876,7 +886,7 @@ function publishMarketsReviewSnapshot_(force = false) {
       values['page:' + country + ':' + language] = page;
     }
   }
-  values['ranking:ALL:' + analysisMonth] = { start: analysisMonth + '-01', end,
+  if (reviewNpsEnabled) values['ranking:ALL:' + analysisMonth] = { start: analysisMonth + '-01', end,
     rows: MARKETS_WEB.countryCodes.flatMap(country => values['ranking:' + country + ':' + analysisMonth].rows) };
   for (const period of [analysisMonth, previousMonth, 'history']) {
     values['featured:ALL:' + period] = MARKETS_WEB.countryCodes.flatMap(country => values['featured:' + country + ':' + period]);
@@ -891,11 +901,13 @@ function publishMarketsReviewSnapshot_(force = false) {
     const direct = !hasAssigned ? scoped : country === 'ALL' ? scoped.map(marketsReviewWithoutAssignedGeography_)
       : country === 'UNKNOWN' ? scoped.concat(reassigned).sort(compareMarketsReviewRows_)
       : scoped.filter(row => !marketsReviewHasAssignedGeography_(row));
-    const inferredNps = { start: earliest, end, monthly: summarizeMarketsReviewNps_(scoped) };
-    values['nps:' + country] = inferredNps;
-    values['nps:' + country + ':NO'] = hasAssigned
-      ? { start: earliest, end, monthly: summarizeMarketsReviewNps_(direct) }
-      : inferredNps;
+    if (reviewNpsEnabled) {
+      const inferredNps = { start: earliest, end, monthly: summarizeMarketsReviewNps_(scoped) };
+      values['nps:' + country] = inferredNps;
+      values['nps:' + country + ':NO'] = hasAssigned
+        ? { start: earliest, end, monthly: summarizeMarketsReviewNps_(direct) }
+        : inferredNps;
+    }
     const sourceRange = { start: (Number(year) - 1) + '-01-01', end };
     for (const dateFilter of [{ year }, { analysisMonth }, { analysisMonth: previousMonth }]) {
       const filters = normalizeMarketsReviewFilters_({ country, ...dateFilter, segment: 'DETRACTOR', entity: MARKETS_REVIEW_ENTITY });
@@ -913,10 +925,10 @@ function publishMarketsReviewSnapshot_(force = false) {
         variants.push(allStars);
       }
       for (const selection of variants) {
-        const data = buildMarketsReviewAnalytics_(rowsForView, topics, selection, window);
+        const data = buildMarketsReviewAnalytics_(rowsForView, topics, selection, window, reviewNpsEnabled);
         values[marketsReviewSnapshotScope_('analytics', selection, window)] = data;
         const directFilters = { ...selection, inferGeography: 'NO' };
-        const directData = hasAssigned ? buildMarketsReviewAnalytics_(directRows, topics, directFilters, window) : data;
+        const directData = hasAssigned ? buildMarketsReviewAnalytics_(directRows, topics, directFilters, window, reviewNpsEnabled) : data;
         values[marketsReviewSnapshotScope_('analytics', directFilters, window)] = directData;
       }
     }
@@ -935,7 +947,7 @@ function publishMarketsReviewSnapshot_(force = false) {
     } else {
       const start = filters.year ? (Number(filters.year) - 1) + '-01-01' : [marketsAnnualReviewWindow_(window).start, window.start].sort()[0];
       values[entry.scope] = buildMarketsReviewAnalytics_(compactMarketsReviewAnalyticsRows_(
-        scoped.filter(row => row.date >= start && row.date <= window.end), window.end), topics, filters, window);
+        scoped.filter(row => row.date >= start && row.date <= window.end), window.end), topics, filters, window, reviewNpsEnabled);
     }
   }
   const count = Object.keys(values).length;
@@ -944,10 +956,11 @@ function publishMarketsReviewSnapshot_(force = false) {
   const complete = writeMarketsReviewSnapshot_(properties, { end, versions, npsVersions, count, ...(engine ? { engine } : {}),
     audienceVersion: MARKETS_REVIEW_AUDIENCE_VERSION,
     ...(audienceCatalog.revision ? { audienceRevision: audienceCatalog.revision } : {}), requestedScopes: requestedScopes.map(entry => entry.id),
-    hasReviewRanking: true, hasFeaturedReviews: true, hasAnnualNps: true, hasNpsAttribution: true, hasAllSentimentGaps: true, schema: MARKETS_REVIEW_SNAPSHOT_SCHEMA }, values,
+    reviewNpsEnabled, hasMonthlyBlockCounts: !reviewNpsEnabled, hasReviewRanking: reviewNpsEnabled, hasFeaturedReviews: true,
+    hasAnnualNps: reviewNpsEnabled, hasNpsAttribution: true, hasAllSentimentGaps: reviewNpsEnabled, schema: MARKETS_REVIEW_SNAPSHOT_SCHEMA }, values,
     () => end === marketsReviewWindow_().end && stillCurrent(marketsReviewCatalogVersion_(readAppCatalog_(ss))), previousPointer);
   if (complete && current.MARKETS_REVIEW_SNAPSHOT_REPAIR) properties.deleteProperty('MARKETS_REVIEW_SNAPSHOT_REPAIR');
-  console.log(JSON.stringify({ operation: 'review-publish', complete, count, end, queryMs, buildMs,
+  console.log(JSON.stringify({ operation: 'review-publish', complete, count, end, queryMs, buildMs, reviewNpsEnabled,
     publishMs: Date.now() - publishStarted }));
   return { complete, published: complete ? count : 0 };
 }
@@ -1061,13 +1074,14 @@ function paginateMarketsReviews_(rows, filters, window) {
 function getMarketsReviewNps(filters, snapshotOnly = false) {
   const started = Date.now();
   currentMarketsUserEmail_();
+  const ss = openMarketsSpreadsheet_();
+  if (!readMarketsReviewNpsEnabled_(ss)) return { reviewNpsEnabled: false, monthly: [] };
   const { country, audience, inferGeography, year, strictFreshness } = normalizeMarketsReviewFilters_(filters);
   if (!year) throw new Error('Selecciona un año para consultar el NPS.');
   const scope = { country, audience, inferGeography, year, strictFreshness, platform: 'ALL' };
   const window = marketsReviewAnalyticsWindow_(scope, marketsReviewWindow_().end);
   const timing = {};
   if (window.end < window.start) return { monthly: [] };
-  const ss = openMarketsSpreadsheet_();
   const data = readMarketsReviewCache_(ss, 'nps', scope, window, catalog => {
     const rows = queryMarketsReviews_(ss, { ...scope, npsOnly: true, deferBlocks: true, interactive: true, timing }, window, false, catalog);
     const aggregateStarted = Date.now();
@@ -1075,24 +1089,27 @@ function getMarketsReviewNps(filters, snapshotOnly = false) {
     timing.aggregateMs = Date.now() - aggregateStarted;
     timing.input = rows.length;
     return { monthly };
-  }, timing, snapshotOnly === true);
+  }, timing, snapshotOnly === true, true);
+  if (!readMarketsReviewNpsEnabled_(ss)) return { reviewNpsEnabled: false, monthly: [] };
   if (!data) return null;
-  return { monthly: data.monthly.filter(point => point.month.startsWith(year + '-')),
+  return { reviewNpsEnabled: true, monthly: data.monthly.filter(point => point.month.startsWith(year + '-')),
     timing: { ...timing, durationMs: Date.now() - started } };
 }
 
 function getMarketsReviewRanking(filters) {
   currentMarketsUserEmail_();
+  const ss = openMarketsSpreadsheet_();
+  if (!readMarketsReviewNpsEnabled_(ss)) return { reviewNpsEnabled: false, rows: [] };
   const normalized = normalizeMarketsReviewFilters_(filters);
   const month = normalized.analysisMonth || marketsReviewWindow_().end.slice(0, 7);
   const scope = { country: normalized.country, platform: 'ALL', analysisMonth: month, strictFreshness: normalized.strictFreshness };
   const window = marketsReviewAnalyticsWindow_(scope, marketsReviewWindow_().end), timing = {};
-  const ss = openMarketsSpreadsheet_();
   const value = readMarketsReviewCache_(ss, 'ranking', scope, window, () => {
-    queueMarketsReviewSnapshotRefresh_();
+    queueMarketsReviewSnapshotRefresh_(undefined, undefined, 'ranking');
     throw new Error('El ranking de NPS se está publicando. Reintenta en unos minutos.');
-  }, timing);
-  return { ...value, rows: consolidateMarketsReviewRanking_(value.rows), timing };
+  }, timing, false, true);
+  if (!readMarketsReviewNpsEnabled_(ss)) return { reviewNpsEnabled: false, rows: [] };
+  return { ...value, reviewNpsEnabled: true, rows: consolidateMarketsReviewRanking_(value.rows), timing };
 }
 
 function consolidateMarketsReviewRanking_(rows) {
@@ -1127,6 +1144,7 @@ function getMarketsReviewAnalytics(filters, snapshotOnly = false) {
   const requestStarted = Date.now();
   currentMarketsUserEmail_();
   const ss = openMarketsSpreadsheet_();
+  const reviewNpsEnabled = readMarketsReviewNpsEnabled_(ss);
   filters = normalizeMarketsReviewFilters_(filters);
   const window = marketsReviewAnalyticsWindow_(filters, marketsReviewWindow_().end);
   filters.entity = filters.entity || MARKETS_REVIEW_ENTITY;
@@ -1151,18 +1169,19 @@ function getMarketsReviewAnalytics(filters, snapshotOnly = false) {
     }, 12);
     timing.source = timing.source || 'cache';
     const aggregateStarted = Date.now();
-    const result = buildMarketsReviewAnalytics_(rows.filter(row => row.date >= start), topics, filters, window);
+    const result = buildMarketsReviewAnalytics_(rows.filter(row => row.date >= start), topics, filters, window, reviewNpsEnabled);
     timing.aggregateMs = Date.now() - aggregateStarted;
     timing.input = rows.length;
     return result;
-  }, timing, snapshotOnly === true);
+  }, timing, snapshotOnly === true, reviewNpsEnabled);
+  if (readMarketsReviewNpsEnabled_(ss) !== reviewNpsEnabled) throw new Error('La configuración del NPS cambió. Reintenta la consulta.');
   if (!data) return null;
   function localizeReview({ translations, replyTranslations, relevance, ...review }) {
     const translated = translations?.[language];
     return { ...review, reply: replyTranslations?.[language] || review.reply, text: translated || review.original, translated: Boolean(translated && translated !== review.original) };
   }
   return {
-    ...localizeMarketsReviewTopics_(ss, data, language),
+    ...localizeMarketsReviewTopics_(ss, data, language), reviewNpsEnabled,
     timing: { ...timing, durationMs: Date.now() - requestStarted },
     examples: data.examples.map(({ block, review }) => ({ block, review: localizeReview(review) })),
     annual: { ...data.annual, topHelpful: data.annual.topHelpful.map(localizeReview),
@@ -1187,9 +1206,9 @@ function marketsReviewAnalyticsWindow_(filters, today) {
   return window;
 }
 
-function buildMarketsReviewAnalytics_(rows, topics, filters, window) {
+function buildMarketsReviewAnalytics_(rows, topics, filters, window, reviewNpsEnabled = true) {
   const annual = filters.year ? { start: window.start, end: window.end } : marketsAnnualReviewWindow_(window);
-  const result = summarizeMarketsReviewAnalytics_(rows, topics, filters, window, annual);
+  const result = summarizeMarketsReviewAnalytics_(rows, topics, filters, window, annual, reviewNpsEnabled);
   if (filters.analysisMonth && filters.country !== 'ALL' && filters.country !== 'UNKNOWN') {
     // Captured comments after query filters, never a denominator for total store ratings.
     result.observedReviewCountByVolumeKey = {};
@@ -1249,7 +1268,7 @@ function marketsReviewCacheKey_(ss, operation, filters, window, versions) {
   return 'market-review:' + marketsReviewDigest_(parts);
 }
 
-function readMarketsReviewCache_(ss, operation, filters, window, builder, timing = {}, snapshotOnly = false) {
+function readMarketsReviewCache_(ss, operation, filters, window, builder, timing = {}, snapshotOnly = false, reviewNpsEnabled = true) {
   const started = Date.now();
   const properties = PropertiesService.getScriptProperties().getProperties();
   const catalog = readAppCatalog_(ss);
@@ -1259,6 +1278,7 @@ function readMarketsReviewCache_(ss, operation, filters, window, builder, timing
   const audienceRevision = usesAudience ? marketsAudienceCatalog_(ss).revision : '';
   const versions = isNps ? marketsReviewNpsVersions_(properties, catalogVersion, audienceRevision)
     : marketsReviewVersions_(properties, catalogVersion, undefined, audienceRevision);
+  const modeKey = operation === 'analytics' ? ['review-nps-enabled', reviewNpsEnabled] : null;
   const snapshotScope = marketsReviewSnapshotScope_(operation, filters, window);
   const maxParts = operation === 'analytics' || operation === 'page' ? 6 : operation === 'nps' ? 2 : 1;
   const attempts = [];
@@ -1275,10 +1295,10 @@ function readMarketsReviewCache_(ss, operation, filters, window, builder, timing
       shards: Object.keys(snapshot?.files || {}).length };
     attempts.push(diagnostic);
     const isPrevious = pointer !== MARKETS_REVIEW_SNAPSHOT_POINTER;
-    const state = marketsReviewSnapshotState_(snapshot, operation, filters, window, versions, properties, Date.now(), diagnostic, isPrevious);
+    const state = marketsReviewSnapshotState_(snapshot, operation, filters, window, versions, properties, Date.now(), diagnostic, isPrevious, reviewNpsEnabled);
     if (!state) continue;
     const key = marketsReviewCacheKey_(ss, operation, filters, window,
-      [isNps ? snapshot.npsVersions : snapshot.versions, snapshot.end, snapshot.publishedAt, snapshot.files?.[filters.country]]);
+      [isNps ? snapshot.npsVersions : snapshot.versions, snapshot.end, snapshot.publishedAt, snapshot.files?.[filters.country], ...(modeKey ? [modeKey] : [])]);
     let source = 'L1';
     const value = readMarketsWebCache_(key, () => {
       const readStarted = Date.now();
@@ -1300,14 +1320,14 @@ function readMarketsReviewCache_(ss, operation, filters, window, builder, timing
     if (value === undefined) continue;
     if (!snapshotOnly && (state.refreshDue || isPrevious)) {
       timing.refreshQueued = isPrevious ? queueMarketsReviewSnapshotRefresh_(filters, window, operation, repair)
-        : queueMarketsReviewSnapshotRefresh_();
+        : queueMarketsReviewSnapshotRefresh_(undefined, undefined, operation);
     }
     Object.assign(timing, state, { source: source === 'L1' ? 'cache' : 'snapshot',
       cacheSource: source === 'L1' ? source : 'snapshot ' + state.freshness });
     log();
     return value;
   }
-  const key = marketsReviewCacheKey_(ss, operation, filters, window, versions);
+  const key = marketsReviewCacheKey_(ss, operation, filters, window, modeKey ? [...versions, modeKey] : versions);
   let source = 'cache';
   const value = readMarketsWebCache_(key, () => {
     source = 'sheet';
@@ -1343,6 +1363,7 @@ function queueMarketsReviewSnapshotRefresh_(filters, window, operation = 'analyt
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(100)) return false;
   try {
+    if (['nps', 'ranking'].includes(operation) && !readMarketsReviewNpsEnabled_(openMarketsSpreadsheet_())) return false;
     const scope = filters && window && marketsReviewSnapshotScope_(operation, filters, window);
     const id = filters && window && marketsReviewRequestedScope_(operation, filters, window);
     if (scope && id) {
@@ -1359,18 +1380,21 @@ function queueMarketsReviewSnapshotRefresh_(filters, window, operation = 'analyt
 }
 
 /** La TTL física de L1 no determina la vigencia de una publicación. */
-function marketsReviewSnapshotState_(snapshot, operation, filters, window, versions, properties, now = Date.now(), diagnostic = {}, isPrevious = false) {
+function marketsReviewSnapshotState_(snapshot, operation, filters, window, versions, properties, now = Date.now(), diagnostic = {}, isPrevious = false, reviewNpsEnabled = true) {
   const reject = reason => { diagnostic.reason = reason; return null; };
   const nps = operation === 'nps' || operation === 'ranking';
   if (!snapshot) return reject('missing');
   if (snapshot.schema !== MARKETS_REVIEW_SNAPSHOT_SCHEMA) return reject('schema');
+  if ((nps || operation === 'analytics') && (snapshot.reviewNpsEnabled !== false) !== reviewNpsEnabled) return reject('nps-mode');
+  if (nps && !reviewNpsEnabled) return reject('nps-disabled');
+  if (operation === 'analytics' && !reviewNpsEnabled && !snapshot.hasMonthlyBlockCounts) return reject('block-counts');
   if ((nps || filters.analysisMonth || filters.inferGeography === 'NO') && !snapshot.hasNpsAttribution) return reject('attribution');
   if (operation === 'nps' && !snapshot.hasAnnualNps) return reject('annual-nps');
   if (operation === 'ranking' && !snapshot.hasReviewRanking) return reject('ranking');
   if ((filters.audience || operation === 'analytics' || operation === 'nps') &&
       snapshot.audienceVersion !== MARKETS_REVIEW_AUDIENCE_VERSION) return reject('audience');
   if (operation === 'analytics' && filters.analysisMonth && !filters.segment &&
-      !snapshot.hasAllSentimentGaps) return reject('sentiment');
+      reviewNpsEnabled && !snapshot.hasAllSentimentGaps) return reject('sentiment');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(snapshot.end) || snapshot.end < window.end) return reject('date-coverage');
   const published = nps ? snapshot.npsVersions : snapshot.versions;
   if (!Array.isArray(published)) return reject('versions');
@@ -1435,11 +1459,15 @@ function reviewBalancePoints_(stats) {
   return 100 * (stats.promoters - stats.detractors) / stats.total;
 }
 
-function countMarketsReviewNps_(point, row) {
-  const score = marketsReviewNet_(row.rating);
+function countMarketsReviewSentiment_(point, row) {
   point.total++;
+  const score = marketsReviewNet_(row.rating);
   point.promoters += Number(score === 1);
   point.detractors += Number(score === -1);
+}
+
+function countMarketsReviewNps_(point, row) {
+  countMarketsReviewSentiment_(point, row);
   if (point.assignedGeography !== undefined) {
     point.assignedGeography += Number(marketsReviewHasAssignedGeography_(row));
   }
@@ -1455,7 +1483,7 @@ function marketsReviewWithoutAssignedGeography_(row) {
     attributionMethod: row.storefronts?.length > 1 ? 'multi_storefront_ambiguous' : 'no_evidence' };
 }
 
-function summarizeMarketsReviewAnalytics_(rows, topics, filters, window, annual = window) {
+function summarizeMarketsReviewAnalytics_(rows, topics, filters, window, annual = window, reviewNpsEnabled = true) {
   const segment = MARKETS_DEFAULT_REVIEW_SEGMENTS.find(group => group.id === filters.segment);
   if (filters.segment && !segment) throw new Error('Segmento de comentarios desconocido.');
   const visible = rows.filter(row => row.date >= window.start && row.date <= window.end);
@@ -1489,7 +1517,7 @@ function summarizeMarketsReviewAnalytics_(rows, topics, filters, window, annual 
     countMarketsReviewNps_(point, row);
     points.set(key, point);
   }
-  for (const row of monthlyRows) {
+  if (reviewNpsEnabled) for (const row of monthlyRows) {
     const month = row.date.slice(0, 7);
     for (const entityName of row.entities) {
       if ((filters.analysisMonth || filters.year) && entity !== 'ALL' && entityName !== entity) continue;
@@ -1510,25 +1538,31 @@ function summarizeMarketsReviewAnalytics_(rows, topics, filters, window, annual 
   const recent = [], recentBlocks = new Map();
   for (const row of filters.year ? [] : local) {
     if (row.date < window.recent) {
-      if (row.date >= baseStart) countMarketsReviewNps_(base, row);
+      if (reviewNpsEnabled && row.date >= baseStart) countMarketsReviewNps_(base, row);
       continue;
     }
-    if (filters.analysisMonth) countMarketsReviewNps_(current, row);
+    if (reviewNpsEnabled && filters.analysisMonth) countMarketsReviewNps_(current, row);
     if (filters.analysisMonth && segment && !segment.stars.includes(row.rating)) continue;
     recent.push(row);
     for (const id of blocksOf(row)) {
       if (!recentBlocks.has(id)) recentBlocks.set(id, { total: 0, promoters: 0, detractors: 0,
         ...(filters.analysisMonth ? { assignedGeography: 0 } : {}) });
-      countMarketsReviewNps_(recentBlocks.get(id), row);
+      const stats = recentBlocks.get(id);
+      if (reviewNpsEnabled) countMarketsReviewNps_(stats, row);
+      else {
+        countMarketsReviewSentiment_(stats, row);
+        if (stats.assignedGeography !== undefined) stats.assignedGeography += Number(marketsReviewHasAssignedGeography_(row));
+      }
     }
   }
-  const baseline = base.total ? { ...base, balance: reviewBalancePoints_(base), start: baseStart,
+  const baseline = reviewNpsEnabled && base.total ? { ...base, balance: reviewBalancePoints_(base), start: baseStart,
     end: previousEnd } : null;
   const deltas = [...recentBlocks].map(([id, stats]) => {
+    const common = { id, label: topics[id], ...stats, weight: 100 * stats.total / recent.length };
+    if (!reviewNpsEnabled) return { ...common, neutral: stats.total - stats.promoters - stats.detractors };
     const balance = reviewBalancePoints_(stats);
-    return { id, label: topics[id], ...stats, weight: 100 * stats.total / recent.length,
-      balance, gap: baseline ? balance - baseline.balance : null };
-  }).sort((a, b) => a.gap - b.gap || a.label.localeCompare(b.label));
+    return { ...common, balance, gap: baseline ? balance - baseline.balance : null };
+  }).sort((a, b) => (reviewNpsEnabled ? a.gap - b.gap : b.total - a.total) || a.label.localeCompare(b.label));
   const examples = [];
   const used = new Set();
   for (const block of ['general', ...deltas.filter(item => item.id !== 'general').slice(0, 3).map(item => item.id)]) {
@@ -1539,17 +1573,17 @@ function summarizeMarketsReviewAnalytics_(rows, topics, filters, window, annual 
   }
   const leading = [...blockTotals].filter(([id]) => id !== 'general')
     .sort(([a, countA], [b, countB]) => countB - countA || a.localeCompare(b))[0];
-  return { window, topics, examples, total: selected.length, leadingBlock: leading ? { id: leading[0], count: leading[1] } : null,
+  return { window, topics, examples, reviewNpsEnabled, total: selected.length, leadingBlock: leading ? { id: leading[0], count: leading[1] } : null,
     annual: summarizeAnnualMarketsReviews_(rows, entity, annual, Boolean(filters.year)),
     entities: [...groups.values()].sort((a, b) => Number(b.label === 'BBVA Empresas') - Number(a.label === 'BBVA Empresas') ||
       b.total - a.total || a.label.localeCompare(b.label)), entityOptions: [...new Set(visible.flatMap(row => row.entities))].sort(),
     monthlyEntityOptions: [...new Set(monthlyPoints.map(point => point.entity))].sort(),
     monthly: monthlyPoints,
-    ...(filters.analysisMonth ? { monthlyByGeography: [...geographyMonths].map(([key, point]) => {
+    ...(reviewNpsEnabled && filters.analysisMonth ? { monthlyByGeography: [...geographyMonths].map(([key, point]) => {
       const [country, month] = JSON.parse(key);
       return { country, month, ...point, balance: reviewBalancePoints_(point) };
     }) } : {}),
-    ...(filters.analysisMonth ? { nps: { start: window.recent, end: window.end, current: current.total ? reviewBalancePoints_(current) : null,
+    ...(reviewNpsEnabled && filters.analysisMonth ? { nps: { start: window.recent, end: window.end, current: current.total ? reviewBalancePoints_(current) : null,
       previous: baseline?.balance ?? null, previousStart: baseStart, previousEnd,
       delta: current.total && baseline ? reviewBalancePoints_(current) - baseline.balance : null } } : {}),
     deltas, baseline, recentTotal: recent.length };
@@ -1561,7 +1595,7 @@ function summarizeAnnualMarketsReviews_(rows, entity, { start, end }, includeAut
   const helpful = [], authors = new Map();
   for (const row of rows) {
     if (row.date < start || row.date > end || (entity !== 'ALL' && !row.entities.includes(entity))) continue;
-    countMarketsReviewNps_(summary, row);
+    countMarketsReviewSentiment_(summary, row);
     if (Number.isInteger(row.helpful) && row.helpful >= MARKETS_REVIEW_HELPFUL_MIN) helpful.push(row);
     if (row.reply?.trim()) summary.answered++;
     countMarketsReviewAuthor_(authors, row);

@@ -4,11 +4,20 @@
     const D=window.MarketsDomain,U=window.MarketsUI,C=window.MarketsCharts,T=window.MarketsTheme;
     const mobileViewport=window.matchMedia("(max-width:780px)");
     const state={meta:null,userContext:null,snapshot:[],trends:[],consolidated:null,country:"ALL",benchmarkSegment:"BANK",evolutionApp:"BBVA Empresas",benchmarkWeighted:false,view:"benchmark",periodYear:"",periodMonth:"",trendsLoading:true,trendToken:0,trendCache:new Map(),bootstrapLoading:false,alertCenter:null,alertDraft:null,alertsLoading:false,alertsLoaded:false,adminCenter:null,adminLoading:false,adminLoaded:false,adminTab:"health",adminEditingEmail:"",adminSubscriberFilters:{query:"",countries:["ANY"],platforms:["ANY"],status:"ALL"},usageQueue:[],usageTimer:0,usageStarted:false};
+    let reviewNpsEnabled=true, reviewModeEpoch=0;
     const exportSheets={benchmark:new Map(),evolution:new Map(),analytics:new Map()};
     const $=id=>document.getElementById(id);
     const bindOptional=(id,event,handler)=>$(id)?.addEventListener(event,handler);
     const interfaceCopy={
       "No se pudo guardar la valoración. Inténtalo de nuevo.":["We couldn't save your feedback. Try again.","Değerlendirme kaydedilemedi. Tekrar deneyin."],
+      "Deltas de bloques funcionales en el periodo":["Functional block changes in the period","Dönemdeki işlev grubu değişimleri"],
+      "Parámetros del cálculo de ratings, NPS de reseñas y del monitor de salud.":["Rating, review NPS and health monitor settings","Puan, yorum NPS ve sağlık izleme ayarları"],
+      "Deltas bloques funcionales":["Functional block changes","İşlev grubu değişimleri"],
+      "Histórico hasta el mes seleccionado · rating consolidado y valoraciones por plataforma":["History up to the selected month · consolidated rating and ratings by platform","Seçilen aya kadarki geçmiş · konsolide puan ve platforma göre puanlar"],
+      "Evolución mensual del rating y volumen de valoraciones":["Monthly rating trend and rating volume","Aylık puan seyri ve puanlama hacmi"],
+      "Cargando bloques y ejemplos":["Loading blocks and examples","Gruplar ve örnekler yükleniyor"],
+      "Elige otro sentimiento para consultar los bloques y los ejemplos del mes.":["Choose another sentiment to see this month's blocks and examples.","Ayın gruplarını ve örneklerini görmek için başka bir duygu seçin."],
+      "Activar el cálculo, publicación y visualización del NPS de reseñas":["Enable review NPS calculation, publishing and display","Yorum NPS hesaplama, yayım ve görüntülemeyi etkinleştir"],
       "Cargando NPS de reseñas":["Loading review NPS","Yorum NPS'si yükleniyor"],
       "Preparando Excel…":["Preparing Excel…","Excel hazırlanıyor…"],
       "ADMINISTRACIÓN":["ADMINISTRATION","YÖNETİM"],
@@ -532,6 +541,7 @@
       selector.addEventListener("change",()=>{
         appLanguage=supportedLanguage(selector.value);
         document.documentElement.lang=appLanguage;
+        applyReviewNpsMode(reviewNpsEnabled,false);
         if(state.meta){renderRunStatus();renderDashboard();renderAdmin();if(state.view==="analytics")loadAnalytics();if(state.view==="reviews")loadReviews();if(state.view==="evolution")renderEvolution()}
         translateInterface(document.body);
       });
@@ -677,9 +687,47 @@
     const reviewRequests=new Map(), reviewResponses=new Map();
     const reviewResponseTtl=120000;
     let monthlyReviewLoadedAt=0;
-    const reviewResponseKey=(method,scope)=>JSON.stringify([method,Object.keys(scope).sort().map(field=>[field,scope[field]])]);
+    const isReviewNpsRequest=method=>method==="review:nps"||method==="review:ranking";
+    const isReviewModeRequest=method=>isReviewNpsRequest(method)||method==="review:analytics";
+    const reviewResponseKey=(method,scope)=>JSON.stringify([method,Object.keys(scope).sort().map(field=>[field,scope[field]]),...(isReviewModeRequest(method)?[reviewModeEpoch]:[])]);
+    function applyReviewNpsMode(enabled,rerender=true){
+      enabled=enabled!==false;
+      const changed=enabled!==reviewNpsEnabled;
+      reviewNpsEnabled=enabled;
+      const ranking=$("ranking-filter"), option=ranking.querySelector('option[value="NPS"]');
+      if(!enabled){
+        if(benchmarkNps){benchmarkNps=false;state.benchmarkWeighted=false;ranking.value="MARKET"}
+        option?.remove();
+      }else if(!option)ranking.add(new Option("NPS de reseñas","NPS"));
+      radarFilters.benchmark?.refresh();
+      radarFilters.benchmark?.render();
+      $("review-balance-panel").classList.toggle("hidden",!enabled);
+      $("monthly-nps-note").classList.toggle("hidden",!enabled);
+      $("monthly-pulse-description").textContent=translate(enabled?"Histórico hasta el mes seleccionado · rating consolidado, valoraciones por plataforma y NPS de reseñas":"Histórico hasta el mes seleccionado · rating consolidado y valoraciones por plataforma");
+      $("review-gap-title").textContent=translate(enabled?"Brecha de NPS por bloque":"Deltas de bloques funcionales en el periodo");
+      if(!changed)return;
+      reviewModeEpoch++;
+      for(const key of reviewResponses.keys())if(isReviewModeRequest(JSON.parse(key)[0]))reviewResponses.delete(key);
+      benchmarkNpsRequest++;
+      annualNpsRequest++;annualNpsKey="";annualNpsData=null;resizeReviewBalance=null;
+      $("annual-nps-chart").replaceChildren();$("annual-nps-chart").setAttribute("aria-busy","false");
+      exportSheets.analytics.delete("Evolución del NPS de reseñas");
+      exportSheets.benchmark.clear();
+      exportSheets.evolution.delete("Pulso mensual");
+      resetMonthlyReviews();evolutionRender=null;
+      analyticsRequest++;analyticsLoading=false;pendingAnalyticsKey=renderedAnalyticsKey="";
+      $("review-heatmap").setAttribute("aria-busy","false");
+      hideChartTooltip();
+      if(rerender&&state.meta)queueMicrotask(()=>{
+        if(state.view==="benchmark")renderBenchmark();
+        else if(state.view==="evolution")renderEvolution();
+        else if(state.view==="analytics")loadAnalytics();
+      });
+    }
     const hasReviewResponse=(method,scope)=>reviewResponses.get(reviewResponseKey(method,scope))?.expires>Date.now();
     function fetchReviewData(method,scope,snapshotOnly=false){
+      if(!reviewNpsEnabled&&isReviewNpsRequest(method))return Promise.resolve(null);
+      const epoch=reviewModeEpoch;
       const key=reviewResponseKey(method,scope);
       const hit=reviewResponses.get(key);
       if(hit&&hit.expires>Date.now()){
@@ -692,9 +740,15 @@
       if(reviewRequests.has(key)){
         trackUsage("PERFORMANCE",state.view,method,"SHARED 0 OK");
         const {promise,prefetch}=reviewRequests.get(key);
-        return snapshotOnly||!prefetch?promise:promise.then(value=>value??fetchReviewData(method,scope),()=>fetchReviewData(method,scope));
+        return snapshotOnly||!prefetch?promise:promise.then(value=>isReviewModeRequest(method)&&epoch!==reviewModeEpoch?null:value??fetchReviewData(method,scope),()=>isReviewModeRequest(method)&&epoch!==reviewModeEpoch?null:fetchReviewData(method,scope));
       }
       const request=callServer(method,scope,snapshotOnly).then(value=>{
+        if(isReviewModeRequest(method)){
+          if(epoch!==reviewModeEpoch)return null;
+          if(typeof value?.reviewNpsEnabled==="boolean"&&value.reviewNpsEnabled!==reviewNpsEnabled){
+            applyReviewNpsMode(value.reviewNpsEnabled);return null;
+          }
+        }
         if(value==null)return null;
         const stale=value.timing?.freshness==="stale"?Math.max(0,(value.timing.staleMaxSeconds-value.timing.ageSeconds)*1000):reviewResponseTtl;
         reviewResponses.set(key,{value,expires:Date.now()+Math.min(reviewResponseTtl,stale)});
@@ -712,7 +766,7 @@
       }));
     }
     function validateBootstrap(data){if(!data||!data.meta||!Array.isArray(data.snapshot)||!Array.isArray(data.trends))throw new Error(translate("El servidor ha devuelto una respuesta incompleta. Actualiza el despliegue de EDC Market Pulse."));return data}
-    async function loadBootstrap(){if(state.bootstrapLoading)return;state.bootstrapLoading=true;const loader=$("loader");loader.classList.remove("done","failed");$("loader-title").textContent="Preparando EDC Market Pulse…";$("loader-detail").classList.add("hidden");$("loader-retry").classList.add("hidden");try{const data=validateBootstrap(await callServer("bootstrap"));state.meta=data.meta;state.userContext=data.userContext||{email:"",isAdmin:false};if(Array.isArray(data.reviewSegments)){state.reviewSegments=data.reviewSegments;reviewSegments=Promise.resolve(data.reviewSegments)}state.snapshot=data.snapshot;benchmarkModels.clear();state.trends=data.trends;state.consolidated=data.consolidated||null;state.trendsLoading=false;state.trendCache.clear();state.trendCache.set("ALL|ALL|ALL|BBVA|18",state.trends);state.country=browserMarket();if(state.country==="ALL")state.country=data.meta.countries.find(item=>item.code==="ES")?.code||data.meta.countries[0]?.code;configureAdminNavigation();renderRunStatus();renderDashboard();startUsageTracking();$("footer-version").textContent=`Contrato ${data.meta.codeVersion} · Web ${data.meta.webVersion||"1"}`;loader.classList.add("done");warmViewsAfterBootstrap()}catch(error){showStartupFailure(error)}finally{state.bootstrapLoading=false}}
+    async function loadBootstrap(){if(state.bootstrapLoading)return;state.bootstrapLoading=true;const loader=$("loader");loader.classList.remove("done","failed");$("loader-title").textContent="Preparando EDC Market Pulse…";$("loader-detail").classList.add("hidden");$("loader-retry").classList.add("hidden");try{const data=validateBootstrap(await callServer("bootstrap"));state.meta=data.meta;applyReviewNpsMode(data.reviewNpsEnabled,false);state.userContext=data.userContext||{email:"",isAdmin:false};if(Array.isArray(data.reviewSegments)){state.reviewSegments=data.reviewSegments;reviewSegments=Promise.resolve(data.reviewSegments)}state.snapshot=data.snapshot;benchmarkModels.clear();state.trends=data.trends;state.consolidated=data.consolidated||null;state.trendsLoading=false;state.trendCache.clear();state.trendCache.set("ALL|ALL|ALL|BBVA|18",state.trends);state.country=browserMarket();if(state.country==="ALL")state.country=data.meta.countries.find(item=>item.code==="ES")?.code||data.meta.countries[0]?.code;configureAdminNavigation();renderRunStatus();renderDashboard();startUsageTracking();$("footer-version").textContent=`Contrato ${data.meta.codeVersion} · Web ${data.meta.webVersion||"1"}`;loader.classList.add("done");warmViewsAfterBootstrap()}catch(error){showStartupFailure(error)}finally{state.bootstrapLoading=false}}
     function showStartupFailure(error){const loader=$("loader");if(!loader)return;loader.classList.remove("done");loader.classList.add("failed");$("loader-title").textContent="No hemos podido iniciar EDC Market Pulse";$("loader-detail").textContent=error?.message||String(error);$("loader-detail").classList.remove("hidden");$("loader-retry").classList.remove("hidden")}
 
     let usageSession="";
@@ -894,10 +948,10 @@
       }
       const selected={...selection(),app:state.evolutionApp};
       const model=D.monthlyRatingMatrix(trends,state.snapshot,selected,period,mobileViewport.matches?2:6,mobileViewport.matches);
-      const npsReady=monthlyPulse?.key===JSON.stringify(monthlyReviewScope(period));
+      const npsReady=reviewNpsEnabled&&monthlyPulse?.key===JSON.stringify(monthlyReviewScope(period));
 
       const points=new Map((npsReady?monthlyPulse.points:[]).map(row=>[row.country+"|"+row.month,row]));
-      for(const row of model.rows)for(const cell of row.cells){
+      if(reviewNpsEnabled)for(const row of model.rows)for(const cell of row.cells){
         const point=points.get(row.countryCode+"|"+cell.month);
         cell.nps=point?.balance??null;
         if(point)cell.npsSample=reviewNpsSample(point);
@@ -906,16 +960,16 @@
       }
       $("monthly-shared-note").classList.toggle("hidden",!model.hasSharedAndroid);
       $("monthly-matrix-meta").textContent=model.periods.length?`${model.periods.length} meses hasta ${monthLabel(model.periods.at(-1))} · ${D.config.platformLabels.ALL}`:"Sin cierres";
-      $("monthly-matrix").innerHTML=C.monthlyMatrix(model,{format:fmt,integer,compactInteger,monthLabel,signed,npsReady:npsReady||!state.evolutionApp,
+      $("monthly-matrix").innerHTML=C.monthlyMatrix(model,{format:fmt,integer,compactInteger,monthLabel,signed,reviewNpsEnabled,npsReady:npsReady||!state.evolutionApp,
         showScopes:state.country==="ALL"});
-      const columns=["Mes","Rating consolidado","Variación","NPS de reseñas (pp)","Variación NPS (pp)",
+      const columns=["Mes","Rating consolidado","Variación",...(reviewNpsEnabled?["NPS de reseñas (pp)","Variación NPS (pp)"]:[]),
         ...model.platforms.flatMap(platform=>[`Rating ${platform}`,`Valoraciones ${platform}`])];
       setExportSheet("evolution","Pulso mensual",state.country,
         [["Mes de cierre",period],["Aplicación",state.evolutionApp],["Comentarios",reviewFilterLabel("audience",monthlyFilters.audience)],
           ["Inferir datos",reviewFilterLabel("inferGeography",monthlyFilters.inferGeography)]],
         state.country==="ALL"?["Geografía",...columns]:columns,
         model.rows.flatMap(row=>row.cells.map(cell=>[...(state.country==="ALL"?[row.country]:[]),cell.month,cell.rating,cell.delta,
-          cell.nps,cell.npsDelta,...cell.platforms.flatMap(item=>[item.rating,item.value])])));
+          ...(reviewNpsEnabled?[cell.nps,cell.npsDelta]:[]),...cell.platforms.flatMap(item=>[item.rating,item.value])])));
     }
     function renderNewReviewImpact(period,trends){
       if(state.trendsLoading){
@@ -940,7 +994,7 @@
       const started=performance.now();
       radarFilters.benchmark.render();
       renderDashboardMarkets("benchmark");
-      if(benchmarkNps){renderNpsBenchmark();return}
+      if(reviewNpsEnabled&&benchmarkNps){renderNpsBenchmark();return}
       benchmarkNpsRequest++;
       const key=JSON.stringify([state.country,state.benchmarkSegment,state.benchmarkWeighted,appLanguage]);
       if(!benchmarkModels.has(key)){
@@ -970,6 +1024,7 @@
         D.rankRows(rows).map(row=>[row.computedRank,D.appName(row),row.rating,row.delta30d,row.storeUrl]));
     }
     async function renderNpsBenchmark(){
+      if(!reviewNpsEnabled)return;
       const token=++benchmarkNpsRequest, country=state.country, segment=state.benchmarkSegment;
       const scope={country,analysisMonth:state.meta.dataDate.slice(0,7)};
       const target=$("benchmark-grid");
@@ -977,7 +1032,7 @@
       target.innerHTML=U.loading(translate("Cargando NPS de reseñas"));
       try{
         const data=await fetchReviewData("review:ranking",scope);
-        if(token!==benchmarkNpsRequest||!benchmarkNps)return;
+        if(token!==benchmarkNpsRequest||!benchmarkNps||!reviewNpsEnabled||!data)return;
         const rows=D.selectionRows(state.snapshot,selection(),segment,true).filter(row=>D.isCriticalPlatform(row.platform));
         const groups=D.groupBy(rows,row=>row.countryCode);
         const points=new Map(data.rows.map(point=>[JSON.stringify([point.country,point.entity]),point]));
@@ -1050,7 +1105,7 @@
       const steps=[
         ()=>fetchTrends(trendRequest(),true),
         ()=>fetchReviewData("review:page",{...reviewScope(),language:appLanguage,page:reviewPage},true),
-        ()=>fetchReviewData("review:nps",annualNpsScope(annualScope()),true),
+        ()=>reviewNpsEnabled?fetchReviewData("review:nps",annualNpsScope(annualScope()),true):null,
         ()=>{
           const rows=cachedTrendRows(trendRequest());
           if(!rows)return;
@@ -1092,7 +1147,7 @@
         applied:()=>({segment:state.benchmarkSegment,ranking:benchmarkNps?"NPS":state.benchmarkWeighted?"WEIGHTED":"MARKET"}),
         alwaysChips:["segment","ranking"],
         commit:({segment,ranking})=>{
-          state.benchmarkSegment=segment;state.benchmarkWeighted=ranking==="WEIGHTED";benchmarkNps=ranking==="NPS";
+          state.benchmarkSegment=segment;state.benchmarkWeighted=ranking==="WEIGHTED";benchmarkNps=reviewNpsEnabled&&ranking==="NPS";
           renderDashboard();
         }
       });
@@ -1380,7 +1435,7 @@
           $("annual-series").replaceChildren();
         }
         if(showLoading)$("review-annual").innerHTML=U.loading(translate("Cargando indicadores de reseñas"));
-        loadAnnualNps(scope,dates);
+        if(reviewNpsEnabled)loadAnnualNps(scope,dates);
       }
       try{
         const trends=heatmapOnly||scope.country==="UNKNOWN"?[]:fetchTrends(annualTrendRequest(scope));
@@ -1466,6 +1521,7 @@
       return year===reviewDates().end.slice(0,4)?translate("en el acumulado del año hasta la fecha"):translate("en {year}",{year});
     }
     async function loadAnnualNps(scope,dates){
+      if(!reviewNpsEnabled)return;
       const request=annualNpsScope(scope);
       const key=JSON.stringify(request), token=++annualNpsRequest, started=performance.now();
       const target=$("annual-nps-chart");
@@ -1479,7 +1535,7 @@
       }else renderAnnualNps(scope,dates,annualNpsData,analyticsEntity);
       try{
         const data=await fetchReviewData("review:nps",request);
-        if(token!==annualNpsRequest)return;
+        if(token!==annualNpsRequest||!reviewNpsEnabled||!data)return;
         if(!reusable||data!==annualNpsData)renderAnnualNps(scope,dates,data,analyticsEntity);
         annualNpsKey=key;
         annualNpsData=data;
@@ -1520,7 +1576,7 @@
       if(key===monthlyReviewKey&&(monthlyReviewsLoading||Date.now()-monthlyReviewLoadedAt<reviewResponseTtl))return;
       monthlyReviewKey=key;
       monthlyReviewsLoading=true;
-      for(const name of ["Brechas","Ejemplos del mes"])exportSheets.evolution.delete(name);
+      for(const name of ["Brechas","Deltas bloques funcionales","Ejemplos del mes"])exportSheets.evolution.delete(name);
       const token=++monthlyRequest, gaps=$("review-deltas"), examples=$("review-examples");
       const gapPanel=$("review-gap-panel");
       if(balanceKey!==monthlyBalanceKey){
@@ -1531,15 +1587,15 @@
       gapPanel.classList.remove("hidden");
       gapPanel.setAttribute("aria-busy","true");
       if(!hasReviewResponse("review:analytics",scope)){
-        gaps.innerHTML=U.loading(translate("Cargando brechas y ejemplos"),"");
+        gaps.innerHTML=U.loading(translate(reviewNpsEnabled?"Cargando brechas y ejemplos":"Cargando bloques y ejemplos"),"");
         examples.replaceChildren();
         $("review-examples-panel").classList.add("hidden");
       }
       try{
         const data=await fetchReviewData("review:analytics",scope);
-        if(token!==monthlyRequest)return;
+        if(token!==monthlyRequest||!data)return;
         const applied={country:scope.country,platform:scope.platform,start:data.window.start,end:data.window.end,segment:"",audience:scope.audience,inferGeography:scope.inferGeography};
-        if(balanceKey!==monthlyBalanceKey){
+        if(reviewNpsEnabled&&balanceKey!==monthlyBalanceKey){
           const {nps}=data;
           monthlyPulse={key:balanceKey,points:data.monthlyByGeography||[]};
           renderMonthlyMatrix(analysisMonth,withPublishedRatings(state.trends,selection()));
@@ -1553,15 +1609,16 @@
           monthlyBalanceKey=balanceKey;
         }
         if(data.deltas.length)renderReviewGaps(gaps,data,{...applied,app:scope.entity,segment:scope.segment});
-        else gaps.innerHTML=U.empty(translate("Sin reseñas para este sentimiento"),translate("Elige otro sentimiento para consultar las brechas y los ejemplos del mes."));
+        else gaps.innerHTML=U.empty(translate("Sin reseñas para este sentimiento"),translate(reviewNpsEnabled?"Elige otro sentimiento para consultar las brechas y los ejemplos del mes.":"Elige otro sentimiento para consultar los bloques y los ejemplos del mes."));
         appendReviewFreshness(gaps,data.timing);
         $("review-examples-title").textContent=analysisMonth===current?"Ejemplos del mes en curso":"Ejemplos del mes seleccionado";
         $("review-examples-panel").classList.toggle("hidden",!data.examples.length);
         examples.innerHTML=data.examples.map(({review})=>renderReviewCard(review,data.topics)).join("");
         const recentFilters=[...exportDates({start:data.window.recent,end:applied.end}),["Mes",analysisMonth],
           ["Aplicación",scope.entity],["Comentarios",reviewFilterLabel("audience",scope.audience)],["Inferir datos",scope.inferGeography==="NO"?"No":"Sí"],["Sentimiento",reviewFilterLabel("segment",scope.segment)]];
-        setExportSheet("evolution","Brechas",scope.country,recentFilters,
-          reviewGapColumns.map(column=>column.label),data.deltas.map(row=>reviewGapColumns.map(column=>column.value(row))));
+        const columns=activeReviewGapColumns();
+        setExportSheet("evolution",reviewNpsEnabled?"Brechas":"Deltas bloques funcionales",scope.country,recentFilters,
+          columns.map(column=>column.label),data.deltas.map(row=>columns.map(column=>column.value(row))));
         setExportSheet("evolution","Ejemplos del mes",scope.country,recentFilters,reviewExportHeader,
           data.examples.map(({review})=>reviewExportRow(review,data.topics)));
         monthlyReviewLoadedAt=Date.now();
@@ -1569,7 +1626,7 @@
       }catch(error){
         if(token!==monthlyRequest)return;
         monthlyReviewKey="";
-        if(balanceKey!==monthlyBalanceKey){
+        if(reviewNpsEnabled&&balanceKey!==monthlyBalanceKey){
           monthlyPulse={key:balanceKey,points:[]};
           renderMonthlyMatrix(analysisMonth,withPublishedRatings(state.trends,selection()));
         }
@@ -1658,6 +1715,7 @@
       {label:"NPS (pp)",value:row=>row.balance,format:value=>fmt(value,1)},
       {label:"Brecha vs. base (pp)",value:row=>row.gap,format:value=>value===null?"—":signed(value)}
     ];
+    const activeReviewGapColumns=()=>reviewNpsEnabled?reviewGapColumns:reviewGapColumns.slice(0,-4);
     function renderReviewGaps(target,data,scope){
       const {baseline,deltas,recentTotal,window:dates}=data;
       const recent=`${dateLabel(dates.recent)} – ${dateLabel(dates.end)}`;
@@ -1667,7 +1725,7 @@
         dates:recent,sentiment:reviewFilterLabel("segment",scope.segment),count:integer(recentTotal)
       });
       target.append(note);
-      if(baseline){
+      if(reviewNpsEnabled&&baseline){
         const reference=document.createElement("p");
         reference.className="review-chart-note";
         reference.textContent=translate("Base del mes anterior: {dates} · {total} reseñas · NPS {nps} pp.",{
@@ -1676,11 +1734,12 @@
         target.append(reference);
         appendReviewCohort(target,"Ver reseñas del mes anterior",{...scope,start:baseline.start,end:baseline.end,segment:""});
       }
-      target.insertAdjacentHTML("beforeend",C.reviewGaps(deltas,fmt,translate));
+      target.insertAdjacentHTML("beforeend",reviewNpsEnabled?C.reviewGaps(deltas,fmt,translate):C.reviewBlockCounts(deltas,integer,translate));
       const table=document.createElement("div");
       table.className="admin-table-wrap review-gap-table";
-      const headers=reviewGapColumns.map(column=>`<th scope="col">${U.esc(translate(column.label))}</th>`).join("");
-      const metrics=reviewGapColumns.slice(1);
+      const columns=activeReviewGapColumns();
+      const headers=columns.map(column=>`<th scope="col">${U.esc(translate(column.label))}</th>`).join("");
+      const metrics=columns.slice(1);
       table.innerHTML=`<table class="admin-table"><caption>${U.esc(translate("Detalle del periodo reciente · {dates}",{dates:recent}))}</caption><thead><tr>${headers}</tr></thead><tbody>${deltas.map(row=>`<tr><th scope="row"></th>${metrics.map(column=>`<td>${U.esc(column.format(column.value(row)))}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
       table.querySelectorAll("tbody th").forEach((cell,index)=>{
         const row=deltas[index];
@@ -1845,7 +1904,7 @@
     }
     function activeTrendRows(trends){return D.trendRows(trends,{...selection(),app:state.evolutionApp})}
     function resetMonthlyReviews(){
-      for(const name of ["NPS de reseñas","Comparativa NPS","Brechas","Ejemplos del mes"])exportSheets.evolution.delete(name);
+      for(const name of ["NPS de reseñas","Comparativa NPS","Brechas","Deltas bloques funcionales","Ejemplos del mes"])exportSheets.evolution.delete(name);
       $("review-examples-panel").classList.add("hidden");
       $("review-gap-panel").classList.add("hidden");
       monthlyReviewKey=monthlyBalanceKey="";
@@ -2005,7 +2064,7 @@
     let businessRequest=0,businessDraft,businessFilters={query:""},businessCatalog;
     const businessCatalogDescriptions={
       functional:"Bloques y funcionalidades que se usan para clasificar las reseñas.",
-      operation:"Parámetros del cálculo de ratings y del monitor de salud.",
+      operation:"Parámetros del cálculo de ratings, NPS de reseñas y del monitor de salud.",
       geography:"Geografías definidas en el catálogo de aplicaciones.",
       relevance:"Grupos de evidencia en el título y texto originales. BEI incluye relevancia empresarial y transversal.",
       aliases:"Equivalencias locales del clasificador anterior.",
@@ -2104,7 +2163,8 @@
         const key=relevance&&!businessDraft.expected?"phrase-"+id:id;
         const value=relevance?{group:$("admin-business-audience-group").value,
           phrase:$("admin-business-phrase").value,enabled:$("admin-business-enabled").checked}:$("admin-business-value").value;
-        await callServer("admin:business:save",{...businessDraft,key,value});
+        const saved=await callServer("admin:business:save",{...businessDraft,key,value});
+        if(typeof saved?.reviewNpsEnabled==="boolean")applyReviewNpsMode(saved.reviewNpsEnabled);
         $("admin-business-dialog").close();
         if(state.adminTab==="business")loadAdminBusiness();
       }catch(error){$("admin-business-error").textContent=error.message}

@@ -608,11 +608,12 @@ function marketsReviewSnapshotRefreshDue_(properties, now) {
   if (properties.getProperty('MARKETS_REVIEW_SNAPSHOT_REPAIR')) return true;
   const migration = safeJsonParse_(properties.getProperty('MARKETS_FUNCTIONAL_MIGRATION') || 'null');
   if (migration?.ready && !migration.complete && published?.engine?.sheet !== migration.sheet) return true;
-  if (!Array.isArray(published?.versions) || !published.hasAnnualNps || !published.hasNpsAttribution || !published.hasAllSentimentGaps || !published.hasReviewRanking || !published.hasFeaturedReviews || published.schema !== MARKETS_REVIEW_SNAPSHOT_SCHEMA ||
+  const ss = openMarketsSpreadsheet_(), reviewNpsEnabled = readMarketsReviewNpsEnabled_(ss);
+  if (!Array.isArray(published?.versions) || !marketsReviewSnapshotCapabilitiesMatch_(published, reviewNpsEnabled) || published.schema !== MARKETS_REVIEW_SNAPSHOT_SCHEMA ||
       published.end !== Utilities.formatDate(now, MARKETS_CONFIG.timeZone, 'yyyy-MM-dd')) return true;
   if (published.audienceVersion !== MARKETS_REVIEW_AUDIENCE_VERSION ||
-      marketsReviewRequestedScopes_(properties, now.getTime()).some(entry => !published.requestedScopes?.includes(entry.id))) return true;
-  const ss = openMarketsSpreadsheet_(), catalog = readAppCatalog_(ss);
+      marketsReviewRequestedScopes_(properties, now.getTime(), reviewNpsEnabled).some(entry => !published.requestedScopes?.includes(entry.id))) return true;
+  const catalog = readAppCatalog_(ss);
   return JSON.stringify(published.versions) !== JSON.stringify(marketsReviewVersions_(properties.getProperties(),
     marketsReviewCatalogVersion_(catalog), undefined, marketsAudienceCatalog_(ss).revision));
 }
