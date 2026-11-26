@@ -9,7 +9,9 @@
     const bindOptional=(id,event,handler)=>$(id)?.addEventListener(event,handler);
     const interfaceCopy={
       "No se pudo guardar la valoración. Inténtalo de nuevo.":["We couldn't save your feedback. Try again.","Değerlendirme kaydedilemedi. Tekrar deneyin."],
-      "Deltas de bloques funcionales en el periodo":["Functional block changes in the period","Dönemdeki işlev grubu değişimleri"],
+      "Variaciones de los bloques funcionales":["Functional block changes","İşlev grubu değişimleri"],
+      "Variaciones de los bloques funcionales en el mes en curso":["Functional block changes this month","Bu ayın işlev grubu değişimleri"],
+      "Variaciones de los bloques funcionales en {month}":["Functional block changes in {month}","{month} dönemindeki işlev grubu değişimleri"],
       "Parámetros del cálculo de ratings, NPS de reseñas y del monitor de salud.":["Rating, review NPS and health monitor settings","Puan, yorum NPS ve sağlık izleme ayarları"],
       "Deltas bloques funcionales":["Functional block changes","İşlev grubu değişimleri"],
       "Histórico hasta el mes seleccionado · rating consolidado y valoraciones por plataforma":["History up to the selected month · consolidated rating and ratings by platform","Seçilen aya kadarki geçmiş · konsolide puan ve platforma göre puanlar"],
@@ -263,8 +265,8 @@
       "Explora los comentarios sobre canales digitales de banca de empresas e instituciones, agrupadas por entidad financiera. Consulta la actualidad del mes en curso y profundiza en cualquier periodo mediante búsquedas y filtros.":["Explore reviews of digital channels for business and institutional banking, grouped by financial institution. See this month's reviews or search and filter any period.","İşletme ve kurumsal bankacılık kanallarına ait yorumları finans kuruluşuna göre inceleyin. Bu ayın yorumlarını görün veya arama ve filtrelerle istediğiniz dönemi inceleyin."],
       "Analiza la evolución mensual de las valoraciones y reseñas sobre los canales digitales de banca de empresas e instituciones. Compara entidades financieras, identifica tendencias y variaciones en los principales indicadores y profundiza en los factores que impulsan la satisfacción de los usuarios.":["Analyse monthly ratings and reviews of digital channels for business and institutional banking. Compare financial institutions, track changes in key metrics and explore the drivers of user satisfaction.","İşletme ve kurumsal bankacılık kanallarının aylık puan ve yorumlarını analiz edin. Finans kuruluşlarını karşılaştırın, temel göstergelerdeki değişimleri ve kullanıcı memnuniyetini etkileyen etkenleri inceleyin."],
       "Explora la evolución anual de las valoraciones y reseñas sobre los canales digitales de banca de empresas e instituciones. Compara tendencias y niveles de satisfacción, identifica patrones de sentimiento y profundiza en los principales indicadores, las reseñas más relevantes y la participación de los usuarios.":["Explore annual ratings and reviews of digital channels for business and institutional banking. Compare trends and satisfaction, identify sentiment patterns and examine key metrics, top reviews and user participation.","İşletme ve kurumsal bankacılık kanallarının yıllık puan ve yorumlarını inceleyin. Trendleri ve memnuniyeti karşılaştırın, duygu örüntülerini, temel göstergeleri, öne çıkan yorumları ve kullanıcı katılımını keşfedin."],
-      "Ejemplos, de los deltas, del mes en curso":["Delta examples from this month","Bu ayın fark örnekleri"],
-      "Ejemplos, de los deltas, del mes seleccionado":["Delta examples from the selected month","Seçilen ayın fark örnekleri"],
+      "Ejemplos de reseñas, de las variaciones identificadas, del mes en curso":["Review examples of the changes identified this month","Bu ay belirlenen değişimlere ilişkin yorum örnekleri"],
+      "Ejemplos de reseñas, de las variaciones identificadas, de {month}":["Review examples of the changes identified in {month}","{month} döneminde belirlenen değişimlere ilişkin yorum örnekleri"],
       "No hay reseñas promotoras o detractoras en el periodo.":["There are no promoter or detractor reviews in this period.","Bu dönemde destekçi veya eleştirmen yorumu yok."],
       "La actualización sigue en curso. No necesitas volver a solicitarla.":["The update is still running. You do not need to request it again.","Güncelleme sürüyor. Yeniden istemeniz gerekmiyor."],
       "en el acumulado del año hasta la fecha":["year to date","yılbaşından bugüne"],
@@ -350,8 +352,8 @@
       "Neutros":["Neutral","Nötr"],
       "Reseñas útiles":["Helpful reviews","Yararlı yorumlar"],
       "Reseñas contestadas":["Reviews with replies","Yanıtlanan yorumlar"],
-      "Reseñas más útiles del acumulado del año hasta la fecha":["Most helpful reviews year to date","Yılbaşından bugüne en yararlı yorumlar"],
-      "Reseñas más útiles del {year}":["Most helpful reviews in {year}","{year} yılının en yararlı yorumları"],
+      "Top 3 de reseñas, más útiles para los clientes, del acumulado del año hasta la fecha":["Top 3 most helpful reviews for customers year to date","Yılbaşından bugüne müşteriler için en yararlı 3 yorum"],
+      "Top 3 de reseñas, más útiles para los clientes, del {year}":["Top 3 most helpful reviews for customers in {year}","{year} yılında müşteriler için en yararlı 3 yorum"],
       "Personas con más reseñas":["Most active reviewers","En çok yorum yapanlar"],
       "Personas con más reseñas del acumulado del año hasta la fecha":["Most active reviewers year to date","Yılbaşından bugüne en çok yorum yapanlar"],
       "Personas con más reseñas de {year}":["Most active reviewers in {year}","{year} yılında en çok yorum yapanlar"],
@@ -712,7 +714,7 @@
       $("review-balance-panel").classList.toggle("hidden",!enabled);
       $("monthly-nps-note").classList.toggle("hidden",!enabled);
       $("monthly-pulse-description").textContent=translate(enabled?"Histórico hasta el mes seleccionado · rating consolidado, valoraciones por plataforma y NPS de reseñas":"Histórico hasta el mes seleccionado · rating consolidado y valoraciones por plataforma");
-      $("review-gap-title").textContent=translate(enabled?"Brecha de NPS por bloque":"Deltas de bloques funcionales en el periodo");
+      renderMonthlyReviewTitles(state.periodYear&&state.periodMonth?`${state.periodYear}-${state.periodMonth}`:"");
       if(!changed)return;
       reviewModeEpoch++;
       for(const key of reviewPendingScopes.keys())if(isReviewModeRequest(JSON.parse(key)[0]))reviewPendingScopes.delete(key);
@@ -1637,9 +1639,17 @@
         ["Mes",...monthlyEntityOptions.map(entity=>entity+" (pp)")],
         months.map(month=>[month,...monthlyEntityOptions.map(entity=>points.get(JSON.stringify([entity,month])))]),true);
     }
+    function renderMonthlyReviewTitles(analysisMonth,current=reviewDates().end.slice(0,7)){
+      const isCurrent=!analysisMonth||analysisMonth===current;
+      const month=isCurrent?"":new Intl.DateTimeFormat(locale(),{month:"long",year:"numeric"}).format(new Date(`${analysisMonth}-15T12:00:00`));
+      $("review-gap-title").textContent=reviewNpsEnabled?translate("Brecha de NPS por bloque"):
+        translate(isCurrent?"Variaciones de los bloques funcionales en el mes en curso":"Variaciones de los bloques funcionales en {month}",{month});
+      $("review-examples-title").textContent=translate(isCurrent?"Ejemplos de reseñas, de las variaciones identificadas, del mes en curso":"Ejemplos de reseñas, de las variaciones identificadas, de {month}",{month});
+    }
     async function loadMonthlyReviews(period){
       const started=performance.now(), current=reviewDates().end.slice(0,7);
       const analysisMonth=period||current;
+      renderMonthlyReviewTitles(analysisMonth,current);
       const scope=monthlyReviewScope(analysisMonth);
       const key=JSON.stringify(scope);
       const balanceKey=key;
@@ -1682,7 +1692,6 @@
         if(data.deltas.length)renderReviewGaps(gaps,data,{...applied,app:scope.entity,segment:scope.segment});
         else gaps.innerHTML=U.empty(translate("Sin reseñas en el periodo reciente."),translate("No hay reseñas para esta selección."));
         appendReviewFreshness(gaps,data.timing);
-        $("review-examples-title").textContent=translate(analysisMonth===current?"Ejemplos, de los deltas, del mes en curso":"Ejemplos, de los deltas, del mes seleccionado");
         $("review-examples-panel").classList.toggle("hidden",!data.examples.length);
         examples.innerHTML=data.examples.map(({review})=>renderReviewCard(review,data.topics)).join("");
         const recentFilters=[...exportDates({start:data.window.recent,end:applied.end}),["Mes",analysisMonth],
@@ -1777,8 +1786,8 @@
       const authors=annual.topAuthors.filter(row=>row.count>1);
       const currentYear=scope.year===reviewDates().end.slice(0,4);
       const helpfulTitle=currentYear
-        ?translate("Reseñas más útiles del acumulado del año hasta la fecha")
-        :translate("Reseñas más útiles del {year}",{year:scope.year});
+        ?translate("Top 3 de reseñas, más útiles para los clientes, del acumulado del año hasta la fecha")
+        :translate("Top 3 de reseñas, más útiles para los clientes, del {year}",{year:scope.year});
       const authorsTitle=currentYear
         ?translate("Personas con más reseñas del acumulado del año hasta la fecha")
         :translate("Personas con más reseñas de {year}",{year:scope.year});
@@ -1832,7 +1841,7 @@
         target.append(reference);
         appendReviewCohort(target,"Ver reseñas del mes anterior",{...scope,start:baseline.start,end:baseline.end,segment:""});
       }
-      target.insertAdjacentHTML("beforeend",reviewNpsEnabled?C.reviewGaps(deltas,fmt,translate):C.reviewBlockCounts(deltas,integer,translate));
+      target.insertAdjacentHTML("beforeend",reviewNpsEnabled?C.reviewGaps(deltas,fmt,translate):C.reviewBlockCounts(deltas,integer,translate,$("review-gap-title").textContent));
       const table=document.createElement("div");
       table.className="admin-table-wrap review-gap-table";
       const reviewGapColumns=activeReviewGapColumns();
