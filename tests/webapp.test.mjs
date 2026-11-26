@@ -1007,9 +1007,52 @@ test("the useful reviews heading follows the year selected in annual analysis", 
     reviewDates: () => ({ end: "2026-11-16" }),
     translate: (text, values = {}) => text.replace("{year}", values.year)
   });
-  assert.equal(heading("2026"), "Reseñas más útiles del acumulado del año hasta la fecha");
-  assert.equal(heading("2025"), "Reseñas más útiles del 2025");
+  assert.equal(heading("2026"), "Top 3 de reseñas más útiles del acumulado del año hasta la fecha");
+  assert.equal(heading("2025"), "Top 3 de reseñas más útiles del 2025");
   assert.match(source, /annual\.topHelpful\.length\?[^\n]+<h4>\$\{U\.esc\(helpfulTitle\)\}<\/h4>/);
+});
+
+test("monthly review headings follow the applied month, language and NPS mode", () => {
+  const source = fs.readFileSync(new URL("../src/App.html", import.meta.url), "utf8");
+  const translations = source.slice(source.indexOf("    const interfaceCopy="), source.indexOf("    const originalCopy="));
+  const helper = source.slice(source.indexOf("    function renderMonthlyReviewTitles("), source.indexOf("    async function loadMonthlyReviews("));
+  const nodes = { "review-gap-title": {}, "review-examples-title": {} };
+  const runtime = vm.createContext({
+    navigator: { languages: ["es"] }, reviewNpsEnabled: false,
+    reviewDates: () => ({ end: "2026-11-26" }), $: id => nodes[id]
+  });
+  vm.runInContext(translations + helper + `
+    globalThis.titles=(month,language,enabled)=>{
+      appLanguage=language;reviewNpsEnabled=enabled;renderMonthlyReviewTitles(month);
+      return [$("review-gap-title").textContent,$("review-examples-title").textContent];
+    };`, runtime);
+  const titles = (month, language = "es", enabled = false) => Array.from(runtime.titles(month,language,enabled));
+  const current = ["Variaciones de los bloques funcionales en el mes en curso", "Ejemplos de reseñas, de las variaciones identificadas, del mes en curso"];
+  assert.deepEqual(titles(""), current);
+  assert.deepEqual(titles("2026-11"), current);
+  assert.deepEqual(titles("2026-09"), ["Variaciones de los bloques funcionales en septiembre de 2026", "Ejemplos de reseñas, de las variaciones identificadas, de septiembre de 2026"]);
+  assert.deepEqual(titles("2025-11"), ["Variaciones de los bloques funcionales en noviembre de 2025", "Ejemplos de reseñas, de las variaciones identificadas, de noviembre de 2025"]);
+  assert.deepEqual(titles("2026-09", "es", true), ["Brecha de NPS por bloque", "Ejemplos de reseñas, de las variaciones identificadas, de septiembre de 2026"]);
+  assert.deepEqual(titles("2026-11", "en"), ["Functional block changes this month", "Review examples of the changes identified this month"]);
+  assert.deepEqual(titles("2026-09", "en"), ["Functional block changes in September 2026", "Review examples of the changes identified in September 2026"]);
+  assert.deepEqual(titles("2026-11", "tr"), ["Bu ayın işlev grubu değişimleri", "Bu ay belirlenen değişimlere ilişkin yorum örnekleri"]);
+  assert.deepEqual(titles("2026-09", "tr"), ["Eylül 2026 dönemindeki işlev grubu değişimleri", "Eylül 2026 döneminde belirlenen değişimlere ilişkin yorum örnekleri"]);
+  assert.deepEqual(titles("2026-11"), current);
+  assert.match(source, /async function loadMonthlyReviews\(period\)\{[\s\S]*?renderMonthlyReviewTitles\(analysisMonth,current\);[\s\S]*?if\(key===monthlyReviewKey/);
+  assert.match(source, /function applyReviewNpsMode\(enabled,rerender=true\)\{[\s\S]*?renderMonthlyReviewTitles\(state\.periodYear&&state\.periodMonth\?/);
+  const index = fs.readFileSync(new URL("../src/Index.html", import.meta.url), "utf8");
+  assert.ok(index.includes(`id="review-examples-title">${current[1]}</h3>`));
+});
+
+test("functional block chart uses the localized monthly title for accessibility", () => {
+  const window = { MarketsUI: { esc: String } };
+  vm.runInNewContext(clientScript(fs.readFileSync(new URL("../src/Charts.html", import.meta.url), "utf8")), { window });
+  const title = "Variaciones de los bloques funcionales en septiembre de 2026";
+  const rows = [{ label: "Pagos", promoters: 2, detractors: 1 }];
+  const html = window.MarketsCharts.reviewBlockCounts(rows, String, String, title);
+  assert.ok(html.includes(`aria-label="${title}"`));
+  const source = fs.readFileSync(new URL("../src/App.html", import.meta.url), "utf8");
+  assert.match(source, /C\.reviewBlockCounts\(deltas,integer,translate,\$\("review-gap-title"\)\.textContent\)/);
 });
 
 test("monthly gaps use the same column definitions for the table and workbook", () => {
