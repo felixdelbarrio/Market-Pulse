@@ -136,7 +136,7 @@
     }
     // Diverging count chart: the sign is a visual convention only. Source counts,
     // table and export stay nonnegative; neutral counts are not plotted.
-    function reviewBlockCounts(rows,integer,translate){
+    function reviewBlockCounts(rows,integer,translate,ariaLabel=translate("Variaciones de los bloques funcionales")){
       if(!rows.length)return "";
       const {esc}=window.MarketsUI;
       const labels=[translate("Promotores"),translate("Detractores")];
@@ -178,7 +178,7 @@
       }).join("");
       const mobile=rows.map(row=>`<div class="review-gap-mobile-row"><strong>${esc(row.label)}</strong><svg viewBox="0 0 320 24" role="img" aria-label="${esc(row.label+" · "+detail(row))}"><rect class="gap-background" x="20" y="2" width="280" height="20"/><line class="gap-zero" x1="160" x2="160" y1="0" y2="24"/>${bars(row,3,160,v=>140*v/high)}</svg><small>${esc(detail(row))}</small></div>`).join("");
       const axis=esc(translate("N.º de reseñas"));
-      return legend+`<div class="review-gap-mobile review-block-count-mobile">${mobile}<div class="review-block-count-axis"><div class="review-gap-mobile-axis"><span>${integer(-high)}</span><span>0</span><span>${integer(high)}</span></div></div><p>${axis}</p></div><div class="review-gap-plot"><svg viewBox="0 0 ${width} ${bottom+48}" role="group" aria-label="${esc(translate("Deltas de bloques funcionales en el periodo"))}"><rect class="gap-background" x="${left}" y="${top}" width="${plotWidth}" height="${bottom-top}"/>${ticks}${desktop}<text x="${(left+width-right)/2}" y="${bottom+40}" text-anchor="middle">${axis}</text></svg></div>`;
+      return legend+`<div class="review-gap-mobile review-block-count-mobile">${mobile}<div class="review-block-count-axis"><div class="review-gap-mobile-axis"><span>${integer(-high)}</span><span>0</span><span>${integer(high)}</span></div></div><p>${axis}</p></div><div class="review-gap-plot"><svg viewBox="0 0 ${width} ${bottom+48}" role="group" aria-label="${esc(ariaLabel)}"><rect class="gap-background" x="${left}" y="${top}" width="${plotWidth}" height="${bottom-top}"/>${ticks}${desktop}<text x="${(left+width-right)/2}" y="${bottom+40}" text-anchor="middle">${axis}</text></svg></div>`;
     }
     window.MarketsCharts=Object.freeze({reviewBlockCounts,closestReviewPoint,lineChart,ratingBars,monthlyMatrix,newReviewImpact,reviewBalance,reviewBalanceLegend,reviewSeriesColor,reviewGaps});
   })();

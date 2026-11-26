@@ -118,8 +118,8 @@ test('Frontend conmuta paneles, ranking, columnas y peticiones sin recargar el n
   const app=fs.readFileSync(path.join(dir,'App.html'),'utf8').replace(/^<script>\s*|\s*<\/script>\s*$/g,'').replace(/\}\)\(\);\s*$/, 'window.__test={applyReviewNpsMode,activeReviewGapColumns,fetchReviewData,reviewResponseKey,exportSheets,state,setBenchmarkNps:()=>{benchmarkNps=true},getBenchmarkNps:()=>benchmarkNps};})();');
   vm.runInContext(app,vm.createContext({window:w,document:doc,navigator:{languages:['es-ES']},Option:class{constructor(text,value){this.textContent=text;this.value=value}},queueMicrotask}));
   const t=w.__test;t.setBenchmarkNps();t.exportSheets.analytics.set('Evolución del NPS de reseñas',{});t.exportSheets.evolution.set('Comparativa NPS',{});const key=t.reviewResponseKey('review:analytics',{});t.applyReviewNpsMode(false,false);
-  assert.equal(t.getBenchmarkNps(),false);assert.equal(ranking.options.some(x=>x.value==='NPS'),false);assert.equal(node('review-balance-panel').flags.has('hidden'),true);assert.equal(node('monthly-nps-note').flags.has('hidden'),true);assert.equal(node('review-gap-title').textContent,'Deltas de bloques funcionales en el periodo');assert.equal(t.activeReviewGapColumns().length,5);assert.equal(t.exportSheets.analytics.has('Evolución del NPS de reseñas'),false);assert.equal(t.exportSheets.evolution.has('Comparativa NPS'),false);assert.notEqual(t.reviewResponseKey('review:analytics',{}),key);assert.equal(await t.fetchReviewData('review:nps',{}),null);assert.equal(await t.fetchReviewData('review:ranking',{}),null);
-  t.applyReviewNpsMode(true,false);assert.equal(ranking.options.some(x=>x.value==='NPS'),true);assert.equal(node('review-balance-panel').flags.has('hidden'),false);assert.equal(t.activeReviewGapColumns().length,9);
+  assert.equal(t.getBenchmarkNps(),false);assert.equal(ranking.options.some(x=>x.value==='NPS'),false);assert.equal(node('review-balance-panel').flags.has('hidden'),true);assert.equal(node('monthly-nps-note').flags.has('hidden'),true);assert.equal(node('review-gap-title').textContent,'Variaciones de los bloques funcionales en el mes en curso');assert.equal(node('review-examples-title').textContent,'Ejemplos de reseñas, de las variaciones identificadas, del mes en curso');assert.equal(t.activeReviewGapColumns().length,5);assert.equal(t.exportSheets.analytics.has('Evolución del NPS de reseñas'),false);assert.equal(t.exportSheets.evolution.has('Comparativa NPS'),false);assert.notEqual(t.reviewResponseKey('review:analytics',{}),key);assert.equal(await t.fetchReviewData('review:nps',{}),null);assert.equal(await t.fetchReviewData('review:ranking',{}),null);
+  t.applyReviewNpsMode(true,false);assert.equal(ranking.options.some(x=>x.value==='NPS'),true);assert.equal(node('review-balance-panel').flags.has('hidden'),false);assert.equal(node('review-gap-title').textContent,'Brecha de NPS por bloque');assert.equal(t.activeReviewGapColumns().length,9);
 });
 
 test('La cola aislada conserva el contrato anterior sin depender de Sheets y descarta NPS OFF',()=>{
@@ -175,7 +175,7 @@ test('El bloque aislado de prefetch comparte una petición, reintenta sólo tras
 
 test('Tabla, gráfico, ejemplos, detalle y Excel mensuales usan todas las reseñas: 9 columnas ON y 5 OFF',async()=>{
   const app=fs.readFileSync(path.join(dir,'App.html'),'utf8');
-  const a=app.indexOf('    async function loadMonthlyReviews('),b=app.indexOf('    function renderAnnualReviews',a),c=app.indexOf('    const reviewGapPercent='),d=app.indexOf('    const reviewNpsSample=',c);
+  const a=app.indexOf('    function renderMonthlyReviewTitles('),b=app.indexOf('    function renderAnnualReviews',a),c=app.indexOf('    const reviewGapPercent='),d=app.indexOf('    const reviewNpsSample=',c);
   const e=app.indexOf('    function monthlyReviewScope('),f=app.indexOf('    function renderMonthlyMatrix(',e);
   assert.ok(a>=0&&b>a&&c>=0&&d>c&&e>=0&&f>e);
   const headers=[],notes=[],cohorts=[],requests=[],charts=[];
@@ -200,7 +200,7 @@ test('Tabla, gráfico, ejemplos, detalle y Excel mensuales usan todas las reseñ
     const tableHeader=[...headers.at(-1).matchAll(/<th scope="col">([^<]+)<\/th>/g)].map(match=>match[1]);
     const sheet=sheets.evolution.get(enabled?'Brechas':'Deltas bloques funcionales');assert.deepEqual(tableHeader,sheet.header);assert.equal(sheet.header.length,enabled?9:5);assert.equal(sheet.rows[0].length,sheet.header.length);
     assert.deepEqual(sheet.filters.at(-1),['Sentimiento','Todas las reseñas']);
-    const examples=sheets.evolution.get('Ejemplos del mes');assert.deepEqual(examples.filters,sheet.filters);assert.deepEqual(examples.rows,[['promoter']]);assert.equal($('review-examples').innerHTML,'promoter');assert.equal($('review-examples-title').textContent,'Ejemplos, de los deltas, del mes en curso');
+    const examples=sheets.evolution.get('Ejemplos del mes');assert.deepEqual(examples.filters,sheet.filters);assert.deepEqual(examples.rows,[['promoter']]);assert.equal($('review-examples').innerHTML,'promoter');assert.equal($('review-examples-title').textContent,'Ejemplos de reseñas, de las variaciones identificadas, del mes en curso');assert.equal($('review-gap-title').textContent,enabled?'Brecha de NPS por bloque':'Variaciones de los bloques funcionales en el mes en curso');
     assert.equal(sheet.rows[0][4],2);if(enabled)assert.deepEqual(sheet.rows[0].slice(5),[25,50,-25,-10]);else assert.ok(!sheet.header.some(label=>/NPS|% Promotoras|% Detractoras/.test(label)));
   }
   // No hay un selector alternativo al que dirigir al usuario si no hay datos.
