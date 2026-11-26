@@ -998,17 +998,23 @@ test("adoption uses one activity series while usage analytics retains both serie
   assert.doesNotMatch(app, /activity-secondary/);
 });
 
-test("the useful reviews heading follows the year selected in annual analysis", () => {
+test("the useful reviews heading follows the year and language selected in annual analysis", () => {
   const source = fs.readFileSync(new URL("../src/App.html", import.meta.url), "utf8");
+  const translations = source.slice(source.indexOf("    const interfaceCopy="), source.indexOf("    const originalCopy="));
   const start = source.indexOf("      const currentYear=scope.year===reviewDates()");
   const end = source.indexOf("      const filters=", start);
   assert.ok(start >= 0 && end > start);
-  const heading = vm.runInNewContext("year=>{ const scope={year};" + source.slice(start, end) + "return helpfulTitle; }", {
-    reviewDates: () => ({ end: "2026-11-16" }),
-    translate: (text, values = {}) => text.replace("{year}", values.year)
+  const heading = vm.runInNewContext(translations + "(year,language='es')=>{ appLanguage=language; const scope={year};" + source.slice(start, end) + "return helpfulTitle; }", {
+    navigator: { languages: ["es"] },
+    reviewDates: () => ({ end: "2026-11-16" })
   });
-  assert.equal(heading("2026"), "Top 3 de reseñas más útiles del acumulado del año hasta la fecha");
-  assert.equal(heading("2025"), "Top 3 de reseñas más útiles del 2025");
+  assert.equal(heading("2026"), "Top 3 de reseñas, más útiles para los clientes, del acumulado del año hasta la fecha");
+  assert.equal(heading("2025"), "Top 3 de reseñas, más útiles para los clientes, del 2025");
+  assert.equal(heading("2024"), "Top 3 de reseñas, más útiles para los clientes, del 2024");
+  assert.equal(heading("2026", "en"), "Top 3 most helpful reviews for customers year to date");
+  assert.equal(heading("2025", "en"), "Top 3 most helpful reviews for customers in 2025");
+  assert.equal(heading("2026", "tr"), "Yılbaşından bugüne müşteriler için en yararlı 3 yorum");
+  assert.equal(heading("2025", "tr"), "2025 yılında müşteriler için en yararlı 3 yorum");
   assert.match(source, /annual\.topHelpful\.length\?[^\n]+<h4>\$\{U\.esc\(helpfulTitle\)\}<\/h4>/);
 });
 
